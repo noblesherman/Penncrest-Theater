@@ -7,6 +7,8 @@ import { format } from 'date-fns';
 interface Performance {
   id: string;
   date: string;
+  salesCutoffAt?: string | null;
+  salesOpen?: boolean;
 }
 
 interface Show {
@@ -26,8 +28,17 @@ export default function ShowDetails() {
 
   useEffect(() => {
     fetch(`/api/shows/${id}`)
-      .then(res => res.json())
-      .then(data => setShow(data));
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data?.error || 'Failed to fetch show');
+        }
+        setShow(data);
+      })
+      .catch((err) => {
+        console.error('Failed to fetch show', err);
+        setShow(null);
+      });
   }, [id]);
 
   if (!show) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
@@ -44,7 +55,7 @@ export default function ShowDetails() {
         <div className="absolute inset-0 flex items-end">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20 w-full">
             <Link to="/shows" className="inline-flex items-center text-white/60 hover:text-white mb-8 transition-colors">
-              <ArrowLeft className="w-5 h-5 mr-2" /> Back to Shows
+              <ArrowLeft className="w-5 h-5 mr-2" /> Back to Our Season
             </Link>
             <motion.div
               initial={{ opacity: 0, y: 40 }}
@@ -122,12 +133,23 @@ export default function ShowDetails() {
                         </div>
                       </div>
                     </div>
-                    <Link
-                      to={`/booking/${perf.id}`}
-                      className="block w-full bg-stone-900 text-white text-center py-3 rounded-xl font-bold hover:bg-yellow-400 hover:text-stone-900 transition-colors"
-                    >
-                      Select Seats
-                    </Link>
+                    {perf.salesOpen !== false ? (
+                      <Link
+                        to={`/booking/${perf.id}`}
+                        className="block w-full bg-stone-900 text-white text-center py-3 rounded-xl font-bold hover:bg-yellow-400 hover:text-stone-900 transition-colors"
+                      >
+                        Select Seats
+                      </Link>
+                    ) : (
+                      <div className="block w-full bg-stone-200 text-stone-600 text-center py-3 rounded-xl font-bold">
+                        Online Sales Closed
+                      </div>
+                    )}
+                    {perf.salesCutoffAt && (
+                      <div className="mt-2 text-xs text-stone-500">
+                        Online cutoff: {format(new Date(perf.salesCutoffAt), 'MMM d, h:mm a')}
+                      </div>
+                    )}
                   </div>
                 ))}
                 {show.performances.length === 0 && (

@@ -29,8 +29,11 @@ export default function TheaterCalendar() {
 
   useEffect(() => {
     fetch('/api/calendar')
-      .then(res => res.json())
-      .then(data => {
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok || !Array.isArray(data)) {
+          throw new Error(data?.error || 'Failed to fetch calendar');
+        }
         const parsedEvents = data.map((e: any) => ({
           ...e,
           date: new Date(e.date),
@@ -91,7 +94,7 @@ export default function TheaterCalendar() {
             rel="noreferrer"
             className="flex items-center gap-2 bg-stone-800 hover:bg-stone-700 px-4 py-2 rounded-lg text-sm font-bold transition-colors"
           >
-            <ExternalLink className="w-4 h-4" /> Google Cal
+            <ExternalLink className="w-4 h-4" /> Calendar
           </a>
           <a 
             href={generateIcs()}

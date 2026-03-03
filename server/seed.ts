@@ -64,26 +64,99 @@ const insertSection = db.prepare('INSERT INTO sections (id, name, price) VALUES 
 sections.forEach(sec => insertSection.run(sec.id, sec.name, sec.price));
 
 // 4. Create Seats
-// Larger floor layout: 15 rows, 20 seats per row
-const insertSeat = db.prepare('INSERT INTO seats (id, sectionId, row, number, x, y) VALUES (?, ?, ?, ?, ?, ?)');
+// Penncrest chart layout imported from the provided seating spreadsheet.
+const insertSeat = db.prepare('INSERT INTO seats (id, sectionId, row, number, x, y, isAccessible) VALUES (?, ?, ?, ?, ?, ?, ?)');
 
-sections.forEach((section, secIndex) => {
-  const rows = 15; 
-  const cols = 20; 
-  
-  for (let r = 0; r < rows; r++) {
-    const rowLabel = String.fromCharCode(65 + r); // A, B, C...
-    for (let c = 1; c <= cols; c++) {
+const FULL_CENTER_BLOCK = Array.from({ length: 14 }, (_, i) => 114 - i);
+const FRONT_ROW_CENTER_BLOCK = [113, 112, 111, 110, 109, 108, 106, 105, 104, 103, 102, 101];
+const BACK_ROW_CENTER_BLOCK = [113, 111, 109, 106, 104, 102];
+const SEAT_GRID_STEP = 40;
+const ROW_VERTICAL_START = 100;
+
+type RowLayout = {
+  row: string;
+  leftMaxOdd: number;
+  centerSeats: number[];
+  rightMaxEven: number;
+};
+
+const rowLayouts: RowLayout[] = [
+  { row: 'A', leftMaxOdd: 7, centerSeats: FRONT_ROW_CENTER_BLOCK, rightMaxEven: 8 },
+  { row: 'B', leftMaxOdd: 11, centerSeats: FULL_CENTER_BLOCK, rightMaxEven: 12 },
+  { row: 'C', leftMaxOdd: 11, centerSeats: FULL_CENTER_BLOCK, rightMaxEven: 12 },
+  { row: 'D', leftMaxOdd: 11, centerSeats: FULL_CENTER_BLOCK, rightMaxEven: 12 },
+  { row: 'E', leftMaxOdd: 13, centerSeats: FULL_CENTER_BLOCK, rightMaxEven: 14 },
+  { row: 'F', leftMaxOdd: 13, centerSeats: FULL_CENTER_BLOCK, rightMaxEven: 14 },
+  { row: 'G', leftMaxOdd: 15, centerSeats: FULL_CENTER_BLOCK, rightMaxEven: 16 },
+  { row: 'H', leftMaxOdd: 15, centerSeats: FULL_CENTER_BLOCK, rightMaxEven: 16 },
+  { row: 'J', leftMaxOdd: 15, centerSeats: FULL_CENTER_BLOCK, rightMaxEven: 16 },
+  { row: 'K', leftMaxOdd: 17, centerSeats: FULL_CENTER_BLOCK, rightMaxEven: 18 },
+  { row: 'L', leftMaxOdd: 17, centerSeats: FULL_CENTER_BLOCK, rightMaxEven: 18 },
+  { row: 'M', leftMaxOdd: 19, centerSeats: FULL_CENTER_BLOCK, rightMaxEven: 20 },
+  { row: 'N', leftMaxOdd: 19, centerSeats: FULL_CENTER_BLOCK, rightMaxEven: 20 },
+  { row: 'O', leftMaxOdd: 21, centerSeats: FULL_CENTER_BLOCK, rightMaxEven: 22 },
+  { row: 'P', leftMaxOdd: 21, centerSeats: FULL_CENTER_BLOCK, rightMaxEven: 22 },
+  { row: 'Q', leftMaxOdd: 21, centerSeats: FULL_CENTER_BLOCK, rightMaxEven: 22 },
+  { row: 'R', leftMaxOdd: 23, centerSeats: FULL_CENTER_BLOCK, rightMaxEven: 24 },
+  { row: 'S', leftMaxOdd: 23, centerSeats: FULL_CENTER_BLOCK, rightMaxEven: 24 },
+  { row: 'T', leftMaxOdd: 25, centerSeats: FULL_CENTER_BLOCK, rightMaxEven: 26 },
+  { row: 'U', leftMaxOdd: 25, centerSeats: BACK_ROW_CENTER_BLOCK, rightMaxEven: 26 },
+  { row: 'V', leftMaxOdd: 25, centerSeats: [], rightMaxEven: 26 },
+  { row: 'W', leftMaxOdd: 27, centerSeats: [], rightMaxEven: 28 },
+];
+
+const leftColumnForSeat = (seatNumber: number) => 16 - (seatNumber + 1) / 2;
+const centerColumnForSeat = (seatNumber: number) => 133 - seatNumber;
+const rightColumnForSeat = (seatNumber: number) => 35 + seatNumber / 2;
+const ACCESSIBLE_SEATS_BY_ROW: Record<string, number[]> = {
+  // Blue cells from the provided Excel chart.
+  A: [5, 6, 7, 8, 101, 102, 112, 113],
+  U: [102, 104, 106, 109, 111, 113],
+};
+
+sections.forEach((section) => {
+  rowLayouts.forEach((layout, rowIndex) => {
+    const accessibleSeatNumbers = new Set(ACCESSIBLE_SEATS_BY_ROW[layout.row] ?? []);
+
+    for (let seatNumber = 1; seatNumber <= layout.leftMaxOdd; seatNumber += 2) {
+      const column = leftColumnForSeat(seatNumber);
       insertSeat.run(
         uuidv4(),
         section.id,
-        rowLabel,
-        c,
-        c * 40, // x coordinate
-        (r * 40) + 100 // y coordinate
+        layout.row,
+        seatNumber,
+        column * SEAT_GRID_STEP,
+        (rowIndex * SEAT_GRID_STEP) + ROW_VERTICAL_START,
+        accessibleSeatNumbers.has(seatNumber) ? 1 : 0
       );
     }
-  }
+
+    layout.centerSeats.forEach((seatNumber) => {
+      const column = centerColumnForSeat(seatNumber);
+      insertSeat.run(
+        uuidv4(),
+        section.id,
+        layout.row,
+        seatNumber,
+        column * SEAT_GRID_STEP,
+        (rowIndex * SEAT_GRID_STEP) + ROW_VERTICAL_START,
+        accessibleSeatNumbers.has(seatNumber) ? 1 : 0
+      );
+    });
+
+    for (let seatNumber = 2; seatNumber <= layout.rightMaxEven; seatNumber += 2) {
+      const column = rightColumnForSeat(seatNumber);
+      insertSeat.run(
+        uuidv4(),
+        section.id,
+        layout.row,
+        seatNumber,
+        column * SEAT_GRID_STEP,
+        (rowIndex * SEAT_GRID_STEP) + ROW_VERTICAL_START,
+        accessibleSeatNumbers.has(seatNumber) ? 1 : 0
+      );
+    }
+  });
 });
 
 console.log('Database seeded successfully!');

@@ -1,0 +1,322 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  BOX_OFFICE
+  SCANNER
+  READ_ONLY
+}
+
+enum PerformanceStatus {
+  DRAFT
+  ON_SALE
+  CLOSED
+  CANCELLED
+}
+
+enum SeatState {
+  AVAILABLE
+  HELD
+  SOLD
+  BLOCKED
+}
+
+enum HoldStatus {
+  ACTIVE
+  RELEASED
+  CONVERTED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  REFUNDED
+  CANCELLED
+}
+
+enum PromoType {
+  PERCENT
+  AMOUNT
+  COMP
+}
+
+enum PriceRuleType {
+  SEAT_PREMIUM_BY_ROW
+  SEAT_PREMIUM_BY_FLAG
+}
+
+enum TicketStatus {
+  VALID
+  SCANNED
+  REFUNDED
+  VOID
+}
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  passwordHash String
+  name        String
+  role        UserRole
+  active      Boolean  @default(true)
+  lastLoginAt DateTime?
+  createdAt   DateTime @default(now())
+  auditLogs   AuditLog[]
+  scannedTickets Ticket[] @relation("Scanner")
+}
+
+model Show {
+  id             String   @id @default(cuid())
+  title          String
+  slug           String   @unique
+  description    String
+  runtimeMinutes Int
+  posterUrl      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  persons        ShowPerson[]
+  performances   Performance[]
+  tiers          Tier[]
+}
+
+model ShowPerson {
+  id         String @id @default(cuid())
+  show       Show   @relation(fields: [showId], references: [id])
+  showId     String
+  name       String
+  roleType   String // cast or crew
+  roleName   String
+  orderIndex Int    @default(0)
+}
+
+model SeatMapVersion {
+  id        String         @id @default(cuid())
+  name      String
+  createdAt DateTime       @default(now())
+  sections  SeatSection[]
+  seats     Seat[]
+  performances Performance[]
+}
+
+model SeatSection {
+  id              String   @id @default(cuid())
+  seatMapVersion  SeatMapVersion @relation(fields: [seatMapVersionId], references: [id])
+  seatMapVersionId String
+  name            String
+  orderIndex      Int      @default(0)
+  seats           Seat[]
+}
+
+model Seat {
+  id              String   @id @default(cuid())
+  seatMapVersion  SeatMapVersion @relation(fields: [seatMapVersionId], references: [id])
+  seatMapVersionId String
+  section         SeatSection? @relation(fields: [sectionId], references: [id])
+  sectionId       String?
+  rowLabel        String
+  seatNumber      Int
+  seatLabel       String
+  orderIndex      Int      @default(0)
+  flagsJson       Json     @default("{}")
+  performanceStates PerformanceSeatState[]
+  holdSeats       HoldSeat[]
+  tickets         Ticket[]
+
+  @@index([seatMapVersionId])
+  @@index([sectionId])
+}
+
+model Performance {
+  id                String   @id @default(cuid())
+  show              Show     @relation(fields: [showId], references: [id])
+  showId            String
+  startsAt          DateTime
+  doorsAt           DateTime?
+  status            PerformanceStatus @default(DRAFT)
+  onSaleAt          DateTime?
+  offSaleAt         DateTime?
+  seatMapVersion    SeatMapVersion @relation(fields: [seatMapVersionId], references: [id])
+  seatMapVersionId  String
+  notes             String?
+  createdAt         DateTime @default(now())
+  performanceSeatStates PerformanceSeatState[]
+  tiers             Tier[]
+  priceRules        PriceRule[]
+  holds             Hold[]
+  orders            Order[]
+  tickets           Ticket[]
+
+  @@index([showId])
+}
+
+model PerformanceSeatState {
+  id            String   @id @default(cuid())
+  performance   Performance @relation(fields: [performanceId], references: [id])
+  performanceId String
+  seat          Seat       @relation(fields: [seatId], references: [id])
+  seatId        String
+  state         SeatState  @default(AVAILABLE)
+  hold          Hold?      @relation(fields: [holdId], references: [id])
+  holdId        String?
+  order         Order?     @relation(fields: [orderId], references: [id])
+  orderId       String?
+  updatedAt     DateTime   @updatedAt
+
+  @@unique([performanceId, seatId])
+  @@index([holdId])
+  @@index([orderId])
+}
+
+model Tier {
+  id            String   @id @default(cuid())
+  performance   Performance? @relation(fields: [performanceId], references: [id])
+  performanceId String?
+  show          Show?     @relation(fields: [showId], references: [id])
+  showId        String?
+  name          String
+  priceCents    Int
+  orderIndex    Int    @default(0)
+  active        Boolean @default(true)
+
+  @@index([performanceId])
+  @@index([showId])
+}
+
+model PriceRule {
+  id            String   @id @default(cuid())
+  performance   Performance @relation(fields: [performanceId], references: [id])
+  performanceId String
+  type          PriceRuleType
+  configJson    Json
+
+  @@index([performanceId])
+}
+
+model Hold {
+  id            String   @id @default(cuid())
+  performance   Performance @relation(fields: [performanceId], references: [id])
+  performanceId String
+  clientToken   String
+  expiresAt     DateTime
+  status        HoldStatus @default(ACTIVE)
+  extendCount   Int       @default(0)
+  createdAt     DateTime @default(now())
+  holdSeats     HoldSeat[]
+  performanceSeatStates PerformanceSeatState[]
+
+  @@index([performanceId])
+  @@index([expiresAt])
+}
+
+model HoldSeat {
+  id       String @id @default(cuid())
+  hold     Hold   @relation(fields: [holdId], references: [id])
+  holdId   String
+  seat     Seat   @relation(fields: [seatId], references: [id])
+  seatId   String
+
+  @@unique([holdId, seatId])
+  @@index([seatId])
+}
+
+model Order {
+  id                  String   @id @default(cuid())
+  performance         Performance @relation(fields: [performanceId], references: [id])
+  performanceId       String
+  buyerEmail          String
+  buyerName           String?
+  status              OrderStatus @default(PENDING)
+  subtotalCents       Int
+  feeCents            Int
+  totalCents          Int
+  stripeSessionId     String? @unique
+  stripePaymentIntentId String? @unique
+  createdAt           DateTime @default(now())
+  tickets             Ticket[]
+  performanceSeatStates PerformanceSeatState[]
+  adjustments         OrderAdjustment[]
+  refunds             Refund[]
+
+  @@index([performanceId])
+}
+
+model Ticket {
+  id              String   @id @default(cuid())
+  order           Order    @relation(fields: [orderId], references: [id])
+  orderId         String
+  performance     Performance @relation(fields: [performanceId], references: [id])
+  performanceId   String
+  seat            Seat     @relation(fields: [seatId], references: [id])
+  seatId          String
+  tierName        String
+  priceCents      Int
+  status          TicketStatus @default(VALID)
+  qrSecret        String
+  scannedAt       DateTime?
+  scannedBy       User?    @relation("Scanner", fields: [scannedByUserId], references: [id])
+  scannedByUserId String?
+
+  @@index([orderId])
+  @@index([performanceId])
+  @@index([seatId])
+}
+
+model PromoCode {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  type      PromoType
+  value     Int
+  maxUses   Int?
+  uses      Int      @default(0)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  scopeJson Json
+  active    Boolean  @default(true)
+}
+
+model OrderAdjustment {
+  id          String   @id @default(cuid())
+  order       Order    @relation(fields: [orderId], references: [id])
+  orderId     String
+  type        String   // promo or comp or manual
+  amountCents Int
+  description String?
+
+  @@index([orderId])
+}
+
+model Refund {
+  id             String @id @default(cuid())
+  order          Order  @relation(fields: [orderId], references: [id])
+  orderId        String
+  amountCents    Int
+  stripeRefundId String?
+  reason         String?
+  createdAt      DateTime @default(now())
+
+  @@index([orderId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  user       User?    @relation(fields: [userId], references: [id])
+  userId     String?
+  action     String
+  entityType String
+  entityId   String
+  beforeJson Json?
+  afterJson  Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([entityType, entityId])
+}

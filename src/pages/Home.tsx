@@ -18,8 +18,19 @@ export default function Home() {
 
   useEffect(() => {
     fetch('/api/shows')
-      .then(res => res.json())
-      .then(data => setShows(data));
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok || !Array.isArray(data)) {
+          console.error('Failed to fetch shows', data);
+          setShows([]);
+          return;
+        }
+        setShows(data);
+      })
+      .catch((err) => {
+        console.error('Failed to fetch shows', err);
+        setShows([]);
+      });
   }, []);
 
   const featuredShow = shows[0];
@@ -40,10 +51,10 @@ export default function Home() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8 }}
             >
-              <div className="inline-block bg-stone-900 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-widest mb-6">
+              <div className="inline-block bg-stone-900 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-[0.14em] mb-6">
                 Now Enrolling for Fall 2024
               </div>
-              <h1 className="text-6xl md:text-8xl font-black font-display text-stone-900 tracking-tighter leading-[0.9] mb-8">
+              <h1 className="text-6xl md:text-8xl font-black font-display text-stone-900 tracking-[0.04em] leading-[1.02] mb-8">
                 PENNCREST <br />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-500 via-orange-500 to-pink-500">
                   THEATER
@@ -112,7 +123,7 @@ export default function Home() {
               <p className="text-stone-500 text-lg">Don't miss our latest productions.</p>
             </div>
             <Link to="/shows" className="hidden md:flex items-center gap-2 font-bold text-stone-900 hover:text-yellow-500 transition-colors">
-              View All Shows <ArrowRight className="w-5 h-5" />
+              View Our Season <ArrowRight className="w-5 h-5" />
             </Link>
           </div>
 
@@ -165,14 +176,13 @@ export default function Home() {
             We are a community of actors, designers, technicians, and dreamers. 
             Every ticket you buy supports arts education at Penncrest High School.
           </p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 max-w-4xl mx-auto">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 max-w-4xl mx-auto justify-items-center">
             {[
-              { label: 'Productions', value: '50+' },
-              { label: 'Students', value: '120+' },
-              { label: 'Awards', value: '15' },
-              { label: 'Years', value: '25' },
+              { label: 'Productions', value: '100+' },
+              { label: 'Students', value: '50+' },
+              { label: 'Years', value: '25+' },
             ].map((stat) => (
-              <div key={stat.label} className="p-6 border border-stone-800 rounded-2xl bg-stone-800/50 backdrop-blur-sm">
+              <div key={stat.label} className="p-6 border border-stone-800 rounded-2xl bg-stone-800/50 backdrop-blur-sm text-center w-full">
                 <div className="text-4xl font-black text-yellow-400 mb-2">{stat.value}</div>
                 <div className="text-stone-400 text-sm uppercase tracking-widest font-bold">{stat.label}</div>
               </div>

@@ -1,0 +1,307 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SeatStatus {
+  AVAILABLE
+  HELD
+  SOLD
+  BLOCKED
+}
+
+enum HoldStatus {
+  ACTIVE
+  EXPIRED
+  CONVERTED
+  CANCELED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  REFUNDED
+  CANCELED
+}
+
+enum OrderSource {
+  ONLINE
+  DOOR
+  COMP
+  STAFF_FREE
+  STAFF_COMP
+  FAMILY_FREE
+}
+
+enum AuthProvider {
+  GOOGLE
+  MICROSOFT
+  LOCAL
+}
+
+enum StaffVerifyMethod {
+  OAUTH_GOOGLE
+  OAUTH_MICROSOFT
+  REDEEM_CODE
+}
+
+enum TicketType {
+  PAID
+  STAFF_COMP
+}
+
+enum TicketStatus {
+  RESERVED
+  ISSUED
+  CANCELLED
+}
+
+model User {
+  id                  String                @id @default(cuid())
+  email               String                @unique
+  name                String
+  authProvider        AuthProvider          @default(LOCAL)
+  verifiedStaff       Boolean               @default(false)
+  staffVerifiedAt     DateTime?
+  staffVerifyMethod   StaffVerifyMethod?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  usedRedeemCodes     StaffRedeemCode[]     @relation("RedeemCodeUsedBy")
+  staffCompRedemptions StaffCompRedemption[]
+  orders              Order[]
+  tickets             Ticket[]
+
+  @@index([verifiedStaff, staffVerifiedAt])
+}
+
+model StaffRedeemCode {
+  id              String   @id @default(cuid())
+  codeHash        String   @unique
+  createdByAdminId String
+  expiresAt       DateTime
+  usedAt          DateTime?
+  usedByUserId    String?
+  usedByUser      User?    @relation("RedeemCodeUsedBy", fields: [usedByUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+
+  @@index([expiresAt, usedAt])
+  @@index([createdByAdminId, createdAt])
+}
+
+model Show {
+  id          String        @id @default(cuid())
+  title       String
+  description String?
+  posterUrl   String?
+  type        String?
+  year        Int?
+  accentColor String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  performances Performance[]
+}
+
+model Performance {
+  id           String        @id @default(cuid())
+  showId        String
+  show          Show          @relation(fields: [showId], references: [id], onDelete: Cascade)
+  title         String?
+  startsAt      DateTime
+  salesCutoffAt DateTime?
+  staffTicketLimit Int       @default(2)
+  staffCompsEnabled Boolean  @default(true)
+  staffCompLimitPerUser Int  @default(1)
+  familyFreeTicketEnabled Boolean @default(false)
+  venue         String
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  seats         Seat[]
+  pricingTiers  PricingTier[]
+  holdSessions  HoldSession[]
+  orders        Order[]
+  tickets       Ticket[]
+  staffCompRedemptions StaffCompRedemption[]
+
+  @@index([showId])
+  @@index([startsAt])
+}
+
+model PricingTier {
+  id            String      @id @default(cuid())
+  performanceId String
+  performance   Performance @relation(fields: [performanceId], references: [id], onDelete: Cascade)
+  name          String
+  priceCents    Int
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([performanceId])
+}
+
+model Seat {
+  id            String       @id @default(cuid())
+  performanceId String
+  performance   Performance  @relation(fields: [performanceId], references: [id], onDelete: Cascade)
+  row           String
+  number        Int
+  sectionName   String
+  x             Int
+  y             Int
+  price         Int
+  isAccessible  Boolean      @default(false)
+  isCompanion   Boolean      @default(false)
+  companionForSeatId String?
+  companionForSeat Seat?     @relation("CompanionSeat", fields: [companionForSeatId], references: [id], onDelete: SetNull)
+  companionSeats Seat[]      @relation("CompanionSeat")
+  status        SeatStatus   @default(AVAILABLE)
+  holdSessionId String?
+  holdSession   HoldSession? @relation(fields: [holdSessionId], references: [id], onDelete: SetNull)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  seatHolds     SeatHold[]
+  orderSeats    OrderSeat[]
+  tickets       Ticket[]
+
+  @@unique([performanceId, sectionName, row, number])
+  @@index([performanceId, status])
+  @@index([holdSessionId])
+  @@index([companionForSeatId])
+}
+
+model HoldSession {
+  id            String      @id @default(cuid())
+  performanceId String
+  performance   Performance @relation(fields: [performanceId], references: [id], onDelete: Cascade)
+  clientToken   String
+  holdToken     String      @unique
+  expiresAt     DateTime
+  status        HoldStatus  @default(ACTIVE)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  seats         Seat[]
+  seatHolds     SeatHold[]
+
+  @@unique([performanceId, clientToken])
+  @@index([performanceId, expiresAt])
+}
+
+model SeatHold {
+  id            String      @id @default(cuid())
+  seatId        String
+  seat          Seat        @relation(fields: [seatId], references: [id], onDelete: Cascade)
+  holdSessionId String
+  holdSession   HoldSession @relation(fields: [holdSessionId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+
+  @@unique([seatId])
+  @@unique([holdSessionId, seatId])
+  @@index([holdSessionId])
+}
+
+model Order {
+  id                    String      @id @default(cuid())
+  performanceId         String
+  performance           Performance @relation(fields: [performanceId], references: [id], onDelete: Restrict)
+  userId                String?
+  user                  User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  stripeSessionId       String?     @unique
+  stripePaymentIntentId String?     @unique
+  email                 String
+  customerName          String
+  attendeeNamesJson     Json?
+  amountTotal           Int
+  currency              String      @default("usd")
+  status                OrderStatus @default(PENDING)
+  source                OrderSource @default(ONLINE)
+  holdToken             String?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  orderSeats            OrderSeat[]
+  tickets               Ticket[]
+
+  @@index([performanceId])
+  @@index([userId])
+  @@index([email])
+  @@index([status])
+}
+
+model OrderSeat {
+  id           String   @id @default(cuid())
+  orderId      String
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  seatId       String
+  seat         Seat     @relation(fields: [seatId], references: [id], onDelete: Restrict)
+  ticketType   String?
+  isComplimentary Boolean @default(false)
+  price        Int
+  attendeeName String?
+  createdAt    DateTime @default(now())
+
+  @@unique([orderId, seatId])
+  @@index([seatId])
+  @@index([orderId])
+}
+
+model Ticket {
+  id          String               @id
+  orderId     String
+  order       Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  performanceId String
+  performance Performance          @relation(fields: [performanceId], references: [id], onDelete: Restrict)
+  userId      String?
+  user        User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  seatId      String
+  seat        Seat                 @relation(fields: [seatId], references: [id], onDelete: Restrict)
+  type        TicketType           @default(PAID)
+  priceCents  Int                  @default(0)
+  status      TicketStatus         @default(ISSUED)
+  publicId    String               @unique
+  qrSecret    String
+  qrPayload   String
+  createdAt   DateTime             @default(now())
+  staffCompRedemption StaffCompRedemption?
+
+  @@index([orderId])
+  @@index([performanceId])
+  @@index([userId])
+  @@index([type, status])
+  @@index([seatId])
+}
+
+model StaffCompRedemption {
+  id            String      @id @default(cuid())
+  performanceId String
+  performance   Performance @relation(fields: [performanceId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticketId      String      @unique
+  ticket        Ticket      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  redeemedAt    DateTime    @default(now())
+
+  @@unique([performanceId, userId])
+  @@index([performanceId, redeemedAt])
+  @@index([userId, redeemedAt])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  actor        String
+  actorUserId  String?
+  actorAdminId String?
+  action       String
+  entityType   String
+  entityId     String
+  meta         Json?
+  metadataJson Json?
+  createdAt    DateTime @default(now())
+
+  @@index([actorUserId, createdAt])
+  @@index([actorAdminId, createdAt])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}

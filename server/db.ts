@@ -11,18 +11,9 @@ if (!fs.existsSync(dbDir)) {
 
 let db: Database.Database;
 
-try {
-  db = new Database(dbPath);
-} catch (error) {
-  console.error('Failed to open database, it may be malformed. Recreating...', error);
-  if (fs.existsSync(dbPath)) {
-    fs.unlinkSync(dbPath);
-  }
-  db = new Database(dbPath);
-}
-
-// Initialize tables
-db.exec(`
+const initSchema = () => {
+  // Create tables and indexes; any corruption will surface here
+  db.exec(`
   CREATE TABLE IF NOT EXISTS shows (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
@@ -53,6 +44,7 @@ db.exec(`
     number INTEGER NOT NULL,
     x INTEGER, -- for visual map
     y INTEGER, -- for visual map
+    isAccessible INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY(sectionId) REFERENCES sections(id)
   );
 
@@ -92,5 +84,30 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_seat_holds_perf ON seat_holds(performanceId);
   CREATE INDEX IF NOT EXISTS idx_tickets_perf ON tickets(performanceId);
 `);
+
+  // Lightweight migration for existing local DBs created before isAccessible.
+  const seatColumns = db.prepare(`PRAGMA table_info(seats)`).all() as Array<{ name: string }>;
+  const hasAccessibleColumn = seatColumns.some((column) => column.name === 'isAccessible');
+  if (!hasAccessibleColumn) {
+    db.exec('ALTER TABLE seats ADD COLUMN isAccessible INTEGER NOT NULL DEFAULT 0');
+  }
+};
+
+try {
+  db = new Database(dbPath);
+  initSchema();
+} catch (error) {
+  console.error('Database appears corrupted. Recreating...', error);
+  try {
+    db.close();
+  } catch (_) {
+    // ignore close errors
+  }
+  if (fs.existsSync(dbPath)) {
+    fs.unlinkSync(dbPath);
+  }
+  db = new Database(dbPath);
+  initSchema();
+}
 
 export default db;

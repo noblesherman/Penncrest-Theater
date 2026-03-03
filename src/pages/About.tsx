@@ -4,7 +4,8 @@ import TheaterCalendar from '../components/TheaterCalendar';
 import ShowHistorySlideshow from '../components/ShowHistorySlideshow';
 import { Link } from 'react-router-dom';
 
-export default function About() {
+// Full About page content preserved for later re-enable.
+function FullAboutPage() {
   return (
     <div className="bg-stone-50 min-h-screen font-sans text-stone-900">
       {/* Hero Section */}
@@ -129,4 +130,9 @@ export default function About() {
       </section>
     </div>
   );
+}
+
+// Live export: render the full About page
+export default function About() {
+  return <FullAboutPage />;
 }

@@ -9,9 +9,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const navLinks = [
     { name: 'Home', path: '/' },
-    { name: 'Shows', path: '/shows' },
+    { name: 'Our Season', path: '/shows' },
     { name: 'About', path: '/about' },
-    { name: 'Contact', path: '/contact' },
   ];
 
   return (
@@ -118,9 +117,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div>
             <h4 className="text-white font-bold uppercase tracking-wider text-sm mb-6">Explore</h4>
             <ul className="space-y-3 text-sm">
-              <li><Link to="/shows" className="hover:text-yellow-400 transition-colors">Current Season</Link></li>
+              <li><Link to="/shows" className="hover:text-yellow-400 transition-colors">Our Season</Link></li>
               <li><Link to="/about" className="hover:text-yellow-400 transition-colors">Our History</Link></li>
-              <li><Link to="/cast" className="hover:text-yellow-400 transition-colors">Meet the Cast</Link></li>
               <li><Link to="/admin" className="hover:text-yellow-400 transition-colors">Staff Login</Link></li>
             </ul>
           </div>

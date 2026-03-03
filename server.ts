@@ -61,7 +61,7 @@ async function startServer() {
       if (soldSeatIds.has(seat.id)) status = 'sold';
       else if (heldSeatIds.has(seat.id)) status = 'held';
       
-      return { ...seat, status };
+      return { ...seat, isAccessible: Boolean(seat.isAccessible), status };
     });
 
     res.json(seatsWithStatus);

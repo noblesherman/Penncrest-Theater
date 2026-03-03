@@ -17,17 +17,42 @@ export default function Shows() {
 
   useEffect(() => {
     fetch('/api/shows')
-      .then(res => res.json())
-      .then(data => setShows(data));
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok || !Array.isArray(data)) {
+          console.error('Failed to fetch shows', data);
+          setShows([]);
+          return;
+        }
+        setShows(data);
+      })
+      .catch((err) => {
+        console.error('Failed to fetch shows', err);
+        setShows([]);
+      });
   }, []);
 
   return (
     <div className="bg-stone-50 min-h-screen py-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-20">
-          <h1 className="text-5xl md:text-7xl font-black text-stone-900 mb-6">ALL PRODUCTIONS</h1>
+          <h1 className="text-5xl md:text-7xl font-black text-stone-900 mb-6">OUR SEASON</h1>
           <p className="text-xl text-stone-500 max-w-2xl mx-auto">
-            From classic musicals to contemporary plays, explore our history of storytelling.
+            From fall opener to spring finale, explore the productions lighting up the Penncrest stage.
+          </p>
+          <p className="mt-4 text-xs text-stone-400">
+            Complimentary access:
+            {' '}
+            <Link to="/staff-tickets" className="underline hover:text-stone-600 transition-colors">
+              Staff Tickets
+            </Link>
+            {' '}
+            and
+            {' '}
+            <Link to="/family-ticket" className="underline hover:text-stone-600 transition-colors">
+              Family Ticket
+            </Link>
+            .
           </p>
         </div>
 

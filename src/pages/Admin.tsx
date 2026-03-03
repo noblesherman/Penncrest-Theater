@@ -47,7 +47,7 @@ export default function Admin() {
               <div className="p-3 bg-purple-100 text-purple-600 rounded-lg">
                 <Calendar className="w-6 h-6" />
               </div>
-              <div className="text-sm font-medium text-stone-500">Upcoming Shows</div>
+              <div className="text-sm font-medium text-stone-500">Upcoming Season</div>
             </div>
             <div className="text-3xl font-black text-stone-900">3</div>
           </div>
