@@ -5,7 +5,7 @@ import { adminFetch } from '../../lib/adminAuth';
 type Order = {
   id: string;
   status: string;
-  source: 'ONLINE' | 'DOOR' | 'COMP' | 'STAFF_FREE' | 'FAMILY_FREE';
+  source: 'ONLINE' | 'DOOR' | 'COMP' | 'STAFF_FREE' | 'FAMILY_FREE' | 'STUDENT_COMP';
   email: string;
   customerName: string;
   amountTotal: number;
@@ -206,6 +206,7 @@ export default function AdminOrdersPage() {
           <option value="COMP">COMP</option>
           <option value="STAFF_FREE">STAFF_FREE</option>
           <option value="FAMILY_FREE">FAMILY_FREE</option>
+          <option value="STUDENT_COMP">STUDENT_COMP</option>
         </select>
         <button className="bg-stone-900 text-white px-4 py-2 rounded-xl font-bold">Search</button>
       </form>

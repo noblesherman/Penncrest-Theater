@@ -174,7 +174,7 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
       .filter((value): value is string => Boolean(value));
     await closeEmptyHolds(tx, holdIds);
 
-    const complimentarySources = new Set<OrderSource>(['COMP', 'STAFF_FREE', 'STAFF_COMP', 'FAMILY_FREE']);
+    const complimentarySources = new Set<OrderSource>(['COMP', 'STAFF_FREE', 'STAFF_COMP', 'FAMILY_FREE', 'STUDENT_COMP']);
     const isSourceComplimentary = complimentarySources.has(params.source);
 
     const sortedSeats = sortSeats(performance.seats);
@@ -230,7 +230,12 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
           performanceId: params.performanceId,
           userId: params.userId,
           seatId: assignment.seat.id,
-          type: params.source === 'STAFF_COMP' || params.source === 'STAFF_FREE' ? 'STAFF_COMP' : 'PAID',
+          type:
+            params.source === 'STAFF_COMP' || params.source === 'STAFF_FREE'
+              ? 'STAFF_COMP'
+              : params.source === 'STUDENT_COMP' && assignment.isComplimentary
+                ? 'STUDENT_COMP'
+                : 'PAID',
           priceCents: assignment.price,
           status: 'ISSUED',
           publicId: crypto.randomBytes(8).toString('hex'),

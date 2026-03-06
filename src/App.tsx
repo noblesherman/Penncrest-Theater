@@ -25,6 +25,7 @@ import AdminOrderDetailPage from './pages/admin/OrderDetail';
 import AdminRosterPage from './pages/admin/Roster';
 import AdminAuditLogPage from './pages/admin/AuditLog';
 import AdminStaffCompsPage from './pages/admin/StaffComps';
+import AdminStudentCreditsPage from './pages/admin/StudentCredits';
 
 function PublicLayout() {
   return (
@@ -39,6 +40,7 @@ export default function App() {
     <Router>
       <Routes>
         <Route path="/admin/login" element={<AdminLoginPage />} />
+        <Route path="/booking/:performanceId" element={<Booking />} />
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<Navigate to="/admin/dashboard" replace />} />
           <Route path="dashboard" element={<AdminDashboardPage />} />
@@ -48,6 +50,7 @@ export default function App() {
           <Route path="orders/:id" element={<AdminOrderDetailPage />} />
           <Route path="roster" element={<AdminRosterPage />} />
           <Route path="staff-comps" element={<AdminStaffCompsPage />} />
+          <Route path="student-credits" element={<AdminStudentCreditsPage />} />
           <Route path="audit" element={<AdminAuditLogPage />} />
         </Route>
 
@@ -55,7 +58,6 @@ export default function App() {
           <Route index element={<Home />} />
           <Route path="shows" element={<Shows />} />
           <Route path="shows/:id" element={<ShowDetails />} />
-          <Route path="booking/:performanceId" element={<Booking />} />
           <Route path="confirmation" element={<Confirmation />} />
           <Route path="orders/lookup" element={<OrderLookup />} />
           <Route path="tickets/:publicId" element={<TicketPage />} />

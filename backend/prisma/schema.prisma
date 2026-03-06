@@ -35,6 +35,7 @@ enum OrderSource {
   STAFF_FREE
   STAFF_COMP
   FAMILY_FREE
+  STUDENT_COMP
 }
 
 enum AuthProvider {
@@ -52,12 +53,27 @@ enum StaffVerifyMethod {
 enum TicketType {
   PAID
   STAFF_COMP
+  STUDENT_COMP
 }
 
 enum TicketStatus {
   RESERVED
   ISSUED
   CANCELLED
+}
+
+enum StudentCreditTransactionType {
+  REDEEM
+  ADJUSTMENT_ADD
+  ADJUSTMENT_REMOVE
+  MANUAL_REDEEM
+  REFUND_RESTORE
+}
+
+enum StudentCreditVerificationMethod {
+  CODE
+  SCHOOL_LOGIN
+  ADMIN
 }
 
 model User {
@@ -103,6 +119,7 @@ model Show {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   performances Performance[]
+  studentTicketCredits StudentTicketCredit[]
 }
 
 model Performance {
@@ -126,6 +143,7 @@ model Performance {
   orders        Order[]
   tickets       Ticket[]
   staffCompRedemptions StaffCompRedemption[]
+  studentTicketCreditTransactions StudentTicketCreditTransaction[]
 
   @@index([showId])
   @@index([startsAt])
@@ -219,15 +237,23 @@ model Order {
   status                OrderStatus @default(PENDING)
   source                OrderSource @default(ONLINE)
   holdToken             String?
+  studentTicketCreditId String?
+  studentTicketCredit   StudentTicketCredit? @relation(fields: [studentTicketCreditId], references: [id], onDelete: SetNull)
+  studentCreditPendingQuantity Int @default(0)
+  studentCreditRedeemedQuantity Int @default(0)
+  studentCreditRestoredQuantity Int @default(0)
+  studentCreditVerificationMethod StudentCreditVerificationMethod?
   createdAt             DateTime    @default(now())
   updatedAt             DateTime    @updatedAt
   orderSeats            OrderSeat[]
   tickets               Ticket[]
+  studentTicketCreditTransactions StudentTicketCreditTransaction[]
 
   @@index([performanceId])
   @@index([userId])
   @@index([email])
   @@index([status])
+  @@index([studentTicketCreditId])
 }
 
 model OrderSeat {
@@ -286,6 +312,48 @@ model StaffCompRedemption {
   @@unique([performanceId, userId])
   @@index([performanceId, redeemedAt])
   @@index([userId, redeemedAt])
+}
+
+model StudentTicketCredit {
+  id               String   @id @default(cuid())
+  showId           String
+  show             Show     @relation(fields: [showId], references: [id], onDelete: Cascade)
+  studentId        String?
+  studentName      String
+  studentEmail     String?
+  roleName         String?
+  verificationCode String?  @unique
+  allocatedTickets Int      @default(2)
+  usedTickets      Int      @default(0)
+  pendingTickets   Int      @default(0)
+  isActive         Boolean  @default(true)
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  transactions     StudentTicketCreditTransaction[]
+  orders           Order[]
+
+  @@index([showId, isActive])
+}
+
+model StudentTicketCreditTransaction {
+  id                    String                          @id @default(cuid())
+  studentTicketCreditId String
+  studentTicketCredit   StudentTicketCredit            @relation(fields: [studentTicketCreditId], references: [id], onDelete: Cascade)
+  orderId               String?
+  order                 Order?                         @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  performanceId         String?
+  performance           Performance?                   @relation(fields: [performanceId], references: [id], onDelete: SetNull)
+  quantity              Int
+  type                  StudentCreditTransactionType
+  verificationMethod    StudentCreditVerificationMethod?
+  redeemedBy            String?
+  notes                 String?
+  createdAt             DateTime                       @default(now())
+
+  @@index([studentTicketCreditId, createdAt])
+  @@index([orderId])
+  @@index([performanceId])
 }
 
 model AuditLog {

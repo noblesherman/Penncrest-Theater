@@ -5,7 +5,7 @@ import { adminFetch } from '../../lib/adminAuth';
 type OrderDetail = {
   id: string;
   status: string;
-  source: 'ONLINE' | 'DOOR' | 'COMP' | 'STAFF_FREE' | 'FAMILY_FREE';
+  source: 'ONLINE' | 'DOOR' | 'COMP' | 'STAFF_FREE' | 'FAMILY_FREE' | 'STUDENT_COMP';
   email: string;
   customerName: string;
   amountTotal: number;

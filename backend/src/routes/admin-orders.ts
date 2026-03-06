@@ -6,6 +6,7 @@ import { HttpError } from '../lib/http-error.js';
 import { sendTicketsEmail } from '../lib/email.js';
 import { logAudit } from '../lib/audit-log.js';
 import { createAssignedOrder } from '../services/order-assignment.js';
+import { restoreStudentCreditsForRefundTx } from '../services/student-ticket-credit-service.js';
 
 const refundSchema = z.object({
   releaseSeats: z.boolean().optional(),
@@ -220,6 +221,12 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
         await tx.order.update({
           where: { id: order.id },
           data: { status: 'REFUNDED' }
+        });
+
+        await restoreStudentCreditsForRefundTx(tx, {
+          orderId: order.id,
+          restoredBy: adminActor(request),
+          notes: parsed.data.reason || 'Admin refund'
         });
 
         if (parsed.data.releaseSeats) {

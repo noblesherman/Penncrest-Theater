@@ -21,7 +21,7 @@ type TicketResponse = {
   holder: {
     customerName: string;
     customerEmail: string;
-    source: 'ONLINE' | 'DOOR' | 'COMP' | 'STAFF_FREE' | 'FAMILY_FREE';
+    source: 'ONLINE' | 'DOOR' | 'COMP' | 'STAFF_FREE' | 'FAMILY_FREE' | 'STUDENT_COMP';
     ticketType?: string | null;
     attendeeName?: string | null;
   };

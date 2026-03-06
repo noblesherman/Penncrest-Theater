@@ -9,6 +9,7 @@ const links = [
   { to: '/admin/orders', label: 'Orders' },
   { to: '/admin/roster', label: 'Roster' },
   { to: '/admin/staff-comps', label: 'Staff Comps' },
+  { to: '/admin/student-credits', label: 'Student Credits' },
   { to: '/admin/audit', label: 'Audit Log' }
 ];
 

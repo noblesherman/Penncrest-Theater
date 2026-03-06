@@ -8,7 +8,7 @@ type OrderResponse = {
   order: {
     id: string;
     status: 'PENDING' | 'PAID' | 'REFUNDED' | 'CANCELED';
-    source: 'ONLINE' | 'DOOR' | 'COMP' | 'STAFF_FREE' | 'FAMILY_FREE';
+    source: 'ONLINE' | 'DOOR' | 'COMP' | 'STAFF_FREE' | 'FAMILY_FREE' | 'STUDENT_COMP';
     email: string;
     customerName: string;
     amountTotal: number;

@@ -4,7 +4,7 @@ import { adminFetch } from '../../lib/adminAuth';
 type Performance = { id: string; title: string; startsAt: string };
 type RosterRow = {
   orderId: string;
-  source: 'ONLINE' | 'DOOR' | 'COMP' | 'STAFF_FREE' | 'FAMILY_FREE';
+  source: 'ONLINE' | 'DOOR' | 'COMP' | 'STAFF_FREE' | 'FAMILY_FREE' | 'STUDENT_COMP';
   customerName: string;
   customerEmail: string;
   attendeeName: string;
