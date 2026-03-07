@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { TransformWrapper, TransformComponent, ReactZoomPanPinchContentRef } from 'react-zoom-pan-pinch';
 import {
@@ -17,8 +17,9 @@ import {
   Users,
   X
 } from 'lucide-react';
-import { apiFetch } from '../lib/api';
+import { apiFetch, apiUrl } from '../lib/api';
 import { getClientToken } from '../lib/clientToken';
+import { clearStaffToken, getStaffToken, setStaffToken, staffFetch } from '../lib/staffAuth';
 
 interface Seat {
   id: string;
@@ -68,12 +69,33 @@ type SelectedSeatPricing = {
   unitPrice: number;
 };
 
+type StaffUser = {
+  id: string;
+  email: string;
+  name: string;
+  verifiedStaff: boolean;
+  staffVerifyMethod: 'OAUTH_GOOGLE' | 'OAUTH_MICROSOFT' | 'REDEEM_CODE' | null;
+  staffVerifiedAt: string | null;
+};
+
+type BookingDraft = {
+  performanceId: string;
+  selectedSeatIds: string[];
+  ticketOptionBySeatId: Record<string, string>;
+  customerName: string;
+  customerEmail: string;
+  currentStep: CheckoutStep;
+  teacherCheckoutRequested?: boolean;
+};
+
 const CHECKOUT_STEPS: Array<{ id: CheckoutStep; label: string }> = [
   { id: 1, label: 'Pick Seats' },
   { id: 2, label: 'Ticket Types' },
   { id: 3, label: 'Checkout' }
 ];
 
+const BOOKING_OAUTH_DRAFT_KEY = 'theater_booking_oauth_draft';
+const TEACHER_TICKET_OPTION_ID = 'teacher-comp';
 const naturalSort = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 const SEAT_X_STEP = 40;
 const MAX_ADJACENT_X_GAP = SEAT_X_STEP * 1.5;
@@ -104,9 +126,17 @@ const buildSeatGrid = (seats: Seat[]) => {
   return grid;
 };
 
+function oauthErrorMessage(errorParam: string | null): string | null {
+  if (!errorParam) return null;
+  if (errorParam === 'oauth_failed') return 'Google sign in failed. Please try again.';
+  if (errorParam === 'access_denied') return 'Google sign in was cancelled.';
+  return decodeURIComponent(errorParam).replace(/\+/g, ' ');
+}
+
 export default function Booking() {
   const { performanceId } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const transformComponentRef = useRef<ReactZoomPanPinchContentRef>(null);
   const mapViewportRef = useRef<HTMLDivElement | null>(null);
   const hasInitialFitRef = useRef(false);
@@ -131,6 +161,85 @@ export default function Booking() {
   const [customerEmail, setCustomerEmail] = useState('');
   const [isPanning, setIsPanning] = useState(false);
   const [currentStep, setCurrentStep] = useState<CheckoutStep>(1);
+  const [staffUser, setStaffUser] = useState<StaffUser | null>(null);
+  const [staffAuthLoading, setStaffAuthLoading] = useState(false);
+  const [teacherCheckoutRequested, setTeacherCheckoutRequested] = useState(false);
+
+  const syncStaffUser = useCallback(async () => {
+    const token = getStaffToken();
+    if (!token) {
+      setStaffUser(null);
+      setStaffAuthLoading(false);
+      return;
+    }
+
+    setStaffAuthLoading(true);
+    try {
+      const me = await staffFetch<{ user: StaffUser }>('/auth/staff/me');
+      setStaffUser(me.user);
+    } catch {
+      clearStaffToken();
+      setStaffUser(null);
+    } finally {
+      setStaffAuthLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const oauthToken = searchParams.get('authToken');
+    const oauthError = oauthErrorMessage(searchParams.get('error'));
+    const teacherCheckoutParam = searchParams.get('teacherCheckout') === '1';
+
+    if (oauthToken) {
+      setStaffToken(oauthToken);
+    }
+    if (teacherCheckoutParam) {
+      setTeacherCheckoutRequested(true);
+      setCurrentStep(3);
+    }
+
+    const draftRaw = sessionStorage.getItem(BOOKING_OAUTH_DRAFT_KEY);
+    if (draftRaw) {
+      try {
+        const draft = JSON.parse(draftRaw) as BookingDraft;
+        if (
+          performanceId &&
+          draft.performanceId === performanceId &&
+          Array.isArray(draft.selectedSeatIds) &&
+          typeof draft.ticketOptionBySeatId === 'object'
+        ) {
+          setSelectedSeatIds(draft.selectedSeatIds);
+          setTicketOptionBySeatId(draft.ticketOptionBySeatId || {});
+          setCustomerName(draft.customerName || '');
+          setCustomerEmail(draft.customerEmail || '');
+          setCurrentStep(draft.currentStep || 3);
+          if (draft.teacherCheckoutRequested) {
+            setTeacherCheckoutRequested(true);
+          }
+        }
+      } catch {
+        // ignore invalid draft payloads
+      } finally {
+        sessionStorage.removeItem(BOOKING_OAUTH_DRAFT_KEY);
+      }
+    }
+
+    if (oauthToken || oauthError || teacherCheckoutParam) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('authToken');
+      next.delete('error');
+      next.delete('teacherCheckout');
+      setSearchParams(next, { replace: true });
+      if (oauthError) {
+        setStepError(oauthError);
+        setCurrentStep(3);
+      }
+    }
+
+    if (oauthToken || getStaffToken()) {
+      void syncStaffUser();
+    }
+  }, []);
 
   const fetchSeats = useCallback(async () => {
     if (!performanceId) return;
@@ -239,12 +348,23 @@ export default function Booking() {
 
   const ticketOptions = useMemo<TicketOption[]>(() => {
     if (pricingTiers.length === 0) return [];
-    return pricingTiers.map((tier) => ({
+    const tierOptions = pricingTiers.map((tier) => ({
       id: tier.id,
       label: tier.name,
       priceCents: tier.priceCents,
       tierId: tier.id
     }));
+
+    const hasTeacherOption = tierOptions.some((option) => option.label.trim().toLowerCase().includes('teacher'));
+    if (!hasTeacherOption) {
+      tierOptions.push({
+        id: TEACHER_TICKET_OPTION_ID,
+        label: 'Teacher',
+        priceCents: 0
+      });
+    }
+
+    return tierOptions;
   }, [pricingTiers]);
 
   useEffect(() => {
@@ -309,6 +429,13 @@ export default function Booking() {
       ...prev,
       [seatId]: optionId
     }));
+
+    if (teacherOptionIds.has(optionId)) {
+      setTeacherCheckoutRequested(true);
+      return;
+    }
+
+    setTeacherCheckoutRequested(false);
   };
 
   const handleCheckout = async () => {
@@ -325,12 +452,9 @@ export default function Booking() {
       return;
     }
 
-    const effectiveCustomerName = customerName.trim();
-    const effectiveCustomerEmail = customerEmail.trim().toLowerCase();
-
-    if (!effectiveCustomerName || !effectiveCustomerEmail) {
-      setStepError('Enter your name and email before checkout.');
-      setCurrentStep(3);
+    if (teacherSelectionError) {
+      setStepError(teacherSelectionError);
+      setCurrentStep(2);
       return;
     }
 
@@ -353,19 +477,56 @@ export default function Booking() {
         throw new Error('Unable to lock selected seats. Please try again.');
       }
 
-      const checkout = await apiFetch<{ url?: string; orderId?: string }>('/api/checkout', {
-        method: 'POST',
-        body: JSON.stringify({
-          performanceId,
-          checkoutMode: 'PAID',
-          seatIds: holdResult.heldSeatIds,
-          ticketSelections: ticketSelections.length > 0 ? ticketSelections : undefined,
-          holdToken: holdResult.holdToken,
-          clientToken: clientTokenRef.current,
-          customerEmail: effectiveCustomerEmail,
-          customerName: effectiveCustomerName
-        })
-      });
+      let checkout: { url?: string; orderId?: string };
+
+      if (isTeacherCheckout) {
+        const staffToken = getStaffToken();
+        if (!staffToken) {
+          throw new Error('Teacher checkout requires Google sign in first.');
+        }
+        if (!staffUser?.verifiedStaff) {
+          throw new Error('Teacher checkout requires a verified staff account.');
+        }
+
+        checkout = await apiFetch<{ url?: string; orderId?: string }>('/api/checkout', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${staffToken}`
+          },
+          body: JSON.stringify({
+            performanceId,
+            checkoutMode: 'TEACHER_COMP',
+            seatIds: holdResult.heldSeatIds,
+            holdToken: holdResult.holdToken,
+            clientToken: clientTokenRef.current,
+            customerEmail: staffUser.email.trim().toLowerCase(),
+            customerName: staffUser.name.trim()
+          })
+        });
+      } else {
+        const effectiveCustomerName = customerName.trim();
+        const effectiveCustomerEmail = customerEmail.trim().toLowerCase();
+
+        if (!effectiveCustomerName || !effectiveCustomerEmail) {
+          setStepError('Enter your name and email before checkout.');
+          setCurrentStep(3);
+          return;
+        }
+
+        checkout = await apiFetch<{ url?: string; orderId?: string }>('/api/checkout', {
+          method: 'POST',
+          body: JSON.stringify({
+            performanceId,
+            checkoutMode: 'PAID',
+            seatIds: holdResult.heldSeatIds,
+            ticketSelections: ticketSelections.length > 0 ? ticketSelections : undefined,
+            holdToken: holdResult.holdToken,
+            clientToken: clientTokenRef.current,
+            customerEmail: effectiveCustomerEmail,
+            customerName: effectiveCustomerName
+          })
+        });
+      }
 
       if (checkout.url) {
         window.location.href = checkout.url;
@@ -465,20 +626,26 @@ export default function Booking() {
   );
 
   const ticketOptionById = useMemo(() => new Map(ticketOptions.map((option) => [option.id, option])), [ticketOptions]);
+  const teacherOptionIds = useMemo(
+    () =>
+      new Set(ticketOptions.filter((option) => option.label.trim().toLowerCase().includes('teacher')).map((option) => option.id)),
+    [ticketOptions]
+  );
 
   const selectedSeatsWithPricing = useMemo<SelectedSeatPricing[]>(() => {
     return selectedSeats.map((seat) => {
       const selectedOptionId = ticketOptionBySeatId[seat.id] || null;
       const option = selectedOptionId ? ticketOptionById.get(selectedOptionId) : undefined;
+      const isTeacherOption = selectedOptionId ? teacherOptionIds.has(selectedOptionId) : false;
 
       return {
         seat,
         optionId: selectedOptionId,
         optionLabel: option?.label || 'Standard',
-        unitPrice: option?.priceCents ?? seat.price
+        unitPrice: isTeacherOption ? 0 : option?.priceCents ?? seat.price
       };
     });
-  }, [selectedSeats, ticketOptionBySeatId, ticketOptionById]);
+  }, [selectedSeats, ticketOptionBySeatId, ticketOptionById, teacherOptionIds]);
 
   const totalAmount = useMemo(
     () => selectedSeatsWithPricing.reduce((sum, item) => sum + item.unitPrice, 0),
@@ -492,6 +659,63 @@ export default function Booking() {
       return !selectedOptionId || !ticketOptionById.has(selectedOptionId);
     }).length;
   }, [ticketOptionById, ticketOptionBySeatId, ticketOptions.length, selectedSeatIds]);
+
+  const teacherSelectedSeatIds = useMemo(
+    () => selectedSeatIds.filter((seatId) => teacherOptionIds.has(ticketOptionBySeatId[seatId] || '')),
+    [selectedSeatIds, teacherOptionIds, ticketOptionBySeatId]
+  );
+  const isTeacherCheckout = teacherCheckoutRequested || teacherSelectedSeatIds.length > 0;
+  const hasMixedTeacherSelection = isTeacherCheckout && teacherSelectedSeatIds.length !== selectedSeatIds.length;
+  const teacherSelectionError = useMemo(() => {
+    if (!isTeacherCheckout) return null;
+    if (hasMixedTeacherSelection) {
+      return 'Teacher tickets cannot be mixed with Student/Adult tickets in one order.';
+    }
+    if (teacherSelectedSeatIds.length > 2) {
+      return 'Teacher checkout allows up to 2 seats.';
+    }
+    return null;
+  }, [hasMixedTeacherSelection, isTeacherCheckout, teacherSelectedSeatIds.length]);
+  const primaryTeacherOptionId = useMemo(() => {
+    const teacherOption = ticketOptions.find((option) => teacherOptionIds.has(option.id));
+    return teacherOption?.id || null;
+  }, [teacherOptionIds, ticketOptions]);
+
+  useEffect(() => {
+    if (!teacherCheckoutRequested || !primaryTeacherOptionId || selectedSeatIds.length === 0) return;
+
+    setTicketOptionBySeatId((prev) => {
+      const next = { ...prev };
+      selectedSeatIds.forEach((seatId) => {
+        next[seatId] = primaryTeacherOptionId;
+      });
+      return next;
+    });
+  }, [primaryTeacherOptionId, selectedSeatIds, teacherCheckoutRequested]);
+
+  const startTeacherOAuth = useCallback(() => {
+    if (!performanceId) return;
+
+    setTeacherCheckoutRequested(true);
+
+    const draft: BookingDraft = {
+      performanceId,
+      selectedSeatIds,
+      ticketOptionBySeatId,
+      customerName,
+      customerEmail,
+      currentStep: 3,
+      teacherCheckoutRequested: true
+    };
+    sessionStorage.setItem(BOOKING_OAUTH_DRAFT_KEY, JSON.stringify(draft));
+
+    const oauthUrl = apiUrl(
+      `/auth/google/start?${new URLSearchParams({
+        returnTo: `/booking/${performanceId}?teacherCheckout=1`
+      }).toString()}`
+    );
+    window.location.href = oauthUrl;
+  }, [performanceId, selectedSeatIds, ticketOptionBySeatId, customerName, customerEmail]);
 
   const mapBounds = useMemo(() => {
     if (seats.length === 0) {
@@ -592,7 +816,7 @@ export default function Booking() {
   }, [fitMapToViewport]);
 
   const canContinueToTypes = selectedSeats.length > 0;
-  const canContinueToCheckout = selectedSeats.length > 0 && missingTicketTypeCount === 0;
+  const canContinueToCheckout = selectedSeats.length > 0 && missingTicketTypeCount === 0 && !teacherSelectionError;
 
   const goToStepTwo = () => {
     if (!canContinueToTypes) {
@@ -605,8 +829,16 @@ export default function Booking() {
 
   const goToStepThree = () => {
     if (!canContinueToCheckout) {
-      setStepError('Choose a ticket type for each selected seat before continuing.');
+      if (teacherSelectionError) {
+        setStepError(teacherSelectionError);
+      } else {
+        setStepError('Choose a ticket type for each selected seat before continuing.');
+      }
       return;
+    }
+
+    if (isTeacherCheckout) {
+      void syncStaffUser();
     }
 
     setStepError(null);
@@ -1008,6 +1240,9 @@ export default function Booking() {
                 <div className="pt-6 md:pt-8 pb-4 md:pb-6">
                   <h2 className="text-2xl md:text-3xl font-black text-stone-900">Choose Ticket Types</h2>
                   <p className="text-sm md:text-base text-stone-600 mt-2">Assign a ticket category for each selected seat.</p>
+                  <p className="text-xs text-stone-500 mt-2">
+                    Selecting <span className="font-semibold text-stone-700">Teacher</span> triggers Google OAuth verification and teacher-comp checkout.
+                  </p>
                 </div>
 
                 {selectedSeatsWithPricing.length === 0 ? (
@@ -1067,6 +1302,9 @@ export default function Booking() {
                         {missingTicketTypeCount} seat{missingTicketTypeCount === 1 ? '' : 's'} still need a ticket type.
                       </div>
                     )}
+                    {teacherSelectionError && (
+                      <div className="text-sm text-red-600 mt-1">{teacherSelectionError}</div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -1102,59 +1340,127 @@ export default function Booking() {
             >
               <div className="max-w-6xl mx-auto pt-6 md:pt-8 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6">
                 <div className="rounded-2xl border border-stone-200 bg-white p-5 md:p-6 h-fit">
-                  <h2 className="text-2xl md:text-3xl font-black text-stone-900">Contact Information</h2>
-                  <p className="text-sm md:text-base text-stone-600 mt-2">
-                    We will send tickets and confirmation to this email.
-                  </p>
+                  {isTeacherCheckout ? (
+                    <>
+                      <h2 className="text-2xl md:text-3xl font-black text-stone-900">Teacher Verification</h2>
+                      <p className="text-sm md:text-base text-stone-600 mt-2">
+                        Teacher complimentary checkout requires Google OAuth and a verified staff account.
+                      </p>
 
-                  <div className="mt-6 space-y-4">
-                    <label className="block">
-                      <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Full Name</span>
-                      <div className="mt-1 relative">
-                        <User className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                        <input
-                          value={customerName}
-                          onChange={(event) => setCustomerName(event.target.value)}
-                          placeholder="Jane Doe"
-                          className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3"
-                        />
+                      <div className="mt-6 rounded-xl border border-stone-200 bg-stone-50 p-4 text-sm text-stone-700">
+                        Selected teacher seats: <span className="font-bold">{selectedSeats.length}</span> (max 2 per checkout)
                       </div>
-                    </label>
 
-                    <label className="block">
-                      <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Email</span>
-                      <div className="mt-1 relative">
-                        <Mail className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                        <input
-                          type="email"
-                          value={customerEmail}
-                          onChange={(event) => setCustomerEmail(event.target.value)}
-                          placeholder="name@email.com"
-                          className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3"
-                        />
+                      <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50 p-4">
+                        {staffAuthLoading ? (
+                          <div className="text-sm text-stone-600">Checking teacher sign-in...</div>
+                        ) : staffUser?.verifiedStaff ? (
+                          <div className="text-sm text-stone-700">
+                            Signed in as <span className="font-semibold">{staffUser.name}</span> ({staffUser.email}) via{' '}
+                            <span className="font-semibold">{staffUser.staffVerifyMethod || 'Unknown method'}</span>.
+                          </div>
+                        ) : (
+                          <div className="text-sm text-stone-700">
+                            You are not signed in as a verified teacher yet.
+                          </div>
+                        )}
                       </div>
-                    </label>
-                  </div>
 
-                  <div className="mt-6 flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        setStepError(null);
-                        setCurrentStep(2);
-                      }}
-                      className="rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 inline-flex items-center gap-2"
-                    >
-                      <ArrowLeft className="w-4 h-4" /> Back
-                    </button>
-                    <button
-                      onClick={handleCheckout}
-                      disabled={processing || selectedSeats.length === 0}
-                      className="rounded-xl bg-stone-900 px-5 py-3 font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-stone-800 inline-flex items-center gap-2"
-                    >
-                      <CreditCard className="w-4 h-4" />
-                      {processing ? 'Processing...' : 'Checkout'}
-                    </button>
-                  </div>
+                      <div className="mt-6 flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setStepError(null);
+                            setCurrentStep(2);
+                          }}
+                          className="rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 inline-flex items-center gap-2"
+                        >
+                          <ArrowLeft className="w-4 h-4" /> Back
+                        </button>
+
+                        {!staffUser?.verifiedStaff ? (
+                          <>
+                            <button
+                              onClick={startTeacherOAuth}
+                              className="rounded-xl bg-stone-900 px-5 py-3 font-bold text-white hover:bg-stone-800 inline-flex items-center gap-2"
+                            >
+                              Sign In with Google
+                            </button>
+                            <button
+                              onClick={() => void syncStaffUser()}
+                              className="rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100"
+                            >
+                              I Signed In, Refresh
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={handleCheckout}
+                            disabled={processing || selectedSeats.length === 0}
+                            className="rounded-xl bg-stone-900 px-5 py-3 font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-stone-800 inline-flex items-center gap-2"
+                          >
+                            <CreditCard className="w-4 h-4" />
+                            {processing ? 'Processing...' : 'Reserve Teacher Ticket'}
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <h2 className="text-2xl md:text-3xl font-black text-stone-900">Contact Information</h2>
+                      <p className="text-sm md:text-base text-stone-600 mt-2">
+                        We will send tickets and confirmation to this email.
+                      </p>
+
+                      <div className="mt-6 space-y-4">
+                        <label className="block">
+                          <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Full Name</span>
+                          <div className="mt-1 relative">
+                            <User className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                            <input
+                              value={customerName}
+                              onChange={(event) => setCustomerName(event.target.value)}
+                              placeholder="Jane Doe"
+                              className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3"
+                            />
+                          </div>
+                        </label>
+
+                        <label className="block">
+                          <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Email</span>
+                          <div className="mt-1 relative">
+                            <Mail className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="email"
+                              value={customerEmail}
+                              onChange={(event) => setCustomerEmail(event.target.value)}
+                              placeholder="name@email.com"
+                              className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3"
+                            />
+                          </div>
+                        </label>
+                      </div>
+
+                      <div className="mt-6 flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setStepError(null);
+                            setCurrentStep(2);
+                          }}
+                          className="rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 inline-flex items-center gap-2"
+                        >
+                          <ArrowLeft className="w-4 h-4" /> Back
+                        </button>
+                        <button
+                          onClick={handleCheckout}
+                          disabled={processing || selectedSeats.length === 0}
+                          className="rounded-xl bg-stone-900 px-5 py-3 font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-stone-800 inline-flex items-center gap-2"
+                        >
+                          <CreditCard className="w-4 h-4" />
+                          {processing ? 'Processing...' : 'Checkout'}
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div className="rounded-2xl border border-stone-200 bg-white p-5 md:p-6 h-fit">

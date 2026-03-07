@@ -43,8 +43,8 @@ export default function Shows() {
           <p className="mt-4 text-xs text-stone-400">
             Complimentary access:
             {' '}
-            <Link to="/staff-tickets" className="underline hover:text-stone-600 transition-colors">
-              Staff Tickets
+            <Link to="/teacher-tickets" className="underline hover:text-stone-600 transition-colors">
+              Teacher Tickets
             </Link>
             {' '}
             and

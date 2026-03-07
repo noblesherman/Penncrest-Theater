@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiFetch, apiUrl } from '../lib/api';
 import { clearStaffToken, getStaffToken, setStaffToken, staffFetch } from '../lib/staffAuth';
 
@@ -61,6 +61,7 @@ function oauthErrorMessage(errorParam: string | null): string | null {
 
 export default function StaffTicketsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [user, setUser] = useState<StaffUser | null>(null);
@@ -97,6 +98,11 @@ export default function StaffTicketsPage() {
   const selectedSeat = useMemo(() => seats.find((seat) => seat.id === seatId) || null, [seatId, seats]);
   const seatGrid = useMemo(() => buildSeatGrid(seats), [seats]);
   const sections = useMemo(() => Object.keys(seatGrid).sort(naturalSort), [seatGrid]);
+  const oauthReturnTo = location.pathname;
+  const googleOAuthStartUrl = apiUrl(`/auth/google/start?${new URLSearchParams({ returnTo: oauthReturnTo }).toString()}`);
+  const microsoftOAuthStartUrl = apiUrl(
+    `/auth/microsoft/start?${new URLSearchParams({ returnTo: oauthReturnTo }).toString()}`
+  );
 
   const syncUser = async () => {
     const token = getStaffToken();
@@ -243,16 +249,16 @@ export default function StaffTicketsPage() {
   return (
     <div className="min-h-screen bg-stone-50 py-16 px-4">
       <div className="max-w-4xl mx-auto bg-white border border-stone-200 rounded-3xl p-8 shadow-sm">
-        <h1 className="text-3xl font-black text-stone-900 mb-2">Staff Complimentary Ticket</h1>
-        <p className="text-stone-600 mb-6">Verified staff can reserve complimentary tickets online.</p>
+        <h1 className="text-3xl font-black text-stone-900 mb-2">Teacher Complimentary Ticket</h1>
+        <p className="text-stone-600 mb-6">Verified teachers and theater staff can reserve complimentary tickets online.</p>
 
         {!user ? (
           <div className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <a href={apiUrl('/auth/google/start')} className="text-center bg-stone-900 text-white px-5 py-3 rounded-xl font-bold">
+              <a href={googleOAuthStartUrl} className="text-center bg-stone-900 text-white px-5 py-3 rounded-xl font-bold">
                 Sign in with Google
               </a>
-              <a href={apiUrl('/auth/microsoft/start')} className="text-center border border-stone-300 text-stone-900 px-5 py-3 rounded-xl font-bold">
+              <a href={microsoftOAuthStartUrl} className="text-center border border-stone-300 text-stone-900 px-5 py-3 rounded-xl font-bold">
                 Sign in with Microsoft
               </a>
             </div>

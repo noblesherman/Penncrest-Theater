@@ -450,4 +450,4 @@ Query params:
 - `userId` (optional)
 - `page`, `pageSize`
 
-Returns staff comp redemption ledger rows (user/performance/ticket/seat metadata).
+Returns staff comp redemption ledger rows (user/perforance/ticket/seat metadata).

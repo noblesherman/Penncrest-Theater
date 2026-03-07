@@ -248,7 +248,7 @@ async function fetchMicrosoftProfile(code: string): Promise<OAuthProfile> {
 }
 
 function buildStaffRedirect(params: { token?: string; error?: string; returnTo?: string }): string {
-  const targetPath = normalizeReturnTo(params.returnTo) || '/staff-tickets';
+  const targetPath = normalizeReturnTo(params.returnTo) || '/teacher-tickets';
   const url = new URL(targetPath, staffRedirectBaseUrl());
   if (params.token) url.searchParams.set('authToken', params.token);
   if (params.error) url.searchParams.set('error', params.error);

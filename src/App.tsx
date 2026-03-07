@@ -61,6 +61,7 @@ export default function App() {
           <Route path="confirmation" element={<Confirmation />} />
           <Route path="orders/lookup" element={<OrderLookup />} />
           <Route path="tickets/:publicId" element={<TicketPage />} />
+          <Route path="teacher-tickets" element={<StaffTicketsPage />} />
           <Route path="staff-tickets" element={<StaffTicketsPage />} />
           <Route path="family-ticket" element={<FamilyTicketPage />} />
           <Route path="about" element={<About />} />
