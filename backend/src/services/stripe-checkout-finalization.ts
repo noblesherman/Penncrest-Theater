@@ -104,16 +104,20 @@ export async function finalizeCheckoutSession(session: Stripe.Checkout.Session):
     }
 
     if (order.tickets.length === 0) {
+      let firstTeacherCompTicketId: string | null = null;
+
       for (const seat of seats) {
         const orderSeat = orderSeatPricingBySeatId.get(seat.id);
         const ticketId = crypto.randomUUID();
         const qrSecret = crypto.randomBytes(16).toString('hex');
         const ticketType =
-          order.source === 'STAFF_COMP' || order.source === 'STAFF_FREE'
+          order.source === 'STAFF_FREE'
             ? 'STAFF_COMP'
-            : order.source === 'STUDENT_COMP' && Boolean(orderSeat?.isComplimentary)
-              ? 'STUDENT_COMP'
-              : 'PAID';
+            : order.source === 'STAFF_COMP' && Boolean(orderSeat?.isComplimentary)
+              ? 'STAFF_COMP'
+              : order.source === 'STUDENT_COMP' && Boolean(orderSeat?.isComplimentary)
+                ? 'STUDENT_COMP'
+                : 'PAID';
 
         await tx.ticket.create({
           data: {
@@ -128,6 +132,24 @@ export async function finalizeCheckoutSession(session: Stripe.Checkout.Session):
             publicId: crypto.randomBytes(8).toString('hex'),
             qrSecret,
             qrPayload: buildQrPayload(ticketId, qrSecret)
+          }
+        });
+
+        if (order.source === 'STAFF_COMP' && Boolean(orderSeat?.isComplimentary) && !firstTeacherCompTicketId) {
+          firstTeacherCompTicketId = ticketId;
+        }
+      }
+
+      if (order.source === 'STAFF_COMP' && order.userId) {
+        if (!firstTeacherCompTicketId) {
+          throw new HttpError(400, 'Teacher checkout requires at least one complimentary teacher ticket');
+        }
+
+        await tx.staffCompRedemption.create({
+          data: {
+            performanceId,
+            userId: order.userId,
+            ticketId: firstTeacherCompTicketId
           }
         });
       }

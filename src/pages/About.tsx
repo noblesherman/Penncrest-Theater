@@ -82,9 +82,9 @@ function FullAboutPage() {
           <h2 className="text-3xl font-black text-center mb-12 uppercase">Meet the Staff</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
-              { name: 'Sarah Johnson', role: 'Director', image: 'https://picsum.photos/seed/director/400/400' },
-              { name: 'Michael Chen', role: 'Musical Director', image: 'https://picsum.photos/seed/music/400/400' },
-              { name: 'Emily Davis', role: 'Choreographer', image: 'https://picsum.photos/seed/dance/400/400' },
+              { name: 'Jennifer Smith', role: 'Director', image: 'https://picsum.photos/seed/director/400/400' },
+              { name: 'Scott Smith', role: 'Technical Director', image: 'https://picsum.photos/seed/music/400/400' },
+              { name: 'Ms. Oneil', role: 'Incredible Person', image: 'https://picsum.photos/seed/dance/400/400' },
             ].map((staff) => (
               <div key={staff.name} className="text-center group">
                 <div className="w-48 h-48 mx-auto rounded-full overflow-hidden mb-6 border-4 border-stone-100 shadow-lg group-hover:border-yellow-400 transition-colors">
@@ -124,7 +124,7 @@ function FullAboutPage() {
             If you have any questions or concerns, don't hesitate to reach out.
           </p>
           <a href="mailto:theater@penncrest.edu" className="text-2xl font-bold text-stone-900 hover:text-yellow-600 transition-colors underline decoration-yellow-400 decoration-4 underline-offset-4">
-            theater@penncrest.edu
+            jsmith3@rtmsd.org
           </a>
         </div>
       </section>

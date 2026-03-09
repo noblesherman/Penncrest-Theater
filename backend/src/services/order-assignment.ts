@@ -247,15 +247,17 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
     }
 
     if (params.staffCompRedemptionUserId) {
-      if (createdTicketIds.length !== 1) {
-        throw new HttpError(400, 'Staff comp redemption requires exactly one ticket');
+      const redemptionTicketId = createdTicketIds[0];
+      if (!redemptionTicketId) {
+        throw new HttpError(400, 'Staff comp redemption requires at least one ticket');
       }
 
       await tx.staffCompRedemption.create({
         data: {
           performanceId: params.performanceId,
           userId: params.staffCompRedemptionUserId,
-          ticketId: createdTicketIds[0]
+          // A redemption is one claim per user/performance; tie it to the first issued ticket.
+          ticketId: redemptionTicketId
         }
       });
     }

@@ -12,6 +12,7 @@ export const checkoutRequestSchema = z.object({
       })
     )
     .optional(),
+  ticketSelectionBySeatId: z.record(z.string().min(1), z.string().min(1)).optional(),
   holdToken: z.string().min(8),
   clientToken: z.string().min(8),
   studentVerificationCode: z.string().min(4).max(64).optional(),

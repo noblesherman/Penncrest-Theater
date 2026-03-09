@@ -101,7 +101,7 @@ export default function Confirmation() {
           <div className="p-8 md:p-12">
             {pending && (
               <div className="bg-yellow-100 border border-yellow-200 text-yellow-900 p-4 rounded-xl mb-8">
-                Your payment is still being confirmed by Stripe. This page will refresh automatically.
+                Your payment is still being confirmed. This page will refresh automatically.
               </div>
             )}
 

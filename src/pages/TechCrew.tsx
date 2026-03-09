@@ -68,7 +68,7 @@ export default function TechCrew() {
               <ul className="space-y-4 text-stone-300">
                 <li className="flex items-center gap-3">
                   <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                  ETC Ion Lighting Console
+                  ETC Lighting Console
                 </li>
                 <li className="flex items-center gap-3">
                   <div className="w-2 h-2 bg-purple-500 rounded-full"></div>

@@ -3,12 +3,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 const HISTORY_ITEMS = [
-  { year: '2024', title: 'Beauty & The Beast', image: 'https://picsum.photos/seed/beauty/800/600', description: 'A tale as old as time.' },
+  { year: '2024', title: 'Suessical', image: 'https://picsum.photos/seed/beauty/800/600', description: 'Suess!' },
   { year: '2023', title: 'Cinderella', image: 'https://picsum.photos/seed/cinderella/800/600', description: 'Impossible things are happening every day.' },
   { year: '2022', title: 'Phantom of the Opera', image: 'https://picsum.photos/seed/phantom/800/600', description: 'The music of the night.' },
-  { year: '2021', title: 'Mamma Mia!', image: 'https://picsum.photos/seed/mamma/800/600', description: 'Here we go again.' },
-  { year: '2019', title: 'Les Misérables', image: 'https://picsum.photos/seed/lesmis/800/600', description: 'Do you hear the people sing?' },
-  { year: '2018', title: 'Grease', image: 'https://picsum.photos/seed/grease/800/600', description: 'We go together.' },
+  { year: '2021', title: 'Newies', image: 'https://picsum.photos/seed/mamma/800/600', description: 'A pair of new shoes with matching laces.' },
+  { year: '2019', title: 'Les Misérables', image: 'https://picsum.photos/seed/lesmis/800/600', description: 'In our dreams...' },
+  { year: '2018', title: 'Some other show', image: 'https://picsum.photos/seed/grease/800/600', description: 'probobly another show' },
 ];
 
 export default function ShowHistorySlideshow() {

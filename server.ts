@@ -5,9 +5,8 @@ import { v4 as uuidv4 } from 'uuid';
 import Stripe from 'stripe';
 import ical from 'node-ical';
 
-// ... existing code ...
 
-// Initialize Stripe (mock or real)
+//  Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_mock', {
   // apiVersion: '2025-01-27.acacia', // Use latest API version available
 });
@@ -20,7 +19,7 @@ async function startServer() {
 
   // --- API Routes ---
 
-  // Get all shows
+  // Gets all shows
   app.get('/api/shows', (req, res) => {
     const shows = db.prepare('SELECT * FROM shows ORDER BY year DESC').all();
     res.json(shows);
@@ -73,7 +72,7 @@ async function startServer() {
     const token = uuidv4(); // Session token for the user
     const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
 
-    // Transaction to ensure atomicity
+    // Transaction to ensure avalibiltiy
     const holdTransaction = db.transaction(() => {
       // Check if any seat is already sold or held
       for (const seatId of seatIds) {
@@ -133,7 +132,7 @@ async function startServer() {
       // Create pending order
       const orderId = uuidv4();
       
-      // If we had a real Stripe key, we'd create a session
+      // Creeate Stripe session
       let session;
       if (process.env.STRIPE_SECRET_KEY) {
          session = await stripe.checkout.sessions.create({

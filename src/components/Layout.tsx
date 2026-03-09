@@ -110,7 +110,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <span className="font-bold text-lg text-white uppercase font-mono">Penncrest<span className="text-yellow-500">Theater</span></span>
             </div>
             <p className="max-w-sm text-sm leading-relaxed">
-              Bringing stories to life in Media, PA. A student-driven theater program dedicated to creativity, community, and excellence in the arts.
+              Bringing stories to life in Media, PA. A theater program dedicated to creativity, community, and excellence in the arts. :)
             </p>
           </div>
           
@@ -127,7 +127,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <h4 className="text-white font-bold uppercase tracking-wider text-sm mb-6">Connect</h4>
             <ul className="space-y-3 text-sm">
               <li>134 Barren Rd, Media, PA 19063</li>
-              <li>theater@penncrest.edu</li>
+              <li>jsmith3@rtmsd.org</li>
               <li className="flex gap-4 mt-4">
                 {/* Social Icons Placeholder */}
                 <div className="w-8 h-8 bg-stone-800 rounded-full hover:bg-yellow-400 hover:text-stone-900 transition-colors flex items-center justify-center cursor-pointer">IG</div>
@@ -137,7 +137,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-12 pt-8 border-t border-stone-800 text-xs text-center">
-          &copy; {new Date().getFullYear()} Penncrest High School Theater. Built with student pride.
+          &copy; {new Date().getFullYear()} Penncrest High School Theater.
         </div>
       </footer>
     </div>

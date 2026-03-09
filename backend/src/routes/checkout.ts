@@ -26,8 +26,19 @@ type SeatAssignment = {
   basePrice: number;
   finalPrice: number;
   ticketType: string | null;
+  isTeacherTicket: boolean;
+  isTeacherComplimentary: boolean;
   isStudentComplimentary: boolean;
 };
+
+type ResolvedTicketSelection = {
+  name: string;
+  priceCents: number | null;
+  isTeacherTicket: boolean;
+};
+
+const TEACHER_TICKET_OPTION_ID = 'teacher-comp';
+const MAX_TEACHER_COMP_TICKETS = 2;
 
 function bearerTokenFromHeader(headerValue?: string): string | null {
   if (!headerValue) return null;
@@ -87,6 +98,10 @@ function pickComplimentarySeatIds(assignments: SeatAssignment[], quantity: numbe
   return new Set(ranked.slice(0, quantity).map((assignment) => assignment.seat.id));
 }
 
+function isTeacherTicketName(name: string): boolean {
+  return name.trim().toLowerCase().includes('teacher');
+}
+
 function buildStripeLineItems(
   showTitle: string,
   assignments: SeatAssignment[]
@@ -135,6 +150,7 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
         checkoutMode,
         seatIds,
         ticketSelections,
+        ticketSelectionBySeatId,
         holdToken,
         clientToken,
         studentVerificationCode,
@@ -206,18 +222,14 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
 
         const normalizedCustomerEmail = customerEmail.trim().toLowerCase();
         const normalizedCustomerName = customerName.trim();
+        const isTeacherCompCheckout = checkoutMode === 'TEACHER_COMP';
+        let teacherCheckoutUser: User | null = null;
+        let effectiveCustomerEmail = normalizedCustomerEmail;
+        let effectiveCustomerName = normalizedCustomerName;
 
-        if (checkoutMode === 'TEACHER_COMP') {
+        if (isTeacherCompCheckout) {
           if (!performance.staffCompsEnabled) {
             throw new HttpError(400, 'Teacher complimentary tickets are not enabled for this performance');
-          }
-
-          const maxTeacherTicketsPerCheckout = 2;
-          if (uniqueSeatIds.length < 1 || uniqueSeatIds.length > maxTeacherTicketsPerCheckout) {
-            throw new HttpError(
-              400,
-              `Teacher complimentary tickets allow selecting up to ${maxTeacherTicketsPerCheckout} seats`
-            );
           }
 
           const user = await requireAuthenticatedStaff(app, request.headers.authorization);
@@ -236,29 +248,16 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
             throw new HttpError(409, 'Teacher complimentary tickets have already been claimed for this performance');
           }
 
-          const ticketTypeBySeatId = Object.fromEntries(uniqueSeatIds.map((seatId) => [seatId, 'Teacher Comp']));
-          const priceBySeatId = Object.fromEntries(uniqueSeatIds.map((seatId) => [seatId, 0]));
-
-          const order = await createAssignedOrder({
-            performanceId: performance.id,
-            seatIds: uniqueSeatIds,
-            userId: user.id,
-            staffCompRedemptionUserId: user.id,
-            customerName: user.name,
-            customerEmail: user.email,
-            attendeeNames,
-            ticketTypeBySeatId,
-            priceBySeatId,
-            source: 'STAFF_COMP',
-            allowHeldSeats: true,
-            enforceSalesCutoff: true,
-            sendEmail: true
-          });
-
-          return reply.send({
-            orderId: order.id,
-            mode: checkoutMode
-          });
+          teacherCheckoutUser = user;
+          if (!effectiveCustomerName) {
+            throw new HttpError(400, 'Customer name is required for teacher checkout');
+          }
+          if (!effectiveCustomerEmail) {
+            throw new HttpError(400, 'Customer email is required for teacher checkout');
+          }
+          if (effectiveCustomerEmail.endsWith('@rtmsd.org')) {
+            throw new HttpError(400, 'Use a personal email for ticket delivery (not @rtmsd.org)');
+          }
         }
 
         if (checkoutMode === 'FAMILY_FREE') {
@@ -309,21 +308,54 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
 
         const sortedSeats = [...seats].sort(naturalSeatSort);
         const tiersById = new Map(performance.pricingTiers.map((tier) => [tier.id, tier]));
-        const expandedTierSelection: Array<{ name: string; priceCents: number }> = [];
+        const resolveTicketSelection = (selectionId: string): ResolvedTicketSelection => {
+          if (selectionId === TEACHER_TICKET_OPTION_ID) {
+            return {
+              name: 'Teacher',
+              priceCents: null,
+              isTeacherTicket: true
+            };
+          }
 
-        if (ticketSelections && ticketSelections.length > 0) {
+          const tier = tiersById.get(selectionId);
+          if (!tier) {
+            throw new HttpError(400, `Invalid ticket tier: ${selectionId}`);
+          }
+
+          return {
+            name: tier.name,
+            priceCents: tier.priceCents,
+            isTeacherTicket: isTeacherTicketName(tier.name)
+          };
+        };
+
+        const resolvedSelectionBySeatId = new Map<string, ResolvedTicketSelection>();
+        if (ticketSelectionBySeatId && Object.keys(ticketSelectionBySeatId).length > 0) {
+          const providedSeatIds = Object.keys(ticketSelectionBySeatId).sort();
+          const sortedRequestedSeatIds = [...uniqueSeatIds].sort();
+          if (
+            providedSeatIds.length !== sortedRequestedSeatIds.length ||
+            providedSeatIds.join(',') !== sortedRequestedSeatIds.join(',')
+          ) {
+            throw new HttpError(400, 'Ticket seat selections must match selected seats');
+          }
+
+          for (const seatId of sortedRequestedSeatIds) {
+            const selectionId = ticketSelectionBySeatId[seatId];
+            if (!selectionId) {
+              throw new HttpError(400, `Missing ticket selection for seat: ${seatId}`);
+            }
+            resolvedSelectionBySeatId.set(seatId, resolveTicketSelection(selectionId));
+          }
+        }
+
+        const expandedTierSelection: ResolvedTicketSelection[] = [];
+        if (resolvedSelectionBySeatId.size === 0 && ticketSelections && ticketSelections.length > 0) {
           for (const selectedTier of ticketSelections) {
             if (selectedTier.count <= 0) continue;
-            const tier = tiersById.get(selectedTier.tierId);
-            if (!tier) {
-              throw new HttpError(400, `Invalid ticket tier: ${selectedTier.tierId}`);
-            }
-
+            const resolved = resolveTicketSelection(selectedTier.tierId);
             for (let i = 0; i < selectedTier.count; i += 1) {
-              expandedTierSelection.push({
-                name: tier.name,
-                priceCents: tier.priceCents
-              });
+              expandedTierSelection.push(resolved);
             }
           }
 
@@ -333,17 +365,38 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
         }
 
         let seatAssignments: SeatAssignment[] = sortedSeats.map((seat, index) => {
-          const selectedTier = expandedTierSelection[index];
-          const basePrice = selectedTier?.priceCents ?? seat.price;
+          const selectedTicket =
+            resolvedSelectionBySeatId.get(seat.id) ??
+            (expandedTierSelection.length > 0 ? expandedTierSelection[index] : null);
+          const basePrice = selectedTicket?.priceCents ?? seat.price;
 
           return {
             seat,
             basePrice,
             finalPrice: basePrice,
-            ticketType: selectedTier?.name || null,
+            ticketType: selectedTicket?.name || null,
+            isTeacherTicket: selectedTicket?.isTeacherTicket || false,
+            isTeacherComplimentary: false,
             isStudentComplimentary: false
           };
         });
+
+        if (isTeacherCompCheckout) {
+          const teacherTicketAssignments = seatAssignments.filter((assignment) => assignment.isTeacherTicket);
+          const complimentaryCandidates = teacherTicketAssignments.length > 0 ? teacherTicketAssignments : seatAssignments;
+          const complimentaryTeacherQuantity = Math.min(MAX_TEACHER_COMP_TICKETS, complimentaryCandidates.length);
+          const complimentaryTeacherSeatIds = pickComplimentarySeatIds(complimentaryCandidates, complimentaryTeacherQuantity);
+
+          seatAssignments = seatAssignments.map((assignment) => {
+            const isTeacherCompSeat = complimentaryTeacherSeatIds.has(assignment.seat.id);
+            return {
+              ...assignment,
+              finalPrice: isTeacherCompSeat ? 0 : assignment.basePrice,
+              ticketType: isTeacherCompSeat ? 'Teacher Comp' : assignment.ticketType,
+              isTeacherComplimentary: isTeacherCompSeat
+            };
+          });
+        }
 
         let studentTicketCreditId: string | null = null;
         let studentComplimentaryQuantity = 0;
@@ -389,12 +442,14 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
           const order = await createAssignedOrder({
             performanceId,
             seatIds: uniqueSeatIds,
-            customerName: normalizedCustomerName,
-            customerEmail: normalizedCustomerEmail,
+            userId: teacherCheckoutUser?.id,
+            staffCompRedemptionUserId: isTeacherCompCheckout ? teacherCheckoutUser?.id : undefined,
+            customerName: effectiveCustomerName,
+            customerEmail: effectiveCustomerEmail,
             attendeeNames,
             ticketTypeBySeatId,
             priceBySeatId,
-            source: isStudentCompCheckout ? 'STUDENT_COMP' : 'ONLINE',
+            source: isStudentCompCheckout ? 'STUDENT_COMP' : isTeacherCompCheckout ? 'STAFF_COMP' : 'ONLINE',
             allowHeldSeats: true,
             enforceSalesCutoff: true,
             sendEmail: true
@@ -416,12 +471,13 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
           });
         }
 
-        const source = isStudentCompCheckout ? 'STUDENT_COMP' : 'ONLINE';
+        const source = isStudentCompCheckout ? 'STUDENT_COMP' : isTeacherCompCheckout ? 'STAFF_COMP' : 'ONLINE';
         const order = await prisma.order.create({
           data: {
             performanceId,
-            email: normalizedCustomerEmail,
-            customerName: normalizedCustomerName,
+            userId: teacherCheckoutUser?.id,
+            email: effectiveCustomerEmail,
+            customerName: effectiveCustomerName,
             attendeeNamesJson: attendeeNames ?? undefined,
             amountTotal,
             currency: 'usd',
@@ -460,7 +516,7 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
 
         const session = await stripe.checkout.sessions.create({
           mode: 'payment',
-          customer_email: normalizedCustomerEmail,
+          customer_email: effectiveCustomerEmail,
           line_items: lineItems,
           payment_intent_data: {
             metadata: {

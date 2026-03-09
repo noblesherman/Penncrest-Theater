@@ -66,7 +66,10 @@ type SelectedSeatPricing = {
   seat: Seat;
   optionId: string | null;
   optionLabel: string;
+  basePrice: number;
   unitPrice: number;
+  isTeacherTicket: boolean;
+  isTeacherComplimentary: boolean;
 };
 
 type StaffUser = {
@@ -82,10 +85,10 @@ type BookingDraft = {
   performanceId: string;
   selectedSeatIds: string[];
   ticketOptionBySeatId: Record<string, string>;
+  teacherSeatIds?: string[];
   customerName: string;
   customerEmail: string;
   currentStep: CheckoutStep;
-  teacherCheckoutRequested?: boolean;
 };
 
 const CHECKOUT_STEPS: Array<{ id: CheckoutStep; label: string }> = [
@@ -96,6 +99,7 @@ const CHECKOUT_STEPS: Array<{ id: CheckoutStep; label: string }> = [
 
 const BOOKING_OAUTH_DRAFT_KEY = 'theater_booking_oauth_draft';
 const TEACHER_TICKET_OPTION_ID = 'teacher-comp';
+const MAX_TEACHER_COMP_TICKETS = 2;
 const naturalSort = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 const SEAT_X_STEP = 40;
 const MAX_ADJACENT_X_GAP = SEAT_X_STEP * 1.5;
@@ -126,6 +130,21 @@ const buildSeatGrid = (seats: Seat[]) => {
   return grid;
 };
 
+function pickComplimentaryTeacherSeatIds(items: Array<{ seat: Seat; isTeacherTicket: boolean; basePrice: number }>, quantity: number): Set<string> {
+  if (quantity <= 0) return new Set();
+
+  const rankedTeacherSeats = items
+    .filter((item) => item.isTeacherTicket)
+    .sort((a, b) => {
+      if (a.basePrice !== b.basePrice) return b.basePrice - a.basePrice;
+      if (a.seat.sectionName !== b.seat.sectionName) return a.seat.sectionName.localeCompare(b.seat.sectionName);
+      if (a.seat.row !== b.seat.row) return naturalSort(a.seat.row, b.seat.row);
+      return a.seat.number - b.seat.number;
+    });
+
+  return new Set(rankedTeacherSeats.slice(0, quantity).map((item) => item.seat.id));
+}
+
 function oauthErrorMessage(errorParam: string | null): string | null {
   if (!errorParam) return null;
   if (errorParam === 'oauth_failed') return 'Google sign in failed. Please try again.';
@@ -142,6 +161,7 @@ export default function Booking() {
   const hasInitialFitRef = useRef(false);
   const clientTokenRef = useRef<string>(getClientToken());
   const holdTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingTeacherRestoreSeatIdsRef = useRef<string[] | null>(null);
 
   const [performanceTitle, setPerformanceTitle] = useState('Ticket Checkout');
   const [pricingTiers, setPricingTiers] = useState<PricingTier[]>([]);
@@ -163,7 +183,6 @@ export default function Booking() {
   const [currentStep, setCurrentStep] = useState<CheckoutStep>(1);
   const [staffUser, setStaffUser] = useState<StaffUser | null>(null);
   const [staffAuthLoading, setStaffAuthLoading] = useState(false);
-  const [teacherCheckoutRequested, setTeacherCheckoutRequested] = useState(false);
 
   const syncStaffUser = useCallback(async () => {
     const token = getStaffToken();
@@ -194,7 +213,6 @@ export default function Booking() {
       setStaffToken(oauthToken);
     }
     if (teacherCheckoutParam) {
-      setTeacherCheckoutRequested(true);
       setCurrentStep(3);
     }
 
@@ -210,12 +228,12 @@ export default function Booking() {
         ) {
           setSelectedSeatIds(draft.selectedSeatIds);
           setTicketOptionBySeatId(draft.ticketOptionBySeatId || {});
+          pendingTeacherRestoreSeatIdsRef.current = Array.isArray(draft.teacherSeatIds)
+            ? draft.teacherSeatIds.filter((seatId) => typeof seatId === 'string')
+            : null;
           setCustomerName(draft.customerName || '');
           setCustomerEmail(draft.customerEmail || '');
           setCurrentStep(draft.currentStep || 3);
-          if (draft.teacherCheckoutRequested) {
-            setTeacherCheckoutRequested(true);
-          }
         }
       } catch {
         // ignore invalid draft payloads
@@ -429,13 +447,6 @@ export default function Booking() {
       ...prev,
       [seatId]: optionId
     }));
-
-    if (teacherOptionIds.has(optionId)) {
-      setTeacherCheckoutRequested(true);
-      return;
-    }
-
-    setTeacherCheckoutRequested(false);
   };
 
   const handleCheckout = async () => {
@@ -452,18 +463,15 @@ export default function Booking() {
       return;
     }
 
-    if (teacherSelectionError) {
-      setStepError(teacherSelectionError);
-      setCurrentStep(2);
-      return;
-    }
-
     const tierCountMap = new Map<string, number>();
+    const ticketSelectionBySeatId: Record<string, string> = {};
     selectedSeatIds.forEach((seatId) => {
       const optionId = ticketOptionBySeatId[seatId];
+      if (!optionId) return;
       const option = ticketOptions.find((item) => item.id === optionId);
-      if (!option?.tierId) return;
-      tierCountMap.set(option.tierId, (tierCountMap.get(option.tierId) || 0) + 1);
+      const selectionId = option?.tierId || optionId;
+      ticketSelectionBySeatId[seatId] = selectionId;
+      tierCountMap.set(selectionId, (tierCountMap.get(selectionId) || 0) + 1);
     });
 
     const ticketSelections = [...tierCountMap.entries()].map(([tierId, count]) => ({ tierId, count }));
@@ -487,6 +495,18 @@ export default function Booking() {
         if (!staffUser?.verifiedStaff) {
           throw new Error('Teacher checkout requires a verified staff account.');
         }
+        const effectiveCustomerName = customerName.trim();
+        const effectiveCustomerEmail = customerEmail.trim().toLowerCase();
+        if (!effectiveCustomerName || !effectiveCustomerEmail) {
+          setStepError('Enter your name and personal email before checkout.');
+          setCurrentStep(3);
+          return;
+        }
+        if (effectiveCustomerEmail.endsWith('@rtmsd.org')) {
+          setStepError('Use a personal email for ticket delivery (not @rtmsd.org).');
+          setCurrentStep(3);
+          return;
+        }
 
         checkout = await apiFetch<{ url?: string; orderId?: string }>('/api/checkout', {
           method: 'POST',
@@ -497,10 +517,12 @@ export default function Booking() {
             performanceId,
             checkoutMode: 'TEACHER_COMP',
             seatIds: holdResult.heldSeatIds,
+            ticketSelections: ticketSelections.length > 0 ? ticketSelections : undefined,
+            ticketSelectionBySeatId,
             holdToken: holdResult.holdToken,
             clientToken: clientTokenRef.current,
-            customerEmail: staffUser.email.trim().toLowerCase(),
-            customerName: staffUser.name.trim()
+            customerEmail: effectiveCustomerEmail,
+            customerName: effectiveCustomerName
           })
         });
       } else {
@@ -520,6 +542,7 @@ export default function Booking() {
             checkoutMode: 'PAID',
             seatIds: holdResult.heldSeatIds,
             ticketSelections: ticketSelections.length > 0 ? ticketSelections : undefined,
+            ticketSelectionBySeatId,
             holdToken: holdResult.holdToken,
             clientToken: clientTokenRef.current,
             customerEmail: effectiveCustomerEmail,
@@ -631,21 +654,64 @@ export default function Booking() {
       new Set(ticketOptions.filter((option) => option.label.trim().toLowerCase().includes('teacher')).map((option) => option.id)),
     [ticketOptions]
   );
+  const primaryTeacherOptionId = useMemo(() => {
+    const teacherOption = ticketOptions.find((option) => teacherOptionIds.has(option.id));
+    return teacherOption?.id || null;
+  }, [teacherOptionIds, ticketOptions]);
 
-  const selectedSeatsWithPricing = useMemo<SelectedSeatPricing[]>(() => {
+  const selectedSeatsWithBasePricing = useMemo(() => {
     return selectedSeats.map((seat) => {
       const selectedOptionId = ticketOptionBySeatId[seat.id] || null;
       const option = selectedOptionId ? ticketOptionById.get(selectedOptionId) : undefined;
-      const isTeacherOption = selectedOptionId ? teacherOptionIds.has(selectedOptionId) : false;
+      const isTeacherTicket = selectedOptionId ? teacherOptionIds.has(selectedOptionId) : false;
+      const basePrice =
+        selectedOptionId === TEACHER_TICKET_OPTION_ID ? seat.price : option?.priceCents ?? seat.price;
 
       return {
         seat,
         optionId: selectedOptionId,
         optionLabel: option?.label || 'Standard',
-        unitPrice: isTeacherOption ? 0 : option?.priceCents ?? seat.price
+        basePrice,
+        isTeacherTicket
       };
     });
   }, [selectedSeats, ticketOptionBySeatId, ticketOptionById, teacherOptionIds]);
+
+  const teacherSelectedSeatIds = useMemo(
+    () => selectedSeatIds.filter((seatId) => teacherOptionIds.has(ticketOptionBySeatId[seatId] || '')),
+    [selectedSeatIds, teacherOptionIds, ticketOptionBySeatId]
+  );
+
+  const isTeacherCheckout = teacherSelectedSeatIds.length > 0 || Boolean(staffUser?.verifiedStaff) || Boolean(getStaffToken());
+  const teacherCompCandidates = useMemo(() => {
+    if (!isTeacherCheckout) return [];
+    if (teacherSelectedSeatIds.length > 0) {
+      return selectedSeatsWithBasePricing.filter((item) => item.isTeacherTicket);
+    }
+    return selectedSeatsWithBasePricing;
+  }, [isTeacherCheckout, selectedSeatsWithBasePricing, teacherSelectedSeatIds.length]);
+
+  const complimentaryTeacherSeatIds = useMemo(
+    () =>
+      pickComplimentaryTeacherSeatIds(
+        teacherCompCandidates,
+        Math.min(MAX_TEACHER_COMP_TICKETS, teacherCompCandidates.length)
+      ),
+    [teacherCompCandidates]
+  );
+
+  const selectedSeatsWithPricing = useMemo<SelectedSeatPricing[]>(
+    () =>
+      selectedSeatsWithBasePricing.map((item) => {
+        const isTeacherComplimentary = complimentaryTeacherSeatIds.has(item.seat.id);
+        return {
+          ...item,
+          isTeacherComplimentary,
+          unitPrice: isTeacherComplimentary ? 0 : item.basePrice
+        };
+      }),
+    [complimentaryTeacherSeatIds, selectedSeatsWithBasePricing]
+  );
 
   const totalAmount = useMemo(
     () => selectedSeatsWithPricing.reduce((sum, item) => sum + item.unitPrice, 0),
@@ -660,52 +726,44 @@ export default function Booking() {
     }).length;
   }, [ticketOptionById, ticketOptionBySeatId, ticketOptions.length, selectedSeatIds]);
 
-  const teacherSelectedSeatIds = useMemo(
-    () => selectedSeatIds.filter((seatId) => teacherOptionIds.has(ticketOptionBySeatId[seatId] || '')),
-    [selectedSeatIds, teacherOptionIds, ticketOptionBySeatId]
-  );
-  const isTeacherCheckout = teacherCheckoutRequested || teacherSelectedSeatIds.length > 0;
-  const hasMixedTeacherSelection = isTeacherCheckout && teacherSelectedSeatIds.length !== selectedSeatIds.length;
-  const teacherSelectionError = useMemo(() => {
-    if (!isTeacherCheckout) return null;
-    if (hasMixedTeacherSelection) {
-      return 'Teacher tickets cannot be mixed with Student/Adult tickets in one order.';
-    }
-    if (teacherSelectedSeatIds.length > 2) {
-      return 'Teacher checkout allows up to 2 seats.';
-    }
-    return null;
-  }, [hasMixedTeacherSelection, isTeacherCheckout, teacherSelectedSeatIds.length]);
-  const primaryTeacherOptionId = useMemo(() => {
-    const teacherOption = ticketOptions.find((option) => teacherOptionIds.has(option.id));
-    return teacherOption?.id || null;
-  }, [teacherOptionIds, ticketOptions]);
+  const teacherCompAppliedCount = complimentaryTeacherSeatIds.size;
 
   useEffect(() => {
-    if (!teacherCheckoutRequested || !primaryTeacherOptionId || selectedSeatIds.length === 0) return;
+    if (!staffUser?.verifiedStaff) return;
+    if (customerName.trim()) return;
+    setCustomerName(staffUser.name || '');
+  }, [customerName, staffUser]);
 
+  useEffect(() => {
+    const pendingTeacherSeatIds = pendingTeacherRestoreSeatIdsRef.current;
+    if (!pendingTeacherSeatIds || pendingTeacherSeatIds.length === 0) return;
+    if (!primaryTeacherOptionId || selectedSeatIds.length === 0) return;
+
+    const selectedSeatIdSet = new Set(selectedSeatIds);
     setTicketOptionBySeatId((prev) => {
       const next = { ...prev };
-      selectedSeatIds.forEach((seatId) => {
-        next[seatId] = primaryTeacherOptionId;
+      pendingTeacherSeatIds.forEach((seatId) => {
+        if (selectedSeatIdSet.has(seatId)) {
+          next[seatId] = primaryTeacherOptionId;
+        }
       });
       return next;
     });
-  }, [primaryTeacherOptionId, selectedSeatIds, teacherCheckoutRequested]);
+
+    pendingTeacherRestoreSeatIdsRef.current = null;
+  }, [primaryTeacherOptionId, selectedSeatIds]);
 
   const startTeacherOAuth = useCallback(() => {
     if (!performanceId) return;
-
-    setTeacherCheckoutRequested(true);
 
     const draft: BookingDraft = {
       performanceId,
       selectedSeatIds,
       ticketOptionBySeatId,
+      teacherSeatIds: teacherSelectedSeatIds,
       customerName,
       customerEmail,
-      currentStep: 3,
-      teacherCheckoutRequested: true
+      currentStep: 3
     };
     sessionStorage.setItem(BOOKING_OAUTH_DRAFT_KEY, JSON.stringify(draft));
 
@@ -715,7 +773,7 @@ export default function Booking() {
       }).toString()}`
     );
     window.location.href = oauthUrl;
-  }, [performanceId, selectedSeatIds, ticketOptionBySeatId, customerName, customerEmail]);
+  }, [performanceId, selectedSeatIds, ticketOptionBySeatId, teacherSelectedSeatIds, customerName, customerEmail]);
 
   const mapBounds = useMemo(() => {
     if (seats.length === 0) {
@@ -816,7 +874,7 @@ export default function Booking() {
   }, [fitMapToViewport]);
 
   const canContinueToTypes = selectedSeats.length > 0;
-  const canContinueToCheckout = selectedSeats.length > 0 && missingTicketTypeCount === 0 && !teacherSelectionError;
+  const canContinueToCheckout = selectedSeats.length > 0 && missingTicketTypeCount === 0;
 
   const goToStepTwo = () => {
     if (!canContinueToTypes) {
@@ -829,11 +887,7 @@ export default function Booking() {
 
   const goToStepThree = () => {
     if (!canContinueToCheckout) {
-      if (teacherSelectionError) {
-        setStepError(teacherSelectionError);
-      } else {
-        setStepError('Choose a ticket type for each selected seat before continuing.');
-      }
+      setStepError('Choose a ticket type for each selected seat before continuing.');
       return;
     }
 
@@ -1241,7 +1295,7 @@ export default function Booking() {
                   <h2 className="text-2xl md:text-3xl font-black text-stone-900">Choose Ticket Types</h2>
                   <p className="text-sm md:text-base text-stone-600 mt-2">Assign a ticket category for each selected seat.</p>
                   <p className="text-xs text-stone-500 mt-2">
-                    Selecting <span className="font-semibold text-stone-700">Teacher</span> triggers Google OAuth verification and teacher-comp checkout.
+                    Teacher checkout supports mixed ticket types. Up to {MAX_TEACHER_COMP_TICKETS} Teacher tickets are complimentary per order.
                   </p>
                 </div>
 
@@ -1274,7 +1328,9 @@ export default function Booking() {
                           >
                             {ticketOptions.map((option) => (
                               <option key={option.id} value={option.id}>
-                                {option.label} - ${(option.priceCents / 100).toFixed(2)}
+                                {option.id === TEACHER_TICKET_OPTION_ID
+                                  ? `${option.label} - first ${MAX_TEACHER_COMP_TICKETS} free`
+                                  : `${option.label} - $${(option.priceCents / 100).toFixed(2)}`}
                               </option>
                             ))}
                           </select>
@@ -1302,8 +1358,10 @@ export default function Booking() {
                         {missingTicketTypeCount} seat{missingTicketTypeCount === 1 ? '' : 's'} still need a ticket type.
                       </div>
                     )}
-                    {teacherSelectionError && (
-                      <div className="text-sm text-red-600 mt-1">{teacherSelectionError}</div>
+                    {isTeacherCheckout && teacherCompAppliedCount > 0 && (
+                      <div className="text-sm text-green-700 mt-1">
+                        Teacher complimentary tickets applied: {teacherCompAppliedCount}.
+                      </div>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
@@ -1344,11 +1402,12 @@ export default function Booking() {
                     <>
                       <h2 className="text-2xl md:text-3xl font-black text-stone-900">Teacher Verification</h2>
                       <p className="text-sm md:text-base text-stone-600 mt-2">
-                        Teacher complimentary checkout requires Google OAuth and a verified staff account.
+                        Teacher complimentary checkout requires Google OAuth and a verified staff account. Enter a personal email for delivery.
                       </p>
 
                       <div className="mt-6 rounded-xl border border-stone-200 bg-stone-50 p-4 text-sm text-stone-700">
-                        Selected teacher seats: <span className="font-bold">{selectedSeats.length}</span> (max 2 per checkout)
+                        Teacher seats selected: <span className="font-bold">{teacherSelectedSeatIds.length}</span>.
+                        Complimentary this order: <span className="font-bold">{teacherCompAppliedCount}</span> of {MAX_TEACHER_COMP_TICKETS}.
                       </div>
 
                       <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50 p-4">
@@ -1364,6 +1423,36 @@ export default function Booking() {
                             You are not signed in as a verified teacher yet.
                           </div>
                         )}
+                      </div>
+
+                      <div className="mt-6 space-y-4">
+                        <label className="block">
+                          <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Full Name</span>
+                          <div className="mt-1 relative">
+                            <User className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                            <input
+                              value={customerName}
+                              onChange={(event) => setCustomerName(event.target.value)}
+                              placeholder="Jane Doe"
+                              className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3"
+                            />
+                          </div>
+                        </label>
+
+                        <label className="block">
+                          <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Personal Email</span>
+                          <div className="mt-1 relative">
+                            <Mail className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="email"
+                              value={customerEmail}
+                              onChange={(event) => setCustomerEmail(event.target.value)}
+                              placeholder="name@email.com"
+                              className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3"
+                            />
+                          </div>
+                          <div className="mt-1 text-xs text-stone-500">Do not use your `@rtmsd.org` email for delivery.</div>
+                        </label>
                       </div>
 
                       <div className="mt-6 flex flex-wrap items-center gap-2">
@@ -1399,7 +1488,7 @@ export default function Booking() {
                             className="rounded-xl bg-stone-900 px-5 py-3 font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-stone-800 inline-flex items-center gap-2"
                           >
                             <CreditCard className="w-4 h-4" />
-                            {processing ? 'Processing...' : 'Reserve Teacher Ticket'}
+                            {processing ? 'Processing...' : 'Checkout'}
                           </button>
                         )}
                       </div>
