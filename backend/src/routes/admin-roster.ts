@@ -1,19 +1,33 @@
 import { FastifyPluginAsync } from 'fastify';
+import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { handleRouteError } from '../lib/route-error.js';
 
 export const adminRosterRoutes: FastifyPluginAsync = async (app) => {
   app.get('/api/admin/roster', { preHandler: app.authenticateAdmin }, async (request, reply) => {
-    const query = request.query as {
-      performanceId?: string;
-      q?: string;
-    };
+    const querySchema = z.object({
+      performanceId: z.string().optional(),
+      q: z.string().optional(),
+      scope: z.enum(['active', 'archived', 'all']).default('active')
+    });
+    const parsedQuery = querySchema.safeParse(request.query || {});
+    if (!parsedQuery.success) {
+      return reply.status(400).send({ error: parsedQuery.error.flatten() });
+    }
+    const query = parsedQuery.data;
 
     try {
       const orders = await prisma.order.findMany({
         where: {
           status: 'PAID',
-          ...(query.performanceId ? { performanceId: query.performanceId } : {})
+          ...(query.performanceId ? { performanceId: query.performanceId } : {}),
+          ...(query.scope !== 'all'
+            ? {
+                performance: {
+                  isArchived: query.scope === 'archived'
+                }
+              }
+            : {})
         },
         include: {
           performance: { include: { show: true } },

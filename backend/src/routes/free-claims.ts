@@ -30,8 +30,8 @@ export const freeClaimRoutes: FastifyPluginAsync = async (app) => {
     const email = parsed.data.customerEmail.toLowerCase();
 
     try {
-      const performance = await prisma.performance.findUnique({
-        where: { id: parsed.data.performanceId },
+      const performance = await prisma.performance.findFirst({
+        where: { id: parsed.data.performanceId, isArchived: false },
         select: {
           id: true,
           showId: true,

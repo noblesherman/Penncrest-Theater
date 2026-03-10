@@ -11,6 +11,7 @@ export const showRoutes: FastifyPluginAsync = async (app) => {
         where: {
           performances: {
             some: {
+              isArchived: false,
               OR: [
                 { salesCutoffAt: { gt: now } },
                 {
@@ -37,7 +38,10 @@ export const showRoutes: FastifyPluginAsync = async (app) => {
       const show = await prisma.show.findUnique({
         where: { id: params.id },
         include: {
-        performances: {
+          performances: {
+            where: {
+              isArchived: false
+            },
             orderBy: { startsAt: 'asc' }
           }
         }

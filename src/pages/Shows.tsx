@@ -40,20 +40,6 @@ export default function Shows() {
           <p className="text-xl text-stone-500 max-w-2xl mx-auto">
             From fall opener to spring finale, explore the productions lighting up the Penncrest stage.
           </p>
-          <p className="mt-4 text-xs text-stone-400">
-            Complimentary access:
-            {' '}
-            <Link to="/teacher-tickets" className="underline hover:text-stone-600 transition-colors">
-              Teacher Tickets
-            </Link>
-            {' '}
-            and
-            {' '}
-            <Link to="/family-ticket" className="underline hover:text-stone-600 transition-colors">
-              Family Ticket
-            </Link>
-            .
-          </p>
         </div>
 
         <div className="grid grid-cols-1 gap-12">

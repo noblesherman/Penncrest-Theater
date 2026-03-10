@@ -25,6 +25,7 @@ export default function AdminOrdersPage() {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
+  const [scope, setScope] = useState<'active' | 'archived' | 'all'>('active');
   const [performances, setPerformances] = useState<Performance[]>([]);
   const [assignForm, setAssignForm] = useState({
     performanceId: '',
@@ -42,6 +43,7 @@ export default function AdminOrdersPage() {
     if (query.trim()) params.set('q', query.trim());
     if (status) params.set('status', status);
     if (sourceFilter) params.set('source', sourceFilter);
+    params.set('scope', scope);
 
     const result = await adminFetch<Order[]>(`/api/admin/orders?${params.toString()}`);
     setRows(result);
@@ -51,7 +53,9 @@ export default function AdminOrdersPage() {
     load().catch(console.error);
     adminFetch<any[]>('/api/admin/performances')
       .then((items) => {
-        const mapped = items.map((item) => ({ id: item.id, title: item.title, startsAt: item.startsAt }));
+        const mapped = items
+          .filter((item) => !item.isArchived)
+          .map((item) => ({ id: item.id, title: item.title, startsAt: item.startsAt }));
         setPerformances(mapped);
         if (mapped.length > 0) {
           setAssignForm((prev) => ({ ...prev, performanceId: prev.performanceId || mapped[0].id }));
@@ -59,6 +63,10 @@ export default function AdminOrdersPage() {
       })
       .catch(console.error);
   }, []);
+
+  useEffect(() => {
+    load().catch(console.error);
+  }, [scope]);
 
   const search = (event: FormEvent) => {
     event.preventDefault();
@@ -207,6 +215,11 @@ export default function AdminOrdersPage() {
           <option value="STAFF_FREE">STAFF_FREE</option>
           <option value="FAMILY_FREE">FAMILY_FREE</option>
           <option value="STUDENT_COMP">STUDENT_COMP</option>
+        </select>
+        <select value={scope} onChange={(event) => setScope(event.target.value as 'active' | 'archived' | 'all')} className="border border-stone-300 rounded-xl px-3 py-2">
+          <option value="active">Active</option>
+          <option value="archived">Archived</option>
+          <option value="all">All</option>
         </select>
         <button className="bg-stone-900 text-white px-4 py-2 rounded-xl font-bold">Search</button>
       </form>

@@ -9,7 +9,8 @@ import { releaseExpiredHolds } from '../services/hold-service.js';
 import { createAssignedOrder } from '../services/order-assignment.js';
 import { env } from '../lib/env.js';
 import {
-  getStudentCreditEligibilityByCode,
+  getStudentCreditEligibilityBySchoolEmail,
+  normalizeStudentSchoolEmail,
   redeemStudentCreditImmediatelyForPaidOrder,
   releasePendingStudentCreditForOrder,
   reserveStudentCreditForOrder
@@ -27,6 +28,7 @@ type SeatAssignment = {
   finalPrice: number;
   ticketType: string | null;
   isTeacherTicket: boolean;
+  isStudentTicket: boolean;
   isTeacherComplimentary: boolean;
   isStudentComplimentary: boolean;
 };
@@ -35,10 +37,13 @@ type ResolvedTicketSelection = {
   name: string;
   priceCents: number | null;
   isTeacherTicket: boolean;
+  isStudentTicket: boolean;
 };
 
 const TEACHER_TICKET_OPTION_ID = 'teacher-comp';
+const STUDENT_SHOW_TICKET_OPTION_ID = 'student-show-comp';
 const MAX_TEACHER_COMP_TICKETS = 2;
+const MAX_STUDENT_COMP_TICKETS = 2;
 
 function bearerTokenFromHeader(headerValue?: string): string | null {
   if (!headerValue) return null;
@@ -102,6 +107,10 @@ function isTeacherTicketName(name: string): boolean {
   return name.trim().toLowerCase().includes('teacher');
 }
 
+function isStudentInShowTicketName(name: string): boolean {
+  return name.trim().toLowerCase().includes('student in show');
+}
+
 function buildStripeLineItems(
   showTitle: string,
   assignments: SeatAssignment[]
@@ -153,7 +162,7 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
         ticketSelectionBySeatId,
         holdToken,
         clientToken,
-        studentVerificationCode,
+        studentSchoolEmail,
         customerEmail,
         customerName,
         attendeeNames
@@ -168,8 +177,8 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
         await releaseExpiredHolds();
 
         const [performance, holdSession] = await Promise.all([
-          prisma.performance.findUnique({
-            where: { id: performanceId },
+          prisma.performance.findFirst({
+            where: { id: performanceId, isArchived: false },
             include: { show: true, pricingTiers: true }
           }),
           prisma.holdSession.findUnique({
@@ -313,7 +322,17 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
             return {
               name: 'Teacher',
               priceCents: null,
-              isTeacherTicket: true
+              isTeacherTicket: true,
+              isStudentTicket: false
+            };
+          }
+
+          if (selectionId === STUDENT_SHOW_TICKET_OPTION_ID) {
+            return {
+              name: 'Student in Show',
+              priceCents: null,
+              isTeacherTicket: false,
+              isStudentTicket: true
             };
           }
 
@@ -325,7 +344,8 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
           return {
             name: tier.name,
             priceCents: tier.priceCents,
-            isTeacherTicket: isTeacherTicketName(tier.name)
+            isTeacherTicket: isTeacherTicketName(tier.name),
+            isStudentTicket: isStudentInShowTicketName(tier.name)
           };
         };
 
@@ -376,6 +396,7 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
             finalPrice: basePrice,
             ticketType: selectedTicket?.name || null,
             isTeacherTicket: selectedTicket?.isTeacherTicket || false,
+            isStudentTicket: selectedTicket?.isStudentTicket || false,
             isTeacherComplimentary: false,
             isStudentComplimentary: false
           };
@@ -402,24 +423,34 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
         let studentComplimentaryQuantity = 0;
 
         if (isStudentCompCheckout) {
-          if (!studentVerificationCode || !studentVerificationCode.trim()) {
-            throw new HttpError(400, 'Student verification code is required');
+          if (!studentSchoolEmail || !studentSchoolEmail.trim()) {
+            throw new HttpError(400, 'School email is required for student complimentary checkout');
+          }
+          const normalizedStudentSchoolEmail = normalizeStudentSchoolEmail(studentSchoolEmail);
+          if (normalizedStudentSchoolEmail === effectiveCustomerEmail) {
+            throw new HttpError(400, 'Use a personal email for ticket delivery, separate from school verification email');
           }
 
-          const eligibility = await getStudentCreditEligibilityByCode({
+          const eligibility = await getStudentCreditEligibilityBySchoolEmail({
             performanceId,
-            verificationCode: studentVerificationCode,
+            schoolEmail: normalizedStudentSchoolEmail,
             requestedSeatCount: seatAssignments.length
           });
 
           studentTicketCreditId = eligibility.studentTicketCreditId;
-          studentComplimentaryQuantity = Math.min(seatAssignments.length, eligibility.maxUsableOnCheckout);
+          const studentTicketAssignments = seatAssignments.filter((assignment) => assignment.isStudentTicket);
+          const complimentaryCandidates = studentTicketAssignments.length > 0 ? studentTicketAssignments : seatAssignments;
+          studentComplimentaryQuantity = Math.min(
+            complimentaryCandidates.length,
+            eligibility.maxUsableOnCheckout,
+            MAX_STUDENT_COMP_TICKETS
+          );
 
           if (studentComplimentaryQuantity <= 0) {
             throw new HttpError(409, 'No complimentary student tickets available for this checkout');
           }
 
-          const complimentarySeatIds = pickComplimentarySeatIds(seatAssignments, studentComplimentaryQuantity);
+          const complimentarySeatIds = pickComplimentarySeatIds(complimentaryCandidates, studentComplimentaryQuantity);
           seatAssignments = seatAssignments.map((assignment) => {
             const isStudentCompSeat = complimentarySeatIds.has(assignment.seat.id);
             return {
@@ -461,7 +492,7 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
               performanceId,
               studentTicketCreditId,
               quantity: studentComplimentaryQuantity,
-              verificationMethod: StudentCreditVerificationMethod.CODE
+              verificationMethod: StudentCreditVerificationMethod.SCHOOL_LOGIN
             });
           }
 
@@ -504,7 +535,7 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
             orderId: order.id,
             studentTicketCreditId,
             quantity: studentComplimentaryQuantity,
-            verificationMethod: StudentCreditVerificationMethod.CODE
+            verificationMethod: StudentCreditVerificationMethod.SCHOOL_LOGIN
           });
           reservedStudentCredits = true;
         }

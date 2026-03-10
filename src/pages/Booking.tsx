@@ -69,7 +69,9 @@ type SelectedSeatPricing = {
   basePrice: number;
   unitPrice: number;
   isTeacherTicket: boolean;
+  isStudentInShowTicket: boolean;
   isTeacherComplimentary: boolean;
+  isStudentComplimentary: boolean;
 };
 
 type StaffUser = {
@@ -99,7 +101,9 @@ const CHECKOUT_STEPS: Array<{ id: CheckoutStep; label: string }> = [
 
 const BOOKING_OAUTH_DRAFT_KEY = 'theater_booking_oauth_draft';
 const TEACHER_TICKET_OPTION_ID = 'teacher-comp';
+const STUDENT_SHOW_TICKET_OPTION_ID = 'student-show-comp';
 const MAX_TEACHER_COMP_TICKETS = 2;
+const MAX_STUDENT_COMP_TICKETS = 2;
 const naturalSort = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 const SEAT_X_STEP = 40;
 const MAX_ADJACENT_X_GAP = SEAT_X_STEP * 1.5;
@@ -130,11 +134,10 @@ const buildSeatGrid = (seats: Seat[]) => {
   return grid;
 };
 
-function pickComplimentaryTeacherSeatIds(items: Array<{ seat: Seat; isTeacherTicket: boolean; basePrice: number }>, quantity: number): Set<string> {
+function pickComplimentarySeatIds(items: Array<{ seat: Seat; basePrice: number }>, quantity: number): Set<string> {
   if (quantity <= 0) return new Set();
 
-  const rankedTeacherSeats = items
-    .filter((item) => item.isTeacherTicket)
+  const rankedSeats = [...items]
     .sort((a, b) => {
       if (a.basePrice !== b.basePrice) return b.basePrice - a.basePrice;
       if (a.seat.sectionName !== b.seat.sectionName) return a.seat.sectionName.localeCompare(b.seat.sectionName);
@@ -142,7 +145,7 @@ function pickComplimentaryTeacherSeatIds(items: Array<{ seat: Seat; isTeacherTic
       return a.seat.number - b.seat.number;
     });
 
-  return new Set(rankedTeacherSeats.slice(0, quantity).map((item) => item.seat.id));
+  return new Set(rankedSeats.slice(0, quantity).map((item) => item.seat.id));
 }
 
 function oauthErrorMessage(errorParam: string | null): string | null {
@@ -179,6 +182,7 @@ export default function Booking() {
   const [stepError, setStepError] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
+  const [studentSchoolEmail, setStudentSchoolEmail] = useState('');
   const [isPanning, setIsPanning] = useState(false);
   const [currentStep, setCurrentStep] = useState<CheckoutStep>(1);
   const [staffUser, setStaffUser] = useState<StaffUser | null>(null);
@@ -382,6 +386,17 @@ export default function Booking() {
       });
     }
 
+    const hasStudentInShowOption = tierOptions.some((option) =>
+      option.label.trim().toLowerCase().includes('student in show')
+    );
+    if (!hasStudentInShowOption) {
+      tierOptions.push({
+        id: STUDENT_SHOW_TICKET_OPTION_ID,
+        label: 'Student in Show',
+        priceCents: 0
+      });
+    }
+
     return tierOptions;
   }, [pricingTiers]);
 
@@ -476,6 +491,12 @@ export default function Booking() {
 
     const ticketSelections = [...tierCountMap.entries()].map(([tierId, count]) => ({ tierId, count }));
 
+    if (hasMixedCompSelection) {
+      setStepError('Teacher and Student in Show complimentary tickets cannot be mixed in one checkout.');
+      setCurrentStep(2);
+      return;
+    }
+
     setProcessing(true);
     setStepError(null);
 
@@ -523,6 +544,42 @@ export default function Booking() {
             clientToken: clientTokenRef.current,
             customerEmail: effectiveCustomerEmail,
             customerName: effectiveCustomerName
+          })
+        });
+      } else if (isStudentInShowCheckout) {
+        const effectiveCustomerName = customerName.trim();
+        const effectiveCustomerEmail = customerEmail.trim().toLowerCase();
+        const normalizedStudentSchoolEmail = studentSchoolEmail.trim().toLowerCase();
+
+        if (!effectiveCustomerName || !effectiveCustomerEmail) {
+          setStepError('Enter your name and personal email before checkout.');
+          setCurrentStep(3);
+          return;
+        }
+        if (!normalizedStudentSchoolEmail) {
+          setStepError('Enter your school email for student verification before checkout.');
+          setCurrentStep(3);
+          return;
+        }
+        if (effectiveCustomerEmail === normalizedStudentSchoolEmail) {
+          setStepError('Use a personal email for ticket delivery that is different from your school email.');
+          setCurrentStep(3);
+          return;
+        }
+
+        checkout = await apiFetch<{ url?: string; orderId?: string }>('/api/checkout', {
+          method: 'POST',
+          body: JSON.stringify({
+            performanceId,
+            checkoutMode: 'STUDENT_COMP',
+            seatIds: holdResult.heldSeatIds,
+            ticketSelections: ticketSelections.length > 0 ? ticketSelections : undefined,
+            ticketSelectionBySeatId,
+            holdToken: holdResult.holdToken,
+            clientToken: clientTokenRef.current,
+            customerEmail: effectiveCustomerEmail,
+            customerName: effectiveCustomerName,
+            studentSchoolEmail: normalizedStudentSchoolEmail
           })
         });
       } else {
@@ -654,6 +711,15 @@ export default function Booking() {
       new Set(ticketOptions.filter((option) => option.label.trim().toLowerCase().includes('teacher')).map((option) => option.id)),
     [ticketOptions]
   );
+  const studentInShowOptionIds = useMemo(
+    () =>
+      new Set(
+        ticketOptions
+          .filter((option) => option.label.trim().toLowerCase().includes('student in show'))
+          .map((option) => option.id)
+      ),
+    [ticketOptions]
+  );
   const primaryTeacherOptionId = useMemo(() => {
     const teacherOption = ticketOptions.find((option) => teacherOptionIds.has(option.id));
     return teacherOption?.id || null;
@@ -664,53 +730,83 @@ export default function Booking() {
       const selectedOptionId = ticketOptionBySeatId[seat.id] || null;
       const option = selectedOptionId ? ticketOptionById.get(selectedOptionId) : undefined;
       const isTeacherTicket = selectedOptionId ? teacherOptionIds.has(selectedOptionId) : false;
+      const isStudentInShowTicket = selectedOptionId ? studentInShowOptionIds.has(selectedOptionId) : false;
       const basePrice =
-        selectedOptionId === TEACHER_TICKET_OPTION_ID ? seat.price : option?.priceCents ?? seat.price;
+        selectedOptionId === TEACHER_TICKET_OPTION_ID || selectedOptionId === STUDENT_SHOW_TICKET_OPTION_ID
+          ? seat.price
+          : option?.priceCents ?? seat.price;
 
       return {
         seat,
         optionId: selectedOptionId,
         optionLabel: option?.label || 'Standard',
         basePrice,
-        isTeacherTicket
+        isTeacherTicket,
+        isStudentInShowTicket
       };
     });
-  }, [selectedSeats, ticketOptionBySeatId, ticketOptionById, teacherOptionIds]);
+  }, [selectedSeats, ticketOptionBySeatId, ticketOptionById, teacherOptionIds, studentInShowOptionIds]);
 
   const teacherSelectedSeatIds = useMemo(
     () => selectedSeatIds.filter((seatId) => teacherOptionIds.has(ticketOptionBySeatId[seatId] || '')),
     [selectedSeatIds, teacherOptionIds, ticketOptionBySeatId]
   );
+  const studentInShowSelectedSeatIds = useMemo(
+    () => selectedSeatIds.filter((seatId) => studentInShowOptionIds.has(ticketOptionBySeatId[seatId] || '')),
+    [selectedSeatIds, studentInShowOptionIds, ticketOptionBySeatId]
+  );
 
-  const isTeacherCheckout = teacherSelectedSeatIds.length > 0 || Boolean(staffUser?.verifiedStaff) || Boolean(getStaffToken());
+  const hasTeacherCompSelection = teacherSelectedSeatIds.length > 0;
+  const hasStudentInShowCompSelection = studentInShowSelectedSeatIds.length > 0;
+  const hasMixedCompSelection = hasTeacherCompSelection && hasStudentInShowCompSelection;
+  const isTeacherCheckout =
+    hasTeacherCompSelection || (!hasStudentInShowCompSelection && (Boolean(staffUser?.verifiedStaff) || Boolean(getStaffToken())));
+  const isStudentInShowCheckout = hasStudentInShowCompSelection;
+
   const teacherCompCandidates = useMemo(() => {
     if (!isTeacherCheckout) return [];
-    if (teacherSelectedSeatIds.length > 0) {
+    if (hasTeacherCompSelection) {
       return selectedSeatsWithBasePricing.filter((item) => item.isTeacherTicket);
     }
     return selectedSeatsWithBasePricing;
-  }, [isTeacherCheckout, selectedSeatsWithBasePricing, teacherSelectedSeatIds.length]);
+  }, [isTeacherCheckout, hasTeacherCompSelection, selectedSeatsWithBasePricing]);
 
   const complimentaryTeacherSeatIds = useMemo(
     () =>
-      pickComplimentaryTeacherSeatIds(
+      pickComplimentarySeatIds(
         teacherCompCandidates,
         Math.min(MAX_TEACHER_COMP_TICKETS, teacherCompCandidates.length)
       ),
     [teacherCompCandidates]
   );
 
+  const studentCompCandidates = useMemo(() => {
+    if (!isStudentInShowCheckout) return [];
+    return selectedSeatsWithBasePricing.filter((item) => item.isStudentInShowTicket);
+  }, [isStudentInShowCheckout, selectedSeatsWithBasePricing]);
+
+  const complimentaryStudentSeatIds = useMemo(
+    () =>
+      pickComplimentarySeatIds(
+        studentCompCandidates,
+        Math.min(MAX_STUDENT_COMP_TICKETS, studentCompCandidates.length)
+      ),
+    [studentCompCandidates]
+  );
+
   const selectedSeatsWithPricing = useMemo<SelectedSeatPricing[]>(
     () =>
       selectedSeatsWithBasePricing.map((item) => {
         const isTeacherComplimentary = complimentaryTeacherSeatIds.has(item.seat.id);
+        const isStudentComplimentary = complimentaryStudentSeatIds.has(item.seat.id);
         return {
           ...item,
           isTeacherComplimentary,
-          unitPrice: isTeacherComplimentary ? 0 : item.basePrice
+          isStudentComplimentary,
+          unitPrice: isTeacherComplimentary || isStudentComplimentary ? 0 : item.basePrice
         };
       }),
-    [complimentaryTeacherSeatIds, selectedSeatsWithBasePricing]
+    [complimentaryStudentSeatIds, complimentaryTeacherSeatIds, selectedSeatsWithBasePricing]
   );
 
   const totalAmount = useMemo(
@@ -727,6 +823,7 @@ export default function Booking() {
   }, [ticketOptionById, ticketOptionBySeatId, ticketOptions.length, selectedSeatIds]);
 
   const teacherCompAppliedCount = complimentaryTeacherSeatIds.size;
+  const studentCompAppliedCount = complimentaryStudentSeatIds.size;
 
   useEffect(() => {
     if (!staffUser?.verifiedStaff) return;
@@ -888,6 +985,10 @@ export default function Booking() {
   const goToStepThree = () => {
     if (!canContinueToCheckout) {
       setStepError('Choose a ticket type for each selected seat before continuing.');
+      return;
+    }
+    if (hasMixedCompSelection) {
+      setStepError('Teacher and Student in Show complimentary tickets cannot be mixed in one checkout.');
       return;
     }
 
@@ -1294,9 +1395,11 @@ export default function Booking() {
                 <div className="pt-6 md:pt-8 pb-4 md:pb-6">
                   <h2 className="text-2xl md:text-3xl font-black text-stone-900">Choose Ticket Types</h2>
                   <p className="text-sm md:text-base text-stone-600 mt-2">Assign a ticket category for each selected seat.</p>
-                  <p className="text-xs text-stone-500 mt-2">
-                    Teacher checkout supports mixed ticket types. Up to {MAX_TEACHER_COMP_TICKETS} Teacher tickets are complimentary per order.
-                  </p>
+                  {hasMixedCompSelection && (
+                    <p className="text-xs text-red-600 mt-2">
+                      Teacher and Student in Show complimentary seats cannot be checked out together. Pick one comp type per order.
+                    </p>
+                  )}
                 </div>
 
                 {selectedSeatsWithPricing.length === 0 ? (
@@ -1330,6 +1433,8 @@ export default function Booking() {
                               <option key={option.id} value={option.id}>
                                 {option.id === TEACHER_TICKET_OPTION_ID
                                   ? `${option.label} - first ${MAX_TEACHER_COMP_TICKETS} free`
+                                  : option.id === STUDENT_SHOW_TICKET_OPTION_ID
+                                    ? `${option.label} - first ${MAX_STUDENT_COMP_TICKETS} free`
                                   : `${option.label} - $${(option.priceCents / 100).toFixed(2)}`}
                               </option>
                             ))}
@@ -1361,6 +1466,11 @@ export default function Booking() {
                     {isTeacherCheckout && teacherCompAppliedCount > 0 && (
                       <div className="text-sm text-green-700 mt-1">
                         Teacher complimentary tickets applied: {teacherCompAppliedCount}.
+                      </div>
+                    )}
+                    {isStudentInShowCheckout && studentCompAppliedCount > 0 && (
+                      <div className="text-sm text-green-700 mt-1">
+                        Student in Show complimentary tickets applied: {studentCompAppliedCount}.
                       </div>
                     )}
                   </div>
@@ -1495,10 +1605,21 @@ export default function Booking() {
                     </>
                   ) : (
                     <>
-                      <h2 className="text-2xl md:text-3xl font-black text-stone-900">Contact Information</h2>
+                      <h2 className="text-2xl md:text-3xl font-black text-stone-900">
+                        {isStudentInShowCheckout ? 'Student in Show Checkout' : 'Contact Information'}
+                      </h2>
                       <p className="text-sm md:text-base text-stone-600 mt-2">
-                        We will send tickets and confirmation to this email.
+                        {isStudentInShowCheckout
+                          ? 'Use your school email for verification, then a personal email for ticket delivery.'
+                          : 'We will send tickets and confirmation to this email.'}
                       </p>
+
+                      {isStudentInShowCheckout && (
+                        <div className="mt-6 rounded-xl border border-stone-200 bg-stone-50 p-4 text-sm text-stone-700">
+                          Student in Show seats selected: <span className="font-bold">{studentInShowSelectedSeatIds.length}</span>.
+                          Complimentary this order: <span className="font-bold">{studentCompAppliedCount}</span> of {MAX_STUDENT_COMP_TICKETS}.
+                        </div>
+                      )}
 
                       <div className="mt-6 space-y-4">
                         <label className="block">
@@ -1515,18 +1636,41 @@ export default function Booking() {
                         </label>
 
                         <label className="block">
-                          <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Email</span>
+                          <span className="text-xs font-bold uppercase tracking-wider text-stone-500">
+                            {isStudentInShowCheckout ? 'Personal Email' : 'Email'}
+                          </span>
                           <div className="mt-1 relative">
                             <Mail className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
                             <input
                               type="email"
                               value={customerEmail}
                               onChange={(event) => setCustomerEmail(event.target.value)}
-                              placeholder="name@email.com"
+                              placeholder={isStudentInShowCheckout ? 'Personal email for ticket delivery' : 'name@email.com'}
                               className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3"
                             />
                           </div>
+                          {isStudentInShowCheckout ? (
+                            <div className="mt-1 text-xs text-stone-500">
+                              Tickets are sent to your personal email, not your school email.
+                            </div>
+                          ) : null}
                         </label>
+
+                        {isStudentInShowCheckout && (
+                          <label className="block">
+                            <span className="text-xs font-bold uppercase tracking-wider text-stone-500">School Email</span>
+                            <div className="mt-1 relative">
+                              <Ticket className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                              <input
+                                type="email"
+                                value={studentSchoolEmail}
+                                onChange={(event) => setStudentSchoolEmail(event.target.value)}
+                                placeholder="School email on file"
+                                className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3"
+                              />
+                            </div>
+                          </label>
+                        )}
                       </div>
 
                       <div className="mt-6 flex items-center gap-2">

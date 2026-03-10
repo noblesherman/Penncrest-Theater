@@ -86,8 +86,8 @@ export async function syncSeatHold(params: {
   return prisma.$transaction(async (tx) => {
     await releaseExpiredHoldsInTx(tx);
 
-    const performance = await tx.performance.findUnique({
-      where: { id: params.performanceId },
+    const performance = await tx.performance.findFirst({
+      where: { id: params.performanceId, isArchived: false },
       select: { id: true, startsAt: true, salesCutoffAt: true }
     });
     if (!performance) {

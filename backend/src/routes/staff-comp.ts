@@ -40,8 +40,8 @@ export const staffCompRoutes: FastifyPluginAsync = async (app) => {
           throw new HttpError(403, 'Staff verification is required before reserving a comp ticket');
         }
 
-        const performance = await prisma.performance.findUnique({
-          where: { id: parsed.data.performanceId },
+        const performance = await prisma.performance.findFirst({
+          where: { id: parsed.data.performanceId, isArchived: false },
           select: {
             id: true,
             startsAt: true,

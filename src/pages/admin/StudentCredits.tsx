@@ -16,7 +16,6 @@ type StudentCreditRow = {
   studentName: string;
   studentEmail: string | null;
   roleName: string | null;
-  verificationCode: string | null;
   allocatedTickets: number;
   usedTickets: number;
   remainingTickets: number;
@@ -69,12 +68,12 @@ const initialCreateForm = {
   studentEmail: '',
   roleName: '',
   allocatedTickets: 2,
-  verificationCode: '',
   notes: ''
 };
 
 export default function AdminStudentCreditsPage() {
   const [performances, setPerformances] = useState<PerformanceRow[]>([]);
+  const [scope, setScope] = useState<'active' | 'archived' | 'all'>('active');
   const [selectedShowId, setSelectedShowId] = useState('');
   const [rows, setRows] = useState<StudentCreditRow[]>([]);
   const [query, setQuery] = useState('');
@@ -104,9 +103,16 @@ export default function AdminStudentCreditsPage() {
   }, [performances]);
 
   const loadPerformances = async () => {
-    const items = await adminFetch<PerformanceRow[]>('/api/admin/performances');
+    const items = await adminFetch<PerformanceRow[]>(`/api/admin/performances?scope=${scope}`);
     setPerformances(items);
-    if (!selectedShowId && items.length > 0) {
+    if (items.length === 0) {
+      setSelectedShowId('');
+      setRows([]);
+      return;
+    }
+
+    const availableShowIds = new Set(items.map((item) => item.showId));
+    if (!selectedShowId || !availableShowIds.has(selectedShowId)) {
       setSelectedShowId(items[0].showId);
     }
   };
@@ -127,7 +133,7 @@ export default function AdminStudentCreditsPage() {
 
   useEffect(() => {
     loadPerformances().catch((err) => setError(err instanceof Error ? err.message : 'Failed to load performances'));
-  }, []);
+  }, [scope]);
 
   useEffect(() => {
     if (!selectedShowId) return;
@@ -161,9 +167,8 @@ export default function AdminStudentCreditsPage() {
         method: 'POST',
         body: JSON.stringify({
           studentName: createForm.studentName,
-          studentEmail: createForm.studentEmail || null,
+          studentEmail: createForm.studentEmail.trim().toLowerCase(),
           roleName: createForm.roleName || null,
-          verificationCode: createForm.verificationCode || null,
           allocatedTickets: createForm.allocatedTickets,
           notes: createForm.notes || null
         })
@@ -212,19 +217,6 @@ export default function AdminStudentCreditsPage() {
     }
   };
 
-  const regenerateCode = async (id: string) => {
-    setError(null);
-    try {
-      await adminFetch(`/api/admin/student-credits/${id}/regenerate-code`, {
-        method: 'POST',
-        body: JSON.stringify({})
-      });
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to regenerate code');
-    }
-  };
-
   const manualRedeem = async (id: string) => {
     const quantityInput = prompt('How many tickets should be manually redeemed?');
     const quantity = Number(quantityInput || '0');
@@ -263,11 +255,23 @@ export default function AdminStudentCreditsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-black text-stone-900 mb-1">Student Complimentary Credits</h1>
-        <p className="text-sm text-stone-600">Manage cast and crew complimentary ticket balances by show.</p>
+        <p className="text-sm text-stone-600">Manage cast and crew complimentary ticket balances by show and school email.</p>
       </div>
 
       <section className="border border-stone-200 rounded-2xl p-4 space-y-3">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div>
+            <label className="text-xs font-semibold text-stone-500">Performance Scope</label>
+            <select
+              value={scope}
+              onChange={(event) => setScope(event.target.value as 'active' | 'archived' | 'all')}
+              className="w-full border border-stone-300 rounded-xl px-3 py-2"
+            >
+              <option value="active">Active</option>
+              <option value="archived">Archived</option>
+              <option value="all">All</option>
+            </select>
+          </div>
           <div>
             <label className="text-xs font-semibold text-stone-500">Show</label>
             <select
@@ -287,7 +291,7 @@ export default function AdminStudentCreditsPage() {
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Name, email, role, or code"
+              placeholder="Name, school email, or role"
               className="w-full border border-stone-300 rounded-xl px-3 py-2"
             />
           </div>
@@ -313,10 +317,12 @@ export default function AdminStudentCreditsPage() {
             required
           />
           <input
+            type="email"
             value={createForm.studentEmail}
             onChange={(event) => setCreateForm({ ...createForm, studentEmail: event.target.value })}
-            placeholder="Student email (optional)"
+            placeholder="School email (required)"
             className="border border-stone-300 rounded-xl px-3 py-2"
+            required
           />
           <input
             value={createForm.roleName}
@@ -330,12 +336,6 @@ export default function AdminStudentCreditsPage() {
             max={50}
             value={createForm.allocatedTickets}
             onChange={(event) => setCreateForm({ ...createForm, allocatedTickets: Math.max(0, Number(event.target.value) || 0) })}
-            className="border border-stone-300 rounded-xl px-3 py-2"
-          />
-          <input
-            value={createForm.verificationCode}
-            onChange={(event) => setCreateForm({ ...createForm, verificationCode: event.target.value.toUpperCase() })}
-            placeholder="Verification code (optional)"
             className="border border-stone-300 rounded-xl px-3 py-2"
           />
           <button className="bg-stone-900 text-white px-4 py-2 rounded-xl font-bold">Create</button>
@@ -352,7 +352,9 @@ export default function AdminStudentCreditsPage() {
       <section className="border border-stone-200 rounded-2xl p-4">
         <h2 className="font-bold text-stone-900 mb-3">CSV Import</h2>
         <form onSubmit={handleImportCsv} className="space-y-3">
-          <div className="text-xs text-stone-500">Columns: studentName, studentEmail, roleName, allocatedTickets</div>
+          <div className="text-xs text-stone-500">
+            Column order: studentName, studentEmail, roleName, allocatedTickets (studentEmail required)
+          </div>
           <input type="file" accept=".csv,text/csv" onChange={onCsvFileSelect} className="text-sm" />
           <textarea
             value={importCsv}
@@ -382,7 +384,6 @@ export default function AdminStudentCreditsPage() {
                   <th className="px-2 py-2">Allocated</th>
                   <th className="px-2 py-2">Used</th>
                   <th className="px-2 py-2">Remaining</th>
-                  <th className="px-2 py-2">Code</th>
                   <th className="px-2 py-2">Active</th>
                   <th className="px-2 py-2">Last Txn</th>
                   <th className="px-2 py-2">Actions</th>
@@ -393,17 +394,30 @@ export default function AdminStudentCreditsPage() {
                   <tr key={row.id} className="border-t border-stone-100 align-top">
                     <td className="px-2 py-2 font-semibold text-stone-900">{row.studentName}</td>
                     <td className="px-2 py-2">{row.roleName || '-'}</td>
-                    <td className="px-2 py-2">{row.studentEmail || '-'}</td>
+                    <td className="px-2 py-2">
+                      {row.studentEmail ? row.studentEmail : <span className="text-red-600 font-semibold">Missing school email</span>}
+                    </td>
                     <td className="px-2 py-2">{row.allocatedTickets}</td>
                     <td className="px-2 py-2">{row.usedTickets}</td>
                     <td className="px-2 py-2">
                       {row.remainingTickets}
                       {row.pendingTickets > 0 ? <span className="text-[10px] text-amber-700"> (+{row.pendingTickets} pending)</span> : null}
                     </td>
-                    <td className="px-2 py-2 font-mono">{row.verificationCode || '-'}</td>
                     <td className="px-2 py-2">{row.isActive ? 'Yes' : 'No'}</td>
                     <td className="px-2 py-2">{row.lastTransactionDate ? new Date(row.lastTransactionDate).toLocaleString() : '-'}</td>
                     <td className="px-2 py-2 space-x-1 space-y-1">
+                      <button
+                        className="text-xs border border-stone-300 rounded-md px-2 py-1"
+                        onClick={() => {
+                          const next = prompt('Set school email for verification', row.studentEmail || '');
+                          if (next === null) return;
+                          const value = next.trim().toLowerCase();
+                          if (!value) return;
+                          void updateCredit(row.id, { studentEmail: value });
+                        }}
+                      >
+                        Edit School Email
+                      </button>
                       <button
                         className="text-xs border border-stone-300 rounded-md px-2 py-1"
                         onClick={() => {
@@ -420,9 +434,6 @@ export default function AdminStudentCreditsPage() {
                         onClick={() => void updateCredit(row.id, { isActive: !row.isActive })}
                       >
                         {row.isActive ? 'Disable' : 'Enable'}
-                      </button>
-                      <button className="text-xs border border-stone-300 rounded-md px-2 py-1" onClick={() => regenerateCode(row.id)}>
-                        Regenerate Code
                       </button>
                       <button className="text-xs border border-stone-300 rounded-md px-2 py-1" onClick={() => manualRedeem(row.id)}>
                         Manual Redeem

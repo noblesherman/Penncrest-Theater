@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import {
   StudentCreditTransactionType,
   OrderSource,
@@ -30,39 +29,11 @@ export type StudentCreditEligibility = {
   usedTickets: number;
   remainingTickets: number;
   maxUsableOnCheckout: number;
-  verificationMethod: 'code';
+  verificationMethod: 'school_email';
 };
 
-export function normalizeStudentVerificationCode(code: string): string {
-  return code.trim().toUpperCase().replace(/\s+/g, '');
-}
-
-export function generateStudentVerificationCode(length = 10): string {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const bytes = crypto.randomBytes(length);
-  let output = '';
-  for (let i = 0; i < length; i += 1) {
-    output += alphabet[bytes[i] % alphabet.length];
-  }
-  return output;
-}
-
-export async function issueUniqueStudentVerificationCode(
-  tx: Prisma.TransactionClient,
-  attempts = 8
-): Promise<string> {
-  for (let i = 0; i < attempts; i += 1) {
-    const candidate = generateStudentVerificationCode(10);
-    const existing = await tx.studentTicketCredit.findUnique({
-      where: { verificationCode: candidate },
-      select: { id: true }
-    });
-    if (!existing) {
-      return candidate;
-    }
-  }
-
-  throw new HttpError(500, 'Unable to generate a unique student verification code');
+export function normalizeStudentSchoolEmail(email: string): string {
+  return email.trim().toLowerCase();
 }
 
 function computeEligibility(credit: StudentCreditIdentity, requestedSeatCount: number): StudentCreditEligibility {
@@ -79,13 +50,23 @@ function computeEligibility(credit: StudentCreditIdentity, requestedSeatCount: n
     usedTickets: credit.usedTickets,
     remainingTickets,
     maxUsableOnCheckout: Math.min(safeRequested, availableNow),
-    verificationMethod: 'code'
+    verificationMethod: 'school_email'
   };
 }
 
+function assertEligibilityHasAvailability(eligibility: StudentCreditEligibility): void {
+  if (eligibility.remainingTickets <= 0) {
+    throw new HttpError(409, 'No remaining complimentary student tickets');
+  }
+
+  if (eligibility.maxUsableOnCheckout <= 0) {
+    throw new HttpError(409, 'No complimentary student tickets are currently available for checkout');
+  }
+}
+
 async function loadPerformanceShowId(tx: Prisma.TransactionClient, performanceId: string): Promise<string> {
-  const performance = await tx.performance.findUnique({
-    where: { id: performanceId },
+  const performance = await tx.performance.findFirst({
+    where: { id: performanceId, isArchived: false },
     select: { id: true, showId: true }
   });
 
@@ -130,23 +111,24 @@ async function lockStudentCreditRow(
   return credit;
 }
 
-export async function getStudentCreditEligibilityByCode(params: {
+export async function getStudentCreditEligibilityBySchoolEmail(params: {
   performanceId: string;
-  verificationCode: string;
+  schoolEmail: string;
   requestedSeatCount: number;
 }): Promise<StudentCreditEligibility> {
-  const normalizedCode = normalizeStudentVerificationCode(params.verificationCode);
-  if (!normalizedCode) {
-    throw new HttpError(400, 'Verification code is required');
+  const normalizedEmail = normalizeStudentSchoolEmail(params.schoolEmail);
+  if (!normalizedEmail) {
+    throw new HttpError(400, 'School email is required');
   }
 
   const result = await prisma.$transaction(async (tx) => {
     const showId = await loadPerformanceShowId(tx, params.performanceId);
 
-    const credit = await tx.studentTicketCredit.findFirst({
+    const matchingCredits = await tx.studentTicketCredit.findMany({
       where: {
         showId,
-        verificationCode: normalizedCode
+        studentEmail: normalizedEmail,
+        isActive: true
       },
       select: {
         id: true,
@@ -161,21 +143,19 @@ export async function getStudentCreditEligibilityByCode(params: {
       }
     });
 
-    if (!credit) {
-      throw new HttpError(404, 'Invalid verification code');
+    if (matchingCredits.length === 0) {
+      throw new HttpError(404, 'School email is not approved for student complimentary tickets');
     }
 
-    assertStudentCreditActive(credit);
-
-    const eligibility = computeEligibility(credit, params.requestedSeatCount);
-    if (eligibility.remainingTickets <= 0) {
-      throw new HttpError(409, 'No remaining complimentary student tickets');
+    if (matchingCredits.length > 1) {
+      throw new HttpError(
+        409,
+        'Multiple student credit records found for this school email. Please contact the box office.'
+      );
     }
 
-    if (eligibility.maxUsableOnCheckout <= 0) {
-      throw new HttpError(409, 'No complimentary student tickets are currently available for checkout');
-    }
-
+    const eligibility = computeEligibility(matchingCredits[0], params.requestedSeatCount);
+    assertEligibilityHasAvailability(eligibility);
     return eligibility;
   });
 

@@ -19,6 +19,7 @@ import AdminLayout from './pages/admin/AdminLayout';
 import AdminLoginPage from './pages/admin/Login';
 import AdminDashboardPage from './pages/admin/Dashboard';
 import AdminPerformancesPage from './pages/admin/Performances';
+import AdminArchivePage from './pages/admin/Archive';
 import AdminSeatsPage from './pages/admin/Seats';
 import AdminOrdersPage from './pages/admin/Orders';
 import AdminOrderDetailPage from './pages/admin/OrderDetail';
@@ -45,6 +46,7 @@ export default function App() {
           <Route index element={<Navigate to="/admin/dashboard" replace />} />
           <Route path="dashboard" element={<AdminDashboardPage />} />
           <Route path="performances" element={<AdminPerformancesPage />} />
+          <Route path="archive" element={<AdminArchivePage />} />
           <Route path="seats" element={<AdminSeatsPage />} />
           <Route path="orders" element={<AdminOrdersPage />} />
           <Route path="orders/:id" element={<AdminOrderDetailPage />} />

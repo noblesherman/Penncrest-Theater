@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { adminFetch } from '../../lib/adminAuth';
 import { apiFetch } from '../../lib/api';
 
-type Performance = { id: string; title: string; startsAt: string };
+type Performance = { id: string; title: string; startsAt: string; isArchived: boolean };
 type Seat = {
   id: string;
   sectionName: string;
@@ -16,44 +16,92 @@ type Seat = {
 
 export default function AdminSeatsPage() {
   const [performances, setPerformances] = useState<Performance[]>([]);
+  const [scope, setScope] = useState<'active' | 'archived' | 'all'>('active');
   const [performanceId, setPerformanceId] = useState('');
   const [seats, setSeats] = useState<Seat[]>([]);
   const [seatIdsInput, setSeatIdsInput] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const loadPerformances = () => {
-    adminFetch<any[]>('/api/admin/performances')
+    adminFetch<any[]>(`/api/admin/performances?scope=${scope}`)
       .then((rows) => {
-        const mapped = rows.map((row) => ({ id: row.id, title: row.title, startsAt: row.startsAt }));
+        const mapped = rows.map((row) => ({
+          id: row.id,
+          title: row.title,
+          startsAt: row.startsAt,
+          isArchived: Boolean(row.isArchived)
+        }));
         setPerformances(mapped);
-        if (!performanceId && mapped.length > 0) setPerformanceId(mapped[0].id);
+        if (mapped.length === 0) {
+          setPerformanceId('');
+          setSeats([]);
+          return;
+        }
+
+        const stillExists = mapped.some((row) => row.id === performanceId);
+        if (!stillExists) {
+          setPerformanceId(mapped[0].id);
+        }
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load performances'));
   };
 
-  const loadSeats = () => {
+  const loadSeats = async () => {
     if (!performanceId) return;
-    apiFetch<Seat[]>(`/api/performances/${performanceId}/seats`)
-      .then(setSeats)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load seats'));
+
+    try {
+      const adminSeats = await adminFetch<Seat[]>(`/api/admin/performances/${performanceId}/seats`);
+      setSeats(adminSeats);
+      setError(null);
+      return;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load seats';
+
+      // Backward compatibility: if backend route is older and missing this admin endpoint,
+      // fall back to the public seats endpoint for active performances.
+      if (!message.toLowerCase().includes('not found')) {
+        setError(message);
+        return;
+      }
+    }
+
+    try {
+      const publicSeats = await apiFetch<Seat[]>(`/api/performances/${performanceId}/seats`);
+      setSeats(publicSeats);
+      setError(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load seats';
+      setError(
+        message.toLowerCase().includes('not found')
+          ? 'Seats endpoint not available. Restart the backend so admin seat routes load, or switch to an active performance.'
+          : message
+      );
+    }
   };
 
   useEffect(() => {
     loadPerformances();
-  }, []);
+  }, [scope]);
 
   useEffect(() => {
-    loadSeats();
+    void loadSeats();
   }, [performanceId]);
 
   const selectedSeatIds = useMemo(
     () => seatIdsInput.split(',').map((value) => value.trim()).filter(Boolean),
     [seatIdsInput]
   );
+  const selectedPerformance = performances.find((performance) => performance.id === performanceId);
+  const selectedPerformanceArchived = Boolean(selectedPerformance?.isArchived);
 
   const submitMutation = async (event: FormEvent, mode: 'block' | 'unblock') => {
     event.preventDefault();
     setError(null);
+
+    if (selectedPerformanceArchived) {
+      setError('Archived performances are read-only.');
+      return;
+    }
 
     if (!performanceId || selectedSeatIds.length === 0) {
       setError('Choose a performance and provide one or more seat IDs.');
@@ -81,6 +129,10 @@ export default function AdminSeatsPage() {
     }
   ) => {
     if (!performanceId) return;
+    if (selectedPerformanceArchived) {
+      setError('Archived performances are read-only.');
+      return;
+    }
 
     setError(null);
     try {
@@ -118,13 +170,20 @@ export default function AdminSeatsPage() {
       </div>
 
       <form className="border border-stone-200 rounded-2xl p-4 mb-6 space-y-3">
-        <select value={performanceId} onChange={(event) => setPerformanceId(event.target.value)} className="w-full border border-stone-300 rounded-xl px-3 py-2">
-          {performances.map((performance) => (
-            <option key={performance.id} value={performance.id}>
-              {performance.title} - {new Date(performance.startsAt).toLocaleString()}
-            </option>
-          ))}
-        </select>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <select value={scope} onChange={(event) => setScope(event.target.value as 'active' | 'archived' | 'all')} className="border border-stone-300 rounded-xl px-3 py-2">
+            <option value="active">Active</option>
+            <option value="archived">Archived</option>
+            <option value="all">All</option>
+          </select>
+          <select value={performanceId} onChange={(event) => setPerformanceId(event.target.value)} className="border border-stone-300 rounded-xl px-3 py-2">
+            {performances.map((performance) => (
+              <option key={performance.id} value={performance.id}>
+                {performance.title} - {new Date(performance.startsAt).toLocaleString()} {performance.isArchived ? '(Archived)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
 
         <input
           value={seatIdsInput}
@@ -134,11 +193,12 @@ export default function AdminSeatsPage() {
         />
 
         {error && <div className="text-red-600 text-sm">{error}</div>}
+        {selectedPerformanceArchived ? <div className="text-amber-700 text-sm">Archived performance selected. Seat edits are disabled.</div> : null}
 
         <div className="flex gap-2">
-          <button onClick={(event) => submitMutation(event, 'block')} className="bg-red-600 text-white px-4 py-2 rounded-lg font-bold">Block Seats</button>
-          <button onClick={(event) => submitMutation(event, 'unblock')} className="bg-stone-900 text-white px-4 py-2 rounded-lg font-bold">Unblock Seats</button>
-          <button type="button" onClick={loadSeats} className="border border-stone-300 px-4 py-2 rounded-lg">Refresh</button>
+          <button onClick={(event) => submitMutation(event, 'block')} disabled={selectedPerformanceArchived} className="bg-red-600 disabled:bg-red-300 text-white px-4 py-2 rounded-lg font-bold">Block Seats</button>
+          <button onClick={(event) => submitMutation(event, 'unblock')} disabled={selectedPerformanceArchived} className="bg-stone-900 disabled:bg-stone-400 text-white px-4 py-2 rounded-lg font-bold">Unblock Seats</button>
+          <button type="button" onClick={() => void loadSeats()} className="border border-stone-300 px-4 py-2 rounded-lg">Refresh</button>
         </div>
       </form>
 
@@ -168,6 +228,7 @@ export default function AdminSeatsPage() {
                       <input
                         type="checkbox"
                         checked={Boolean(seat.isAccessible)}
+                        disabled={selectedPerformanceArchived}
                         onChange={(event) => updateSeatFlags(seat.id, { isAccessible: event.target.checked })}
                       />
                       Accessible
@@ -176,6 +237,7 @@ export default function AdminSeatsPage() {
                       <input
                         type="checkbox"
                         checked={Boolean(seat.isCompanion)}
+                        disabled={selectedPerformanceArchived}
                         onChange={(event) =>
                           updateSeatFlags(seat.id, {
                             isCompanion: event.target.checked,
@@ -188,6 +250,7 @@ export default function AdminSeatsPage() {
                     {seat.isCompanion && (
                       <select
                         value={seat.companionForSeatId || ''}
+                        disabled={selectedPerformanceArchived}
                         onChange={(event) =>
                           updateSeatFlags(seat.id, { companionForSeatId: event.target.value || null, isCompanion: true })
                         }

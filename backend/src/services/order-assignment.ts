@@ -97,8 +97,8 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
   const enforceSalesCutoff = params.enforceSalesCutoff ?? false;
 
   const order = await prisma.$transaction(async (tx) => {
-    const performance = await tx.performance.findUnique({
-      where: { id: params.performanceId },
+    const performance = await tx.performance.findFirst({
+      where: { id: params.performanceId, isArchived: false },
       include: {
         show: true,
         seats: {

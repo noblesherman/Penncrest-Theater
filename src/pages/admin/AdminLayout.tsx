@@ -5,6 +5,7 @@ import { useAdminGuard } from './useAdminGuard';
 const links = [
   { to: '/admin/dashboard', label: 'Dashboard' },
   { to: '/admin/performances', label: 'Performances' },
+  { to: '/admin/archive', label: 'Archive' },
   { to: '/admin/seats', label: 'Seats' },
   { to: '/admin/orders', label: 'Orders' },
   { to: '/admin/roster', label: 'Roster' },

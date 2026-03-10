@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { handleRouteError } from '../lib/route-error.js';
 import { logAudit } from '../lib/audit-log.js';
+import { HttpError } from '../lib/http-error.js';
 
 const mutateSeatsSchema = z.object({
   performanceId: z.string().min(1),
@@ -49,8 +50,67 @@ async function closeEmptyHolds(holdIds: string[]): Promise<void> {
   });
 }
 
+function toSeatStatus(status: string): 'available' | 'held' | 'sold' | 'blocked' {
+  return status.toLowerCase() as 'available' | 'held' | 'sold' | 'blocked';
+}
+
+async function assertPerformanceEditable(performanceId: string): Promise<void> {
+  const performance = await prisma.performance.findUnique({
+    where: { id: performanceId },
+    select: {
+      id: true,
+      isArchived: true
+    }
+  });
+
+  if (!performance) {
+    throw new HttpError(404, 'Performance not found');
+  }
+
+  if (performance.isArchived) {
+    throw new HttpError(409, 'Archived performances are read-only');
+  }
+}
+
 export const adminSeatRoutes: FastifyPluginAsync = async (app) => {
   const adminActor = (request: { user: { username?: string } }) => request.user.username || 'admin';
+
+  app.get('/api/admin/performances/:performanceId/seats', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+    const params = request.params as { performanceId: string };
+
+    try {
+      const performance = await prisma.performance.findUnique({
+        where: { id: params.performanceId },
+        select: { id: true }
+      });
+      if (!performance) {
+        throw new HttpError(404, 'Performance not found');
+      }
+
+      const seats = await prisma.seat.findMany({
+        where: { performanceId: params.performanceId },
+        orderBy: [{ sectionName: 'asc' }, { row: 'asc' }, { number: 'asc' }]
+      });
+
+      reply.send(
+        seats.map((seat) => ({
+          id: seat.id,
+          row: seat.row,
+          number: seat.number,
+          x: seat.x,
+          y: seat.y,
+          status: toSeatStatus(seat.status),
+          isAccessible: seat.isAccessible,
+          isCompanion: seat.isCompanion,
+          companionForSeatId: seat.companionForSeatId,
+          sectionName: seat.sectionName,
+          price: seat.price
+        }))
+      );
+    } catch (err) {
+      handleRouteError(reply, err, 'Failed to fetch seats');
+    }
+  });
 
   app.post('/api/admin/seats/block', { preHandler: app.authenticateAdmin }, async (request, reply) => {
     const parsed = mutateSeatsSchema.safeParse(request.body);
@@ -61,6 +121,8 @@ export const adminSeatRoutes: FastifyPluginAsync = async (app) => {
     const { performanceId, seatIds } = parsed.data;
 
     try {
+      await assertPerformanceEditable(performanceId);
+
       const holdIds = await prisma.seat.findMany({
         where: {
           id: { in: seatIds },
@@ -115,6 +177,8 @@ export const adminSeatRoutes: FastifyPluginAsync = async (app) => {
     const { performanceId, seatIds } = parsed.data;
 
     try {
+      await assertPerformanceEditable(performanceId);
+
       await prisma.seat.updateMany({
         where: {
           id: { in: seatIds },
@@ -149,6 +213,8 @@ export const adminSeatRoutes: FastifyPluginAsync = async (app) => {
     const { performanceId, seatId, isAccessible, isCompanion, companionForSeatId } = parsed.data;
 
     try {
+      await assertPerformanceEditable(performanceId);
+
       if (companionForSeatId) {
         const targetAccessible = await prisma.seat.findFirst({
           where: {

@@ -197,12 +197,18 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.get('/api/admin/staff/redemptions', { preHandler: app.authenticateAdmin }, async (request, reply) => {
-    const query = request.query as {
-      performanceId?: string;
-      userId?: string;
-      page?: string;
-      pageSize?: string;
-    };
+    const querySchema = z.object({
+      performanceId: z.string().optional(),
+      userId: z.string().optional(),
+      page: z.string().optional(),
+      pageSize: z.string().optional(),
+      scope: z.enum(['active', 'archived', 'all']).default('active')
+    });
+    const parsedQuery = querySchema.safeParse(request.query || {});
+    if (!parsedQuery.success) {
+      return reply.status(400).send({ error: parsedQuery.error.flatten() });
+    }
+    const query = parsedQuery.data;
 
     const page = Math.max(Number(query.page || '1'), 1);
     const pageSize = Math.min(Math.max(Number(query.pageSize || '50'), 1), 200);
@@ -210,7 +216,14 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
     try {
       const where = {
         performanceId: query.performanceId || undefined,
-        userId: query.userId || undefined
+        userId: query.userId || undefined,
+        ...(query.scope !== 'all'
+          ? {
+              performance: {
+                isArchived: query.scope === 'archived'
+              }
+            }
+          : {})
       };
 
       const [rows, total] = await Promise.all([

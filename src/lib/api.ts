@@ -8,12 +8,16 @@ export function apiUrl(path: string): string {
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const hasBody = init?.body !== undefined && init.body !== null;
+  const isFormDataBody = typeof FormData !== 'undefined' && init?.body instanceof FormData;
+  const headers = new Headers(init?.headers);
+  if (hasBody && !isFormDataBody && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
   const response = await fetch(apiUrl(path), {
     ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers || {})
-    }
+    headers
   });
 
   const contentType = response.headers.get('content-type') || '';

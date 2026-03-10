@@ -1,8 +1,11 @@
 import { FastifyPluginAsync } from 'fastify';
+import Stripe from 'stripe';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
+import { stripe } from '../lib/stripe.js';
 import { handleRouteError } from '../lib/route-error.js';
 import { HttpError } from '../lib/http-error.js';
+import { finalizeCheckoutSession } from '../services/stripe-checkout-finalization.js';
 
 const lookupSchema = z.object({
   orderId: z.string().min(1),
@@ -67,11 +70,24 @@ function serializeOrder(order: any) {
 }
 
 export const orderRoutes: FastifyPluginAsync = async (app) => {
+  const reconcilePendingStripeOrder = async (order: { status: string; stripeSessionId: string | null }) => {
+    if (order.status !== 'PENDING' || !order.stripeSessionId) return;
+
+    try {
+      const session = await stripe.checkout.sessions.retrieve(order.stripeSessionId);
+      if (session.status === 'complete' && session.payment_status === 'paid') {
+        await finalizeCheckoutSession(session as Stripe.Checkout.Session);
+      }
+    } catch (err) {
+      app.log.warn(err, `Order reconciliation failed for stripe session ${order.stripeSessionId}`);
+    }
+  };
+
   app.get('/api/orders/:orderId', async (request, reply) => {
     const params = request.params as { orderId: string };
 
     try {
-      const order = await prisma.order.findUnique({
+      let order = await prisma.order.findUnique({
         where: { id: params.orderId },
         include: {
           performance: { include: { show: true } },
@@ -79,6 +95,23 @@ export const orderRoutes: FastifyPluginAsync = async (app) => {
           tickets: true
         }
       });
+
+      if (!order) {
+        throw new HttpError(404, 'Order not found');
+      }
+
+      await reconcilePendingStripeOrder(order);
+
+      if (order.status === 'PENDING' && order.stripeSessionId) {
+        order = await prisma.order.findUnique({
+          where: { id: params.orderId },
+          include: {
+            performance: { include: { show: true } },
+            orderSeats: { include: { seat: true } },
+            tickets: true
+          }
+        });
+      }
 
       if (!order) {
         throw new HttpError(404, 'Order not found');
@@ -97,7 +130,7 @@ export const orderRoutes: FastifyPluginAsync = async (app) => {
     }
 
     try {
-      const order = await prisma.order.findFirst({
+      let order = await prisma.order.findFirst({
         where: {
           id: parsed.data.orderId,
           email: parsed.data.email.toLowerCase()
@@ -108,6 +141,26 @@ export const orderRoutes: FastifyPluginAsync = async (app) => {
           tickets: true
         }
       });
+
+      if (!order) {
+        throw new HttpError(404, 'Order not found');
+      }
+
+      await reconcilePendingStripeOrder(order);
+
+      if (order.status === 'PENDING' && order.stripeSessionId) {
+        order = await prisma.order.findFirst({
+          where: {
+            id: parsed.data.orderId,
+            email: parsed.data.email.toLowerCase()
+          },
+          include: {
+            performance: { include: { show: true } },
+            orderSeats: { include: { seat: true } },
+            tickets: true
+          }
+        });
+      }
 
       if (!order) {
         throw new HttpError(404, 'Order not found');

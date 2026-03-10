@@ -14,6 +14,7 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
       await releaseExpiredHolds();
 
       const performances = await prisma.performance.findMany({
+        where: { isArchived: false },
         orderBy: { startsAt: 'asc' },
         include: {
           show: true,
@@ -70,8 +71,8 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
     try {
       await releaseExpiredHolds();
 
-      const performance = await prisma.performance.findUnique({
-        where: { id: params.id },
+      const performance = await prisma.performance.findFirst({
+        where: { id: params.id, isArchived: false },
         include: {
           show: true,
           pricingTiers: true,
@@ -151,6 +152,14 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
 
     try {
       await releaseExpiredHolds();
+
+      const performance = await prisma.performance.findFirst({
+        where: { id: params.performanceId, isArchived: false },
+        select: { id: true }
+      });
+      if (!performance) {
+        throw new HttpError(404, 'Performance not found');
+      }
 
       const seats = await prisma.seat.findMany({
         where: { performanceId: params.performanceId },

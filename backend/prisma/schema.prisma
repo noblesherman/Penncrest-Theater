@@ -129,6 +129,8 @@ model Performance {
   title         String?
   startsAt      DateTime
   salesCutoffAt DateTime?
+  isArchived    Boolean       @default(false)
+  archivedAt    DateTime?
   staffTicketLimit Int       @default(2)
   staffCompsEnabled Boolean  @default(true)
   staffCompLimitPerUser Int  @default(1)
@@ -147,6 +149,7 @@ model Performance {
 
   @@index([showId])
   @@index([startsAt])
+  @@index([isArchived, startsAt])
 }
 
 model PricingTier {

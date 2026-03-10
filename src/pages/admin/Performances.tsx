@@ -13,6 +13,7 @@ type Performance = {
   venue: string;
   seatsTotal: number;
   seatsSold: number;
+  paidOrders: number;
   pricingTiers: Array<{ id: string; name: string; priceCents: number }>;
 };
 
@@ -115,9 +116,44 @@ export default function AdminPerformancesPage() {
     }
   };
 
+  const startEditing = (item: Performance) => {
+    setEditingId(item.id);
+    setForm({
+      title: item.title,
+      startsAt: item.startsAt.slice(0, 16),
+      salesCutoffAt: item.salesCutoffAt ? item.salesCutoffAt.slice(0, 16) : '',
+      staffCompsEnabled: item.staffCompsEnabled,
+      staffCompLimitPerUser: item.staffCompLimitPerUser || 1,
+      staffTicketLimit: item.staffTicketLimit || 2,
+      familyFreeTicketEnabled: item.familyFreeTicketEnabled || false,
+      venue: item.venue,
+      notes: '',
+      tiersText: item.pricingTiers.map((tier) => `${tier.name}:${tier.priceCents}`).join('\n')
+    });
+  };
+
+  const archivePerformance = async (item: Performance) => {
+    if (!confirm(`Archive "${item.title}"? It will be hidden from public sales but all order and seat data will be kept.`)) {
+      return;
+    }
+
+    try {
+      setError(null);
+      await adminFetch(`/api/admin/performances/${item.id}/archive`, { method: 'POST' });
+      if (editingId === item.id) {
+        setEditingId(null);
+        setForm(initialForm);
+      }
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to archive performance');
+    }
+  };
+
   return (
     <div>
       <h1 className="text-2xl font-black text-stone-900 mb-5">Performances</h1>
+      <p className="text-sm text-stone-600 mb-5">Archived performances are managed in the Archive tab.</p>
 
       <form onSubmit={submit} className="border border-stone-200 rounded-2xl p-4 mb-6 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -185,7 +221,8 @@ export default function AdminPerformancesPage() {
         </div>
       </form>
 
-      <div className="space-y-3">
+      <section className="space-y-3">
+        {items.length === 0 ? <div className="text-sm text-stone-500">No active performances.</div> : null}
         {items.map((item) => (
           <div key={item.id} className="border border-stone-200 rounded-xl p-3 flex justify-between gap-4">
             <div>
@@ -201,42 +238,27 @@ export default function AdminPerformancesPage() {
               </div>
               <div className="text-xs text-stone-500">{item.seatsSold}/{item.seatsTotal} sold</div>
               <div className="text-xs text-stone-500">Tiers: {item.pricingTiers.map((tier) => `${tier.name} $${(tier.priceCents / 100).toFixed(2)}`).join(', ')}</div>
+              <div className="text-xs text-stone-500">Paid orders: {item.paidOrders}</div>
             </div>
             <div className="flex items-center gap-2">
               <button
                 className="text-sm px-3 py-1 rounded-md border border-stone-300"
-                onClick={() => {
-                  setEditingId(item.id);
-                  setForm({
-                    title: item.title,
-                    startsAt: item.startsAt.slice(0, 16),
-                    salesCutoffAt: item.salesCutoffAt ? item.salesCutoffAt.slice(0, 16) : '',
-                    staffCompsEnabled: item.staffCompsEnabled,
-                    staffCompLimitPerUser: item.staffCompLimitPerUser || 1,
-                    staffTicketLimit: item.staffTicketLimit || 2,
-                    familyFreeTicketEnabled: item.familyFreeTicketEnabled || false,
-                    venue: item.venue,
-                    notes: '',
-                    tiersText: item.pricingTiers.map((tier) => `${tier.name}:${tier.priceCents}`).join('\n')
-                  });
-                }}
+                onClick={() => startEditing(item)}
               >
                 Edit
               </button>
               <button
-                className="text-sm px-3 py-1 rounded-md border border-red-300 text-red-600"
-                onClick={async () => {
-                  if (!confirm('Delete this performance?')) return;
-                  await adminFetch(`/api/admin/performances/${item.id}`, { method: 'DELETE' });
-                  load();
+                className="text-sm px-3 py-1 rounded-md border border-amber-300 text-amber-700"
+                onClick={() => {
+                  void archivePerformance(item);
                 }}
               >
-                Delete
+                Archive
               </button>
             </div>
           </div>
         ))}
-      </div>
+      </section>
     </div>
   );
 }

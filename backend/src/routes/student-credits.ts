@@ -7,21 +7,18 @@ import { handleRouteError } from '../lib/route-error.js';
 import { logAudit } from '../lib/audit-log.js';
 import {
   finalizeStudentCreditForOrderTx,
-  generateStudentVerificationCode,
-  getStudentCreditEligibilityByCode,
-  issueUniqueStudentVerificationCode,
+  getStudentCreditEligibilityBySchoolEmail,
   manualRedeemStudentCredit,
   manualRestoreStudentCredit,
-  normalizeStudentVerificationCode,
+  normalizeStudentSchoolEmail,
   studentCreditRemainingTickets
 } from '../services/student-ticket-credit-service.js';
 
 const createStudentCreditSchema = z.object({
   studentId: z.string().min(1).max(120).optional(),
   studentName: z.string().min(1).max(120),
-  studentEmail: z.string().email().optional().nullable(),
+  studentEmail: z.string().email(),
   roleName: z.string().max(120).optional().nullable(),
-  verificationCode: z.string().min(4).max(64).optional().nullable(),
   allocatedTickets: z.number().int().min(0).max(50).optional(),
   isActive: z.boolean().optional(),
   notes: z.string().max(600).optional().nullable()
@@ -30,9 +27,8 @@ const createStudentCreditSchema = z.object({
 const updateStudentCreditSchema = z.object({
   studentId: z.string().min(1).max(120).optional().nullable(),
   studentName: z.string().min(1).max(120).optional(),
-  studentEmail: z.string().email().optional().nullable(),
+  studentEmail: z.string().email().optional(),
   roleName: z.string().max(120).optional().nullable(),
-  verificationCode: z.string().min(4).max(64).optional().nullable(),
   allocatedTickets: z.number().int().min(0).max(50).optional(),
   isActive: z.boolean().optional(),
   notes: z.string().max(600).optional().nullable()
@@ -52,8 +48,8 @@ const validateStudentCreditSchema = z.object({
   performanceId: z.string().min(1),
   seatIds: z.array(z.string().min(1)).min(1).max(50),
   verification: z.object({
-    method: z.enum(['code', 'school_login']).default('code'),
-    code: z.string().min(4).max(64).optional()
+    method: z.enum(['school_email']).default('school_email'),
+    schoolEmail: z.string().email()
   })
 });
 
@@ -69,8 +65,8 @@ const quoteStudentCreditSchema = z.object({
     )
     .optional(),
   verification: z.object({
-    method: z.enum(['code', 'school_login']).default('code'),
-    code: z.string().min(4).max(64).optional()
+    method: z.enum(['school_email']).default('school_email'),
+    schoolEmail: z.string().email()
   })
 });
 
@@ -126,9 +122,17 @@ function parseCsvLine(line: string): string[] {
   return cells;
 }
 
+function normalizeCsvHeader(value: string): string {
+  return value
+    .replace(/^\uFEFF/, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
 function parseStudentCreditCsv(csvText: string): Array<{
   studentName: string;
-  studentEmail: string | null;
+  studentEmail: string;
   roleName: string | null;
   allocatedTickets: number;
 }> {
@@ -141,44 +145,84 @@ function parseStudentCreditCsv(csvText: string): Array<{
     return [];
   }
 
-  const headers = parseCsvLine(lines[0]).map((header) => header.toLowerCase());
-  const nameIndex = headers.indexOf('studentname');
-  const emailIndex = headers.indexOf('studentemail');
-  const roleIndex = headers.indexOf('rolename');
-  const allocatedIndex = headers.indexOf('allocatedtickets');
+  const firstRow = parseCsvLine(lines[0]);
+  const normalizedHeaders = firstRow.map(normalizeCsvHeader);
+  const knownHeaders = new Set(['studentname', 'studentemail', 'rolename', 'allocatedtickets']);
+  const hasHeaderRow = normalizedHeaders.some((header) => knownHeaders.has(header));
 
-  if (nameIndex < 0) {
-    throw new HttpError(400, 'CSV must include studentName column');
+  const nameIndex = hasHeaderRow ? normalizedHeaders.indexOf('studentname') : 0;
+  const emailIndex = hasHeaderRow ? normalizedHeaders.indexOf('studentemail') : 1;
+  const roleIndex = hasHeaderRow ? normalizedHeaders.indexOf('rolename') : 2;
+  const allocatedIndex = hasHeaderRow ? normalizedHeaders.indexOf('allocatedtickets') : 3;
+
+  if (hasHeaderRow && (nameIndex < 0 || emailIndex < 0)) {
+    throw new HttpError(
+      400,
+      'CSV must include studentName column in the header row. Expected columns: studentName, studentEmail, roleName, allocatedTickets'
+    );
   }
 
   const rows: Array<{
     studentName: string;
-    studentEmail: string | null;
+    studentEmail: string;
     roleName: string | null;
     allocatedTickets: number;
   }> = [];
 
-  for (let i = 1; i < lines.length; i += 1) {
+  for (let i = hasHeaderRow ? 1 : 0; i < lines.length; i += 1) {
     const columns = parseCsvLine(lines[i]);
     const studentName = (columns[nameIndex] || '').trim();
     if (!studentName) {
       continue;
     }
 
-    const studentEmailRaw = emailIndex >= 0 ? (columns[emailIndex] || '').trim().toLowerCase() : '';
+    const studentEmailRaw = emailIndex >= 0 ? (columns[emailIndex] || '').trim() : '';
+    if (!studentEmailRaw) {
+      throw new HttpError(400, `Missing studentEmail for row ${i + 1}`);
+    }
+    const studentEmail = normalizeStudentSchoolEmail(studentEmailRaw);
+    if (!z.string().email().safeParse(studentEmail).success) {
+      throw new HttpError(400, `Invalid studentEmail for row ${i + 1}`);
+    }
     const roleNameRaw = roleIndex >= 0 ? (columns[roleIndex] || '').trim() : '';
     const allocatedRaw = allocatedIndex >= 0 ? (columns[allocatedIndex] || '').trim() : '';
     const allocatedParsed = Number(allocatedRaw);
 
     rows.push({
       studentName,
-      studentEmail: studentEmailRaw || null,
+      studentEmail,
       roleName: roleNameRaw || null,
       allocatedTickets: Number.isFinite(allocatedParsed) && allocatedParsed > 0 ? Math.floor(allocatedParsed) : 2
     });
   }
 
   return rows;
+}
+
+async function assertUniqueStudentEmailForShowTx(
+  tx: Prisma.TransactionClient,
+  showId: string,
+  studentEmail: string,
+  excludeId?: string
+): Promise<void> {
+  const existing = await tx.studentTicketCredit.findFirst({
+    where: {
+      showId,
+      studentEmail,
+      ...(excludeId ? { id: { not: excludeId } } : {})
+    },
+    select: {
+      id: true,
+      studentName: true
+    }
+  });
+
+  if (existing) {
+    throw new HttpError(
+      409,
+      `School email ${studentEmail} is already assigned to ${existing.studentName}. Update the existing record instead.`
+    );
+  }
 }
 
 function naturalSeatSort(
@@ -208,8 +252,8 @@ async function buildSeatAssignmentsForQuote(params: {
 }): Promise<{ performance: { showId: string }; assignments: SeatAssignment[] }> {
   const uniqueSeatIds = [...new Set(params.seatIds)];
   const [performance, seats] = await Promise.all([
-    prisma.performance.findUnique({
-      where: { id: params.performanceId },
+    prisma.performance.findFirst({
+      where: { id: params.performanceId, isArchived: false },
       select: {
         id: true,
         showId: true,
@@ -301,8 +345,7 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
             ? [
                 { studentName: { contains: q, mode: 'insensitive' } },
                 { studentEmail: { contains: q, mode: 'insensitive' } },
-                { roleName: { contains: q, mode: 'insensitive' } },
-                { verificationCode: { contains: q, mode: 'insensitive' } }
+                { roleName: { contains: q, mode: 'insensitive' } }
               ]
             : undefined
         },
@@ -326,7 +369,6 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
           studentName: row.studentName,
           studentEmail: row.studentEmail,
           roleName: row.roleName,
-          verificationCode: row.verificationCode,
           allocatedTickets: row.allocatedTickets,
           usedTickets: row.usedTickets,
           remainingTickets: studentCreditRemainingTickets(row),
@@ -357,18 +399,16 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
           throw new HttpError(404, 'Show not found');
         }
 
-        const verificationCode = parsed.data.verificationCode
-          ? normalizeStudentVerificationCode(parsed.data.verificationCode)
-          : await issueUniqueStudentVerificationCode(tx);
+        const normalizedStudentEmail = normalizeStudentSchoolEmail(parsed.data.studentEmail);
+        await assertUniqueStudentEmailForShowTx(tx, params.showId, normalizedStudentEmail);
 
         return tx.studentTicketCredit.create({
           data: {
             showId: params.showId,
             studentId: parsed.data.studentId,
             studentName: parsed.data.studentName.trim(),
-            studentEmail: parsed.data.studentEmail?.trim().toLowerCase() || null,
+            studentEmail: normalizedStudentEmail,
             roleName: parsed.data.roleName?.trim() || null,
-            verificationCode,
             allocatedTickets: parsed.data.allocatedTickets ?? 2,
             isActive: parsed.data.isActive ?? true,
             notes: parsed.data.notes?.trim() || null
@@ -389,10 +429,7 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
         }
       });
 
-      reply.status(201).send({
-        id: created.id,
-        verificationCode: created.verificationCode
-      });
+      reply.status(201).send({ id: created.id });
     } catch (err) {
       handleRouteError(reply, err, 'Failed to create student credit');
     }
@@ -419,7 +456,7 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
 
         const createdIds: string[] = [];
         for (const row of rows) {
-          const verificationCode = await issueUniqueStudentVerificationCode(tx);
+          await assertUniqueStudentEmailForShowTx(tx, params.showId, row.studentEmail);
           const created = await tx.studentTicketCredit.create({
             data: {
               showId: params.showId,
@@ -427,7 +464,6 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
               studentEmail: row.studentEmail,
               roleName: row.roleName,
               allocatedTickets: row.allocatedTickets,
-              verificationCode,
               isActive: true
             },
             select: { id: true }
@@ -482,12 +518,11 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
           );
         }
 
-        const verificationCode =
-          parsed.data.verificationCode === undefined
-            ? undefined
-            : parsed.data.verificationCode
-              ? normalizeStudentVerificationCode(parsed.data.verificationCode)
-              : null;
+        const normalizedStudentEmail =
+          parsed.data.studentEmail === undefined ? undefined : normalizeStudentSchoolEmail(parsed.data.studentEmail);
+        if (normalizedStudentEmail !== undefined && normalizedStudentEmail !== existing.studentEmail) {
+          await assertUniqueStudentEmailForShowTx(tx, existing.showId, normalizedStudentEmail, existing.id);
+        }
 
         const next = await tx.studentTicketCredit.update({
           where: { id: existing.id },
@@ -499,19 +534,13 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
                   ? null
                   : parsed.data.studentId.trim(),
             studentName: parsed.data.studentName?.trim(),
-            studentEmail:
-              parsed.data.studentEmail === undefined
-                ? undefined
-                : parsed.data.studentEmail
-                  ? parsed.data.studentEmail.trim().toLowerCase()
-                  : null,
+            studentEmail: normalizedStudentEmail,
             roleName:
               parsed.data.roleName === undefined
                 ? undefined
                 : parsed.data.roleName
                   ? parsed.data.roleName.trim()
                   : null,
-            verificationCode,
             allocatedTickets: parsed.data.allocatedTickets,
             isActive: parsed.data.isActive,
             notes:
@@ -554,57 +583,16 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send({
         id: updated.id,
+        studentEmail: updated.studentEmail,
         allocatedTickets: updated.allocatedTickets,
         usedTickets: updated.usedTickets,
         remainingTickets: studentCreditRemainingTickets(updated),
-        isActive: updated.isActive,
-        verificationCode: updated.verificationCode
+        isActive: updated.isActive
       });
     } catch (err) {
       handleRouteError(reply, err, 'Failed to update student credit record');
     }
   });
-
-  app.post(
-    '/api/admin/student-credits/:id/regenerate-code',
-    { preHandler: app.authenticateAdmin },
-    async (request, reply) => {
-      const params = request.params as { id: string };
-
-      try {
-        const updated = await prisma.$transaction(async (tx) => {
-          const existing = await tx.studentTicketCredit.findUnique({ where: { id: params.id }, select: { id: true } });
-          if (!existing) {
-            throw new HttpError(404, 'Student credit record not found');
-          }
-
-          const newCode = await issueUniqueStudentVerificationCode(tx);
-          return tx.studentTicketCredit.update({
-            where: { id: params.id },
-            data: {
-              verificationCode: newCode
-            },
-            select: {
-              id: true,
-              verificationCode: true
-            }
-          });
-        });
-
-        await logAudit({
-          actor: adminActor(request as AdminRequestUser),
-          actorAdminId: adminActor(request as AdminRequestUser),
-          action: 'STUDENT_CREDIT_CODE_REGENERATED',
-          entityType: 'StudentTicketCredit',
-          entityId: updated.id
-        });
-
-        reply.send(updated);
-      } catch (err) {
-        handleRouteError(reply, err, 'Failed to regenerate verification code');
-      }
-    }
-  );
 
   app.get('/api/admin/student-credits/:id/transactions', { preHandler: app.authenticateAdmin }, async (request, reply) => {
     const params = request.params as { id: string };
@@ -747,14 +735,10 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: parsed.error.flatten() });
     }
 
-    if (parsed.data.verification.method !== 'code') {
-      return reply.status(400).send({ error: 'School login verification is not enabled yet. Use verification code.' });
-    }
-
     try {
-      const eligibility = await getStudentCreditEligibilityByCode({
+      const eligibility = await getStudentCreditEligibilityBySchoolEmail({
         performanceId: parsed.data.performanceId,
-        verificationCode: parsed.data.verification.code || '',
+        schoolEmail: parsed.data.verification.schoolEmail,
         requestedSeatCount: parsed.data.seatIds.length
       });
 
@@ -770,10 +754,6 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: parsed.error.flatten() });
     }
 
-    if (parsed.data.verification.method !== 'code') {
-      return reply.status(400).send({ error: 'School login verification is not enabled yet. Use verification code.' });
-    }
-
     try {
       const { assignments } = await buildSeatAssignmentsForQuote({
         performanceId: parsed.data.performanceId,
@@ -781,9 +761,9 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
         ticketSelections: parsed.data.ticketSelections
       });
 
-      const eligibility = await getStudentCreditEligibilityByCode({
+      const eligibility = await getStudentCreditEligibilityBySchoolEmail({
         performanceId: parsed.data.performanceId,
-        verificationCode: parsed.data.verification.code || '',
+        schoolEmail: parsed.data.verification.schoolEmail,
         requestedSeatCount: assignments.length
       });
 

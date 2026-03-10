@@ -29,18 +29,29 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
   const adminActor = (request: { user: { username?: string } }) => request.user.username || 'admin';
 
   app.get('/api/admin/orders', { preHandler: app.authenticateAdmin }, async (request, reply) => {
-    const query = request.query as {
-      q?: string;
-      status?: string;
-      source?: string;
-      performanceId?: string;
-    };
+    const querySchema = z.object({
+      q: z.string().optional(),
+      status: z.string().optional(),
+      source: z.string().optional(),
+      performanceId: z.string().optional(),
+      scope: z.enum(['active', 'archived', 'all']).default('active')
+    });
+    const parsedQuery = querySchema.safeParse(request.query || {});
+    if (!parsedQuery.success) {
+      return reply.status(400).send({ error: parsedQuery.error.flatten() });
+    }
+    const query = parsedQuery.data;
 
     try {
       const where: any = {};
       if (query.status) where.status = query.status;
       if (query.source) where.source = query.source;
       if (query.performanceId) where.performanceId = query.performanceId;
+      if (query.scope !== 'all') {
+        where.performance = {
+          isArchived: query.scope === 'archived'
+        };
+      }
       if (query.q) {
         where.OR = [
           { id: { contains: query.q, mode: 'insensitive' } },

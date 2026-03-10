@@ -61,6 +61,7 @@ export default function AdminStaffCompsPage() {
   const [count, setCount] = useState(1);
   const [expiresInMinutes, setExpiresInMinutes] = useState(60 * 24 * 7);
   const [generatedCodes, setGeneratedCodes] = useState<Array<{ id: string; code: string; expiresAt: string }>>([]);
+  const [scope, setScope] = useState<'active' | 'archived' | 'all'>('active');
   const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
@@ -68,7 +69,7 @@ export default function AdminStaffCompsPage() {
       const [userRows, codeRows, redemptionRows] = await Promise.all([
         adminFetch<AdminUser[]>('/api/admin/staff/users?verified=true&limit=200'),
         adminFetch<{ rows: RedeemCodeRow[] }>('/api/admin/staff/redeem-codes?status=active&page=1&pageSize=50'),
-        adminFetch<{ rows: RedemptionRow[] }>('/api/admin/staff/redemptions?page=1&pageSize=100')
+        adminFetch<{ rows: RedemptionRow[] }>(`/api/admin/staff/redemptions?page=1&pageSize=100&scope=${scope}`)
       ]);
 
       setUsers(userRows);
@@ -81,7 +82,7 @@ export default function AdminStaffCompsPage() {
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [scope]);
 
   const generateCodes = async (event: FormEvent) => {
     event.preventDefault();
@@ -121,6 +122,17 @@ export default function AdminStaffCompsPage() {
       <div>
         <h1 className="text-2xl font-black text-stone-900 mb-1">Staff Verification & Comps</h1>
         <p className="text-sm text-stone-600">Manage redeem codes, verified staff users, and comp redemptions.</p>
+        <div className="mt-2">
+          <select
+            value={scope}
+            onChange={(event) => setScope(event.target.value as 'active' | 'archived' | 'all')}
+            className="border border-stone-300 rounded-xl px-3 py-2 text-sm"
+          >
+            <option value="active">Active</option>
+            <option value="archived">Archived</option>
+            <option value="all">All</option>
+          </select>
+        </div>
       </div>
 
       <section className="border border-stone-200 rounded-2xl p-4">

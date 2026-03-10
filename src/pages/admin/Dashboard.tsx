@@ -17,16 +17,29 @@ type DashboardData = {
 
 export default function AdminDashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [scope, setScope] = useState<'active' | 'archived' | 'all'>('active');
 
   useEffect(() => {
-    adminFetch<DashboardData>('/api/admin/dashboard').then(setData).catch(console.error);
-  }, []);
+    setData(null);
+    adminFetch<DashboardData>(`/api/admin/dashboard?scope=${scope}`).then(setData).catch(console.error);
+  }, [scope]);
 
   if (!data) return <div>Loading dashboard...</div>;
 
   return (
     <div>
-      <h1 className="text-2xl font-black text-stone-900 mb-6">Dashboard</h1>
+      <div className="flex items-center justify-between gap-3 mb-6">
+        <h1 className="text-2xl font-black text-stone-900">Dashboard</h1>
+        <select
+          value={scope}
+          onChange={(event) => setScope(event.target.value as 'active' | 'archived' | 'all')}
+          className="border border-stone-300 rounded-xl px-3 py-2 text-sm"
+        >
+          <option value="active">Active</option>
+          <option value="archived">Archived</option>
+          <option value="all">All</option>
+        </select>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <Stat label="Sales Today" value={`$${(data.salesToday / 100).toFixed(2)}`} />
         <Stat label="Total Revenue" value={`$${(data.revenue / 100).toFixed(2)}`} />

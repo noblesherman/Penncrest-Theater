@@ -30,6 +30,14 @@ const createPerformanceSchema = z.object({
 });
 
 const updatePerformanceSchema = createPerformanceSchema.partial();
+const listPerformanceQuerySchema = z.object({
+  scope: z.enum(['active', 'archived', 'all']).default('active')
+});
+const deletePerformanceQuerySchema = z.object({
+  force: z
+    .union([z.literal('1'), z.literal('true'), z.literal('0'), z.literal('false')])
+    .optional()
+});
 
 function buildDefaultSeats(performanceId: string): Array<{
   performanceId: string;
@@ -75,14 +83,33 @@ function buildDefaultSeats(performanceId: string): Array<{
 export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
   const adminActor = (request: { user: { username?: string } }) => request.user.username || 'admin';
 
-  app.get('/api/admin/performances', { preHandler: app.authenticateAdmin }, async (_request, reply) => {
+  app.get('/api/admin/performances', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+    const parsed = listPerformanceQuerySchema.safeParse(request.query || {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+
+    const where =
+      parsed.data.scope === 'all'
+        ? undefined
+        : {
+            isArchived: parsed.data.scope === 'archived'
+          };
+
     try {
       const performances = await prisma.performance.findMany({
-        orderBy: { startsAt: 'asc' },
+        where,
+        orderBy: [{ isArchived: 'asc' }, { startsAt: 'desc' }],
         include: {
           show: true,
           pricingTiers: true,
-          seats: true
+          seats: true,
+          orders: {
+            select: {
+              status: true,
+              amountTotal: true
+            }
+          }
         }
       });
 
@@ -94,6 +121,8 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
           showTitle: performance.show.title,
           startsAt: performance.startsAt,
           salesCutoffAt: performance.salesCutoffAt,
+          isArchived: performance.isArchived,
+          archivedAt: performance.archivedAt,
           staffCompsEnabled: performance.staffCompsEnabled,
           staffCompLimitPerUser: performance.staffCompLimitPerUser,
           staffTicketLimit: performance.staffTicketLimit,
@@ -102,6 +131,11 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
           notes: performance.notes,
           seatsTotal: performance.seats.length,
           seatsSold: performance.seats.filter((seat) => seat.status === 'SOLD').length,
+          totalOrders: performance.orders.length,
+          paidOrders: performance.orders.filter((order) => order.status === 'PAID').length,
+          paidRevenueCents: performance.orders
+            .filter((order) => order.status === 'PAID')
+            .reduce((sum, order) => sum + order.amountTotal, 0),
           pricingTiers: performance.pricingTiers
         }))
       );
@@ -248,27 +282,136 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.delete('/api/admin/performances/:id', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.post('/api/admin/performances/:id/archive', { preHandler: app.authenticateAdmin }, async (request, reply) => {
     const params = request.params as { id: string };
 
     try {
-      const paidOrders = await prisma.order.count({
-        where: {
-          performanceId: params.id,
-          status: 'PAID'
-        }
+      const existing = await prisma.performance.findUnique({
+        where: { id: params.id },
+        select: { id: true }
       });
-      if (paidOrders > 0) {
-        throw new HttpError(400, 'Cannot delete a performance with paid orders');
+      if (!existing) {
+        throw new HttpError(404, 'Performance not found');
       }
 
-      await prisma.performance.delete({ where: { id: params.id } });
+      const updated = await prisma.performance.update({
+        where: { id: params.id },
+        data: {
+          isArchived: true,
+          archivedAt: new Date()
+        },
+        select: {
+          id: true,
+          isArchived: true,
+          archivedAt: true
+        }
+      });
+
+      await logAudit({
+        actor: adminActor(request),
+        action: 'PERFORMANCE_ARCHIVED',
+        entityType: 'Performance',
+        entityId: params.id
+      });
+
+      reply.send(updated);
+    } catch (err) {
+      handleRouteError(reply, err, 'Failed to archive performance');
+    }
+  });
+
+  app.post('/api/admin/performances/:id/restore', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+    const params = request.params as { id: string };
+
+    try {
+      const existing = await prisma.performance.findUnique({
+        where: { id: params.id },
+        select: { id: true }
+      });
+      if (!existing) {
+        throw new HttpError(404, 'Performance not found');
+      }
+
+      const updated = await prisma.performance.update({
+        where: { id: params.id },
+        data: {
+          isArchived: false,
+          archivedAt: null
+        },
+        select: {
+          id: true,
+          isArchived: true,
+          archivedAt: true
+        }
+      });
+
+      await logAudit({
+        actor: adminActor(request),
+        action: 'PERFORMANCE_RESTORED',
+        entityType: 'Performance',
+        entityId: params.id
+      });
+
+      reply.send(updated);
+    } catch (err) {
+      handleRouteError(reply, err, 'Failed to restore performance');
+    }
+  });
+
+  app.delete('/api/admin/performances/:id', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+    const params = request.params as { id: string };
+    const parsedQuery = deletePerformanceQuerySchema.safeParse(request.query || {});
+    if (!parsedQuery.success) {
+      return reply.status(400).send({ error: parsedQuery.error.flatten() });
+    }
+    const forceDelete = parsedQuery.data.force === '1' || parsedQuery.data.force === 'true';
+
+    try {
+      const deleteMeta = await prisma.$transaction(async (tx) => {
+        const performance = await tx.performance.findUnique({
+          where: { id: params.id },
+          select: { id: true, showId: true }
+        });
+        if (!performance) {
+          throw new HttpError(404, 'Performance not found');
+        }
+
+        const paidOrders = await tx.order.count({
+          where: {
+            performanceId: params.id,
+            status: 'PAID'
+          }
+        });
+        if (paidOrders > 0 && !forceDelete) {
+          throw new HttpError(
+            409,
+            `This performance has ${paidOrders} paid order(s). Confirm again to permanently delete it.`
+          );
+        }
+
+        const totalOrders = await tx.order.count({ where: { performanceId: params.id } });
+        if (totalOrders > 0) {
+          await tx.order.deleteMany({ where: { performanceId: params.id } });
+        }
+
+        await tx.performance.delete({ where: { id: params.id } });
+
+        return {
+          paidOrders,
+          totalOrders
+        };
+      });
 
       await logAudit({
         actor: adminActor(request),
         action: 'PERFORMANCE_DELETED',
         entityType: 'Performance',
-        entityId: params.id
+        entityId: params.id,
+        metadata: {
+          forceDelete,
+          paidOrdersDeleted: deleteMeta.paidOrders,
+          totalOrdersDeleted: deleteMeta.totalOrders
+        }
       });
 
       reply.send({ success: true });

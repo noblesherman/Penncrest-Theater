@@ -23,6 +23,7 @@ export default function AdminRosterPage() {
   const [performances, setPerformances] = useState<Performance[]>([]);
   const [performanceId, setPerformanceId] = useState('');
   const [query, setQuery] = useState('');
+  const [scope, setScope] = useState<'active' | 'archived' | 'all'>('active');
   const [rows, setRows] = useState<RosterRow[]>([]);
 
   useEffect(() => {
@@ -39,13 +40,14 @@ export default function AdminRosterPage() {
     const params = new URLSearchParams();
     if (performanceId) params.set('performanceId', performanceId);
     if (query.trim()) params.set('q', query.trim());
+    params.set('scope', scope);
 
     adminFetch<RosterRow[]>(`/api/admin/roster?${params.toString()}`).then(setRows).catch(console.error);
   };
 
   useEffect(() => {
     if (performanceId) load();
-  }, [performanceId]);
+  }, [performanceId, scope]);
 
   const onSearch = (event: FormEvent) => {
     event.preventDefault();
@@ -63,6 +65,15 @@ export default function AdminRosterPage() {
               {performance.title} - {new Date(performance.startsAt).toLocaleString()}
             </option>
           ))}
+        </select>
+        <select
+          value={scope}
+          onChange={(event) => setScope(event.target.value as 'active' | 'archived' | 'all')}
+          className="border border-stone-300 rounded-xl px-3 py-2"
+        >
+          <option value="active">Active</option>
+          <option value="archived">Archived</option>
+          <option value="all">All</option>
         </select>
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search attendee, buyer, email, order" className="flex-1 min-w-[200px] border border-stone-300 rounded-xl px-3 py-2" />
         <button className="bg-stone-900 text-white px-4 py-2 rounded-xl font-bold">Search</button>
