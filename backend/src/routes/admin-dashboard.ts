@@ -30,7 +30,7 @@ export const adminDashboardRoutes: FastifyPluginAsync = async (app) => {
       const dayEnd = new Date(now);
       dayEnd.setHours(23, 59, 59, 999);
 
-      const [salesToday, seatsSold, totalRevenue, grouped] = await Promise.all([
+      const [salesToday, seatsSold, totalRevenue, checkIns, grouped] = await Promise.all([
         prisma.order.aggregate({
           where: {
             ...orderScopeWhere,
@@ -54,6 +54,12 @@ export const adminDashboardRoutes: FastifyPluginAsync = async (app) => {
           where: { status: 'PAID', ...orderScopeWhere },
           _sum: { amountTotal: true }
         }),
+        prisma.ticket.count({
+          where: {
+            checkedInAt: { not: null },
+            ...(performanceScopeWhere ? { performance: performanceScopeWhere } : {})
+          }
+        }),
         prisma.order.groupBy({
           by: ['performanceId'],
           where: { status: 'PAID', ...orderScopeWhere },
@@ -76,7 +82,7 @@ export const adminDashboardRoutes: FastifyPluginAsync = async (app) => {
         salesToday: salesToday._sum.amountTotal || 0,
         seatsSold,
         revenue: totalRevenue._sum.amountTotal || 0,
-        checkIns: 0,
+        checkIns,
         salesByPerformance: grouped.map((row) => ({
           performanceId: row.performanceId,
           performanceTitle:

@@ -314,6 +314,107 @@ Response:
 ### `GET /api/admin/performances`
 Returns performance rows with tiers and seat counts.
 
+### `POST /api/admin/check-in/scan`
+Scans and validates one ticket for a selected performance, then marks it checked in.
+Request:
+```json
+{
+  "performanceId": "perf_123",
+  "scannedValue": "ticket_uuid.signature",
+  "gate": "Main Entrance"
+}
+```
+`scannedValue` can be:
+- QR payload (`ticketId.signature`)
+- Ticket page URL (`https://.../tickets/<publicId>`)
+- Public ticket id (`<publicId>`)
+
+Response:
+```json
+{
+  "outcome": "VALID",
+  "message": "Ticket checked in successfully.",
+  "scannedAt": "2026-03-11T22:13:45.100Z",
+  "ticket": {
+    "id": "ticket_uuid",
+    "publicId": "9f2da1f9e6bf",
+    "performanceId": "perf_123",
+    "performanceTitle": "Little Shop of Horrors",
+    "startsAt": "2026-03-20T23:00:00.000Z",
+    "venue": "Penncrest High School Auditorium",
+    "seat": { "sectionName": "Orchestra", "row": "A", "number": 12 },
+    "holder": { "customerName": "Jordan Taylor", "customerEmail": "buyer@example.com" },
+    "order": { "id": "order_123", "status": "PAID" },
+    "checkedInAt": "2026-03-11T22:13:45.100Z",
+    "checkInGate": "Main Entrance"
+  }
+}
+```
+
+`outcome` values:
+- `VALID`
+- `ALREADY_CHECKED_IN`
+- `WRONG_PERFORMANCE`
+- `NOT_ADMITTED`
+- `INVALID_QR`
+- `NOT_FOUND`
+
+### `POST /api/admin/check-in/undo`
+Removes a previously recorded check-in for one ticket.
+Request:
+```json
+{
+  "performanceId": "perf_123",
+  "ticketId": "ticket_uuid",
+  "reason": "Scanner double-tap"
+}
+```
+You can send `publicId` instead of `ticketId`.
+
+Response:
+```json
+{
+  "success": true,
+  "message": "Check-in removed.",
+  "ticket": {
+    "id": "ticket_uuid",
+    "publicId": "9f2da1f9e6bf",
+    "checkedInAt": null,
+    "checkInGate": null
+  }
+}
+```
+
+### `GET /api/admin/check-in/summary?performanceId=perf_123`
+Returns live check-in totals, per-gate breakdown, and recent check-ins.
+Response:
+```json
+{
+  "performance": {
+    "id": "perf_123",
+    "title": "Little Shop of Horrors",
+    "startsAt": "2026-03-20T23:00:00.000Z",
+    "venue": "Penncrest High School Auditorium"
+  },
+  "totalCheckedIn": 84,
+  "totalAdmittable": 212,
+  "gateBreakdown": [
+    { "gate": "Main Entrance", "count": 60 },
+    { "gate": "Side Door", "count": 24 }
+  ],
+  "recent": [
+    {
+      "id": "ticket_uuid",
+      "publicId": "9f2da1f9e6bf",
+      "checkedInAt": "2026-03-11T22:13:45.100Z",
+      "checkInGate": "Main Entrance",
+      "seat": { "sectionName": "Orchestra", "row": "A", "number": 12 },
+      "holder": { "customerName": "Jordan Taylor", "customerEmail": "buyer@example.com" }
+    }
+  ]
+}
+```
+
 ### `POST /api/admin/performances`
 Request:
 ```json

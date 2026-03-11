@@ -8,6 +8,7 @@ const links = [
   { to: '/admin/archive', label: 'Archive' },
   { to: '/admin/seats', label: 'Seats' },
   { to: '/admin/orders', label: 'Orders' },
+  { to: '/admin/scanner', label: 'Scanner' },
   { to: '/admin/roster', label: 'Roster' },
   { to: '/admin/staff-comps', label: 'Staff Comps' },
   { to: '/admin/student-credits', label: 'Student Credits' },

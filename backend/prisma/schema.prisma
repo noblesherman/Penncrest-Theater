@@ -62,6 +62,11 @@ enum TicketStatus {
   CANCELLED
 }
 
+enum AdmissionDecision {
+  FORCE_ADMIT
+  DENY
+}
+
 enum StudentCreditTransactionType {
   REDEEM
   ADJUSTMENT_ADD
@@ -144,6 +149,7 @@ model Performance {
   holdSessions  HoldSession[]
   orders        Order[]
   tickets       Ticket[]
+  scannerSessions ScannerSession[]
   staffCompRedemptions StaffCompRedemption[]
   studentTicketCreditTransactions StudentTicketCreditTransaction[]
 
@@ -292,6 +298,13 @@ model Ticket {
   publicId    String               @unique
   qrSecret    String
   qrPayload   String
+  checkedInAt DateTime?
+  checkedInBy String?
+  checkInGate String?
+  admissionDecision AdmissionDecision?
+  admissionReason String?
+  admissionDecidedAt DateTime?
+  admissionDecidedBy String?
   createdAt   DateTime             @default(now())
   staffCompRedemption StaffCompRedemption?
 
@@ -300,6 +313,28 @@ model Ticket {
   @@index([userId])
   @@index([type, status])
   @@index([seatId])
+  @@index([performanceId, checkedInAt])
+  @@index([performanceId, admissionDecision])
+}
+
+model ScannerSession {
+  id            String      @id @default(cuid())
+  performanceId String
+  performance   Performance @relation(fields: [performanceId], references: [id], onDelete: Cascade)
+  accessToken   String      @unique
+  staffName     String
+  gate          String
+  deviceLabel   String?
+  active        Boolean     @default(true)
+  createdBy     String?
+  lastSeenAt    DateTime    @default(now())
+  endedAt       DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([performanceId, active])
+  @@index([performanceId, gate, active])
+  @@index([lastSeenAt])
 }
 
 model StaffCompRedemption {
