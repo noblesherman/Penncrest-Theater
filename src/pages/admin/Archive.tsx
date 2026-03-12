@@ -67,7 +67,7 @@ export default function AdminArchivePage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-black text-stone-900 mb-1">Archive</h1>
+        <h1 className="text-2xl font-bold text-stone-900 mb-1">Archive</h1>
         <p className="text-sm text-stone-600">
           Archived performances are hidden from public sales but keep full historical data.
         </p>
@@ -150,7 +150,7 @@ function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="border border-stone-200 rounded-xl p-4">
       <div className="text-xs uppercase tracking-wide text-stone-500 mb-2">{label}</div>
-      <div className="text-2xl font-black text-stone-900">{value}</div>
+      <div className="text-2xl font-bold text-stone-900">{value}</div>
     </div>
   );
 }

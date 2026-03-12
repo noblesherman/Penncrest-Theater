@@ -254,7 +254,7 @@ export default function AdminStudentCreditsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-black text-stone-900 mb-1">Student Complimentary Credits</h1>
+        <h1 className="text-2xl font-bold text-stone-900 mb-1">Student Complimentary Credits</h1>
         <p className="text-sm text-stone-600">Manage cast and crew complimentary ticket balances by show and school email.</p>
       </div>
 
@@ -297,7 +297,7 @@ export default function AdminStudentCreditsPage() {
           </div>
           <div className="flex items-end">
             <button
-              className="bg-stone-900 text-white px-4 py-2 rounded-xl font-bold"
+              className="w-full rounded-xl bg-red-700 px-4 py-2 font-bold text-white"
               onClick={() => loadCredits(selectedShowId).catch((err) => setError(err instanceof Error ? err.message : 'Search failed'))}
             >
               Search
@@ -338,7 +338,7 @@ export default function AdminStudentCreditsPage() {
             onChange={(event) => setCreateForm({ ...createForm, allocatedTickets: Math.max(0, Number(event.target.value) || 0) })}
             className="border border-stone-300 rounded-xl px-3 py-2"
           />
-          <button className="bg-stone-900 text-white px-4 py-2 rounded-xl font-bold">Create</button>
+          <button className="w-full rounded-xl bg-red-700 px-4 py-2 font-bold text-white md:w-auto">Create</button>
           <textarea
             value={createForm.notes}
             onChange={(event) => setCreateForm({ ...createForm, notes: event.target.value })}
@@ -363,7 +363,7 @@ export default function AdminStudentCreditsPage() {
             rows={5}
             placeholder="studentName,studentEmail,roleName,allocatedTickets"
           />
-          <button className="bg-stone-900 text-white px-4 py-2 rounded-xl font-bold">Import CSV</button>
+          <button className="bg-red-700 text-white px-4 py-2 rounded-xl font-bold">Import CSV</button>
         </form>
       </section>
 
@@ -375,7 +375,7 @@ export default function AdminStudentCreditsPage() {
           <div className="text-sm text-stone-500">No student credit records found for this show.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-xs md:text-sm">
+            <table className="w-full min-w-[980px] text-xs md:text-sm">
               <thead className="text-left bg-stone-50">
                 <tr>
                   <th className="px-2 py-2">Student</th>
@@ -458,7 +458,7 @@ export default function AdminStudentCreditsPage() {
 
       {history && (
         <section className="border border-stone-200 rounded-2xl p-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-bold text-stone-900">History: {history.credit.studentName}</h2>
             <button className="text-sm text-stone-600" onClick={() => setHistory(null)}>Close</button>
           </div>

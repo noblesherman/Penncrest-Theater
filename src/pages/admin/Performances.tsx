@@ -152,7 +152,7 @@ export default function AdminPerformancesPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-black text-stone-900 mb-5">Performances</h1>
+      <h1 className="text-2xl font-bold text-stone-900 mb-5">Performances</h1>
       <p className="text-sm text-stone-600 mb-5">Archived performances are managed in the Archive tab.</p>
 
       <form onSubmit={submit} className="border border-stone-200 rounded-2xl p-4 mb-6 space-y-3">
@@ -202,14 +202,14 @@ export default function AdminPerformancesPage() {
 
         {error && <div className="text-red-600 text-sm">{error}</div>}
 
-        <div className="flex gap-2">
-          <button type="submit" className="bg-stone-900 text-white px-4 py-2 rounded-lg font-bold">
+        <div className="flex flex-wrap gap-2">
+          <button type="submit" className="w-full rounded-lg bg-red-700 px-4 py-2 font-bold text-white sm:w-auto">
             {editingId ? 'Update Performance' : 'Create Performance'}
           </button>
           {editingId && (
             <button
               type="button"
-              className="border border-stone-300 px-4 py-2 rounded-lg"
+              className="w-full rounded-lg border border-stone-300 px-4 py-2 sm:w-auto"
               onClick={() => {
                 setEditingId(null);
                 setForm(initialForm);
@@ -224,7 +224,7 @@ export default function AdminPerformancesPage() {
       <section className="space-y-3">
         {items.length === 0 ? <div className="text-sm text-stone-500">No active performances.</div> : null}
         {items.map((item) => (
-          <div key={item.id} className="border border-stone-200 rounded-xl p-3 flex justify-between gap-4">
+          <div key={item.id} className="flex flex-col gap-4 rounded-xl border border-stone-200 p-3 sm:flex-row sm:justify-between">
             <div>
               <div className="font-bold text-stone-900">{item.title}</div>
               <div className="text-xs text-stone-500">{new Date(item.startsAt).toLocaleString()} • {item.venue}</div>
@@ -240,15 +240,15 @@ export default function AdminPerformancesPage() {
               <div className="text-xs text-stone-500">Tiers: {item.pricingTiers.map((tier) => `${tier.name} $${(tier.priceCents / 100).toFixed(2)}`).join(', ')}</div>
               <div className="text-xs text-stone-500">Paid orders: {item.paidOrders}</div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
               <button
-                className="text-sm px-3 py-1 rounded-md border border-stone-300"
+                className="w-full rounded-md border border-stone-300 px-3 py-1 text-sm sm:w-auto"
                 onClick={() => startEditing(item)}
               >
                 Edit
               </button>
               <button
-                className="text-sm px-3 py-1 rounded-md border border-amber-300 text-amber-700"
+                className="w-full rounded-md border border-amber-300 px-3 py-1 text-sm text-amber-700 sm:w-auto"
                 onClick={() => {
                   void archivePerformance(item);
                 }}

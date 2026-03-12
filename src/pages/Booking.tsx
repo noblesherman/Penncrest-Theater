@@ -1003,12 +1003,13 @@ export default function Booking() {
   const progressPercent = ((currentStep - 1) / (CHECKOUT_STEPS.length - 1)) * 100;
 
   return (
-    <div className="h-screen bg-stone-50 overflow-hidden flex flex-col font-sans">
-      <div className="shrink-0 border-b border-stone-200 bg-white">
+    <div className="h-[100dvh] min-h-[100dvh] bg-stone-50 overflow-hidden flex flex-col" style={{ fontFamily: 'system-ui, sans-serif' }}>
+      <div className="shrink-0 border-b border-stone-100 bg-white relative">
+        <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-red-700 via-red-600 to-amber-400" />
         <div className="px-4 md:px-6 py-3 flex items-center justify-between gap-4">
           <button
             onClick={() => navigate(-1)}
-            className="inline-flex items-center gap-1 text-sm md:text-base font-bold text-stone-700 hover:text-stone-900"
+            className="inline-flex items-center gap-1 text-sm md:text-base font-semibold text-stone-600 hover:text-red-700 transition-colors"
           >
             <ChevronLeft className="w-4 h-4" /> Back
           </button>
@@ -1017,7 +1018,7 @@ export default function Booking() {
 
         <div className="h-1 bg-stone-200">
           <motion.div
-            className="h-1 bg-yellow-500"
+            className="h-1 bg-red-600"
             initial={false}
             animate={{ width: `${progressPercent}%` }}
             transition={{ duration: 0.35, ease: 'easeOut' }}
@@ -1032,12 +1033,12 @@ export default function Booking() {
               <div
                 key={step.id}
                 className={`inline-flex items-center gap-2 whitespace-nowrap ${
-                  isCurrent ? 'text-stone-900' : isComplete ? 'text-yellow-700' : 'text-stone-400'
+                  isCurrent ? 'text-stone-900' : isComplete ? 'text-red-700' : 'text-stone-400'
                 }`}
               >
                 <span
                   className={`w-2 h-2 rounded-full ${
-                    isCurrent ? 'bg-stone-900' : isComplete ? 'bg-yellow-500' : 'bg-stone-300'
+                    isCurrent ? 'bg-stone-900' : isComplete ? 'bg-red-600' : 'bg-stone-300'
                   }`}
                 />
                 <span>{step.label}</span>
@@ -1070,9 +1071,10 @@ export default function Booking() {
               className="h-full"
             >
               <div className="h-full min-h-0 flex flex-col xl:flex-row overflow-hidden">
-                <aside className="hidden xl:flex w-[360px] shrink-0 border-r border-stone-200 bg-white flex-col min-h-0">
-                  <div className="p-5 border-b border-stone-200">
-                    <h2 className="font-bold text-stone-900 mb-4">Find Nearby Seats</h2>
+                <aside className="hidden xl:flex w-[360px] shrink-0 border-r border-stone-100 bg-white flex-col min-h-0">
+                  <div className="p-5 border-b border-stone-100">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-600 mb-1">Seat Picker</p>
+                    <h2 className="font-bold text-stone-900 mb-4" style={{ fontFamily: 'Georgia, serif', fontSize: '1.35rem' }}>Find Nearby Seats</h2>
                     <div className="flex gap-2">
                       <div className="flex items-center border border-stone-300 rounded-lg px-3 py-2 flex-1">
                         <Users className="w-4 h-4 text-stone-400 mr-2" />
@@ -1087,7 +1089,7 @@ export default function Booking() {
                       </div>
                       <button
                         onClick={findAdjacentSeats}
-                        className="bg-stone-900 text-white p-2 rounded-lg hover:bg-stone-800"
+                        className="bg-red-700 text-white p-2 rounded-lg hover:bg-red-800 transition-colors"
                         title="Find adjacent seats"
                       >
                         <Search className="w-5 h-5" />
@@ -1099,7 +1101,7 @@ export default function Booking() {
                       <button
                         onClick={() => setActiveSection('All')}
                         className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${
-                          activeSection === 'All' ? 'bg-yellow-100 text-yellow-900' : 'hover:bg-stone-50 text-stone-600'
+                          activeSection === 'All' ? 'bg-red-50 text-red-700 border border-red-100' : 'hover:bg-stone-50 text-stone-600'
                         }`}
                       >
                         All Sections
@@ -1109,7 +1111,7 @@ export default function Booking() {
                           key={section}
                           onClick={() => setActiveSection(section)}
                           className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${
-                            activeSection === section ? 'bg-yellow-100 text-yellow-900' : 'hover:bg-stone-50 text-stone-600'
+                            activeSection === section ? 'bg-red-50 text-red-700 border border-red-100' : 'hover:bg-stone-50 text-stone-600'
                           }`}
                         >
                           {section}
@@ -1124,7 +1126,7 @@ export default function Booking() {
                       <div className="text-sm text-stone-400 italic">No seats selected yet.</div>
                     ) : (
                       selectedSeatsWithPricing.map((item) => (
-                        <div key={item.seat.id} className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+                        <div key={item.seat.id} className="rounded-xl border border-stone-100 bg-white p-3">
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <div className="font-bold text-sm text-stone-900">{item.seat.sectionName}</div>
@@ -1147,15 +1149,15 @@ export default function Booking() {
                     )}
                   </div>
 
-                  <div className="p-5 border-t border-stone-200 bg-stone-50">
+                  <div className="p-5 border-t border-stone-100 bg-white">
                     <div className="flex items-end justify-between">
                       <div className="text-sm text-stone-600">Total</div>
-                      <div className="text-2xl font-black text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
+                      <div className="text-2xl font-bold text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
                     </div>
                     <button
                       onClick={goToStepTwo}
                       disabled={!canContinueToTypes}
-                      className="mt-4 w-full bg-stone-900 text-white rounded-xl py-3 font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-stone-800 inline-flex items-center justify-center gap-2"
+                      className="mt-4 w-full bg-red-700 text-white rounded-xl py-3 font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-800 inline-flex items-center justify-center gap-2 transition-colors"
                     >
                       Continue <ArrowRight className="w-4 h-4" />
                     </button>
@@ -1166,7 +1168,7 @@ export default function Booking() {
                   {loading && (
                     <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/80 backdrop-blur-sm">
                       <div className="flex flex-col items-center gap-4">
-                        <RefreshCw className="w-8 h-8 animate-spin text-yellow-500" />
+                        <RefreshCw className="w-8 h-8 animate-spin text-red-600" />
                         <div className="font-bold text-stone-600">Loading seating chart...</div>
                       </div>
                     </div>
@@ -1176,7 +1178,7 @@ export default function Booking() {
                     <button
                       onClick={() => setActiveSection('All')}
                       className={`px-4 py-2 rounded-full text-xs font-bold shadow-md whitespace-nowrap ${
-                        activeSection === 'All' ? 'bg-stone-900 text-white' : 'bg-white text-stone-600'
+                        activeSection === 'All' ? 'bg-red-700 text-white' : 'bg-white text-stone-600'
                       }`}
                     >
                       All
@@ -1186,30 +1188,54 @@ export default function Booking() {
                         key={section}
                         onClick={() => setActiveSection(section)}
                         className={`px-4 py-2 rounded-full text-xs font-bold shadow-md whitespace-nowrap ${
-                          activeSection === section ? 'bg-stone-900 text-white' : 'bg-white text-stone-600'
+                          activeSection === section ? 'bg-red-700 text-white' : 'bg-white text-stone-600'
                         }`}
                       >
                         {section}
                       </button>
-                    ))}
+                      ))}
                   </div>
 
-                  <div className="absolute bottom-24 xl:bottom-8 right-4 xl:right-8 z-30 flex flex-col gap-2">
+                  <div className="absolute left-4 right-4 top-[4.5rem] z-30 rounded-xl border border-stone-200 bg-white/95 p-2 shadow-sm backdrop-blur xl:hidden">
+                    <div className="flex items-center gap-2">
+                      <div className="flex min-w-0 flex-1 items-center rounded-lg border border-stone-300 bg-white px-2 py-1.5">
+                        <Users className="mr-2 h-4 w-4 shrink-0 text-stone-400" />
+                        <input
+                          type="number"
+                          min="1"
+                          max="10"
+                          value={adjacentCount}
+                          onChange={(event) => setAdjacentCount(Math.max(1, Number(event.target.value) || 1))}
+                          className="w-full min-w-0 bg-transparent text-sm font-bold outline-none"
+                        />
+                      </div>
+                      <button
+                        onClick={findAdjacentSeats}
+                        className="inline-flex items-center gap-1 rounded-lg bg-red-700 px-3 py-2 text-xs font-bold text-white hover:bg-red-800 transition-colors"
+                        title="Find adjacent seats"
+                      >
+                        <Search className="h-4 w-4" />
+                        Find
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="absolute bottom-36 right-4 z-30 flex flex-col gap-2 sm:bottom-28 xl:bottom-8 xl:right-8">
                     <button
                       onClick={() => transformComponentRef.current?.zoomIn(0.5)}
-                      className="map-control-btn bg-white p-3 rounded-full shadow-lg text-stone-600 hover:text-stone-900"
+                      className="map-control-btn bg-white p-3 rounded-full shadow-lg text-stone-600 hover:text-red-700 transition-colors"
                     >
                       <Plus className="w-5 h-5" />
                     </button>
                     <button
                       onClick={() => transformComponentRef.current?.zoomOut(0.5)}
-                      className="map-control-btn bg-white p-3 rounded-full shadow-lg text-stone-600 hover:text-stone-900"
+                      className="map-control-btn bg-white p-3 rounded-full shadow-lg text-stone-600 hover:text-red-700 transition-colors"
                     >
                       <Minus className="w-5 h-5" />
                     </button>
                     <button
                       onClick={() => fitMapToViewport(220)}
-                      className="map-control-btn bg-white p-3 rounded-full shadow-lg text-stone-600 hover:text-stone-900"
+                      className="map-control-btn bg-white p-3 rounded-full shadow-lg text-stone-600 hover:text-red-700 transition-colors"
                       title="Reset View"
                     >
                       <RefreshCw className="w-5 h-5" />
@@ -1280,10 +1306,10 @@ export default function Booking() {
                             style={{ left: `${stageCenterX}px`, width: `${stageWidth}px` }}
                           >
                             <div className="relative w-full">
-                              <div className="absolute left-8 right-8 -bottom-3 h-5 rounded-full bg-amber-900/25 blur-sm" />
-                              <div className="relative h-16 rounded-b-[120px] border border-amber-700/40 bg-gradient-to-b from-amber-100 via-amber-200 to-amber-300 shadow-[0_10px_24px_rgba(120,80,24,0.35)] flex items-center justify-center">
+                              <div className="absolute left-8 right-8 -bottom-3 h-5 rounded-full bg-red-900/25 blur-sm" />
+                              <div className="relative h-16 rounded-b-[120px] border border-red-700/40 bg-gradient-to-b from-red-100 via-red-200 to-red-300 shadow-[0_10px_24px_rgba(127,29,29,0.35)] flex items-center justify-center">
                                 <div className="absolute top-2 left-8 right-8 h-2 rounded-full bg-white/35" />
-                                <span className="text-amber-900/80 font-black uppercase tracking-[0.35em] text-sm">Stage</span>
+                                <span className="text-red-900/80 font-black uppercase tracking-[0.35em] text-sm">Stage</span>
                               </div>
                               <div className="mx-auto mt-1 h-1.5 w-[70%] rounded-full bg-stone-300/80" />
                             </div>
@@ -1336,9 +1362,9 @@ export default function Booking() {
                                         ? 'bg-orange-200 text-orange-400 cursor-not-allowed'
                                         : seat.isCompanion
                                           ? 'bg-cyan-100 border-2 border-cyan-400 text-cyan-700 hover:border-cyan-500 hover:bg-cyan-50 hover:shadow-md hover:-translate-y-1'
-                                          : seat.isAccessible
+                                        : seat.isAccessible
                                             ? 'bg-blue-100 border-2 border-blue-400 text-blue-700 hover:border-blue-500 hover:bg-blue-50 hover:shadow-md hover:-translate-y-1'
-                                            : 'bg-white border-2 border-stone-200 text-stone-600 hover:border-blue-400 hover:shadow-md hover:-translate-y-1'
+                                            : 'bg-white border-2 border-stone-200 text-stone-600 hover:border-red-400 hover:shadow-md hover:-translate-y-1'
                                 ].join(' ')}
                               >
                                 <div
@@ -1360,18 +1386,34 @@ export default function Booking() {
                     </TransformComponent>
                   </TransformWrapper>
 
-                  <div className="xl:hidden absolute left-0 right-0 bottom-0 z-40 bg-white border-t border-stone-200 px-4 py-4">
-                    <div className="flex items-center justify-between">
-                      <div>
+                  <div className="xl:hidden absolute left-0 right-0 bottom-0 z-40 border-t border-stone-200 bg-white px-4 pt-3 pb-3 pb-safe">
+                    {selectedSeatsWithPricing.length > 0 ? (
+                      <div className="mb-3 flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                        {selectedSeatsWithPricing.map((item) => (
+                          <button
+                            key={item.seat.id}
+                            type="button"
+                            onClick={() => handleSeatClick(item.seat)}
+                            className="whitespace-nowrap rounded-full border border-red-100 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700"
+                            title={`Remove ${item.seat.sectionName} ${item.seat.row}-${item.seat.number}`}
+                          >
+                            {item.seat.sectionName} {item.seat.row}-{item.seat.number}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
                         <div className="text-xs font-bold uppercase text-stone-500 tracking-wider">
                           {selectedSeats.length} Seats Selected
                         </div>
-                        <div className="text-xl font-black text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
+                        <div className="truncate text-xl font-bold text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
                       </div>
                       <button
                         onClick={goToStepTwo}
                         disabled={!canContinueToTypes}
-                        className="bg-stone-900 text-white rounded-xl px-4 py-3 font-bold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                        className="inline-flex items-center gap-2 rounded-xl bg-red-700 px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-red-800 transition-colors"
                       >
                         Ticket Types <ArrowRight className="w-4 h-4" />
                       </button>
@@ -1407,7 +1449,7 @@ export default function Booking() {
                     You have no seats selected yet.
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     {selectedSeatsWithPricing.map((item) => (
                       <div key={item.seat.id} className="rounded-2xl border border-stone-200 bg-white p-4">
                         <div className="flex items-center justify-between gap-2 mb-3">
@@ -1454,7 +1496,7 @@ export default function Booking() {
                   </div>
                 )}
 
-                <div className="mt-8 rounded-2xl border border-stone-200 bg-white p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div className="mt-8 flex flex-col gap-4 rounded-2xl border border-stone-200 bg-white p-5 md:flex-row md:items-center md:justify-between">
                   <div>
                     <div className="text-xs uppercase tracking-wider font-bold text-stone-500">Order total</div>
                     <div className="text-3xl font-black text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
@@ -1474,20 +1516,20 @@ export default function Booking() {
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row">
                     <button
                       onClick={() => {
                         setStepError(null);
                         setCurrentStep(1);
                       }}
-                      className="rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 inline-flex items-center gap-2"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 sm:w-auto"
                     >
                       <ArrowLeft className="w-4 h-4" /> Back
                     </button>
                     <button
                       onClick={goToStepThree}
                       disabled={!canContinueToCheckout}
-                      className="rounded-xl bg-stone-900 px-5 py-3 font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-stone-800 inline-flex items-center gap-2"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-stone-900 px-5 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-stone-800 sm:w-auto"
                     >
                       Continue <ArrowRight className="w-4 h-4" />
                     </button>
@@ -1507,10 +1549,10 @@ export default function Booking() {
               className="h-full overflow-y-auto px-4 md:px-6 pb-10"
             >
               <div className="max-w-6xl mx-auto pt-6 md:pt-8 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6">
-                <div className="rounded-2xl border border-stone-200 bg-white p-5 md:p-6 h-fit">
+                <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
                   {isTeacherCheckout ? (
                     <>
-                      <h2 className="text-2xl md:text-3xl font-black text-stone-900">Teacher Verification</h2>
+                      <h2 className="text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>Teacher Verification</h2>
                       <p className="text-sm md:text-base text-stone-600 mt-2">
                         Teacher complimentary checkout requires Google OAuth and a verified staff account. Enter a personal email for delivery.
                       </p>
@@ -1537,20 +1579,20 @@ export default function Booking() {
 
                       <div className="mt-6 space-y-4">
                         <label className="block">
-                          <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Full Name</span>
+                          <span className="text-xs font-semibold uppercase tracking-[0.15em] text-red-600">Full Name</span>
                           <div className="mt-1 relative">
                             <User className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
                             <input
                               value={customerName}
                               onChange={(event) => setCustomerName(event.target.value)}
                               placeholder="Jane Doe"
-                              className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3"
+                              className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3 focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none"
                             />
                           </div>
                         </label>
 
                         <label className="block">
-                          <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Personal Email</span>
+                          <span className="text-xs font-semibold uppercase tracking-[0.15em] text-red-600">Personal Email</span>
                           <div className="mt-1 relative">
                             <Mail className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
                             <input
@@ -1558,20 +1600,20 @@ export default function Booking() {
                               value={customerEmail}
                               onChange={(event) => setCustomerEmail(event.target.value)}
                               placeholder="name@email.com"
-                              className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3"
+                              className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3 focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none"
                             />
                           </div>
                           <div className="mt-1 text-xs text-stone-500">Do not use your `@rtmsd.org` email for delivery.</div>
                         </label>
                       </div>
 
-                      <div className="mt-6 flex flex-wrap items-center gap-2">
+                      <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                         <button
                           onClick={() => {
                             setStepError(null);
                             setCurrentStep(2);
                           }}
-                          className="rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 inline-flex items-center gap-2"
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 sm:w-auto"
                         >
                           <ArrowLeft className="w-4 h-4" /> Back
                         </button>
@@ -1580,13 +1622,13 @@ export default function Booking() {
                           <>
                             <button
                               onClick={startTeacherOAuth}
-                              className="rounded-xl bg-stone-900 px-5 py-3 font-bold text-white hover:bg-stone-800 inline-flex items-center gap-2"
+                              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-5 py-3 font-semibold text-white hover:bg-red-800 transition-colors sm:w-auto"
                             >
                               Sign In with Google
                             </button>
                             <button
                               onClick={() => void syncStaffUser()}
-                              className="rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100"
+                              className="w-full rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 sm:w-auto"
                             >
                               I Signed In, Refresh
                             </button>
@@ -1595,7 +1637,7 @@ export default function Booking() {
                           <button
                             onClick={handleCheckout}
                             disabled={processing || selectedSeats.length === 0}
-                            className="rounded-xl bg-stone-900 px-5 py-3 font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-stone-800 inline-flex items-center gap-2"
+                            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-red-800 transition-colors sm:w-auto"
                           >
                             <CreditCard className="w-4 h-4" />
                             {processing ? 'Processing...' : 'Checkout'}
@@ -1605,7 +1647,7 @@ export default function Booking() {
                     </>
                   ) : (
                     <>
-                      <h2 className="text-2xl md:text-3xl font-black text-stone-900">
+                      <h2 className="text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
                         {isStudentInShowCheckout ? 'Student in Show Checkout' : 'Contact Information'}
                       </h2>
                       <p className="text-sm md:text-base text-stone-600 mt-2">
@@ -1623,20 +1665,20 @@ export default function Booking() {
 
                       <div className="mt-6 space-y-4">
                         <label className="block">
-                          <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Full Name</span>
+                          <span className="text-xs font-semibold uppercase tracking-[0.15em] text-red-600">Full Name</span>
                           <div className="mt-1 relative">
                             <User className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
                             <input
                               value={customerName}
                               onChange={(event) => setCustomerName(event.target.value)}
                               placeholder="Jane Doe"
-                              className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3"
+                              className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3 focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none"
                             />
                           </div>
                         </label>
 
                         <label className="block">
-                          <span className="text-xs font-bold uppercase tracking-wider text-stone-500">
+                          <span className="text-xs font-semibold uppercase tracking-[0.15em] text-red-600">
                             {isStudentInShowCheckout ? 'Personal Email' : 'Email'}
                           </span>
                           <div className="mt-1 relative">
@@ -1646,7 +1688,7 @@ export default function Booking() {
                               value={customerEmail}
                               onChange={(event) => setCustomerEmail(event.target.value)}
                               placeholder={isStudentInShowCheckout ? 'Personal email for ticket delivery' : 'name@email.com'}
-                              className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3"
+                              className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3 focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none"
                             />
                           </div>
                           {isStudentInShowCheckout ? (
@@ -1658,7 +1700,7 @@ export default function Booking() {
 
                         {isStudentInShowCheckout && (
                           <label className="block">
-                            <span className="text-xs font-bold uppercase tracking-wider text-stone-500">School Email</span>
+                            <span className="text-xs font-semibold uppercase tracking-[0.15em] text-red-600">School Email</span>
                             <div className="mt-1 relative">
                               <Ticket className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
                               <input
@@ -1666,27 +1708,27 @@ export default function Booking() {
                                 value={studentSchoolEmail}
                                 onChange={(event) => setStudentSchoolEmail(event.target.value)}
                                 placeholder="School email on file"
-                                className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3"
+                                className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3 focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none"
                               />
                             </div>
                           </label>
                         )}
                       </div>
 
-                      <div className="mt-6 flex items-center gap-2">
+                      <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center">
                         <button
                           onClick={() => {
                             setStepError(null);
                             setCurrentStep(2);
                           }}
-                          className="rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 inline-flex items-center gap-2"
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 sm:w-auto"
                         >
                           <ArrowLeft className="w-4 h-4" /> Back
                         </button>
                         <button
                           onClick={handleCheckout}
                           disabled={processing || selectedSeats.length === 0}
-                          className="rounded-xl bg-stone-900 px-5 py-3 font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-stone-800 inline-flex items-center gap-2"
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-red-800 transition-colors sm:w-auto"
                         >
                           <CreditCard className="w-4 h-4" />
                           {processing ? 'Processing...' : 'Checkout'}
@@ -1696,9 +1738,9 @@ export default function Booking() {
                   )}
                 </div>
 
-                <div className="rounded-2xl border border-stone-200 bg-white p-5 md:p-6 h-fit">
+                <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
                   <div className="flex items-center justify-between mb-4">
-                    <div className="inline-flex items-center gap-2 text-stone-900 font-black">
+                    <div className="inline-flex items-center gap-2 text-stone-900 font-bold" style={{ fontFamily: 'Georgia, serif' }}>
                       <Ticket className="w-4 h-4" /> Order Summary
                     </div>
                     <div className="text-sm text-stone-500 font-semibold">{selectedSeats.length} seats</div>
@@ -1720,7 +1762,7 @@ export default function Booking() {
 
                   <div className="mt-5 border-t border-stone-200 pt-4 flex items-end justify-between">
                     <div className="text-sm text-stone-500">Total</div>
-                    <div className="text-3xl font-black text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
+                    <div className="text-3xl font-bold text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
                   </div>
                 </div>
               </div>

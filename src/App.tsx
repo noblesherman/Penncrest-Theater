@@ -23,6 +23,7 @@ import AdminArchivePage from './pages/admin/Archive';
 import AdminSeatsPage from './pages/admin/Seats';
 import AdminOrdersPage from './pages/admin/Orders';
 import AdminScannerPage from './pages/admin/Scanner';
+import AdminScannerLivePage from './pages/admin/ScannerLive';
 import AdminOrderDetailPage from './pages/admin/OrderDetail';
 import AdminRosterPage from './pages/admin/Roster';
 import AdminAuditLogPage from './pages/admin/AuditLog';
@@ -51,6 +52,7 @@ export default function App() {
           <Route path="seats" element={<AdminSeatsPage />} />
           <Route path="orders" element={<AdminOrdersPage />} />
           <Route path="scanner" element={<AdminScannerPage />} />
+          <Route path="scanner/live" element={<AdminScannerLivePage />} />
           <Route path="orders/:id" element={<AdminOrderDetailPage />} />
           <Route path="roster" element={<AdminRosterPage />} />
           <Route path="staff-comps" element={<AdminStaffCompsPage />} />

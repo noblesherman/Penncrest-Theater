@@ -90,11 +90,11 @@ export default function Confirmation() {
   const pending = orderData.order.status !== 'PAID';
 
   return (
-    <div className="min-h-screen bg-yellow-50 py-20 px-4">
+    <div className="min-h-screen bg-yellow-50 px-4 py-10 sm:py-20">
       <div className="max-w-3xl mx-auto">
         <div className="bg-white rounded-[2rem] shadow-2xl overflow-hidden border border-stone-100">
-          <div className="bg-stone-900 text-white p-10 text-center">
-            <h1 className="text-4xl font-black mb-2">{pending ? 'PROCESSING PAYMENT' : 'YOU\'RE ALL SET!'}</h1>
+          <div className="bg-stone-900 p-6 text-center text-white sm:p-10">
+            <h1 className="mb-2 text-3xl font-black sm:text-4xl">{pending ? 'PROCESSING PAYMENT' : 'YOU\'RE ALL SET!'}</h1>
             <p className="text-stone-400 text-sm">Order #{orderData.order.id.slice(0, 8)}</p>
           </div>
 
@@ -121,14 +121,14 @@ export default function Confirmation() {
             </div>
 
             <div className="bg-stone-50 rounded-2xl p-6 mb-8 border border-stone-100">
-              <div className="flex justify-between items-center mb-4">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-bold text-stone-900 uppercase tracking-wider text-sm">Tickets</h3>
                 <div className="text-sm font-bold text-stone-700">Total {totalLabel}</div>
               </div>
 
               <div className="space-y-3">
                 {orderData.tickets.map((ticket) => (
-                  <div key={ticket.seatId} className="bg-white p-4 rounded-xl border border-stone-100 flex items-center justify-between gap-3">
+                  <div key={ticket.seatId} className="flex flex-col gap-3 rounded-xl border border-stone-100 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <div className="font-bold text-stone-900">
                         {ticket.sectionName} - Row {ticket.row} Seat {ticket.number}
@@ -138,7 +138,7 @@ export default function Confirmation() {
                       {ticket.isComplimentary && <div className="text-xs text-green-700 font-semibold">Complimentary</div>}
                     </div>
                     {ticket.publicId && (
-                      <Link to={`/tickets/${ticket.publicId}`} className="text-sm font-bold text-yellow-700 hover:text-yellow-900 inline-flex items-center gap-1">
+                      <Link to={`/tickets/${ticket.publicId}`} className="inline-flex items-center gap-1 text-sm font-bold text-yellow-700 hover:text-yellow-900">
                         <Ticket className="w-4 h-4" /> View Ticket
                       </Link>
                     )}

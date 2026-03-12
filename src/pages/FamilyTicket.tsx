@@ -89,9 +89,9 @@ export default function FamilyTicketPage() {
   };
 
   return (
-    <div className="min-h-screen bg-stone-50 py-16 px-4">
-      <div className="max-w-3xl mx-auto bg-white border border-stone-200 rounded-3xl p-8 shadow-sm">
-        <h1 className="text-3xl font-black text-stone-900 mb-2">Family Free Ticket</h1>
+    <div className="min-h-screen bg-stone-50 px-4 py-10 sm:py-16">
+      <div className="mx-auto max-w-3xl rounded-3xl border border-stone-200 bg-white p-5 shadow-sm sm:p-8">
+        <h1 className="mb-2 text-2xl font-black text-stone-900 sm:text-3xl">Family Free Ticket</h1>
         <p className="text-stone-600 mb-6">One free ticket per family for the run of a show (when enabled).</p>
 
         {selectedPerformance ? (
@@ -146,10 +146,7 @@ export default function FamilyTicketPage() {
 
           {error && <div className="text-sm text-red-600">{error}</div>}
 
-          <button
-            disabled={submitting || !performanceId || !seatId}
-            className="bg-stone-900 text-white px-5 py-3 rounded-xl font-bold disabled:opacity-50"
-          >
+          <button disabled={submitting || !performanceId || !seatId} className="w-full rounded-xl bg-stone-900 px-5 py-3 font-bold text-white disabled:opacity-50">
             {submitting ? 'Submitting...' : 'Claim Free Family Ticket'}
           </button>
         </form>

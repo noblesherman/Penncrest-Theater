@@ -314,20 +314,64 @@ Response:
 ### `GET /api/admin/performances`
 Returns performance rows with tiers and seat counts.
 
+### `POST /api/admin/check-in/session/start`
+Starts a scanner staff session for one performance/gate.
+Request:
+```json
+{
+  "performanceId": "perf_123",
+  "staffName": "Alex",
+  "gate": "Main Entrance",
+  "deviceLabel": "iPhone Gate A"
+}
+```
+Response:
+```json
+{
+  "sessionId": "sess_123",
+  "sessionToken": "scanner_session_secret",
+  "performanceId": "perf_123",
+  "staffName": "Alex",
+  "gate": "Main Entrance",
+  "deviceLabel": "iPhone Gate A",
+  "createdAt": "2026-03-11T22:13:45.100Z"
+}
+```
+
+### `POST /api/admin/check-in/session/end`
+Ends an active scanner session.
+Request:
+```json
+{ "sessionToken": "scanner_session_secret" }
+```
+Response:
+```json
+{ "success": true }
+```
+
+### `GET /api/admin/check-in/events?performanceId=perf_123&token=<admin_jwt>`
+Server-Sent Events (SSE) realtime stream for scanner updates.
+
+Event names:
+- `ready`
+- `ping`
+- `checkin`
+- `decision`
+- `session`
+
 ### `POST /api/admin/check-in/scan`
 Scans and validates one ticket for a selected performance, then marks it checked in.
 Request:
 ```json
 {
   "performanceId": "perf_123",
+  "sessionToken": "scanner_session_secret",
   "scannedValue": "ticket_uuid.signature",
-  "gate": "Main Entrance"
+  "clientScanId": "optional-client-id",
+  "offlineQueuedAt": "2026-03-11T22:10:00.000Z"
 }
 ```
-`scannedValue` can be:
-- QR payload (`ticketId.signature`)
-- Ticket page URL (`https://.../tickets/<publicId>`)
-- Public ticket id (`<publicId>`)
+`scannedValue` can be QR payload, ticket URL, or public ticket id.
 
 Response:
 ```json
@@ -346,6 +390,7 @@ Response:
     "holder": { "customerName": "Jordan Taylor", "customerEmail": "buyer@example.com" },
     "order": { "id": "order_123", "status": "PAID" },
     "checkedInAt": "2026-03-11T22:13:45.100Z",
+    "checkedInBy": "Alex @ Main Entrance",
     "checkInGate": "Main Entrance"
   }
 }
@@ -365,11 +410,22 @@ Request:
 ```json
 {
   "performanceId": "perf_123",
+  "sessionToken": "scanner_session_secret",
   "ticketId": "ticket_uuid",
-  "reason": "Scanner double-tap"
+  "reasonCode": "MANUAL_CORRECTION",
+  "notes": "Scanner double-tap"
 }
 ```
 You can send `publicId` instead of `ticketId`.
+
+Reason codes:
+- `DUPLICATE_SCAN`
+- `VIP_OVERRIDE`
+- `PAYMENT_EXCEPTION`
+- `INVALID_TICKET`
+- `SAFETY_CONCERN`
+- `MANUAL_CORRECTION`
+- `OTHER`
 
 Response:
 ```json
@@ -385,8 +441,42 @@ Response:
 }
 ```
 
+### `POST /api/admin/check-in/force-decision`
+Supervisor override to force admit or deny a ticket.
+Request:
+```json
+{
+  "performanceId": "perf_123",
+  "sessionToken": "scanner_session_secret",
+  "ticketId": "ticket_uuid",
+  "decision": "DENY",
+  "reasonCode": "SAFETY_CONCERN",
+  "notes": "Duplicate printed ticket"
+}
+```
+Response:
+```json
+{
+  "success": true,
+  "decision": "DENY",
+  "message": "Ticket denied.",
+  "ticket": {
+    "id": "ticket_uuid",
+    "publicId": "9f2da1f9e6bf",
+    "admissionDecision": "DENY",
+    "admissionReason": "SAFETY_CONCERN: Duplicate printed ticket"
+  }
+}
+```
+
+### `GET /api/admin/check-in/lookup?performanceId=perf_123&q=alex&limit=40`
+Manual lookup for supervisor tools by name/email/order/ticket/seat.
+
+### `GET /api/admin/check-in/timeline?performanceId=perf_123&page=1&pageSize=100`
+Returns scanner timeline rows (check-ins, undo, force decisions, failed attempts).
+
 ### `GET /api/admin/check-in/summary?performanceId=perf_123`
-Returns live check-in totals, per-gate breakdown, and recent check-ins.
+Returns live check-in totals, per-gate breakdown, active sessions, and recent check-ins.
 Response:
 ```json
 {
@@ -398,15 +488,28 @@ Response:
   },
   "totalCheckedIn": 84,
   "totalAdmittable": 212,
+  "deniedCount": 2,
+  "forceAdmitCount": 4,
   "gateBreakdown": [
     { "gate": "Main Entrance", "count": 60 },
     { "gate": "Side Door", "count": 24 }
+  ],
+  "activeSessions": [
+    {
+      "id": "sess_123",
+      "staffName": "Alex",
+      "gate": "Main Entrance",
+      "deviceLabel": "iPhone Gate A",
+      "startedAt": "2026-03-11T21:40:00.000Z",
+      "lastSeenAt": "2026-03-11T22:13:44.000Z"
+    }
   ],
   "recent": [
     {
       "id": "ticket_uuid",
       "publicId": "9f2da1f9e6bf",
       "checkedInAt": "2026-03-11T22:13:45.100Z",
+      "checkedInBy": "Alex @ Main Entrance",
       "checkInGate": "Main Entrance",
       "seat": { "sectionName": "Orchestra", "row": "A", "number": 12 },
       "holder": { "customerName": "Jordan Taylor", "customerEmail": "buyer@example.com" }
@@ -414,6 +517,12 @@ Response:
   ]
 }
 ```
+
+### `GET /api/admin/check-in/analytics?performanceId=perf_123`
+Returns post-show analytics including totals, attempts, gate breakdown, and per-minute timeline.
+
+### `GET /api/admin/check-in/analytics.csv?performanceId=perf_123`
+CSV export of scanner analytics.
 
 ### `POST /api/admin/performances`
 Request:

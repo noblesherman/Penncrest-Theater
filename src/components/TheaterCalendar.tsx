@@ -74,32 +74,32 @@ export default function TheaterCalendar() {
   };
 
   return (
-    <div className="bg-white rounded-3xl shadow-xl border border-stone-200 overflow-hidden">
+    <div className="overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-xl">
       {/* Header */}
-      <div className="bg-stone-900 text-white p-6 flex flex-col md:flex-row justify-between items-center gap-4">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-4 bg-stone-900 p-4 text-white sm:p-6 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-3 sm:gap-4">
           <div className="bg-yellow-400 p-3 rounded-xl text-stone-900">
             <CalendarIcon className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-2xl font-black uppercase tracking-wide">Theater Schedule</h2>
+            <h2 className="text-xl font-black uppercase tracking-wide sm:text-2xl">Theater Schedule</h2>
             <p className="text-stone-400 text-sm">Rehearsals, Performances, and Events</p>
           </div>
         </div>
         
-        <div className="flex gap-2">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           <a 
             href={googleCalendarUrl} 
             target="_blank" 
             rel="noreferrer"
-            className="flex items-center gap-2 bg-stone-800 hover:bg-stone-700 px-4 py-2 rounded-lg text-sm font-bold transition-colors"
+            className="flex items-center justify-center gap-2 rounded-lg bg-stone-800 px-4 py-2 text-sm font-bold transition-colors hover:bg-stone-700"
           >
             <ExternalLink className="w-4 h-4" /> Calendar
           </a>
           <a 
             href={generateIcs()}
             download="theater-schedule.ics"
-            className="flex items-center gap-2 bg-yellow-400 hover:bg-yellow-500 text-stone-900 px-4 py-2 rounded-lg text-sm font-bold transition-colors"
+            className="flex items-center justify-center gap-2 rounded-lg bg-yellow-400 px-4 py-2 text-sm font-bold text-stone-900 transition-colors hover:bg-yellow-500"
           >
             <Download className="w-4 h-4" /> iCal
           </a>
@@ -107,11 +107,11 @@ export default function TheaterCalendar() {
       </div>
 
       {/* Calendar Controls */}
-      <div className="p-6 border-b border-stone-100 flex justify-between items-center">
+      <div className="flex items-center justify-between border-b border-stone-100 p-4 sm:p-6">
         <button onClick={prevMonth} className="p-2 hover:bg-stone-100 rounded-full transition-colors">
           <ChevronLeft className="w-6 h-6 text-stone-600" />
         </button>
-        <h3 className="text-xl font-bold text-stone-900 uppercase tracking-widest">
+        <h3 className="text-base font-bold uppercase tracking-widest text-stone-900 sm:text-xl">
           {format(currentDate, 'MMMM yyyy')}
         </h3>
         <button onClick={nextMonth} className="p-2 hover:bg-stone-100 rounded-full transition-colors">
@@ -120,16 +120,17 @@ export default function TheaterCalendar() {
       </div>
 
       {/* Calendar Grid */}
-      <div className="p-6">
+      <div className="p-3 sm:p-6">
         <div className="grid grid-cols-7 mb-4">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-            <div key={day} className="text-center text-xs font-bold text-stone-400 uppercase tracking-wider">
-              {day}
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+            <div key={day} className="text-center text-[10px] font-bold uppercase tracking-wider text-stone-400 sm:text-xs">
+              <span className="sm:hidden">{day.slice(0, 1)}</span>
+              <span className="hidden sm:inline">{day}</span>
             </div>
           ))}
         </div>
         
-        <div className="grid grid-cols-7 gap-2">
+        <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
           {calendarDays.map((day, idx) => {
             const dayEvents = getDayEvents(day);
             const isCurrentMonth = isSameMonth(day, monthStart);
@@ -141,19 +142,19 @@ export default function TheaterCalendar() {
                 key={day.toISOString()} 
                 onClick={() => setSelectedDate(day)}
                 className={`
-                  min-h-[80px] md:min-h-[100px] p-2 rounded-xl border transition-all cursor-pointer relative group
+                  relative min-h-[66px] cursor-pointer rounded-lg border p-1.5 transition-all group sm:min-h-[80px] sm:rounded-xl sm:p-2 md:min-h-[100px]
                   ${isCurrentMonth ? 'bg-white border-stone-100' : 'bg-stone-50 border-transparent text-stone-300'}
                   ${isSelected ? 'ring-2 ring-stone-900 z-10' : 'hover:border-stone-300'}
                 `}
               >
                 <div className={`
-                  text-sm font-bold mb-1 w-6 h-6 flex items-center justify-center rounded-full
+                  mb-1 flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold sm:h-6 sm:w-6 sm:text-sm
                   ${isTodayDate ? 'bg-stone-900 text-white' : 'text-stone-500'}
                 `}>
                   {format(day, 'd')}
                 </div>
                 
-                <div className="space-y-1">
+                <div className="space-y-1 hidden sm:block">
                   {dayEvents.map((event, i) => (
                     <div 
                       key={i} 
@@ -167,6 +168,14 @@ export default function TheaterCalendar() {
                       {event.title}
                     </div>
                   ))}
+                </div>
+                <div className="sm:hidden">
+                  {dayEvents.length > 0 ? (
+                    <div className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-1.5 py-0.5 text-[10px] font-semibold text-stone-700">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-yellow-500" />
+                      {dayEvents.length}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             );
@@ -189,7 +198,7 @@ export default function TheaterCalendar() {
               </h4>
               <div className="space-y-3">
                 {getDayEvents(selectedDate).map((event, i) => (
-                  <div key={i} className="flex items-center gap-4 bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
+                  <div key={i} className="flex flex-col gap-3 rounded-xl border border-stone-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:gap-4">
                     <div className={`w-2 h-12 rounded-full ${(EVENT_STYLES[event.type] || EVENT_STYLES.event).split(' ')[0]}`}></div>
                     <div>
                       <div className="font-bold text-stone-900 text-lg">{event.title}</div>

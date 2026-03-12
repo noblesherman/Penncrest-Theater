@@ -29,7 +29,7 @@ export default function ShowHistorySlideshow() {
   }, []);
 
   return (
-    <div className="relative w-full max-w-5xl mx-auto aspect-[16/9] md:aspect-[21/9] bg-stone-900 rounded-3xl overflow-hidden shadow-2xl group">
+    <div className="group relative mx-auto w-full max-w-5xl overflow-hidden rounded-3xl bg-stone-900 shadow-2xl aspect-[5/4] sm:aspect-[16/9] md:aspect-[21/9]">
       <AnimatePresence mode="wait">
         <motion.div
           key={currentIndex}
@@ -46,15 +46,15 @@ export default function ShowHistorySlideshow() {
           />
           <div className="absolute inset-0 bg-gradient-to-t from-stone-900 via-transparent to-transparent"></div>
           
-          <div className="absolute bottom-0 left-0 p-8 md:p-12 w-full">
+          <div className="absolute bottom-0 left-0 w-full p-5 sm:p-8 md:p-12">
             <motion.div
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 0.3 }}
             >
-              <div className="text-yellow-400 font-mono text-xl mb-2">{HISTORY_ITEMS[currentIndex].year}</div>
-              <h3 className="text-4xl md:text-6xl font-black text-white uppercase mb-2">{HISTORY_ITEMS[currentIndex].title}</h3>
-              <p className="text-stone-300 text-lg md:text-xl">{HISTORY_ITEMS[currentIndex].description}</p>
+              <div className="mb-1 text-sm font-mono text-yellow-400 sm:mb-2 sm:text-xl">{HISTORY_ITEMS[currentIndex].year}</div>
+              <h3 className="mb-1 text-2xl font-black uppercase text-white sm:mb-2 sm:text-4xl md:text-6xl">{HISTORY_ITEMS[currentIndex].title}</h3>
+              <p className="text-sm text-stone-300 sm:text-lg md:text-xl">{HISTORY_ITEMS[currentIndex].description}</p>
             </motion.div>
           </div>
         </motion.div>
@@ -63,19 +63,19 @@ export default function ShowHistorySlideshow() {
       {/* Controls */}
       <button 
         onClick={prevSlide}
-        className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/20 text-white p-3 rounded-full backdrop-blur-sm transition-all opacity-0 group-hover:opacity-100"
+        className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/20 p-2 text-white backdrop-blur-sm transition-all hover:bg-white/30 sm:left-4 sm:p-3 sm:bg-white/10 sm:opacity-0 sm:group-hover:opacity-100"
       >
-        <ChevronLeft className="w-8 h-8" />
+        <ChevronLeft className="h-6 w-6 sm:h-8 sm:w-8" />
       </button>
       <button 
         onClick={nextSlide}
-        className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/20 text-white p-3 rounded-full backdrop-blur-sm transition-all opacity-0 group-hover:opacity-100"
+        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/20 p-2 text-white backdrop-blur-sm transition-all hover:bg-white/30 sm:right-4 sm:p-3 sm:bg-white/10 sm:opacity-0 sm:group-hover:opacity-100"
       >
-        <ChevronRight className="w-8 h-8" />
+        <ChevronRight className="h-6 w-6 sm:h-8 sm:w-8" />
       </button>
 
       {/* Indicators */}
-      <div className="absolute bottom-6 right-8 flex gap-2">
+      <div className="absolute bottom-4 right-4 flex gap-2 sm:bottom-6 sm:right-8">
         {HISTORY_ITEMS.map((_, index) => (
           <button
             key={index}

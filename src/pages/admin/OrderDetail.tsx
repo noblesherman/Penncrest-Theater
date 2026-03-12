@@ -37,45 +37,99 @@ export default function AdminOrderDetailPage() {
   const { id } = useParams();
   const [data, setData] = useState<OrderDetail | null>(null);
   const [releaseSeats, setReleaseSeats] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  const load = () => {
+  const load = async () => {
     if (!id) return;
-    adminFetch<OrderDetail>(`/api/admin/orders/${id}`).then(setData).catch(console.error);
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await adminFetch<OrderDetail>(`/api/admin/orders/${id}`);
+      setData(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load order');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    load();
+    void load();
   }, [id]);
 
-  if (!data) return <div>Loading order...</div>;
+  const resendTickets = async () => {
+    if (!data) return;
+    setActionBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await adminFetch(`/api/admin/orders/${data.id}/resend`, { method: 'POST' });
+      setNotice('Ticket email resent.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to resend tickets');
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const refundOrder = async () => {
+    if (!data) return;
+    setActionBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await adminFetch(`/api/admin/orders/${data.id}/refund`, {
+        method: 'POST',
+        body: JSON.stringify({ releaseSeats })
+      });
+      setNotice('Order marked refunded.');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to mark order refunded');
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  if (loading && !data) return <div className="text-sm text-stone-500">Loading order...</div>;
+
+  if (!data) {
+    return <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error || 'Order not found.'}</div>;
+  }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-black text-stone-900">Order {data.id}</h1>
-        <Link to="/admin/orders" className="text-sm font-bold text-stone-600">Back to orders</Link>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-2xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>Order {data.id}</h1>
+        <Link to="/admin/orders" className="text-sm font-semibold text-stone-600 hover:text-red-700 transition-colors">Back to orders</Link>
       </div>
 
-      <div className="text-sm text-stone-600 mb-6">
-        {data.customerName} • {data.email} • ${ (data.amountTotal / 100).toFixed(2) } • {data.status} • {data.source}
+      {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+      {notice ? <div className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{notice}</div> : null}
+
+      <div className="text-sm text-stone-600">
+        {data.customerName} • {data.email} • ${(data.amountTotal / 100).toFixed(2)} • {data.status} • {data.source}
       </div>
 
-      <div className="space-y-2 mb-6">
+      <div className="space-y-2">
         {data.orderSeats.map((seat) => {
           const ticket = data.tickets.find((item) => item.seatId === seat.seatId);
           return (
-            <div key={seat.seatId} className="border border-stone-200 rounded-xl p-3 flex justify-between gap-3">
+            <div key={seat.seatId} className="flex flex-col gap-3 rounded-xl border border-stone-200 p-3 sm:flex-row sm:justify-between">
               <div className="text-sm text-stone-700">
                 {seat.seat.sectionName} Row {seat.seat.row} Seat {seat.seat.number}
                 {seat.attendeeName ? ` (${seat.attendeeName})` : ''}
                 {seat.ticketType ? ` • ${seat.ticketType}` : ''}
                 {seat.isComplimentary ? ' • Complimentary' : ''}
               </div>
-              {ticket && (
-                <Link to={`/tickets/${ticket.publicId}`} className="text-xs font-bold text-yellow-700">
+              {ticket ? (
+                <Link to={`/tickets/${ticket.publicId}`} className="text-xs font-bold text-red-700 hover:text-red-800">
                   Ticket
                 </Link>
-              )}
+              ) : null}
             </div>
           );
         })}
@@ -83,13 +137,13 @@ export default function AdminOrderDetailPage() {
 
       <div className="flex flex-wrap gap-2 items-center">
         <button
-          className="bg-stone-900 text-white px-4 py-2 rounded-lg font-bold"
-          onClick={async () => {
-            await adminFetch(`/api/admin/orders/${data.id}/resend`, { method: 'POST' });
-            alert('Ticket email resent.');
+          className="w-full rounded-lg bg-red-700 px-4 py-2 font-semibold text-white hover:bg-red-800 transition-colors disabled:opacity-60 sm:w-auto"
+          disabled={actionBusy}
+          onClick={() => {
+            void resendTickets();
           }}
         >
-          Resend Tickets
+          {actionBusy ? 'Working...' : 'Resend Tickets'}
         </button>
 
         <label className="text-sm text-stone-600 inline-flex items-center gap-2">
@@ -98,13 +152,10 @@ export default function AdminOrderDetailPage() {
         </label>
 
         <button
-          className="bg-red-600 text-white px-4 py-2 rounded-lg font-bold"
-          onClick={async () => {
-            await adminFetch(`/api/admin/orders/${data.id}/refund`, {
-              method: 'POST',
-              body: JSON.stringify({ releaseSeats })
-            });
-            load();
+          className="w-full rounded-lg bg-red-600 px-4 py-2 font-semibold text-white hover:bg-red-700 transition-colors disabled:opacity-60 sm:w-auto"
+          disabled={actionBusy}
+          onClick={() => {
+            void refundOrder();
           }}
         >
           Mark Refunded

@@ -57,16 +57,16 @@ export default function TicketPage() {
   }
 
   return (
-    <div className="min-h-screen bg-stone-100 py-16 px-4">
-      <div className="max-w-xl mx-auto bg-white rounded-3xl border border-stone-200 shadow-xl overflow-hidden">
-        <div className="bg-stone-900 text-white p-8 text-center">
-          <h1 className="text-3xl font-black mb-2">{ticket.performance.showTitle}</h1>
+    <div className="min-h-screen bg-stone-100 px-4 py-10 sm:py-16">
+      <div className="mx-auto max-w-xl overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-xl">
+        <div className="bg-stone-900 p-6 text-center text-white sm:p-8">
+          <h1 className="mb-2 text-2xl font-black sm:text-3xl">{ticket.performance.showTitle}</h1>
           <div className="text-stone-300 text-sm">Ticket #{ticket.publicId}</div>
         </div>
 
-        <div className="p-8">
+        <div className="p-5 sm:p-8">
           <div className="flex flex-col items-center mb-6">
-            <img src={qrImage} alt="Ticket QR" className="w-64 h-64 border border-stone-200 rounded-xl" />
+            <img src={qrImage} alt="Ticket QR" className="h-52 w-52 rounded-xl border border-stone-200 sm:h-64 sm:w-64" />
             <div className="text-[11px] text-stone-400 mt-2">Present this QR at the door</div>
           </div>
 

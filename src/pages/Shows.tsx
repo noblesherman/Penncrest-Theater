@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
+import { ArrowRight, Ticket } from 'lucide-react';
 
 interface Show {
   id: string;
@@ -11,6 +12,13 @@ interface Show {
   year: number;
   accentColor: string;
 }
+
+const fadeUp = (delay = 0) => ({
+  initial: { opacity: 0, y: 24 },
+  whileInView: { opacity: 1, y: 0 },
+  viewport: { once: true, margin: '-60px' },
+  transition: { duration: 0.6, delay, ease: [0.22, 1, 0.36, 1] },
+});
 
 export default function Shows() {
   const [shows, setShows] = useState<Show[]>([]);
@@ -33,60 +41,166 @@ export default function Shows() {
   }, []);
 
   return (
-    <div className="bg-stone-50 min-h-screen py-20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-20">
-          <h1 className="text-5xl md:text-7xl font-black text-stone-900 mb-6">OUR SEASON</h1>
-          <p className="text-xl text-stone-500 max-w-2xl mx-auto">
-            From fall opener to spring finale, explore the productions lighting up the Penncrest stage.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 gap-12">
-          {shows.map((show, index) => (
-            <motion.div
-              key={show.id}
-              initial={{ opacity: 0, y: 50 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6, delay: index * 0.1 }}
+    <div className="bg-white text-stone-900 overflow-hidden">
+      <section className="border-b border-stone-100 bg-white relative">
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-700 via-red-600 to-amber-400" />
+        <div className="max-w-7xl mx-auto px-6 sm:px-10 pt-14 pb-10 sm:pt-16 sm:pb-12">
+          <motion.p
+            {...fadeUp(0)}
+            className="text-xs font-semibold uppercase tracking-[0.2em] text-red-600 mb-3"
+            style={{ fontFamily: 'system-ui, sans-serif' }}
+          >
+            Penncrest High School Theater
+          </motion.p>
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+            <motion.h1
+              {...fadeUp(0.07)}
+              className="font-bold leading-none"
+              style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(2.8rem, 7vw, 5.2rem)' }}
             >
-              <Link to={`/shows/${show.id}`} className="group block">
-                <div className="bg-white rounded-[2rem] p-4 shadow-xl hover:shadow-2xl transition-all duration-500 border border-stone-100 flex flex-col md:flex-row gap-8 overflow-hidden">
-                  <div className="w-full md:w-1/3 aspect-[3/4] md:aspect-[4/5] rounded-3xl overflow-hidden relative">
-                    <img 
-                      src={show.posterUrl} 
-                      alt={show.title} 
-                      className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-700"
-                    />
-                    <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-md px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm">
-                      {show.year}
-                    </div>
-                  </div>
-                  <div className="flex-1 py-4 md:py-8 pr-4 md:pr-8 flex flex-col justify-center">
-                    <div className="mb-4">
-                      <span className="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-4" style={{ backgroundColor: `${show.accentColor}20`, color: show.accentColor }}>
-                        {show.type}
-                      </span>
-                      <h2 className="text-4xl md:text-6xl font-black text-stone-900 mb-6 group-hover:text-stone-700 transition-colors leading-tight">
-                        {show.title}
-                      </h2>
-                      <p className="text-stone-600 text-lg leading-relaxed mb-8 max-w-2xl">
-                        {show.description}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-4 mt-auto">
-                      <span className="bg-stone-900 text-white px-8 py-4 rounded-full font-bold text-lg group-hover:bg-yellow-400 group-hover:text-stone-900 transition-all shadow-lg">
-                        View Details & Tickets
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            </motion.div>
-          ))}
+              Our <em className="text-red-700 not-italic">Season</em>
+            </motion.h1>
+            <motion.p
+              {...fadeUp(0.15)}
+              className="text-stone-400 max-w-md leading-relaxed text-base lg:text-right"
+              style={{ fontFamily: 'system-ui, sans-serif' }}
+            >
+              From fall opener to spring finale, explore the productions lighting up the Penncrest stage.
+            </motion.p>
+          </div>
         </div>
-      </div>
+      </section>
+
+      <section className="bg-stone-50 py-16 sm:py-20">
+        <div className="max-w-7xl mx-auto px-6 sm:px-10">
+          <div className="mb-10">
+            <motion.p
+              {...fadeUp(0)}
+              className="text-xs font-semibold uppercase tracking-[0.2em] text-red-600 mb-2"
+              style={{ fontFamily: 'system-ui, sans-serif' }}
+            >
+              On Stage
+            </motion.p>
+            <motion.h2
+              {...fadeUp(0.07)}
+              className="font-bold"
+              style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(1.8rem, 4vw, 2.8rem)' }}
+            >
+              Upcoming Productions
+            </motion.h2>
+          </div>
+
+          {shows.length === 0 ? (
+            <motion.div
+              {...fadeUp(0.12)}
+              className="rounded-2xl border border-stone-200 bg-white p-8 sm:p-10 text-center"
+            >
+              <h3
+                className="font-bold text-stone-900 mb-2"
+                style={{ fontFamily: 'Georgia, serif', fontSize: '1.5rem' }}
+              >
+                No shows posted yet
+              </h3>
+              <p className="text-stone-500" style={{ fontFamily: 'system-ui, sans-serif' }}>
+                Check back soon for new season announcements.
+              </p>
+            </motion.div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {shows.map((show, index) => (
+                <motion.div key={show.id} {...fadeUp(index * 0.08)}>
+                  <Link to={`/shows/${show.id}`} className="group block h-full">
+                    <article className="h-full rounded-2xl overflow-hidden border border-stone-100 bg-white shadow-sm hover:shadow-xl transition-all duration-300">
+                      <div className="aspect-[4/3] overflow-hidden relative">
+                        <motion.img
+                          whileHover={{ scale: 1.05 }}
+                          transition={{ duration: 0.45 }}
+                          src={show.posterUrl}
+                          alt={show.title}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs font-semibold text-stone-700 shadow-sm">
+                          {show.year}
+                        </div>
+                      </div>
+
+                      <div className="p-6 flex flex-col h-[calc(100%-0px)]">
+                        <div className="flex items-center gap-2 mb-3">
+                          <span
+                            className="h-2 w-2 rounded-full"
+                            style={{ backgroundColor: show.accentColor || '#b91c1c' }}
+                          />
+                          <span
+                            className="text-xs uppercase tracking-[0.15em] font-semibold text-red-600"
+                            style={{ fontFamily: 'system-ui, sans-serif' }}
+                          >
+                            {show.type}
+                          </span>
+                        </div>
+
+                        <h3
+                          className="font-bold text-stone-900 mb-2 group-hover:text-red-700 transition-colors"
+                          style={{ fontFamily: 'Georgia, serif', fontSize: '1.4rem', lineHeight: 1.3 }}
+                        >
+                          {show.title}
+                        </h3>
+
+                        <p
+                          className="text-stone-500 text-sm leading-relaxed flex-1"
+                          style={{ fontFamily: 'system-ui, sans-serif' }}
+                        >
+                          {show.description}
+                        </p>
+
+                        <span
+                          className="mt-5 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-red-600"
+                          style={{ fontFamily: 'system-ui, sans-serif' }}
+                        >
+                          <Ticket className="w-3.5 h-3.5" />
+                          View Details
+                          <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                        </span>
+                      </div>
+                    </article>
+                  </Link>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="bg-white py-14 sm:py-16 border-t border-stone-100">
+        <div className="max-w-7xl mx-auto px-6 sm:px-10">
+          <motion.div
+            {...fadeUp(0)}
+            className="rounded-2xl border border-red-100 bg-red-50 px-6 py-7 sm:px-8 sm:py-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+          >
+            <div>
+              <p
+                className="text-xs uppercase tracking-[0.2em] font-semibold text-red-600 mb-2"
+                style={{ fontFamily: 'system-ui, sans-serif' }}
+              >
+                Join Us
+              </p>
+              <h3
+                className="font-bold text-stone-900"
+                style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(1.3rem, 3vw, 2rem)' }}
+              >
+                Support the next standing ovation.
+              </h3>
+            </div>
+            <Link
+              to="/about"
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-red-700 text-white px-6 py-3 font-semibold hover:bg-red-800 transition-colors"
+              style={{ fontFamily: 'system-ui, sans-serif' }}
+            >
+              Learn About the Program
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </motion.div>
+        </div>
+      </section>
     </div>
   );
 }

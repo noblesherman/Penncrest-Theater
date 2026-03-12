@@ -44,9 +44,10 @@ export default function ShowDetails() {
   if (!show) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
   return (
-    <div className="bg-white min-h-screen pb-20">
+    <div className="min-h-screen bg-white pb-14 sm:pb-20">
       {/* Banner */}
-      <div className="relative h-[60vh] min-h-[500px] bg-stone-900 overflow-hidden">
+      <div className="relative h-[52vh] min-h-[420px] overflow-hidden bg-stone-900 sm:h-[60vh] sm:min-h-[500px]">
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-700 via-red-600 to-amber-400 z-10" />
         <div className="absolute inset-0 opacity-40">
           <img src={show.posterUrl} alt={show.title} className="w-full h-full object-cover blur-sm" />
         </div>
@@ -54,7 +55,11 @@ export default function ShowDetails() {
         
         <div className="absolute inset-0 flex items-end">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20 w-full">
-            <Link to="/shows" className="inline-flex items-center text-white/60 hover:text-white mb-8 transition-colors">
+            <Link
+              to="/shows"
+              className="inline-flex items-center gap-2 text-white/70 hover:text-white mb-8 transition-colors"
+              style={{ fontFamily: 'system-ui, sans-serif' }}
+            >
               <ArrowLeft className="w-5 h-5 mr-2" /> Back to Our Season
             </Link>
             <motion.div
@@ -62,15 +67,24 @@ export default function ShowDetails() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8 }}
             >
-              <div className="flex items-center gap-4 mb-6">
-                <span className="bg-yellow-400 text-stone-900 px-4 py-1.5 rounded-full text-sm font-bold uppercase tracking-wider shadow-lg">
+              <div className="mb-6 flex flex-wrap items-center gap-3 sm:gap-4">
+                <span
+                  className="bg-red-700 text-white px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-[0.15em] shadow-lg"
+                  style={{ fontFamily: 'system-ui, sans-serif' }}
+                >
                   {show.type}
                 </span>
-                <span className="text-white/80 font-mono text-sm border border-white/20 px-4 py-1.5 rounded-full">
+                <span
+                  className="text-white/80 text-xs border border-white/25 px-4 py-1.5 rounded-full uppercase tracking-[0.15em] font-semibold"
+                  style={{ fontFamily: 'system-ui, sans-serif' }}
+                >
                   {show.year} Season
                 </span>
               </div>
-              <h1 className="text-6xl md:text-8xl font-black text-white mb-6 tracking-tighter shadow-sm">
+              <h1
+                className="mb-4 font-bold leading-none tracking-tight text-white shadow-sm sm:mb-6"
+                style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(2.6rem, 7vw, 5.6rem)' }}
+              >
                 {show.title}
               </h1>
             </motion.div>
@@ -78,20 +92,30 @@ export default function ShowDetails() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-10 relative z-10">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+      <div className="relative z-10 mx-auto -mt-8 max-w-7xl px-4 sm:-mt-10 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 lg:gap-12">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-12">
-            <div className="bg-white rounded-3xl p-8 md:p-12 shadow-xl border border-stone-100">
-              <h2 className="text-2xl font-bold mb-6">About the Show</h2>
-              <p className="text-stone-600 text-lg leading-relaxed whitespace-pre-line">
+            <div className="rounded-3xl border border-stone-100 bg-white p-6 shadow-xl sm:p-8 md:p-12">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-red-600 mb-2" style={{ fontFamily: 'system-ui, sans-serif' }}>
+                Synopsis
+              </p>
+              <h2 className="mb-6 font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(1.7rem, 4vw, 2.2rem)' }}>
+                About the Show
+              </h2>
+              <p className="whitespace-pre-line text-base leading-relaxed text-stone-600 sm:text-lg" style={{ fontFamily: 'system-ui, sans-serif' }}>
                 {show.description}
               </p>
             </div>
 
             {/* Cast Grid */}
             <div>
-              <h2 className="text-3xl font-black mb-8">Meet the Cast</h2>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-red-600 mb-2" style={{ fontFamily: 'system-ui, sans-serif' }}>
+                Students
+              </p>
+              <h2 className="mb-6 font-bold text-stone-900 sm:mb-8" style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(1.7rem, 4vw, 2.2rem)' }}>
+                Meet the Cast
+              </h2>
               <div className="flex overflow-x-auto gap-6 pb-8 -mx-4 px-4 md:mx-0 md:px-0 no-scrollbar snap-x snap-mandatory">
                 {[...Array(20)].map((_, i) => (
                   <div key={i} className="flex-none w-40 md:w-48 snap-start group">
@@ -103,8 +127,8 @@ export default function ShowDetails() {
                       />
                     </div>
                     <div className="text-center">
-                      <div className="font-bold text-stone-900 text-lg leading-tight">Student Name</div>
-                      <div className="text-stone-500 text-sm font-medium">Role Name</div>
+                      <div className="font-bold text-stone-900 text-lg leading-tight" style={{ fontFamily: 'Georgia, serif' }}>Student Name</div>
+                      <div className="text-stone-500 text-xs font-semibold uppercase tracking-[0.12em]" style={{ fontFamily: 'system-ui, sans-serif' }}>Role Name</div>
                     </div>
                   </div>
                 ))}
@@ -114,14 +138,14 @@ export default function ShowDetails() {
 
           {/* Sidebar / Tickets */}
           <div className="lg:col-span-1">
-            <div className="bg-stone-50 rounded-3xl p-8 sticky top-24 border border-stone-200 shadow-lg">
-              <h3 className="text-2xl font-black mb-6 flex items-center gap-2">
-                <Calendar className="w-6 h-6 text-yellow-500" />
+            <div className="rounded-3xl border border-stone-100 bg-white p-6 shadow-lg sm:p-8 lg:sticky lg:top-24">
+              <h3 className="text-2xl font-bold mb-6 flex items-center gap-2 text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
+                <Calendar className="w-6 h-6 text-red-600" />
                 Performances
               </h3>
               <div className="space-y-4">
                 {show.performances.map((perf) => (
-                  <div key={perf.id} className="bg-white p-6 rounded-2xl border border-stone-100 shadow-sm hover:shadow-md transition-shadow">
+                  <div key={perf.id} className="rounded-2xl border border-stone-100 bg-white p-4 shadow-sm transition-shadow hover:shadow-md sm:p-6">
                     <div className="flex justify-between items-start mb-4">
                       <div>
                         <div className="font-bold text-lg text-stone-900">
@@ -136,12 +160,13 @@ export default function ShowDetails() {
                     {perf.salesOpen !== false ? (
                       <Link
                         to={`/booking/${perf.id}`}
-                        className="block w-full bg-stone-900 text-white text-center py-3 rounded-xl font-bold hover:bg-yellow-400 hover:text-stone-900 transition-colors"
+                        className="block w-full bg-red-700 text-white text-center py-3 rounded-xl font-semibold hover:bg-red-800 transition-colors"
+                        style={{ fontFamily: 'system-ui, sans-serif' }}
                       >
                         Select Seats
                       </Link>
                     ) : (
-                      <div className="block w-full bg-stone-200 text-stone-600 text-center py-3 rounded-xl font-bold">
+                      <div className="block w-full bg-stone-200 text-stone-600 text-center py-3 rounded-xl font-semibold" style={{ fontFamily: 'system-ui, sans-serif' }}>
                         Online Sales Closed
                       </div>
                     )}
@@ -159,9 +184,9 @@ export default function ShowDetails() {
               
               <div className="mt-8 pt-8 border-t border-stone-200">
                 <div className="flex items-start gap-3 text-stone-600 text-sm">
-                  <MapPin className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                  <MapPin className="w-5 h-5 flex-shrink-0 mt-0.5 text-red-600" />
                   <div>
-                    <span className="font-bold block text-stone-900">Penncrest High School Auditorium</span>
+                    <span className="font-bold block text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>Penncrest High School Auditorium</span>
                     134 Barren Rd, Media, PA 19063
                   </div>
                 </div>

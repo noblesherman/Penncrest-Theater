@@ -160,7 +160,7 @@ export default function AdminSeatsPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-black text-stone-900 mb-5">Seat Management</h1>
+      <h1 className="text-2xl font-bold text-stone-900 mb-5">Seat Management</h1>
 
       <div className="flex flex-wrap gap-2 mb-5 text-sm">
         <span className="bg-stone-100 rounded-full px-3 py-1">Available {statusCounts.available}</span>
@@ -195,15 +195,29 @@ export default function AdminSeatsPage() {
         {error && <div className="text-red-600 text-sm">{error}</div>}
         {selectedPerformanceArchived ? <div className="text-amber-700 text-sm">Archived performance selected. Seat edits are disabled.</div> : null}
 
-        <div className="flex gap-2">
-          <button onClick={(event) => submitMutation(event, 'block')} disabled={selectedPerformanceArchived} className="bg-red-600 disabled:bg-red-300 text-white px-4 py-2 rounded-lg font-bold">Block Seats</button>
-          <button onClick={(event) => submitMutation(event, 'unblock')} disabled={selectedPerformanceArchived} className="bg-stone-900 disabled:bg-stone-400 text-white px-4 py-2 rounded-lg font-bold">Unblock Seats</button>
-          <button type="button" onClick={() => void loadSeats()} className="border border-stone-300 px-4 py-2 rounded-lg">Refresh</button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={(event) => submitMutation(event, 'block')}
+            disabled={selectedPerformanceArchived}
+            className="w-full rounded-lg bg-red-600 px-4 py-2 font-bold text-white disabled:bg-red-300 sm:w-auto"
+          >
+            Block Seats
+          </button>
+          <button
+            onClick={(event) => submitMutation(event, 'unblock')}
+            disabled={selectedPerformanceArchived}
+            className="w-full rounded-lg bg-red-700 px-4 py-2 font-bold text-white disabled:bg-stone-400 sm:w-auto"
+          >
+            Unblock Seats
+          </button>
+          <button type="button" onClick={() => void loadSeats()} className="w-full rounded-lg border border-stone-300 px-4 py-2 sm:w-auto">
+            Refresh
+          </button>
         </div>
       </form>
 
       <div className="max-h-[420px] overflow-auto border border-stone-200 rounded-xl">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[760px] text-sm">
           <thead className="bg-stone-50 sticky top-0">
             <tr>
               <th className="text-left px-3 py-2">Seat ID</th>

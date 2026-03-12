@@ -37,44 +37,69 @@ export default function AdminOrdersPage() {
     priceCents: 1800,
     sendEmail: false
   });
+  const [loadingRows, setLoadingRows] = useState(false);
+  const [submittingAssign, setSubmittingAssign] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = async () => {
-    const params = new URLSearchParams();
-    if (query.trim()) params.set('q', query.trim());
-    if (status) params.set('status', status);
-    if (sourceFilter) params.set('source', sourceFilter);
-    params.set('scope', scope);
+    setLoadingRows(true);
+    setError(null);
 
-    const result = await adminFetch<Order[]>(`/api/admin/orders?${params.toString()}`);
-    setRows(result);
+    try {
+      const params = new URLSearchParams();
+      if (query.trim()) params.set('q', query.trim());
+      if (status) params.set('status', status);
+      if (sourceFilter) params.set('source', sourceFilter);
+      params.set('scope', scope);
+
+      const result = await adminFetch<Order[]>(`/api/admin/orders?${params.toString()}`);
+      setRows(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load orders');
+    } finally {
+      setLoadingRows(false);
+    }
+  };
+
+  const loadPerformances = async () => {
+    try {
+      const items = await adminFetch<Array<{ id: string; title: string; startsAt: string; isArchived?: boolean }>>(
+        '/api/admin/performances?scope=active'
+      );
+      const mapped = items
+        .filter((item) => !item.isArchived)
+        .map((item) => ({ id: item.id, title: item.title, startsAt: item.startsAt }));
+
+      setPerformances(mapped);
+      if (mapped.length > 0) {
+        setAssignForm((prev) => ({
+          ...prev,
+          performanceId: mapped.some((row) => row.id === prev.performanceId) ? prev.performanceId : mapped[0].id
+        }));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load performances');
+    }
   };
 
   useEffect(() => {
-    load().catch(console.error);
-    adminFetch<any[]>('/api/admin/performances')
-      .then((items) => {
-        const mapped = items
-          .filter((item) => !item.isArchived)
-          .map((item) => ({ id: item.id, title: item.title, startsAt: item.startsAt }));
-        setPerformances(mapped);
-        if (mapped.length > 0) {
-          setAssignForm((prev) => ({ ...prev, performanceId: prev.performanceId || mapped[0].id }));
-        }
-      })
-      .catch(console.error);
+    void Promise.all([load(), loadPerformances()]);
   }, []);
 
   useEffect(() => {
-    load().catch(console.error);
+    void load();
   }, [scope]);
 
   const search = (event: FormEvent) => {
     event.preventDefault();
-    load().catch(console.error);
+    void load();
   };
 
   const assignOrder = async (event: FormEvent) => {
     event.preventDefault();
+    setError(null);
+    setNotice(null);
 
     const seatIds = assignForm.seatIdsInput
       .split(',')
@@ -82,7 +107,7 @@ export default function AdminOrdersPage() {
       .filter(Boolean);
 
     if (!assignForm.performanceId || seatIds.length === 0) {
-      alert('Choose a performance and provide at least one seat ID.');
+      setError('Choose a performance and provide at least one seat ID.');
       return;
     }
 
@@ -94,36 +119,49 @@ export default function AdminOrdersPage() {
       seatIds.map((seatId) => [seatId, assignForm.source === 'COMP' ? 0 : assignForm.priceCents])
     );
 
-    await adminFetch('/api/admin/orders/assign', {
-      method: 'POST',
-      body: JSON.stringify({
-        performanceId: assignForm.performanceId,
-        seatIds,
-        customerName: assignForm.customerName,
-        customerEmail: assignForm.customerEmail,
-        ticketTypeBySeatId,
-        priceBySeatId,
-        source: assignForm.source,
-        sendEmail: assignForm.sendEmail
-      })
-    });
+    setSubmittingAssign(true);
+    try {
+      await adminFetch('/api/admin/orders/assign', {
+        method: 'POST',
+        body: JSON.stringify({
+          performanceId: assignForm.performanceId,
+          seatIds,
+          customerName: assignForm.customerName,
+          customerEmail: assignForm.customerEmail,
+          ticketTypeBySeatId,
+          priceBySeatId,
+          source: assignForm.source,
+          sendEmail: assignForm.sendEmail
+        })
+      });
 
-    setAssignForm((prev) => ({
-      ...prev,
-      customerName: '',
-      customerEmail: '',
-      seatIdsInput: ''
-    }));
-
-    load().catch(console.error);
+      setAssignForm((prev) => ({
+        ...prev,
+        customerName: '',
+        customerEmail: '',
+        seatIdsInput: ''
+      }));
+      setNotice(`Assigned ${seatIds.length} seat${seatIds.length === 1 ? '' : 's'} successfully.`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to assign seats');
+    } finally {
+      setSubmittingAssign(false);
+    }
   };
 
   return (
-    <div>
-      <h1 className="text-2xl font-black text-stone-900 mb-5">Orders</h1>
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-2xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>Orders</h1>
+        <p className="text-sm text-stone-600">Search orders and assign door/comp tickets.</p>
+      </div>
 
-      <form onSubmit={assignOrder} className="border border-stone-200 rounded-2xl p-4 mb-6 space-y-3">
-        <div className="font-bold text-sm text-stone-700">Assign Seats (Door / Comp)</div>
+      {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+      {notice ? <div className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{notice}</div> : null}
+
+      <form onSubmit={assignOrder} className="border border-stone-100 rounded-2xl p-4 space-y-3">
+        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-red-600">Assign Seats (Door / Comp)</div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
           <select
             value={assignForm.performanceId}
@@ -194,20 +232,30 @@ export default function AdminOrdersPage() {
         </label>
 
         <div>
-          <button className="bg-stone-900 text-white px-4 py-2 rounded-xl font-bold">Assign Seats</button>
+          <button
+            className="w-full rounded-xl bg-red-700 px-4 py-2 font-semibold text-white hover:bg-red-800 transition-colors disabled:opacity-60 sm:w-auto"
+            disabled={submittingAssign}
+          >
+            {submittingAssign ? 'Assigning...' : 'Assign Seats'}
+          </button>
         </div>
       </form>
 
-      <form onSubmit={search} className="flex flex-wrap gap-2 mb-5">
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search email, name, or order id" className="flex-1 min-w-[220px] border border-stone-300 rounded-xl px-3 py-2" />
-        <select value={status} onChange={(event) => setStatus(event.target.value)} className="border border-stone-300 rounded-xl px-3 py-2">
+      <form onSubmit={search} className="flex flex-wrap gap-2">
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search email, name, or order id"
+          className="w-full min-w-0 flex-1 rounded-xl border border-stone-300 px-3 py-2 sm:min-w-[220px]"
+        />
+        <select value={status} onChange={(event) => setStatus(event.target.value)} className="w-full rounded-xl border border-stone-300 px-3 py-2 sm:w-auto">
           <option value="">All statuses</option>
           <option value="PENDING">PENDING</option>
           <option value="PAID">PAID</option>
           <option value="REFUNDED">REFUNDED</option>
           <option value="CANCELED">CANCELED</option>
         </select>
-        <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} className="border border-stone-300 rounded-xl px-3 py-2">
+        <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} className="w-full rounded-xl border border-stone-300 px-3 py-2 sm:w-auto">
           <option value="">All sources</option>
           <option value="ONLINE">ONLINE</option>
           <option value="DOOR">DOOR</option>
@@ -216,27 +264,34 @@ export default function AdminOrdersPage() {
           <option value="FAMILY_FREE">FAMILY_FREE</option>
           <option value="STUDENT_COMP">STUDENT_COMP</option>
         </select>
-        <select value={scope} onChange={(event) => setScope(event.target.value as 'active' | 'archived' | 'all')} className="border border-stone-300 rounded-xl px-3 py-2">
+        <select
+          value={scope}
+          onChange={(event) => setScope(event.target.value as 'active' | 'archived' | 'all')}
+          className="w-full rounded-xl border border-stone-300 px-3 py-2 sm:w-auto"
+        >
           <option value="active">Active</option>
           <option value="archived">Archived</option>
           <option value="all">All</option>
         </select>
-        <button className="bg-stone-900 text-white px-4 py-2 rounded-xl font-bold">Search</button>
+        <button className="w-full rounded-xl bg-red-700 px-4 py-2 font-semibold text-white hover:bg-red-800 transition-colors sm:w-auto">Search</button>
       </form>
+
+      {loadingRows ? <div className="text-sm text-stone-500">Loading orders...</div> : null}
+      {!loadingRows && rows.length === 0 ? <div className="text-sm text-stone-500">No orders found for the current filters.</div> : null}
 
       <div className="space-y-2">
         {rows.map((order) => (
-          <div key={order.id} className="border border-stone-200 rounded-xl p-3 flex justify-between gap-3">
+          <div key={order.id} className="flex flex-col gap-3 rounded-xl border border-stone-200 p-3 sm:flex-row sm:justify-between">
             <div>
               <div className="font-bold text-stone-900">{order.id}</div>
               <div className="text-xs text-stone-500">{order.customerName} • {order.email}</div>
               <div className="text-xs text-stone-500">{order.performanceTitle}</div>
               <div className="text-xs text-stone-500">{new Date(order.createdAt).toLocaleString()}</div>
             </div>
-            <div className="text-right">
+            <div className="sm:text-right">
               <div className="font-bold text-stone-900">${(order.amountTotal / 100).toFixed(2)}</div>
               <div className="text-xs text-stone-500">{order.status} • {order.source}</div>
-              <Link to={`/admin/orders/${order.id}`} className="text-xs font-bold text-yellow-700 hover:text-yellow-900">View</Link>
+              <Link to={`/admin/orders/${order.id}`} className="text-xs font-bold text-red-700 hover:text-red-800">View</Link>
             </div>
           </div>
         ))}

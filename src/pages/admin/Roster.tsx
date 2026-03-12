@@ -25,41 +25,73 @@ export default function AdminRosterPage() {
   const [query, setQuery] = useState('');
   const [scope, setScope] = useState<'active' | 'archived' | 'all'>('active');
   const [rows, setRows] = useState<RosterRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    adminFetch<any[]>('/api/admin/performances')
-      .then((items) => {
-        const mapped = items.map((item) => ({ id: item.id, title: item.title, startsAt: item.startsAt }));
-        setPerformances(mapped);
-        if (mapped.length > 0) setPerformanceId(mapped[0].id);
-      })
-      .catch(console.error);
-  }, []);
+  const loadPerformances = async () => {
+    try {
+      const items = await adminFetch<Array<{ id: string; title: string; startsAt: string }>>(`/api/admin/performances?scope=${scope}`);
+      const mapped = items.map((item) => ({ id: item.id, title: item.title, startsAt: item.startsAt }));
+      setPerformances(mapped);
+      if (mapped.length === 0) {
+        setPerformanceId('');
+        setRows([]);
+        return;
+      }
+      setPerformanceId((prev) => (mapped.some((item) => item.id === prev) ? prev : mapped[0].id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load performances');
+    }
+  };
 
-  const load = () => {
-    const params = new URLSearchParams();
-    if (performanceId) params.set('performanceId', performanceId);
-    if (query.trim()) params.set('q', query.trim());
-    params.set('scope', scope);
+  const load = async (targetPerformanceId: string, targetQuery = query) => {
+    if (!targetPerformanceId) {
+      setRows([]);
+      return;
+    }
 
-    adminFetch<RosterRow[]>(`/api/admin/roster?${params.toString()}`).then(setRows).catch(console.error);
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      params.set('performanceId', targetPerformanceId);
+      if (targetQuery.trim()) params.set('q', targetQuery.trim());
+      params.set('scope', scope);
+
+      const result = await adminFetch<RosterRow[]>(`/api/admin/roster?${params.toString()}`);
+      setRows(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load roster');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    if (performanceId) load();
-  }, [performanceId, scope]);
+    void loadPerformances();
+  }, [scope]);
+
+  useEffect(() => {
+    if (!performanceId) return;
+    void load(performanceId);
+  }, [performanceId]);
 
   const onSearch = (event: FormEvent) => {
     event.preventDefault();
-    load();
+    void load(performanceId, query);
   };
 
   return (
-    <div>
-      <h1 className="text-2xl font-black text-stone-900 mb-5">Attendee Roster</h1>
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-2xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>Attendee Roster</h1>
+        <p className="text-sm text-stone-600">Search by attendee, buyer, email, or order.</p>
+      </div>
 
-      <form onSubmit={onSearch} className="flex flex-wrap gap-2 mb-5">
-        <select value={performanceId} onChange={(event) => setPerformanceId(event.target.value)} className="border border-stone-300 rounded-xl px-3 py-2">
+      {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+
+      <form onSubmit={onSearch} className="flex flex-wrap gap-2">
+        <select value={performanceId} onChange={(event) => setPerformanceId(event.target.value)} className="w-full rounded-xl border border-stone-300 px-3 py-2 sm:w-auto">
           {performances.map((performance) => (
             <option key={performance.id} value={performance.id}>
               {performance.title} - {new Date(performance.startsAt).toLocaleString()}
@@ -69,18 +101,26 @@ export default function AdminRosterPage() {
         <select
           value={scope}
           onChange={(event) => setScope(event.target.value as 'active' | 'archived' | 'all')}
-          className="border border-stone-300 rounded-xl px-3 py-2"
+          className="w-full rounded-xl border border-stone-300 px-3 py-2 sm:w-auto"
         >
           <option value="active">Active</option>
           <option value="archived">Archived</option>
           <option value="all">All</option>
         </select>
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search attendee, buyer, email, order" className="flex-1 min-w-[200px] border border-stone-300 rounded-xl px-3 py-2" />
-        <button className="bg-stone-900 text-white px-4 py-2 rounded-xl font-bold">Search</button>
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search attendee, buyer, email, order"
+          className="w-full min-w-0 flex-1 rounded-xl border border-stone-300 px-3 py-2 sm:min-w-[200px]"
+        />
+        <button className="w-full rounded-xl bg-red-700 px-4 py-2 font-semibold text-white hover:bg-red-800 transition-colors sm:w-auto">Search</button>
       </form>
 
+      {loading ? <div className="text-sm text-stone-500">Loading roster...</div> : null}
+      {!loading && rows.length === 0 ? <div className="text-sm text-stone-500">No attendee rows found for the selected filters.</div> : null}
+
       <div className="max-h-[520px] overflow-auto border border-stone-200 rounded-xl">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[760px] text-sm">
           <thead className="bg-stone-50 sticky top-0">
             <tr>
               <th className="text-left px-3 py-2">Attendee</th>

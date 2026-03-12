@@ -120,7 +120,7 @@ export default function AdminStaffCompsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-black text-stone-900 mb-1">Staff Verification & Comps</h1>
+        <h1 className="text-2xl font-bold text-stone-900 mb-1">Staff Verification & Comps</h1>
         <p className="text-sm text-stone-600">Manage redeem codes, verified staff users, and comp redemptions.</p>
         <div className="mt-2">
           <select
@@ -160,7 +160,7 @@ export default function AdminStaffCompsPage() {
               className="w-full border border-stone-300 rounded-xl px-3 py-2"
             />
           </div>
-          <button className="bg-stone-900 text-white px-4 py-2 rounded-xl font-bold">Generate</button>
+          <button className="w-full rounded-xl bg-red-700 px-4 py-2 font-bold text-white md:w-auto">Generate</button>
         </form>
 
         {generatedCodes.length > 0 && (
@@ -182,7 +182,7 @@ export default function AdminStaffCompsPage() {
         <h2 className="font-bold text-stone-900 mb-3">Verified Staff Users</h2>
         <div className="space-y-2 max-h-64 overflow-auto">
           {users.map((user) => (
-            <div key={user.id} className="border border-stone-200 rounded-xl p-3 flex justify-between items-center gap-3">
+            <div key={user.id} className="flex flex-col gap-3 rounded-xl border border-stone-200 p-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="font-semibold text-stone-900">{user.name}</div>
                 <div className="text-xs text-stone-500">{user.email}</div>
@@ -192,7 +192,7 @@ export default function AdminStaffCompsPage() {
                 </div>
               </div>
               <button
-                className="text-sm px-3 py-1 rounded-md border border-red-300 text-red-600"
+                className="w-full rounded-md border border-red-300 px-3 py-1 text-sm text-red-600 sm:w-auto"
                 onClick={() => revokeUser(user.id)}
               >
                 Revoke

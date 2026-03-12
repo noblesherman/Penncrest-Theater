@@ -247,18 +247,18 @@ export default function StaffTicketsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-stone-50 py-16 px-4">
-      <div className="max-w-4xl mx-auto bg-white border border-stone-200 rounded-3xl p-8 shadow-sm">
-        <h1 className="text-3xl font-black text-stone-900 mb-2">Teacher Complimentary Ticket</h1>
+    <div className="min-h-screen bg-stone-50 px-4 py-10 sm:py-16">
+      <div className="mx-auto max-w-4xl rounded-3xl border border-stone-200 bg-white p-5 shadow-sm sm:p-8">
+        <h1 className="mb-2 text-2xl font-black text-stone-900 sm:text-3xl">Teacher Complimentary Ticket</h1>
         <p className="text-stone-600 mb-6">Verified teachers and theater staff can reserve complimentary tickets online.</p>
 
         {!user ? (
           <div className="space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <a href={googleOAuthStartUrl} className="text-center bg-stone-900 text-white px-5 py-3 rounded-xl font-bold">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <a href={googleOAuthStartUrl} className="rounded-xl bg-stone-900 px-5 py-3 text-center font-bold text-white">
                 Sign in with Google
               </a>
-              <a href={microsoftOAuthStartUrl} className="text-center border border-stone-300 text-stone-900 px-5 py-3 rounded-xl font-bold">
+              <a href={microsoftOAuthStartUrl} className="rounded-xl border border-stone-300 px-5 py-3 text-center font-bold text-stone-900">
                 Sign in with Microsoft
               </a>
             </div>
@@ -266,7 +266,7 @@ export default function StaffTicketsPage() {
             <div className="border-t border-stone-200 pt-6">
               <h2 className="font-bold text-stone-900 mb-2">Fallback if OAuth is blocked</h2>
               <p className="text-sm text-stone-600 mb-3">Start a local session, then redeem an in-person staff verification code.</p>
-              <form onSubmit={startLocalSession} className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <form onSubmit={startLocalSession} className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 <input
                   value={localName}
                   onChange={(event) => setLocalName(event.target.value)}
@@ -282,7 +282,7 @@ export default function StaffTicketsPage() {
                   className="border border-stone-300 rounded-xl px-3 py-2"
                   required
                 />
-                <button disabled={submitting} className="bg-yellow-400 text-stone-900 px-4 py-2 rounded-xl font-bold disabled:opacity-50">
+                <button disabled={submitting} className="w-full rounded-xl bg-yellow-400 px-4 py-2 font-bold text-stone-900 disabled:opacity-50 md:w-auto">
                   {submitting ? 'Starting...' : 'Start Session'}
                 </button>
               </form>
@@ -290,7 +290,7 @@ export default function StaffTicketsPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-2 border border-stone-200 rounded-xl p-4 bg-stone-50">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-stone-200 bg-stone-50 p-4">
               <div>
                 <div className="font-semibold text-stone-900">{user.name}</div>
                 <div className="text-sm text-stone-600">{user.email}</div>
@@ -303,7 +303,7 @@ export default function StaffTicketsPage() {
               </div>
               <button
                 type="button"
-                className="text-sm border border-stone-300 px-3 py-1.5 rounded-lg"
+                className="w-full rounded-lg border border-stone-300 px-3 py-1.5 text-sm sm:w-auto"
                 onClick={() => {
                   clearStaffToken();
                   setUser(null);
@@ -327,7 +327,7 @@ export default function StaffTicketsPage() {
                     required
                   />
                 </div>
-                <button disabled={submitting} className="bg-stone-900 text-white px-5 py-3 rounded-xl font-bold disabled:opacity-50">
+                <button disabled={submitting} className="w-full rounded-xl bg-stone-900 px-5 py-3 font-bold text-white disabled:opacity-50 sm:w-auto">
                   {submitting ? 'Redeeming...' : 'Redeem Code'}
                 </button>
               </form>
@@ -380,14 +380,14 @@ export default function StaffTicketsPage() {
                   {availableSeats.length === 0 ? (
                     <div className="text-sm text-stone-500">No staff-comp seats are currently available for this performance.</div>
                   ) : (
-                    <div className="space-y-4 max-h-80 overflow-y-auto pr-1">
+                    <div className="max-h-80 space-y-4 overflow-y-auto pr-1">
                       {sections.map((sectionName) => (
                         <div key={sectionName}>
                           <div className="text-xs font-bold uppercase tracking-wide text-stone-500 mb-2">{sectionName}</div>
                           <div className="space-y-2">
                             {Object.keys(seatGrid[sectionName]).sort(naturalSort).map((row) => (
-                              <div key={`${sectionName}-${row}`} className="flex items-start gap-2">
-                                <div className="w-10 text-xs font-semibold text-stone-500 pt-2">Row {row}</div>
+                              <div key={`${sectionName}-${row}`} className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                                <div className="text-xs font-semibold text-stone-500 sm:w-10 sm:pt-2">Row {row}</div>
                                 <div className="flex flex-wrap gap-2">
                                   {seatGrid[sectionName][row].map((seat) => {
                                     const selectable = seat.status === 'available' && !seat.isCompanion;
@@ -405,7 +405,7 @@ export default function StaffTicketsPage() {
                                         onClick={() => selectable && setSeatId(seat.id)}
                                         disabled={!selectable}
                                         title={`${sectionName} Row ${seat.row} Seat ${seat.number}`}
-                                        className={`min-w-11 px-2 py-2 rounded-lg border text-xs font-semibold transition-colors ${statusClass}`}
+                                        className={`min-w-10 rounded-lg border px-2 py-2 text-xs font-semibold transition-colors ${statusClass}`}
                                       >
                                         {seat.number}
                                         {seat.isAccessible ? 'A' : ''}
@@ -437,7 +437,7 @@ export default function StaffTicketsPage() {
 
                 <button
                   disabled={submitting || !performanceId || !seatId}
-                  className="bg-stone-900 text-white px-5 py-3 rounded-xl font-bold disabled:opacity-50"
+                  className="w-full rounded-xl bg-stone-900 px-5 py-3 font-bold text-white disabled:opacity-50"
                 >
                   {submitting ? 'Reserving...' : 'Reserve Staff Comp Ticket'}
                 </button>
