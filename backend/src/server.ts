@@ -35,7 +35,8 @@ import { releaseExpiredHolds } from './services/hold-service.js';
 
 async function createServer() {
   const app = Fastify({
-    logger: env.NODE_ENV === 'development'
+    logger: env.NODE_ENV === 'development',
+    bodyLimit: 10 * 1024 * 1024
   });
 
   await app.register(corsPlugin);

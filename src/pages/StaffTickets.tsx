@@ -72,6 +72,7 @@ export default function StaffTicketsPage() {
   const [localName, setLocalName] = useState('');
   const [localEmail, setLocalEmail] = useState('');
   const [redeemCode, setRedeemCode] = useState('');
+  const [teacherPromoCode, setTeacherPromoCode] = useState('');
 
   const [performances, setPerformances] = useState<Performance[]>([]);
   const [performanceId, setPerformanceId] = useState('');
@@ -230,6 +231,7 @@ export default function StaffTicketsPage() {
         body: JSON.stringify({
           performanceId,
           seatId,
+          teacherPromoCode,
           attendeeName: attendeeName.trim() || undefined
         })
       });
@@ -427,6 +429,14 @@ export default function StaffTicketsPage() {
                   onChange={(event) => setAttendeeName(event.target.value)}
                   placeholder="Attendee name (optional)"
                   className="w-full border border-stone-300 rounded-xl px-3 py-2"
+                />
+
+                <input
+                  value={teacherPromoCode}
+                  onChange={(event) => setTeacherPromoCode(event.target.value)}
+                  placeholder="Teacher promo code"
+                  className="w-full border border-stone-300 rounded-xl px-3 py-2"
+                  required
                 />
 
                 {selectedPerformance && (

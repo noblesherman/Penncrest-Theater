@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { HttpError } from '../lib/http-error.js';
 import { handleRouteError } from '../lib/route-error.js';
 import { env } from '../lib/env.js';
-import { generateRedeemCode, hashRedeemCode } from '../lib/staff-code.js';
+import { generateRedeemCode, hashRedeemCode, normalizeRedeemCode } from '../lib/staff-code.js';
 import { logAudit } from '../lib/audit-log.js';
 
 const generateCodesSchema = z.object({
@@ -14,6 +14,15 @@ const generateCodesSchema = z.object({
 });
 
 const revokeUserSchema = z.object({
+  reason: z.string().max(200).optional()
+});
+
+const createTeacherCompPromoCodeSchema = z.object({
+  code: z.string().min(4).max(64),
+  expiresAt: z.union([z.string().datetime(), z.null()]).optional()
+});
+
+const revokeTeacherCompPromoCodeSchema = z.object({
   reason: z.string().max(200).optional()
 });
 
@@ -195,6 +204,175 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
       handleRouteError(reply, err, 'Failed to fetch redeem codes');
     }
   });
+
+  app.post('/api/admin/staff/teacher-comp-promo-codes', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+    const parsed = createTeacherCompPromoCodeSchema.safeParse(request.body || {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+
+    const normalizedCode = normalizeRedeemCode(parsed.data.code);
+    if (normalizedCode.length < 4) {
+      return reply.status(400).send({ error: 'Code must include at least 4 letters or numbers' });
+    }
+
+    const expiresAtRaw = parsed.data.expiresAt === undefined ? undefined : parsed.data.expiresAt;
+    const expiresAt = expiresAtRaw ? new Date(expiresAtRaw) : null;
+    if (expiresAt && (Number.isNaN(expiresAt.getTime()) || expiresAt <= new Date())) {
+      return reply.status(400).send({ error: 'expiresAt must be in the future' });
+    }
+
+    const codeHash = hashRedeemCode(normalizedCode);
+
+    try {
+      const existing = await prisma.teacherCompPromoCode.findUnique({
+        where: { codeHash },
+        select: { id: true }
+      });
+      if (existing) {
+        throw new HttpError(409, 'Teacher promo code already exists');
+      }
+
+      const created = await prisma.teacherCompPromoCode.create({
+        data: {
+          codeHash,
+          createdByAdminId: adminActor(request),
+          expiresAt: expiresAt || null
+        }
+      });
+
+      await logAudit({
+        actor: adminActor(request),
+        actorAdminId: adminActor(request),
+        action: 'TEACHER_COMP_PROMO_CODE_CREATED',
+        entityType: 'TeacherCompPromoCode',
+        entityId: created.id,
+        metadata: {
+          expiresAt: created.expiresAt,
+          normalizedCodeLength: normalizedCode.length
+        }
+      });
+
+      reply.status(201).send({
+        promoCode: {
+          id: created.id,
+          code: normalizedCode,
+          createdByAdminId: created.createdByAdminId,
+          active: created.active,
+          expiresAt: created.expiresAt,
+          createdAt: created.createdAt
+        }
+      });
+    } catch (err) {
+      handleRouteError(reply, err, 'Failed to create teacher comp promo code');
+    }
+  });
+
+  app.get('/api/admin/staff/teacher-comp-promo-codes', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+    const querySchema = z.object({
+      status: z.enum(['active', 'inactive', 'all']).default('active'),
+      page: z.string().optional(),
+      pageSize: z.string().optional()
+    });
+    const parsedQuery = querySchema.safeParse(request.query || {});
+    if (!parsedQuery.success) {
+      return reply.status(400).send({ error: parsedQuery.error.flatten() });
+    }
+
+    const query = parsedQuery.data;
+    const page = Math.max(Number(query.page || '1'), 1);
+    const pageSize = Math.min(Math.max(Number(query.pageSize || '50'), 1), 200);
+    const now = new Date();
+
+    const where =
+      query.status === 'active'
+        ? {
+            active: true,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
+          }
+        : query.status === 'inactive'
+          ? {
+              OR: [{ active: false }, { expiresAt: { lte: now } }]
+            }
+          : {};
+
+    try {
+      const [rows, total] = await Promise.all([
+        prisma.teacherCompPromoCode.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip: (page - 1) * pageSize,
+          take: pageSize
+        }),
+        prisma.teacherCompPromoCode.count({ where })
+      ]);
+
+      reply.send({
+        page,
+        pageSize,
+        total,
+        rows: rows.map((row) => ({
+          id: row.id,
+          createdByAdminId: row.createdByAdminId,
+          active: row.active,
+          expiresAt: row.expiresAt,
+          createdAt: row.createdAt,
+          isExpired: Boolean(row.expiresAt && row.expiresAt <= now)
+        }))
+      });
+    } catch (err) {
+      handleRouteError(reply, err, 'Failed to fetch teacher comp promo codes');
+    }
+  });
+
+  app.post(
+    '/api/admin/staff/teacher-comp-promo-codes/:codeId/revoke',
+    { preHandler: app.authenticateAdmin },
+    async (request, reply) => {
+      const params = request.params as { codeId: string };
+      const parsed = revokeTeacherCompPromoCodeSchema.safeParse(request.body || {});
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+
+      try {
+        const existing = await prisma.teacherCompPromoCode.findUnique({ where: { id: params.codeId } });
+        if (!existing) {
+          throw new HttpError(404, 'Teacher promo code not found');
+        }
+
+        const updated = await prisma.teacherCompPromoCode.update({
+          where: { id: params.codeId },
+          data: {
+            active: false
+          }
+        });
+
+        await logAudit({
+          actor: adminActor(request),
+          actorAdminId: adminActor(request),
+          action: 'TEACHER_COMP_PROMO_CODE_REVOKED',
+          entityType: 'TeacherCompPromoCode',
+          entityId: updated.id,
+          metadata: {
+            reason: parsed.data.reason || null,
+            wasActive: existing.active
+          }
+        });
+
+        reply.send({
+          promoCode: {
+            id: updated.id,
+            active: updated.active,
+            expiresAt: updated.expiresAt,
+            createdAt: updated.createdAt
+          }
+        });
+      } catch (err) {
+        handleRouteError(reply, err, 'Failed to revoke teacher comp promo code');
+      }
+    }
+  );
 
   app.get('/api/admin/staff/redemptions', { preHandler: app.authenticateAdmin }, async (request, reply) => {
     const querySchema = z.object({

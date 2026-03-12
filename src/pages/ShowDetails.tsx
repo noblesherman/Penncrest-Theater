@@ -11,6 +11,13 @@ interface Performance {
   salesOpen?: boolean;
 }
 
+interface CastMember {
+  id: string;
+  name: string;
+  role: string;
+  photoUrl?: string | null;
+}
+
 interface Show {
   id: string;
   title: string;
@@ -19,6 +26,7 @@ interface Show {
   type: string;
   year: number;
   accentColor: string;
+  castMembers: CastMember[];
   performances: Performance[];
 }
 
@@ -33,7 +41,10 @@ export default function ShowDetails() {
         if (!res.ok) {
           throw new Error(data?.error || 'Failed to fetch show');
         }
-        setShow(data);
+        setShow({
+          ...data,
+          castMembers: Array.isArray(data.castMembers) ? data.castMembers : []
+        });
       })
       .catch((err) => {
         console.error('Failed to fetch show', err);
@@ -116,23 +127,39 @@ export default function ShowDetails() {
               <h2 className="mb-6 font-bold text-stone-900 sm:mb-8" style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(1.7rem, 4vw, 2.2rem)' }}>
                 Meet the Cast
               </h2>
-              <div className="flex overflow-x-auto gap-6 pb-8 -mx-4 px-4 md:mx-0 md:px-0 no-scrollbar snap-x snap-mandatory">
-                {[...Array(20)].map((_, i) => (
-                  <div key={i} className="flex-none w-40 md:w-48 snap-start group">
-                    <div className="relative aspect-[3/4] bg-stone-200 rounded-xl overflow-hidden mb-3 shadow-md group-hover:shadow-xl transition-all duration-300 group-hover:-translate-y-1">
-                      <img 
-                        src={`https://picsum.photos/seed/${show.id}${i}/300/400`} 
-                        alt="Cast member" 
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                      />
+              {show.castMembers.length === 0 ? (
+                <div className="rounded-2xl border border-stone-200 bg-stone-50 p-5 text-sm text-stone-500">
+                  Cast members will be listed here once published by the theater team.
+                </div>
+              ) : (
+                <div className="flex overflow-x-auto gap-6 pb-8 -mx-4 px-4 md:mx-0 md:px-0 no-scrollbar snap-x snap-mandatory">
+                  {show.castMembers.map((member) => (
+                    <div key={member.id} className="flex-none w-40 md:w-48 snap-start group">
+                      <div className="relative aspect-[3/4] bg-stone-200 rounded-xl overflow-hidden mb-3 shadow-md group-hover:shadow-xl transition-all duration-300 group-hover:-translate-y-1">
+                        {member.photoUrl ? (
+                          <img
+                            src={member.photoUrl}
+                            alt={member.name}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          />
+                        ) : (
+                          <div className="flex h-full items-center justify-center bg-gradient-to-b from-stone-200 to-stone-300 text-stone-500 text-xs uppercase tracking-[0.14em] font-semibold">
+                            No Photo
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-center">
+                        <div className="font-bold text-stone-900 text-lg leading-tight" style={{ fontFamily: 'Georgia, serif' }}>
+                          {member.name}
+                        </div>
+                        <div className="text-stone-500 text-xs font-semibold uppercase tracking-[0.12em]" style={{ fontFamily: 'system-ui, sans-serif' }}>
+                          {member.role}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-center">
-                      <div className="font-bold text-stone-900 text-lg leading-tight" style={{ fontFamily: 'Georgia, serif' }}>Student Name</div>
-                      <div className="text-stone-500 text-xs font-semibold uppercase tracking-[0.12em]" style={{ fontFamily: 'system-ui, sans-serif' }}>Role Name</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

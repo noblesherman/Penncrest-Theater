@@ -4,6 +4,7 @@ import { getPenncrestSeatTemplate } from '../src/lib/penncrest-seating.js';
 const prisma = new PrismaClient();
 
 async function seed() {
+  await prisma.teacherCompPromoCode.deleteMany();
   await prisma.staffCompRedemption.deleteMany();
   await prisma.staffRedeemCode.deleteMany();
   await prisma.auditLog.deleteMany();
@@ -16,6 +17,7 @@ async function seed() {
   await prisma.holdSession.deleteMany();
   await prisma.pricingTier.deleteMany();
   await prisma.performance.deleteMany();
+  await prisma.castMember.deleteMany();
   await prisma.show.deleteMany();
 
   const show = await prisma.show.create({
@@ -48,6 +50,29 @@ async function seed() {
     data: [
       { performanceId: performance.id, name: 'Adult', priceCents: 1800 },
       { performanceId: performance.id, name: 'Student', priceCents: 1200 }
+    ]
+  });
+
+  await prisma.castMember.createMany({
+    data: [
+      {
+        showId: show.id,
+        name: 'Alex Rivera',
+        role: 'Seymour',
+        position: 0
+      },
+      {
+        showId: show.id,
+        name: 'Jordan Kim',
+        role: 'Audrey',
+        position: 1
+      },
+      {
+        showId: show.id,
+        name: 'Taylor Brooks',
+        role: 'Mr. Mushnik',
+        position: 2
+      }
     ]
   });
 

@@ -113,6 +113,19 @@ model StaffRedeemCode {
   @@index([createdByAdminId, createdAt])
 }
 
+model TeacherCompPromoCode {
+  id              String   @id @default(cuid())
+  codeHash        String   @unique
+  createdByAdminId String
+  active          Boolean  @default(true)
+  expiresAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([active, expiresAt, createdAt])
+  @@index([createdByAdminId, createdAt])
+}
+
 model Show {
   id          String        @id @default(cuid())
   title       String
@@ -124,7 +137,22 @@ model Show {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   performances Performance[]
+  castMembers CastMember[]
   studentTicketCredits StudentTicketCredit[]
+}
+
+model CastMember {
+  id        String   @id @default(cuid())
+  showId    String
+  show      Show     @relation(fields: [showId], references: [id], onDelete: Cascade)
+  name      String
+  role      String
+  photoUrl  String?
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([showId, position])
 }
 
 model Performance {

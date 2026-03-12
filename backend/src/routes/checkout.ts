@@ -15,6 +15,7 @@ import {
   releasePendingStudentCreditForOrder,
   reserveStudentCreditForOrder
 } from '../services/student-ticket-credit-service.js';
+import { validateTeacherCompPromoCode } from '../services/teacher-comp-promo-code-service.js';
 
 type SeatAssignment = {
   seat: {
@@ -162,6 +163,7 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
         ticketSelectionBySeatId,
         holdToken,
         clientToken,
+        teacherPromoCode,
         studentSchoolEmail,
         customerEmail,
         customerName,
@@ -240,6 +242,11 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
           if (!performance.staffCompsEnabled) {
             throw new HttpError(400, 'Teacher complimentary tickets are not enabled for this performance');
           }
+
+          if (!teacherPromoCode) {
+            throw new HttpError(400, 'Teacher promo code is required for teacher complimentary checkout');
+          }
+          await validateTeacherCompPromoCode(teacherPromoCode);
 
           const user = await requireAuthenticatedStaff(app, request.headers.authorization);
           if (!user.verifiedStaff) {

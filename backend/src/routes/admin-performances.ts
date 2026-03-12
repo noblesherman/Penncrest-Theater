@@ -11,10 +11,37 @@ const tierSchema = z.object({
   priceCents: z.number().int().positive()
 });
 
+function isHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function isImageDataUrl(value: string): boolean {
+  return /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(value);
+}
+
+const imageSourceSchema = z
+  .string()
+  .max(2_000_000)
+  .refine((value) => isHttpUrl(value) || isImageDataUrl(value), {
+    message: 'Image must be an image URL or image data URL'
+  });
+
+const castMemberSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    role: z.string().trim().min(1).max(120),
+    photoUrl: imageSourceSchema.optional()
+  });
+
 const createPerformanceSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
-  posterUrl: z.string().url().optional(),
+  posterUrl: imageSourceSchema.optional(),
   type: z.string().optional(),
   year: z.number().int().optional(),
   accentColor: z.string().optional(),
@@ -26,7 +53,8 @@ const createPerformanceSchema = z.object({
   familyFreeTicketEnabled: z.boolean().optional(),
   venue: z.string().min(1),
   notes: z.string().optional(),
-  pricingTiers: z.array(tierSchema).min(1)
+  pricingTiers: z.array(tierSchema).min(1),
+  castMembers: z.array(castMemberSchema).max(80).optional()
 });
 
 const updatePerformanceSchema = createPerformanceSchema.partial();
@@ -101,7 +129,13 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
         where,
         orderBy: [{ isArchived: 'asc' }, { startsAt: 'desc' }],
         include: {
-          show: true,
+          show: {
+            include: {
+              castMembers: {
+                orderBy: [{ position: 'asc' }, { createdAt: 'asc' }]
+              }
+            }
+          },
           pricingTiers: true,
           seats: true,
           orders: {
@@ -119,6 +153,11 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
           title: performance.title || performance.show.title,
           showId: performance.show.id,
           showTitle: performance.show.title,
+          showDescription: performance.show.description,
+          showPosterUrl: performance.show.posterUrl,
+          showType: performance.show.type,
+          showYear: performance.show.year,
+          showAccentColor: performance.show.accentColor,
           startsAt: performance.startsAt,
           salesCutoffAt: performance.salesCutoffAt,
           isArchived: performance.isArchived,
@@ -136,7 +175,13 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
           paidRevenueCents: performance.orders
             .filter((order) => order.status === 'PAID')
             .reduce((sum, order) => sum + order.amountTotal, 0),
-          pricingTiers: performance.pricingTiers
+          pricingTiers: performance.pricingTiers,
+          castMembers: performance.show.castMembers.map((castMember) => ({
+            id: castMember.id,
+            name: castMember.name,
+            role: castMember.role,
+            photoUrl: castMember.photoUrl
+          }))
         }))
       );
     } catch (err) {
@@ -189,6 +234,18 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
         await tx.seat.createMany({
           data: buildDefaultSeats(performance.id)
         });
+
+        if (parsed.data.castMembers && parsed.data.castMembers.length > 0) {
+          await tx.castMember.createMany({
+            data: parsed.data.castMembers.map((castMember, position) => ({
+              showId: show.id,
+              name: castMember.name,
+              role: castMember.role,
+              photoUrl: castMember.photoUrl || null,
+              position
+            }))
+          });
+        }
 
         return performance;
       });
@@ -255,6 +312,24 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
             accentColor: parsed.data.accentColor
           }
         });
+
+        if (parsed.data.castMembers !== undefined) {
+          await tx.castMember.deleteMany({
+            where: { showId: existing.showId }
+          });
+
+          if (parsed.data.castMembers.length > 0) {
+            await tx.castMember.createMany({
+              data: parsed.data.castMembers.map((castMember, position) => ({
+                showId: existing.showId,
+                name: castMember.name,
+                role: castMember.role,
+                photoUrl: castMember.photoUrl || null,
+                position
+              }))
+            });
+          }
+        }
 
         if (parsed.data.pricingTiers) {
           await tx.pricingTier.deleteMany({ where: { performanceId: params.id } });

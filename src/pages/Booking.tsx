@@ -88,6 +88,7 @@ type BookingDraft = {
   selectedSeatIds: string[];
   ticketOptionBySeatId: Record<string, string>;
   teacherSeatIds?: string[];
+  teacherPromoCode?: string;
   customerName: string;
   customerEmail: string;
   currentStep: CheckoutStep;
@@ -187,6 +188,7 @@ export default function Booking() {
   const [currentStep, setCurrentStep] = useState<CheckoutStep>(1);
   const [staffUser, setStaffUser] = useState<StaffUser | null>(null);
   const [staffAuthLoading, setStaffAuthLoading] = useState(false);
+  const [teacherPromoCode, setTeacherPromoCode] = useState('');
 
   const syncStaffUser = useCallback(async () => {
     const token = getStaffToken();
@@ -237,6 +239,7 @@ export default function Booking() {
             : null;
           setCustomerName(draft.customerName || '');
           setCustomerEmail(draft.customerEmail || '');
+          setTeacherPromoCode(draft.teacherPromoCode || '');
           setCurrentStep(draft.currentStep || 3);
         }
       } catch {
@@ -528,6 +531,12 @@ export default function Booking() {
           setCurrentStep(3);
           return;
         }
+        const normalizedTeacherPromoCode = teacherPromoCode.trim();
+        if (!normalizedTeacherPromoCode) {
+          setStepError('Enter the teacher promo code before checkout.');
+          setCurrentStep(3);
+          return;
+        }
 
         checkout = await apiFetch<{ url?: string; orderId?: string }>('/api/checkout', {
           method: 'POST',
@@ -543,7 +552,8 @@ export default function Booking() {
             holdToken: holdResult.holdToken,
             clientToken: clientTokenRef.current,
             customerEmail: effectiveCustomerEmail,
-            customerName: effectiveCustomerName
+            customerName: effectiveCustomerName,
+            teacherPromoCode: normalizedTeacherPromoCode
           })
         });
       } else if (isStudentInShowCheckout) {
@@ -858,6 +868,7 @@ export default function Booking() {
       selectedSeatIds,
       ticketOptionBySeatId,
       teacherSeatIds: teacherSelectedSeatIds,
+      teacherPromoCode,
       customerName,
       customerEmail,
       currentStep: 3
@@ -870,7 +881,7 @@ export default function Booking() {
       }).toString()}`
     );
     window.location.href = oauthUrl;
-  }, [performanceId, selectedSeatIds, ticketOptionBySeatId, teacherSelectedSeatIds, customerName, customerEmail]);
+  }, [performanceId, selectedSeatIds, ticketOptionBySeatId, teacherSelectedSeatIds, teacherPromoCode, customerName, customerEmail]);
 
   const mapBounds = useMemo(() => {
     if (seats.length === 0) {
@@ -1554,7 +1565,7 @@ export default function Booking() {
                     <>
                       <h2 className="text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>Teacher Verification</h2>
                       <p className="text-sm md:text-base text-stone-600 mt-2">
-                        Teacher complimentary checkout requires Google OAuth and a verified staff account. Enter a personal email for delivery.
+                        Teacher complimentary checkout requires Google OAuth, a verified staff account, and a teacher promo code. Enter a personal email for delivery.
                       </p>
 
                       <div className="mt-6 rounded-xl border border-stone-200 bg-stone-50 p-4 text-sm text-stone-700">
@@ -1604,6 +1615,19 @@ export default function Booking() {
                             />
                           </div>
                           <div className="mt-1 text-xs text-stone-500">Do not use your `@rtmsd.org` email for delivery.</div>
+                        </label>
+
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase tracking-[0.15em] text-red-600">Teacher Promo Code</span>
+                          <div className="mt-1 relative">
+                            <Ticket className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                            <input
+                              value={teacherPromoCode}
+                              onChange={(event) => setTeacherPromoCode(event.target.value)}
+                              placeholder="Enter code from theater admin"
+                              className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3 focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none"
+                            />
+                          </div>
                         </label>
                       </div>
 

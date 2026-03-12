@@ -5,9 +5,11 @@ import { HttpError } from '../lib/http-error.js';
 import { handleRouteError } from '../lib/route-error.js';
 import { createAssignedOrder } from '../services/order-assignment.js';
 import { logAudit } from '../lib/audit-log.js';
+import { validateTeacherCompPromoCode } from '../services/teacher-comp-promo-code-service.js';
 
 const reserveStaffCompSchema = z.object({
   performanceId: z.string().min(1),
+  teacherPromoCode: z.string().min(4).max(64),
   seatId: z.string().min(1).optional(),
   attendeeName: z.string().trim().min(1).max(80).optional()
 });
@@ -39,6 +41,8 @@ export const staffCompRoutes: FastifyPluginAsync = async (app) => {
         if (!user.verifiedStaff) {
           throw new HttpError(403, 'Staff verification is required before reserving a comp ticket');
         }
+
+        await validateTeacherCompPromoCode(parsed.data.teacherPromoCode);
 
         const performance = await prisma.performance.findFirst({
           where: { id: parsed.data.performanceId, isArchived: false },
