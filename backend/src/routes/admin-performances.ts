@@ -38,6 +38,12 @@ const castMemberSchema = z
     photoUrl: imageSourceSchema.optional()
   });
 
+const performanceScheduleSchema = z.object({
+  title: z.string().min(1).optional(),
+  startsAt: z.string().datetime(),
+  salesCutoffAt: z.string().datetime().nullable().optional()
+});
+
 const createPerformanceSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
@@ -45,8 +51,9 @@ const createPerformanceSchema = z.object({
   type: z.string().optional(),
   year: z.number().int().optional(),
   accentColor: z.string().optional(),
-  startsAt: z.string().datetime(),
+  startsAt: z.string().datetime().optional(),
   salesCutoffAt: z.string().datetime().nullable().optional(),
+  performances: z.array(performanceScheduleSchema).min(1).optional(),
   staffCompsEnabled: z.boolean().optional(),
   staffCompLimitPerUser: z.number().int().min(1).max(1).optional(),
   staffTicketLimit: z.number().int().min(1).max(10).optional(),
@@ -189,10 +196,26 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.post('/api/admin/performances', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.post('/api/admin/performances', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const parsed = createPerformanceSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+
+    const scheduleEntries =
+      parsed.data.performances && parsed.data.performances.length > 0
+        ? parsed.data.performances
+        : parsed.data.startsAt
+          ? [
+              {
+                title: parsed.data.title,
+                startsAt: parsed.data.startsAt,
+                salesCutoffAt: parsed.data.salesCutoffAt ?? null
+              }
+            ]
+          : [];
+    if (scheduleEntries.length === 0) {
+      return reply.status(400).send({ error: 'Provide at least one performance schedule entry.' });
     }
 
     try {
@@ -208,32 +231,36 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
           }
         });
 
-        const performance = await tx.performance.create({
-          data: {
-            showId: show.id,
-            title: parsed.data.title,
-            startsAt: new Date(parsed.data.startsAt),
-            salesCutoffAt: parsed.data.salesCutoffAt ? new Date(parsed.data.salesCutoffAt) : null,
-            staffCompsEnabled: parsed.data.staffCompsEnabled ?? true,
-            staffCompLimitPerUser: parsed.data.staffCompLimitPerUser ?? 1,
-            staffTicketLimit: parsed.data.staffTicketLimit ?? 2,
-            familyFreeTicketEnabled: parsed.data.familyFreeTicketEnabled ?? false,
-            venue: parsed.data.venue,
-            notes: parsed.data.notes
-          }
-        });
+        const performanceIds: string[] = [];
+        for (const scheduleEntry of scheduleEntries) {
+          const performance = await tx.performance.create({
+            data: {
+              showId: show.id,
+              title: scheduleEntry.title || parsed.data.title,
+              startsAt: new Date(scheduleEntry.startsAt),
+              salesCutoffAt: scheduleEntry.salesCutoffAt ? new Date(scheduleEntry.salesCutoffAt) : null,
+              staffCompsEnabled: parsed.data.staffCompsEnabled ?? true,
+              staffCompLimitPerUser: parsed.data.staffCompLimitPerUser ?? 1,
+              staffTicketLimit: parsed.data.staffTicketLimit ?? 2,
+              familyFreeTicketEnabled: parsed.data.familyFreeTicketEnabled ?? false,
+              venue: parsed.data.venue,
+              notes: parsed.data.notes
+            }
+          });
+          performanceIds.push(performance.id);
 
-        await tx.pricingTier.createMany({
-          data: parsed.data.pricingTiers.map((tier) => ({
-            performanceId: performance.id,
-            name: tier.name,
-            priceCents: tier.priceCents
-          }))
-        });
+          await tx.pricingTier.createMany({
+            data: parsed.data.pricingTiers.map((tier) => ({
+              performanceId: performance.id,
+              name: tier.name,
+              priceCents: tier.priceCents
+            }))
+          });
 
-        await tx.seat.createMany({
-          data: buildDefaultSeats(performance.id)
-        });
+          await tx.seat.createMany({
+            data: buildDefaultSeats(performance.id)
+          });
+        }
 
         if (parsed.data.castMembers && parsed.data.castMembers.length > 0) {
           await tx.castMember.createMany({
@@ -247,24 +274,27 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
           });
         }
 
-        return performance;
+        return performanceIds;
       });
 
       await logAudit({
         actor: adminActor(request),
         action: 'PERFORMANCE_CREATED',
         entityType: 'Performance',
-        entityId: created.id,
-        metadata: parsed.data
+        entityId: created[0],
+        metadata: {
+          ...parsed.data,
+          performanceCount: created.length
+        }
       });
 
-      reply.status(201).send({ id: created.id });
+      reply.status(201).send({ id: created[0], ids: created });
     } catch (err) {
       handleRouteError(reply, err, 'Failed to create performance');
     }
   });
 
-  app.patch('/api/admin/performances/:id', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.patch('/api/admin/performances/:id', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const params = request.params as { id: string };
     const parsed = updatePerformanceSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -357,7 +387,7 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.post('/api/admin/performances/:id/archive', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.post('/api/admin/performances/:id/archive', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const params = request.params as { id: string };
 
     try {
@@ -395,7 +425,7 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.post('/api/admin/performances/:id/restore', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.post('/api/admin/performances/:id/restore', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const params = request.params as { id: string };
 
     try {
@@ -433,7 +463,7 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.delete('/api/admin/performances/:id', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.delete('/api/admin/performances/:id', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const params = request.params as { id: string };
     const parsedQuery = deletePerformanceQuerySchema.safeParse(request.query || {});
     if (!parsedQuery.success) {

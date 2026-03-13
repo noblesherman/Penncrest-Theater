@@ -29,6 +29,7 @@ import AdminRosterPage from './pages/admin/Roster';
 import AdminAuditLogPage from './pages/admin/AuditLog';
 import AdminStaffCompsPage from './pages/admin/StaffComps';
 import AdminStudentCreditsPage from './pages/admin/StudentCredits';
+import AdminUsersPage from './pages/admin/Users';
 
 function PublicLayout() {
   return (
@@ -58,6 +59,7 @@ export default function App() {
           <Route path="staff-comps" element={<AdminStaffCompsPage />} />
           <Route path="student-credits" element={<AdminStudentCreditsPage />} />
           <Route path="audit" element={<AdminAuditLogPage />} />
+          <Route path="users" element={<AdminUsersPage />} />
         </Route>
 
         <Route path="/" element={<PublicLayout />}>

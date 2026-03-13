@@ -29,7 +29,7 @@ const revokeTeacherCompPromoCodeSchema = z.object({
 export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
   const adminActor = (request: { user: { username?: string } }) => request.user.username || 'admin';
 
-  app.get('/api/admin/staff/users', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.get('/api/admin/staff/users', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const query = request.query as { verified?: string; q?: string; limit?: string };
 
     const verified = query.verified === undefined ? undefined : query.verified === 'true';
@@ -57,7 +57,7 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.post('/api/admin/staff/users/:userId/revoke', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.post('/api/admin/staff/users/:userId/revoke', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const params = request.params as { userId: string };
     const parsed = revokeUserSchema.safeParse(request.body || {});
     if (!parsed.success) {
@@ -105,7 +105,7 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.post('/api/admin/staff/redeem-codes', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.post('/api/admin/staff/redeem-codes', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const parsed = generateCodesSchema.safeParse(request.body || {});
     if (!parsed.success) {
       return reply.status(400).send({ error: parsed.error.flatten() });
@@ -159,7 +159,7 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.get('/api/admin/staff/redeem-codes', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.get('/api/admin/staff/redeem-codes', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const query = request.query as {
       status?: 'active' | 'used' | 'expired';
       page?: string;
@@ -205,7 +205,7 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.post('/api/admin/staff/teacher-comp-promo-codes', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.post('/api/admin/staff/teacher-comp-promo-codes', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const parsed = createTeacherCompPromoCodeSchema.safeParse(request.body || {});
     if (!parsed.success) {
       return reply.status(400).send({ error: parsed.error.flatten() });
@@ -268,7 +268,7 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.get('/api/admin/staff/teacher-comp-promo-codes', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.get('/api/admin/staff/teacher-comp-promo-codes', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const querySchema = z.object({
       status: z.enum(['active', 'inactive', 'all']).default('active'),
       page: z.string().optional(),
@@ -327,7 +327,7 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
 
   app.post(
     '/api/admin/staff/teacher-comp-promo-codes/:codeId/revoke',
-    { preHandler: app.authenticateAdmin },
+    { preHandler: app.requireAdminRole('ADMIN') },
     async (request, reply) => {
       const params = request.params as { codeId: string };
       const parsed = revokeTeacherCompPromoCodeSchema.safeParse(request.body || {});
@@ -374,7 +374,7 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
     }
   );
 
-  app.get('/api/admin/staff/redemptions', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.get('/api/admin/staff/redemptions', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const querySchema = z.object({
       performanceId: z.string().optional(),
       userId: z.string().optional(),

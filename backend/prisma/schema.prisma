@@ -81,6 +81,28 @@ enum StudentCreditVerificationMethod {
   ADMIN
 }
 
+enum AdminRole {
+  BOX_OFFICE
+  ADMIN
+  SUPER_ADMIN
+}
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  name         String
+  passwordHash String
+  role         AdminRole @default(BOX_OFFICE)
+  isActive     Boolean   @default(true)
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecretEncrypted String?
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([role, isActive, twoFactorEnabled])
+}
+
 model User {
   id                  String                @id @default(cuid())
   email               String                @unique

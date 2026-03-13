@@ -31,6 +31,7 @@ import { staffCompRoutes } from './routes/staff-comp.js';
 import { adminStaffRoutes } from './routes/admin-staff.js';
 import { studentCreditRoutes } from './routes/student-credits.js';
 import { adminCheckInRoutes } from './routes/admin-checkin.js';
+import { adminUserRoutes } from './routes/admin-users.js';
 import { releaseExpiredHolds } from './services/hold-service.js';
 
 async function createServer() {
@@ -74,6 +75,7 @@ async function createServer() {
   await app.register(adminStaffRoutes);
   await app.register(studentCreditRoutes);
   await app.register(adminCheckInRoutes);
+  await app.register(adminUserRoutes);
 
   app.setErrorHandler((error, _request, reply) => {
     app.log.error(error);

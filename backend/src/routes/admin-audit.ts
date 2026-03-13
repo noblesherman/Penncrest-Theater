@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { handleRouteError } from '../lib/route-error.js';
 
 export const adminAuditRoutes: FastifyPluginAsync = async (app) => {
-  app.get('/api/admin/audit-logs', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.get('/api/admin/audit-logs', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const query = request.query as {
       page?: string;
       pageSize?: string;

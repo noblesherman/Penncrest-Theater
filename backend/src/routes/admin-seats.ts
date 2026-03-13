@@ -112,7 +112,7 @@ export const adminSeatRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.post('/api/admin/seats/block', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.post('/api/admin/seats/block', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const parsed = mutateSeatsSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: parsed.error.flatten() });
@@ -168,7 +168,7 @@ export const adminSeatRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.post('/api/admin/seats/unblock', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.post('/api/admin/seats/unblock', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const parsed = mutateSeatsSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: parsed.error.flatten() });
@@ -204,7 +204,7 @@ export const adminSeatRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.post('/api/admin/seats/update', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.post('/api/admin/seats/update', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const parsed = updateSeatFlagsSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: parsed.error.flatten() });

@@ -209,7 +209,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.post('/api/admin/orders/:id/refund', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.post('/api/admin/orders/:id/refund', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const params = request.params as { id: string };
     const parsed = refundSchema.safeParse(request.body || {});
     if (!parsed.success) {

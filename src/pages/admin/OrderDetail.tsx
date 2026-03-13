@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { adminFetch } from '../../lib/adminAuth';
+import { adminFetch, hasAdminRole } from '../../lib/adminAuth';
+import { useAdminSession } from './useAdminSession';
 
 type OrderDetail = {
   id: string;
@@ -35,6 +36,7 @@ type OrderDetail = {
 
 export default function AdminOrderDetailPage() {
   const { id } = useParams();
+  const { admin } = useAdminSession();
   const [data, setData] = useState<OrderDetail | null>(null);
   const [releaseSeats, setReleaseSeats] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -94,6 +96,8 @@ export default function AdminOrderDetailPage() {
     }
   };
 
+  const canRefund = hasAdminRole(admin.role, 'ADMIN');
+
   if (loading && !data) return <div className="text-sm text-stone-500">Loading order...</div>;
 
   if (!data) {
@@ -146,20 +150,24 @@ export default function AdminOrderDetailPage() {
           {actionBusy ? 'Working...' : 'Resend Tickets'}
         </button>
 
-        <label className="text-sm text-stone-600 inline-flex items-center gap-2">
-          <input type="checkbox" checked={releaseSeats} onChange={(event) => setReleaseSeats(event.target.checked)} />
-          Release seats for resale
-        </label>
+        {canRefund ? (
+          <>
+            <label className="text-sm text-stone-600 inline-flex items-center gap-2">
+              <input type="checkbox" checked={releaseSeats} onChange={(event) => setReleaseSeats(event.target.checked)} />
+              Release seats for resale
+            </label>
 
-        <button
-          className="w-full rounded-lg bg-red-600 px-4 py-2 font-semibold text-white hover:bg-red-700 transition-colors disabled:opacity-60 sm:w-auto"
-          disabled={actionBusy}
-          onClick={() => {
-            void refundOrder();
-          }}
-        >
-          Mark Refunded
-        </button>
+            <button
+              className="w-full rounded-lg bg-red-600 px-4 py-2 font-semibold text-white hover:bg-red-700 transition-colors disabled:opacity-60 sm:w-auto"
+              disabled={actionBusy}
+              onClick={() => {
+                void refundOrder();
+              }}
+            >
+              Mark Refunded
+            </button>
+          </>
+        ) : null}
       </div>
     </div>
   );

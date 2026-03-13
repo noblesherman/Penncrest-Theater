@@ -1,5 +1,8 @@
+import '../src/lib/load-env.js';
 import { PrismaClient, SeatStatus } from '@prisma/client';
 import { getPenncrestSeatTemplate } from '../src/lib/penncrest-seating.js';
+import { env } from '../src/lib/env.js';
+import { hashPassword } from '../src/lib/password.js';
 
 const prisma = new PrismaClient();
 
@@ -12,6 +15,7 @@ async function seed() {
   await prisma.orderSeat.deleteMany();
   await prisma.order.deleteMany();
   await prisma.user.deleteMany();
+  await prisma.adminUser.deleteMany();
   await prisma.seatHold.deleteMany();
   await prisma.seat.deleteMany();
   await prisma.holdSession.deleteMany();
@@ -19,6 +23,15 @@ async function seed() {
   await prisma.performance.deleteMany();
   await prisma.castMember.deleteMany();
   await prisma.show.deleteMany();
+
+  await prisma.adminUser.create({
+    data: {
+      username: env.ADMIN_USERNAME.trim().toLowerCase(),
+      name: 'Central Admin',
+      passwordHash: await hashPassword(env.ADMIN_PASSWORD),
+      role: 'SUPER_ADMIN'
+    }
+  });
 
   const show = await prisma.show.create({
     data: {
@@ -105,7 +118,7 @@ async function seed() {
 
   await prisma.seat.createMany({ data: seats });
 
-  console.log('Seeded show, performance, tiers, and seats.');
+  console.log('Seeded super admin, show, performance, tiers, and seats.');
 }
 
 seed()

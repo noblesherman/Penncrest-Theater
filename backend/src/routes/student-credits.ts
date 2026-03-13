@@ -332,7 +332,7 @@ async function buildSeatAssignmentsForQuote(params: {
 }
 
 export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
-  app.get('/api/admin/shows/:showId/student-credits', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.get('/api/admin/shows/:showId/student-credits', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const params = request.params as { showId: string };
     const query = request.query as { q?: string };
     const q = query.q?.trim();
@@ -385,7 +385,7 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.post('/api/admin/shows/:showId/student-credits', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.post('/api/admin/shows/:showId/student-credits', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const params = request.params as { showId: string };
     const parsed = createStudentCreditSchema.safeParse(request.body || {});
     if (!parsed.success) {
@@ -435,7 +435,7 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.post('/api/admin/shows/:showId/student-credits/import', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.post('/api/admin/shows/:showId/student-credits/import', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const params = request.params as { showId: string };
     const parsed = importStudentCreditsSchema.safeParse(request.body || {});
     if (!parsed.success) {
@@ -496,7 +496,7 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.patch('/api/admin/student-credits/:id', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.patch('/api/admin/student-credits/:id', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const params = request.params as { id: string };
     const parsed = updateStudentCreditSchema.safeParse(request.body || {});
     if (!parsed.success) {
@@ -594,7 +594,7 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.get('/api/admin/student-credits/:id/transactions', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.get('/api/admin/student-credits/:id/transactions', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const params = request.params as { id: string };
 
     try {
@@ -657,7 +657,7 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.post('/api/admin/student-credits/:id/manual-redeem', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.post('/api/admin/student-credits/:id/manual-redeem', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const params = request.params as { id: string };
     const parsed = manualActionSchema.safeParse(request.body || {});
     if (!parsed.success) {
@@ -693,7 +693,7 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.post('/api/admin/student-credits/:id/manual-restore', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.post('/api/admin/student-credits/:id/manual-restore', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const params = request.params as { id: string };
     const parsed = manualActionSchema.safeParse(request.body || {});
     if (!parsed.success) {

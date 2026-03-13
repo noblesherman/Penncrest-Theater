@@ -7,6 +7,50 @@ export function apiUrl(path: string): string {
   return `${API_BASE_URL}${path}`;
 }
 
+function collectErrorMessages(value: unknown): string[] {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? [trimmed] : [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectErrorMessages(item));
+  }
+
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const prioritized: unknown[] = [];
+    if ('formErrors' in record) prioritized.push(record.formErrors);
+    if ('fieldErrors' in record) prioritized.push(record.fieldErrors);
+    if ('message' in record) prioritized.push(record.message);
+
+    const fallbackValues = Object.entries(record)
+      .filter(([key]) => key !== 'formErrors' && key !== 'fieldErrors' && key !== 'message')
+      .map(([, nested]) => nested);
+
+    return [...prioritized, ...fallbackValues].flatMap((item) => collectErrorMessages(item));
+  }
+
+  return [];
+}
+
+function extractApiErrorMessage(body: unknown, status: number): string {
+  if (body && typeof body === 'object') {
+    const record = body as Record<string, unknown>;
+    const messages = collectErrorMessages(record.error ?? record.message ?? record);
+    const unique = [...new Set(messages)];
+    if (unique.length > 0) {
+      return unique.join(' ');
+    }
+  }
+
+  if (typeof body === 'string' && body.trim()) {
+    return body.trim();
+  }
+
+  return `Request failed (${status})`;
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const hasBody = init?.body !== undefined && init.body !== null;
   const isFormDataBody = typeof FormData !== 'undefined' && init?.body instanceof FormData;
@@ -25,8 +69,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   const body = isJson ? await response.json() : null;
 
   if (!response.ok) {
-    const message = body?.error || `Request failed (${response.status})`;
-    throw new Error(message);
+    throw new Error(extractApiErrorMessage(body, response.status));
   }
 
   return body as T;

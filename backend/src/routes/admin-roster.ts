@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { handleRouteError } from '../lib/route-error.js';
 
 export const adminRosterRoutes: FastifyPluginAsync = async (app) => {
-  app.get('/api/admin/roster', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+  app.get('/api/admin/roster', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
     const querySchema = z.object({
       performanceId: z.string().optional(),
       q: z.string().optional(),

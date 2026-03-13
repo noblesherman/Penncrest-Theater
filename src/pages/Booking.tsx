@@ -1,22 +1,19 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { TransformWrapper, TransformComponent, ReactZoomPanPinchContentRef } from 'react-zoom-pan-pinch';
 import {
   ArrowLeft,
   ArrowRight,
   ChevronLeft,
   CreditCard,
   Mail,
-  Minus,
-  Plus,
-  RefreshCw,
   Search,
   Ticket,
   User,
   Users,
   X
 } from 'lucide-react';
+import { SeatMapViewport } from '../components/SeatMapViewport';
 import { apiFetch, apiUrl } from '../lib/api';
 import { getClientToken } from '../lib/clientToken';
 import { clearStaffToken, getStaffToken, setStaffToken, staffFetch } from '../lib/staffAuth';
@@ -108,11 +105,6 @@ const MAX_STUDENT_COMP_TICKETS = 2;
 const naturalSort = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 const SEAT_X_STEP = 40;
 const MAX_ADJACENT_X_GAP = SEAT_X_STEP * 1.5;
-const MAP_PADDING_X = 120;
-const MAP_PADDING_TOP = 200;
-const MAP_PADDING_BOTTOM = 140;
-const FIT_VIEWPORT_PADDING = 96;
-const MAP_FRAME_PADDING = 40;
 
 const buildSeatGrid = (seats: Seat[]) => {
   const grid: Record<string, Record<string, Seat[]>> = {};
@@ -160,9 +152,6 @@ export default function Booking() {
   const { performanceId } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const transformComponentRef = useRef<ReactZoomPanPinchContentRef>(null);
-  const mapViewportRef = useRef<HTMLDivElement | null>(null);
-  const hasInitialFitRef = useRef(false);
   const clientTokenRef = useRef<string>(getClientToken());
   const holdTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingTeacherRestoreSeatIdsRef = useRef<string[] | null>(null);
@@ -184,7 +173,6 @@ export default function Booking() {
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [studentSchoolEmail, setStudentSchoolEmail] = useState('');
-  const [isPanning, setIsPanning] = useState(false);
   const [currentStep, setCurrentStep] = useState<CheckoutStep>(1);
   const [staffUser, setStaffUser] = useState<StaffUser | null>(null);
   const [staffAuthLoading, setStaffAuthLoading] = useState(false);
@@ -883,104 +871,6 @@ export default function Booking() {
     window.location.href = oauthUrl;
   }, [performanceId, selectedSeatIds, ticketOptionBySeatId, teacherSelectedSeatIds, teacherPromoCode, customerName, customerEmail]);
 
-  const mapBounds = useMemo(() => {
-    if (seats.length === 0) {
-      return {
-        minX: 0,
-        maxX: 1000,
-        minY: 0,
-        maxY: 1000,
-        width: 1200,
-        height: 1320
-      };
-    }
-
-    const minX = Math.min(...seats.map((seat) => seat.x));
-    const maxX = Math.max(...seats.map((seat) => seat.x));
-    const minY = Math.min(...seats.map((seat) => seat.y));
-    const maxY = Math.max(...seats.map((seat) => seat.y));
-    const width = maxX - minX + MAP_PADDING_X * 2;
-    const height = maxY - minY + MAP_PADDING_TOP + MAP_PADDING_BOTTOM;
-
-    return { minX, maxX, minY, maxY, width, height };
-  }, [seats]);
-
-  const mapContent = useMemo(
-    () => ({
-      width: mapBounds.width + MAP_FRAME_PADDING * 2,
-      height: mapBounds.height + MAP_FRAME_PADDING * 2
-    }),
-    [mapBounds.height, mapBounds.width]
-  );
-
-  const rowAnchors = useMemo(() => {
-    const rows = new Map<string, { minX: number; maxX: number; y: number }>();
-
-    visibleSeats.forEach((seat) => {
-      const existing = rows.get(seat.row);
-      if (!existing) {
-        rows.set(seat.row, { minX: seat.x, maxX: seat.x, y: seat.y });
-        return;
-      }
-      existing.minX = Math.min(existing.minX, seat.x);
-      existing.maxX = Math.max(existing.maxX, seat.x);
-      existing.y = Math.min(existing.y, seat.y);
-    });
-
-    return [...rows.entries()]
-      .sort(([a], [b]) => naturalSort(a, b))
-      .map(([row, value]) => ({ row, ...value }));
-  }, [visibleSeats]);
-
-  const stageWidth = useMemo(() => Math.min(960, Math.max(560, Math.round(mapBounds.width * 0.6))), [mapBounds.width]);
-  const stageCenterX = useMemo(() => ((mapBounds.maxX + mapBounds.minX) / 2) - mapBounds.minX + MAP_PADDING_X, [mapBounds]);
-  const stageGuideTop = MAP_PADDING_TOP - 16;
-
-  const fitMapToViewport = useCallback(
-    (animationTime = 220) => {
-      const transform = transformComponentRef.current;
-      const wrapperWidth = transform?.instance.wrapperComponent?.clientWidth ?? mapViewportRef.current?.clientWidth ?? 0;
-      const wrapperHeight = transform?.instance.wrapperComponent?.clientHeight ?? mapViewportRef.current?.clientHeight ?? 0;
-      if (!transform || wrapperWidth <= 0 || wrapperHeight <= 0) return;
-
-      const availableWidth = Math.max(200, wrapperWidth - FIT_VIEWPORT_PADDING);
-      const availableHeight = Math.max(200, wrapperHeight - FIT_VIEWPORT_PADDING);
-      const fitScale = Math.min(availableWidth / mapContent.width, availableHeight / mapContent.height, 1);
-      const clampedScale = Math.max(0.2, fitScale);
-      const positionX = (wrapperWidth - mapContent.width * clampedScale) / 2;
-      const positionY = (wrapperHeight - mapContent.height * clampedScale) / 2;
-      transform.setTransform(positionX, positionY, clampedScale, animationTime, 'easeOut');
-    },
-    [mapContent.height, mapContent.width]
-  );
-
-  useEffect(() => {
-    hasInitialFitRef.current = false;
-  }, [performanceId]);
-
-  useEffect(() => {
-    if (loading || seats.length === 0 || hasInitialFitRef.current) return;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    const frameId = requestAnimationFrame(() => {
-      fitMapToViewport(0);
-      timeoutId = setTimeout(() => fitMapToViewport(0), 90);
-      hasInitialFitRef.current = true;
-    });
-    return () => {
-      cancelAnimationFrame(frameId);
-      if (timeoutId) clearTimeout(timeoutId);
-    };
-  }, [fitMapToViewport, loading, seats.length]);
-
-  useEffect(() => {
-    const onResize = () => {
-      if (!hasInitialFitRef.current) return;
-      fitMapToViewport(180);
-    };
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, [fitMapToViewport]);
-
   const canContinueToTypes = selectedSeats.length > 0;
   const canContinueToCheckout = selectedSeats.length > 0 && missingTicketTypeCount === 0;
 
@@ -1175,227 +1065,111 @@ export default function Booking() {
                   </div>
                 </aside>
 
-                <div ref={mapViewportRef} className="flex-1 relative bg-stone-100 overflow-hidden">
-                  {loading && (
-                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/80 backdrop-blur-sm">
-                      <div className="flex flex-col items-center gap-4">
-                        <RefreshCw className="w-8 h-8 animate-spin text-red-600" />
-                        <div className="font-bold text-stone-600">Loading seating chart...</div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="absolute top-4 left-4 right-4 z-30 flex gap-2 overflow-x-auto no-scrollbar pb-2 xl:hidden">
-                    <button
-                      onClick={() => setActiveSection('All')}
-                      className={`px-4 py-2 rounded-full text-xs font-bold shadow-md whitespace-nowrap ${
-                        activeSection === 'All' ? 'bg-red-700 text-white' : 'bg-white text-stone-600'
-                      }`}
-                    >
-                      All
-                    </button>
-                    {sections.map((section) => (
-                      <button
-                        key={section}
-                        onClick={() => setActiveSection(section)}
-                        className={`px-4 py-2 rounded-full text-xs font-bold shadow-md whitespace-nowrap ${
-                          activeSection === section ? 'bg-red-700 text-white' : 'bg-white text-stone-600'
-                        }`}
-                      >
-                        {section}
-                      </button>
-                      ))}
-                  </div>
-
-                  <div className="absolute left-4 right-4 top-[4.5rem] z-30 rounded-xl border border-stone-200 bg-white/95 p-2 shadow-sm backdrop-blur xl:hidden">
-                    <div className="flex items-center gap-2">
-                      <div className="flex min-w-0 flex-1 items-center rounded-lg border border-stone-300 bg-white px-2 py-1.5">
-                        <Users className="mr-2 h-4 w-4 shrink-0 text-stone-400" />
-                        <input
-                          type="number"
-                          min="1"
-                          max="10"
-                          value={adjacentCount}
-                          onChange={(event) => setAdjacentCount(Math.max(1, Number(event.target.value) || 1))}
-                          className="w-full min-w-0 bg-transparent text-sm font-bold outline-none"
-                        />
-                      </div>
-                      <button
-                        onClick={findAdjacentSeats}
-                        className="inline-flex items-center gap-1 rounded-lg bg-red-700 px-3 py-2 text-xs font-bold text-white hover:bg-red-800 transition-colors"
-                        title="Find adjacent seats"
-                      >
-                        <Search className="h-4 w-4" />
-                        Find
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="absolute bottom-36 right-4 z-30 flex flex-col gap-2 sm:bottom-28 xl:bottom-8 xl:right-8">
-                    <button
-                      onClick={() => transformComponentRef.current?.zoomIn(0.5)}
-                      className="map-control-btn bg-white p-3 rounded-full shadow-lg text-stone-600 hover:text-red-700 transition-colors"
-                    >
-                      <Plus className="w-5 h-5" />
-                    </button>
-                    <button
-                      onClick={() => transformComponentRef.current?.zoomOut(0.5)}
-                      className="map-control-btn bg-white p-3 rounded-full shadow-lg text-stone-600 hover:text-red-700 transition-colors"
-                    >
-                      <Minus className="w-5 h-5" />
-                    </button>
-                    <button
-                      onClick={() => fitMapToViewport(220)}
-                      className="map-control-btn bg-white p-3 rounded-full shadow-lg text-stone-600 hover:text-red-700 transition-colors"
-                      title="Reset View"
-                    >
-                      <RefreshCw className="w-5 h-5" />
-                    </button>
-                  </div>
-
-                  <TransformWrapper
-                    ref={transformComponentRef}
-                    initialScale={0.7}
-                    minScale={0.2}
-                    maxScale={8}
-                    centerOnInit={false}
-                    centerZoomedOut={false}
-                    disablePadding
-                    smooth
-                    limitToBounds={false}
-                    wheel={{
-                      step: 0.16,
-                      touchPadDisabled: false,
-                      excluded: ['input', 'textarea', 'select']
-                    }}
-                    pinch={{ step: 6 }}
-                    panning={{
-                      allowLeftClickPan: true,
-                      lockAxisX: false,
-                      lockAxisY: false,
-                      velocityDisabled: false,
-                      excluded: ['button', 'input', 'textarea', 'select', 'a', 'seat-button', 'map-control-btn']
-                    }}
-                    doubleClick={{
-                      mode: 'zoomIn',
-                      step: 1.25,
-                      animationTime: 180
-                    }}
-                    alignmentAnimation={{ disabled: true }}
-                    velocityAnimation={{
-                      sensitivity: 1.1,
-                      animationTime: 280,
-                      equalToMove: true
-                    }}
-                    onPanningStart={() => setIsPanning(true)}
-                    onPanningStop={() => setIsPanning(false)}
-                  >
-                    <TransformComponent wrapperClass={`!w-full !h-full ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`} contentClass="!w-auto !h-auto">
-                      <div className="relative" style={{ width: `${mapContent.width}px`, height: `${mapContent.height}px` }}>
-                        <div
-                          className="absolute"
-                          style={{
-                            left: `${MAP_FRAME_PADDING}px`,
-                            top: `${MAP_FRAME_PADDING}px`,
-                            width: `${mapBounds.width}px`,
-                            height: `${mapBounds.height}px`
-                          }}
-                        >
-                          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-stone-50 via-stone-50 to-stone-100/80 rounded-3xl" />
-
-                          <div
-                            className="pointer-events-none absolute w-px bg-gradient-to-b from-stone-300/70 via-stone-300/25 to-transparent"
-                            style={{
-                              left: `${stageCenterX}px`,
-                              top: `${stageGuideTop}px`,
-                              height: `${Math.max(0, mapBounds.height - stageGuideTop - 60)}px`
-                            }}
-                          />
-
-                          <div
-                            className="pointer-events-none absolute -translate-x-1/2 top-7"
-                            style={{ left: `${stageCenterX}px`, width: `${stageWidth}px` }}
+                <div className="flex-1 relative bg-stone-100 overflow-hidden">
+                  <SeatMapViewport
+                    seats={seats}
+                    visibleSeats={visibleSeats}
+                    loading={loading}
+                    resetKey={performanceId || 'booking-seat-map'}
+                    containerClassName="h-full"
+                    controlsClassName="absolute bottom-36 right-4 z-30 flex flex-col gap-2 sm:bottom-28 xl:bottom-8 xl:right-8"
+                    overlay={
+                      <>
+                        <div className="absolute top-4 left-4 right-4 z-30 flex gap-2 overflow-x-auto no-scrollbar pb-2 xl:hidden">
+                          <button
+                            onClick={() => setActiveSection('All')}
+                            className={`px-4 py-2 rounded-full text-xs font-bold shadow-md whitespace-nowrap ${
+                              activeSection === 'All' ? 'bg-red-700 text-white' : 'bg-white text-stone-600'
+                            }`}
                           >
-                            <div className="relative w-full">
-                              <div className="absolute left-8 right-8 -bottom-3 h-5 rounded-full bg-red-900/25 blur-sm" />
-                              <div className="relative h-16 rounded-b-[120px] border border-red-700/40 bg-gradient-to-b from-red-100 via-red-200 to-red-300 shadow-[0_10px_24px_rgba(127,29,29,0.35)] flex items-center justify-center">
-                                <div className="absolute top-2 left-8 right-8 h-2 rounded-full bg-white/35" />
-                                <span className="text-red-900/80 font-black uppercase tracking-[0.35em] text-sm">Stage</span>
-                              </div>
-                              <div className="mx-auto mt-1 h-1.5 w-[70%] rounded-full bg-stone-300/80" />
-                            </div>
-                          </div>
-
-                          {rowAnchors.map((anchor) => {
-                            const y = anchor.y - mapBounds.minY + MAP_PADDING_TOP + 12;
-                            const left = anchor.minX - mapBounds.minX + MAP_PADDING_X - 28;
-                            const right = anchor.maxX - mapBounds.minX + MAP_PADDING_X + 44;
-
-                            return (
-                              <div key={anchor.row}>
-                                <div className="absolute text-xs font-bold text-stone-400" style={{ left: `${left}px`, top: `${y}px` }}>
-                                  {anchor.row}
-                                </div>
-                                <div className="absolute text-xs font-bold text-stone-400" style={{ left: `${right}px`, top: `${y}px` }}>
-                                  {anchor.row}
-                                </div>
-                              </div>
-                            );
-                          })}
-
-                          {visibleSeats.map((seat) => {
-                            const isSelected = selectedSeatIds.includes(seat.id);
-                            const heldByMe = heldByMeSeatIds.includes(seat.id);
-                            const isAvailable = seat.status === 'available' || heldByMe;
-                            const isHeld = seat.status === 'held' && !heldByMe;
-                            const isSoldOrBlocked = seat.status === 'sold' || seat.status === 'blocked';
-                            const companionRequirementMet =
-                              !seat.isCompanion ||
-                              isSelected ||
-                              (seat.companionForSeatId ? selectedSeatIds.includes(seat.companionForSeatId) : hasAccessibleSelection);
-                            const selectable = isAvailable && companionRequirementMet;
-                            const x = seat.x - mapBounds.minX + MAP_PADDING_X;
-                            const y = seat.y - mapBounds.minY + MAP_PADDING_TOP;
-
-                            return (
-                              <button
-                                key={seat.id}
-                                onClick={() => handleSeatClick(seat)}
-                                disabled={!selectable && !isSelected}
-                                style={{ left: `${x}px`, top: `${y}px` }}
-                                className={[
-                                  'seat-button absolute w-8 h-8 md:w-10 md:h-10 rounded-t-lg rounded-b-md flex items-center justify-center text-[10px] font-bold transition-all duration-200 group',
-                                  isSelected
-                                    ? 'bg-green-500 text-white shadow-lg scale-110 z-10 ring-2 ring-green-300'
-                                    : isSoldOrBlocked
-                                      ? 'bg-stone-200 text-stone-400 cursor-not-allowed'
-                                      : isHeld
-                                        ? 'bg-orange-200 text-orange-400 cursor-not-allowed'
-                                        : seat.isCompanion
-                                          ? 'bg-cyan-100 border-2 border-cyan-400 text-cyan-700 hover:border-cyan-500 hover:bg-cyan-50 hover:shadow-md hover:-translate-y-1'
-                                        : seat.isAccessible
-                                            ? 'bg-blue-100 border-2 border-blue-400 text-blue-700 hover:border-blue-500 hover:bg-blue-50 hover:shadow-md hover:-translate-y-1'
-                                            : 'bg-white border-2 border-stone-200 text-stone-600 hover:border-red-400 hover:shadow-md hover:-translate-y-1'
-                                ].join(' ')}
-                              >
-                                <div
-                                  className={`absolute -left-1 bottom-1 w-1 h-4 rounded-full ${
-                                    isSelected ? 'bg-green-600' : seat.isCompanion ? 'bg-cyan-500' : seat.isAccessible ? 'bg-blue-500' : 'bg-stone-300'
-                                  } opacity-50`}
-                                />
-                                <div
-                                  className={`absolute -right-1 bottom-1 w-1 h-4 rounded-full ${
-                                    isSelected ? 'bg-green-600' : seat.isCompanion ? 'bg-cyan-500' : seat.isAccessible ? 'bg-blue-500' : 'bg-stone-300'
-                                  } opacity-50`}
-                                />
-                                {seat.number}
-                              </button>
-                            );
-                          })}
+                            All
+                          </button>
+                          {sections.map((section) => (
+                            <button
+                              key={section}
+                              onClick={() => setActiveSection(section)}
+                              className={`px-4 py-2 rounded-full text-xs font-bold shadow-md whitespace-nowrap ${
+                                activeSection === section ? 'bg-red-700 text-white' : 'bg-white text-stone-600'
+                              }`}
+                            >
+                              {section}
+                            </button>
+                          ))}
                         </div>
-                      </div>
-                    </TransformComponent>
-                  </TransformWrapper>
+
+                        <div className="absolute left-4 right-4 top-[4.5rem] z-30 rounded-xl border border-stone-200 bg-white/95 p-2 shadow-sm backdrop-blur xl:hidden">
+                          <div className="flex items-center gap-2">
+                            <div className="flex min-w-0 flex-1 items-center rounded-lg border border-stone-300 bg-white px-2 py-1.5">
+                              <Users className="mr-2 h-4 w-4 shrink-0 text-stone-400" />
+                              <input
+                                type="number"
+                                min="1"
+                                max="10"
+                                value={adjacentCount}
+                                onChange={(event) => setAdjacentCount(Math.max(1, Number(event.target.value) || 1))}
+                                className="w-full min-w-0 bg-transparent text-sm font-bold outline-none"
+                              />
+                            </div>
+                            <button
+                              onClick={findAdjacentSeats}
+                              className="inline-flex items-center gap-1 rounded-lg bg-red-700 px-3 py-2 text-xs font-bold text-white hover:bg-red-800 transition-colors"
+                              title="Find adjacent seats"
+                            >
+                              <Search className="h-4 w-4" />
+                              Find
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    }
+                    renderSeat={({ seat, x, y }) => {
+                      const isSelected = selectedSeatIds.includes(seat.id);
+                      const heldByMe = heldByMeSeatIds.includes(seat.id);
+                      const isAvailable = seat.status === 'available' || heldByMe;
+                      const isHeld = seat.status === 'held' && !heldByMe;
+                      const isSoldOrBlocked = seat.status === 'sold' || seat.status === 'blocked';
+                      const companionRequirementMet =
+                        !seat.isCompanion ||
+                        isSelected ||
+                        (seat.companionForSeatId ? selectedSeatIds.includes(seat.companionForSeatId) : hasAccessibleSelection);
+                      const selectable = isAvailable && companionRequirementMet;
+
+                      return (
+                        <button
+                          key={seat.id}
+                          onClick={() => handleSeatClick(seat)}
+                          disabled={!selectable && !isSelected}
+                          style={{ left: `${x}px`, top: `${y}px` }}
+                          className={[
+                            'seat-button absolute w-8 h-8 md:w-10 md:h-10 rounded-t-lg rounded-b-md flex items-center justify-center text-[10px] font-bold transition-all duration-200 group',
+                            isSelected
+                              ? 'bg-green-500 text-white shadow-lg scale-110 z-10 ring-2 ring-green-300'
+                              : isSoldOrBlocked
+                                ? 'bg-stone-200 text-stone-400 cursor-not-allowed'
+                                : isHeld
+                                  ? 'bg-orange-200 text-orange-400 cursor-not-allowed'
+                                  : seat.isCompanion
+                                    ? 'bg-cyan-100 border-2 border-cyan-400 text-cyan-700 hover:border-cyan-500 hover:bg-cyan-50 hover:shadow-md hover:-translate-y-1'
+                                    : seat.isAccessible
+                                      ? 'bg-blue-100 border-2 border-blue-400 text-blue-700 hover:border-blue-500 hover:bg-blue-50 hover:shadow-md hover:-translate-y-1'
+                                      : 'bg-white border-2 border-stone-200 text-stone-600 hover:border-red-400 hover:shadow-md hover:-translate-y-1'
+                          ].join(' ')}
+                        >
+                          <div
+                            className={`absolute -left-1 bottom-1 w-1 h-4 rounded-full ${
+                              isSelected ? 'bg-green-600' : seat.isCompanion ? 'bg-cyan-500' : seat.isAccessible ? 'bg-blue-500' : 'bg-stone-300'
+                            } opacity-50`}
+                          />
+                          <div
+                            className={`absolute -right-1 bottom-1 w-1 h-4 rounded-full ${
+                              isSelected ? 'bg-green-600' : seat.isCompanion ? 'bg-cyan-500' : seat.isAccessible ? 'bg-blue-500' : 'bg-stone-300'
+                            } opacity-50`}
+                          />
+                          {seat.number}
+                        </button>
+                      );
+                    }}
+                  />
 
                   <div className="xl:hidden absolute left-0 right-0 bottom-0 z-40 border-t border-stone-200 bg-white px-4 pt-3 pb-3 pb-safe">
                     {selectedSeatsWithPricing.length > 0 ? (
