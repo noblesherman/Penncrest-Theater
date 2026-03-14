@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/server.ts",
+    "start": "tsx src/server.ts",
     "build": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

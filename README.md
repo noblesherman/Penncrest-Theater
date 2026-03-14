@@ -141,7 +141,25 @@ See:
    ```bash
    npm --prefix backend run prisma:deploy
    ```
-4. Configure Stripe webhook endpoint:
+4. Start the backend with PM2 so it stays up after shell disconnects or server restarts:
+   ```bash
+   npm install -g pm2
+   pm2 start backend/ecosystem.config.cjs
+   pm2 save
+   pm2 startup
+   ```
+   You can inspect/restart it with:
+   ```bash
+   pm2 status
+   pm2 logs theater-backend
+   pm2 restart theater-backend
+   ```
+5. If you are exposing the backend through Cloudflare Tunnel from the same machine, run `cloudflared` as a persistent service too. For quick testing:
+   ```bash
+   cloudflared tunnel --url http://localhost:4000
+   ```
+   Then set the frontend `VITE_API_BASE_URL` to the tunnel URL and set backend `FRONTEND_ORIGIN` / `APP_BASE_URL` to your Vercel frontend URL.
+6. Configure Stripe webhook endpoint:
    - `https://<backend-domain>/api/webhooks/stripe`
-5. Set all backend env vars in your host.
-6. Ensure hold cleanup runs continuously (in-process interval) or via scheduled job using `cron:release-holds`.
+7. Set all backend env vars in your host.
+8. Ensure hold cleanup runs continuously (in-process interval) or via scheduled job using `cron:release-holds`.
