@@ -15,12 +15,29 @@ function normalizeUrl(url: string): string {
   return url.replace(/\/+$/, '');
 }
 
+function resolveSiteUrl(siteUrl?: string): string {
+  const trimmed = siteUrl?.trim();
+  if (!trimmed) {
+    return SITE_FALLBACK_URL;
+  }
+
+  try {
+    return normalizeUrl(new URL(trimmed).toString());
+  } catch {
+    try {
+      return normalizeUrl(new URL(`https://${trimmed}`).toString());
+    } catch {
+      return SITE_FALLBACK_URL;
+    }
+  }
+}
+
 function toAbsoluteUrl(pathname: string, siteUrl: string): string {
-  return new URL(pathname, `${normalizeUrl(siteUrl)}/`).toString();
+  return new URL(pathname, `${resolveSiteUrl(siteUrl)}/`).toString();
 }
 
 function createSeoAssetsPlugin(siteUrl: string): PluginOption {
-  const normalizedSiteUrl = normalizeUrl(siteUrl || SITE_FALLBACK_URL);
+  const normalizedSiteUrl = resolveSiteUrl(siteUrl);
   const buildDate = new Date().toISOString().slice(0, 10);
   const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -80,7 +97,7 @@ Sitemap: ${toAbsoluteUrl('/sitemap.xml', normalizedSiteUrl)}
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
-    plugins: [react(), tailwindcss(), createSeoAssetsPlugin(env.VITE_SITE_URL || SITE_FALLBACK_URL)],
+    plugins: [react(), tailwindcss(), createSeoAssetsPlugin(env.VITE_SITE_URL)],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

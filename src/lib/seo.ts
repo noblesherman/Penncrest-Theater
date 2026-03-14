@@ -19,14 +19,32 @@ export function normalizeSiteUrl(url: string): string {
   return url.replace(/\/+$/, '');
 }
 
-export function resolveSiteUrl(explicitSiteUrl?: string): string {
-  if (explicitSiteUrl) {
-    return normalizeSiteUrl(explicitSiteUrl);
+function coerceAbsoluteSiteUrl(url?: string): string | null {
+  const trimmed = url?.trim();
+  if (!trimmed) {
+    return null;
   }
 
-  const envSiteUrl = import.meta.env.VITE_SITE_URL?.trim();
+  try {
+    return normalizeSiteUrl(new URL(trimmed).toString());
+  } catch {
+    try {
+      return normalizeSiteUrl(new URL(`https://${trimmed}`).toString());
+    } catch {
+      return null;
+    }
+  }
+}
+
+export function resolveSiteUrl(explicitSiteUrl?: string): string {
+  const normalizedExplicitSiteUrl = coerceAbsoluteSiteUrl(explicitSiteUrl);
+  if (normalizedExplicitSiteUrl) {
+    return normalizedExplicitSiteUrl;
+  }
+
+  const envSiteUrl = coerceAbsoluteSiteUrl(import.meta.env.VITE_SITE_URL);
   if (envSiteUrl) {
-    return normalizeSiteUrl(envSiteUrl);
+    return envSiteUrl;
   }
 
   if (typeof window !== 'undefined' && window.location.origin) {
