@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { adminFetch, getAdminToken } from '../../lib/adminAuth';
+import { createAdminQrScanner, detectQrCameraSupport } from '../../lib/adminQrScanner';
 import { apiUrl } from '../../lib/api';
 
 type PerformanceRow = {
@@ -176,12 +177,6 @@ type OfflineQueueItem = {
   queuedAt: string;
 };
 
-type DetectedBarcodeLike = { rawValue?: string };
-type BarcodeDetectorLike = {
-  detect: (source: HTMLVideoElement) => Promise<DetectedBarcodeLike[]>;
-};
-type BarcodeDetectorCtorLike = new (options?: { formats?: string[] }) => BarcodeDetectorLike;
-
 const SESSION_STORAGE_KEY = 'theater_scanner_sessions_v1';
 const OFFLINE_QUEUE_KEY = 'theater_scanner_queue_v1';
 const reasonOptions: Array<{ value: ReasonCode; label: string }> = [
@@ -194,19 +189,14 @@ const reasonOptions: Array<{ value: ReasonCode; label: string }> = [
   { value: 'OTHER', label: 'Other' }
 ];
 
-const outcomeStyles: Record<ScanOutcome, string> = {
-  VALID: 'bg-green-50 border-green-300 text-green-900',
-  ALREADY_CHECKED_IN: 'bg-amber-50 border-amber-300 text-amber-900',
-  WRONG_PERFORMANCE: 'bg-orange-50 border-orange-300 text-orange-900',
-  NOT_ADMITTED: 'bg-red-50 border-red-300 text-red-900',
-  INVALID_QR: 'bg-red-50 border-red-300 text-red-900',
-  NOT_FOUND: 'bg-red-50 border-red-300 text-red-900'
+const outcomeConfig: Record<ScanOutcome, { bg: string; border: string; text: string; label: string; icon: string }> = {
+  VALID:              { bg: 'bg-emerald-950', border: 'border-emerald-500', text: 'text-emerald-300', label: 'ADMITTED', icon: '✓' },
+  ALREADY_CHECKED_IN: { bg: 'bg-amber-950',   border: 'border-amber-500',   text: 'text-amber-300',   label: 'ALREADY IN',  icon: '!' },
+  WRONG_PERFORMANCE:  { bg: 'bg-orange-950',  border: 'border-orange-500',  text: 'text-orange-300',  label: 'WRONG SHOW',  icon: '✕' },
+  NOT_ADMITTED:       { bg: 'bg-red-950',     border: 'border-red-500',     text: 'text-red-300',     label: 'DENIED',      icon: '✕' },
+  INVALID_QR:         { bg: 'bg-red-950',     border: 'border-red-500',     text: 'text-red-300',     label: 'INVALID QR',  icon: '✕' },
+  NOT_FOUND:          { bg: 'bg-red-950',     border: 'border-red-500',     text: 'text-red-300',     label: 'NOT FOUND',   icon: '✕' },
 };
-
-function getDetectorConstructor(): BarcodeDetectorCtorLike | null {
-  const candidate = (window as Window & { BarcodeDetector?: BarcodeDetectorCtorLike }).BarcodeDetector;
-  return candidate || null;
-}
 
 function makeClientId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -247,17 +237,12 @@ function isNetworkError(err: unknown): boolean {
 }
 
 function vibrate(pattern: number | number[]) {
-  try {
-    navigator.vibrate?.(pattern);
-  } catch {
-    // Ignore unsupported haptics.
-  }
+  try { navigator.vibrate?.(pattern); } catch { }
 }
 
 function beep(success: boolean) {
   try {
-    const AudioCtx = (window as Window & { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).AudioContext
-      || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) return;
     const ctx = new AudioCtx();
     const oscillator = ctx.createOscillator();
@@ -269,12 +254,8 @@ function beep(success: boolean) {
     gain.connect(ctx.destination);
     oscillator.start();
     oscillator.stop(ctx.currentTime + (success ? 0.08 : 0.15));
-    oscillator.onended = () => {
-      void ctx.close();
-    };
-  } catch {
-    // Ignore audio failures.
-  }
+    oscillator.onended = () => { void ctx.close(); };
+  } catch { }
 }
 
 export default function AdminScannerPage() {
@@ -291,6 +272,7 @@ export default function AdminScannerPage() {
   const [cameraRunning, setCameraRunning] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [lookupBusyTicketId, setLookupBusyTicketId] = useState<string | null>(null);
   const [undoBusyTicketId, setUndoBusyTicketId] = useState<string | null>(null);
   const [summary, setSummary] = useState<CheckInSummary | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -306,102 +288,65 @@ export default function AdminScannerPage() {
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hardwareInputRef = useRef<HTMLInputElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const detectorRef = useRef<BarcodeDetectorLike | null>(null);
-  const intervalRef = useRef<number | null>(null);
+  const scannerRef = useRef<ReturnType<typeof createAdminQrScanner> | null>(null);
   const scanBusyRef = useRef(false);
   const lastScannedRef = useRef<{ value: string; at: number } | null>(null);
   const hardwareBufferRef = useRef('');
   const hardwareClearTimerRef = useRef<number | null>(null);
 
   const selectedPerformance = useMemo(
-    () => performances.find((performance) => performance.id === performanceId),
+    () => performances.find((p) => p.id === performanceId),
     [performances, performanceId]
   );
 
   const sessionReady = Boolean(scannerSession && scannerSession.performanceId === performanceId);
-  const checkInPct =
-    summary && summary.totalAdmittable > 0
-      ? Math.min(100, Math.round((summary.totalCheckedIn / summary.totalAdmittable) * 100))
-      : 0;
+  const checkInPct = summary && summary.totalAdmittable > 0
+    ? Math.min(100, Math.round((summary.totalCheckedIn / summary.totalAdmittable) * 100))
+    : 0;
 
   const stopCamera = () => {
-    if (intervalRef.current) {
-      window.clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    detectorRef.current = null;
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
+    scannerRef.current?.stop();
+    if (videoRef.current) videoRef.current.srcObject = null;
     setCameraRunning(false);
   };
 
-  const loadSummary = async (selectedPerformanceId = performanceId) => {
-    if (!selectedPerformanceId) {
-      setSummary(null);
-      return;
-    }
-
+  const loadSummary = async (pid = performanceId) => {
+    if (!pid) { setSummary(null); return; }
     try {
-      const next = await adminFetch<CheckInSummary>(`/api/admin/check-in/summary?performanceId=${selectedPerformanceId}`);
-      setSummary(next);
-      setSummaryError(null);
+      const next = await adminFetch<CheckInSummary>(`/api/admin/check-in/summary?performanceId=${pid}`);
+      setSummary(next); setSummaryError(null);
     } catch (err) {
       setSummaryError(err instanceof Error ? err.message : 'Failed to load check-in summary');
     }
   };
 
-  const loadTimeline = async (selectedPerformanceId = performanceId) => {
-    if (!selectedPerformanceId) {
-      setTimeline(null);
-      return;
-    }
-
+  const loadTimeline = async (pid = performanceId) => {
+    if (!pid) { setTimeline(null); return; }
     try {
-      const next = await adminFetch<TimelineResponse>(
-        `/api/admin/check-in/timeline?performanceId=${selectedPerformanceId}&page=1&pageSize=100`
-      );
+      const next = await adminFetch<TimelineResponse>(`/api/admin/check-in/timeline?performanceId=${pid}&page=1&pageSize=100`);
       setTimeline(next);
-    } catch {
-      // Keep old timeline on transient errors.
-    }
+    } catch { }
   };
 
-  const loadAnalytics = async (selectedPerformanceId = performanceId) => {
-    if (!selectedPerformanceId) {
-      setAnalytics(null);
-      return;
-    }
-
+  const loadAnalytics = async (pid = performanceId) => {
+    if (!pid) { setAnalytics(null); return; }
     try {
-      const next = await adminFetch<AnalyticsResponse>(`/api/admin/check-in/analytics?performanceId=${selectedPerformanceId}`);
+      const next = await adminFetch<AnalyticsResponse>(`/api/admin/check-in/analytics?performanceId=${pid}`);
       setAnalytics(next);
-    } catch {
-      // Keep old analytics on transient errors.
-    }
+    } catch { }
   };
 
   const pushHistory = (result: ScanResponse) => {
-    setHistory((current) => [{ ...result, id: makeClientId() }, ...current].slice(0, 30));
+    setHistory((c) => [{ ...result, id: makeClientId() }, ...c].slice(0, 30));
   };
 
   const patchTicketInHistory = (ticket: ScannedTicket) => {
-    setLastResult((current) => {
-      if (!current?.ticket || current.ticket.id !== ticket.id) return current;
-      return { ...current, ticket };
-    });
+    setLastResult((c) => (!c?.ticket || c.ticket.id !== ticket.id) ? c : { ...c, ticket });
+    setHistory((c) => c.map((row) => (!row.ticket || row.ticket.id !== ticket.id) ? row : { ...row, ticket }));
+  };
 
-    setHistory((current) =>
-      current.map((row) => {
-        if (!row.ticket || row.ticket.id !== ticket.id) return row;
-        return { ...row, ticket };
-      })
-    );
+  const patchLookupTicket = (ticket: ScannedTicket) => {
+    setLookupRows((rows) => rows.map((row) => row.id === ticket.id ? { ...row, ...ticket } : row));
   };
 
   const applyFeedback = (outcome: ScanOutcome) => {
@@ -412,20 +357,13 @@ export default function AdminScannerPage() {
 
   const persistSession = (session: ScannerSession | null) => {
     const sessions = readStoredSessions();
-    if (!session) {
-      delete sessions[performanceId];
-    } else {
-      sessions[session.performanceId] = session;
-    }
+    if (!session) delete sessions[performanceId];
+    else sessions[session.performanceId] = session;
     writeStoredSessions(sessions);
   };
 
   const enqueueOfflineScan = (item: Omit<OfflineQueueItem, 'id' | 'queuedAt'>) => {
-    const queueItem: OfflineQueueItem = {
-      id: makeClientId(),
-      queuedAt: new Date().toISOString(),
-      ...item
-    };
+    const queueItem: OfflineQueueItem = { id: makeClientId(), queuedAt: new Date().toISOString(), ...item };
     const next = [...readOfflineQueue(), queueItem];
     writeOfflineQueue(next);
     setOfflineQueue(next);
@@ -433,16 +371,10 @@ export default function AdminScannerPage() {
   };
 
   const sendScanRequest = async (params: {
-    scannedValue: string;
-    clientScanId?: string;
-    offlineQueuedAt?: string;
-    performanceIdOverride?: string;
-    sessionTokenOverride?: string;
+    scannedValue: string; clientScanId?: string; offlineQueuedAt?: string;
+    performanceIdOverride?: string; sessionTokenOverride?: string;
   }) => {
-    if (!sessionReady && !params.sessionTokenOverride) {
-      throw new Error('Start a scanner session before scanning.');
-    }
-
+    if (!sessionReady && !params.sessionTokenOverride) throw new Error('Start a scanner session before scanning.');
     return adminFetch<ScanResponse>('/api/admin/check-in/scan', {
       method: 'POST',
       body: JSON.stringify({
@@ -456,53 +388,28 @@ export default function AdminScannerPage() {
   };
 
   const submitScan = async (scannedValue: string) => {
-    if (!performanceId || !sessionReady) {
-      setNotice({ kind: 'error', text: 'Start a scanner session first.' });
-      return;
-    }
-
+    if (!performanceId || !sessionReady) { setNotice({ kind: 'error', text: 'Start a scanner session first.' }); return; }
     scanBusyRef.current = true;
     setBusy(true);
     setNotice(null);
     const clientScanId = makeClientId();
-
     try {
-      if (!navigator.onLine) {
-        enqueueOfflineScan({
-          performanceId,
-          sessionToken: scannerSession!.sessionToken,
-          scannedValue,
-          clientScanId
-        });
-        return;
-      }
-
+      if (!navigator.onLine) { enqueueOfflineScan({ performanceId, sessionToken: scannerSession!.sessionToken, scannedValue, clientScanId }); return; }
       const result = await sendScanRequest({ scannedValue, clientScanId });
       setLastResult(result);
       pushHistory(result);
+      if (result.ticket) patchLookupTicket(result.ticket);
       applyFeedback(result.outcome);
       await Promise.all([loadSummary(), loadTimeline(), loadAnalytics()]);
     } catch (err) {
       if (isNetworkError(err)) {
-        enqueueOfflineScan({
-          performanceId,
-          sessionToken: scannerSession!.sessionToken,
-          scannedValue,
-          clientScanId
-        });
+        enqueueOfflineScan({ performanceId, sessionToken: scannerSession!.sessionToken, scannedValue, clientScanId });
       } else {
-        const fallback: ScanResponse = {
-          outcome: 'INVALID_QR',
-          message: err instanceof Error ? err.message : 'Scan failed',
-          scannedAt: new Date().toISOString()
-        };
-        setLastResult(fallback);
-        pushHistory(fallback);
-        applyFeedback(fallback.outcome);
+        const fallback: ScanResponse = { outcome: 'INVALID_QR', message: err instanceof Error ? err.message : 'Scan failed', scannedAt: new Date().toISOString() };
+        setLastResult(fallback); pushHistory(fallback); applyFeedback(fallback.outcome);
       }
     } finally {
-      setBusy(false);
-      scanBusyRef.current = false;
+      setBusy(false); scanBusyRef.current = false;
     }
   };
 
@@ -510,822 +417,702 @@ export default function AdminScannerPage() {
     if (isSyncingOffline) return;
     const currentQueue = readOfflineQueue();
     if (currentQueue.length === 0) return;
-
     setIsSyncingOffline(true);
     try {
       const storedSessions = readStoredSessions();
       const remaining: OfflineQueueItem[] = [];
       let blockedMessage: string | null = null;
-
-      for (let index = 0; index < currentQueue.length; index += 1) {
-        const item = currentQueue[index];
-        const fallbackSessionToken =
-          (item.performanceId === performanceId && scannerSession?.performanceId === item.performanceId
-            ? scannerSession.sessionToken
-            : storedSessions[item.performanceId]?.sessionToken) || item.sessionToken;
-
+      for (let i = 0; i < currentQueue.length; i++) {
+        const item = currentQueue[i];
+        const fallbackToken = (item.performanceId === performanceId && scannerSession?.performanceId === item.performanceId ? scannerSession.sessionToken : storedSessions[item.performanceId]?.sessionToken) || item.sessionToken;
         try {
-          const result = await sendScanRequest({
-            scannedValue: item.scannedValue,
-            clientScanId: item.clientScanId,
-            offlineQueuedAt: item.queuedAt,
-            performanceIdOverride: item.performanceId,
-            sessionTokenOverride: fallbackSessionToken
-          });
-          setLastResult(result);
-          pushHistory(result);
-          applyFeedback(result.outcome);
+          const result = await sendScanRequest({ scannedValue: item.scannedValue, clientScanId: item.clientScanId, offlineQueuedAt: item.queuedAt, performanceIdOverride: item.performanceId, sessionTokenOverride: fallbackToken });
+          setLastResult(result); pushHistory(result); applyFeedback(result.outcome);
         } catch (err) {
-          if (isNetworkError(err)) {
-            remaining.push(item);
-            const notProcessed = currentQueue.slice(index + 1);
-            remaining.push(...notProcessed);
-            break;
+          if (isNetworkError(err)) { remaining.push(item, ...currentQueue.slice(i + 1)); break; }
+          const msg = err instanceof Error ? err.message.toLowerCase() : '';
+          if (msg.includes('session is not active') || msg.includes('unauthorized') || msg.includes('forbidden')) {
+            remaining.push(item, ...currentQueue.slice(i + 1));
+            blockedMessage = 'Offline sync paused: start an active scanner session and try again.'; break;
           }
-
-          const message = err instanceof Error ? err.message.toLowerCase() : '';
-          const sessionOrAuthFailure =
-            message.includes('session is not active') ||
-            message.includes('unauthorized') ||
-            message.includes('forbidden');
-
-          if (sessionOrAuthFailure) {
-            remaining.push(item);
-            const notProcessed = currentQueue.slice(index + 1);
-            remaining.push(...notProcessed);
-            blockedMessage = 'Offline sync paused: start an active scanner session and try again.';
-            break;
-          }
-
-          // Server responded (already checked in, invalid code, etc). Keep moving and drop item.
         }
       }
-
-      writeOfflineQueue(remaining);
-      setOfflineQueue(remaining);
-      if (remaining.length === 0) {
-        setNotice({ kind: 'success', text: 'Offline queue synced.' });
-      } else if (blockedMessage) {
-        setNotice({ kind: 'error', text: blockedMessage });
-      } else {
-        setNotice({ kind: 'error', text: `${remaining.length} scan(s) still queued.` });
-      }
-
+      writeOfflineQueue(remaining); setOfflineQueue(remaining);
+      if (remaining.length === 0) setNotice({ kind: 'success', text: 'Offline queue synced.' });
+      else if (blockedMessage) setNotice({ kind: 'error', text: blockedMessage });
+      else setNotice({ kind: 'error', text: `${remaining.length} scan(s) still queued.` });
       await Promise.all([loadSummary(), loadTimeline(), loadAnalytics()]);
-    } finally {
-      setIsSyncingOffline(false);
-    }
+    } finally { setIsSyncingOffline(false); }
   };
 
-  const startSession = async (event: FormEvent) => {
-    event.preventDefault();
+  const startSession = async (e: FormEvent) => {
+    e.preventDefault();
     if (!performanceId) return;
-
     try {
       const session = await adminFetch<ScannerSession>('/api/admin/check-in/session/start', {
         method: 'POST',
-        body: JSON.stringify({
-          performanceId,
-          staffName: sessionDraft.staffName.trim(),
-          gate: sessionDraft.gate.trim(),
-          deviceLabel: sessionDraft.deviceLabel.trim() || undefined
-        })
+        body: JSON.stringify({ performanceId, staffName: sessionDraft.staffName.trim(), gate: sessionDraft.gate.trim(), deviceLabel: sessionDraft.deviceLabel.trim() || undefined })
       });
       setScannerSession(session);
-      setSessionDraft((current) => ({ ...current, gate: session.gate }));
+      setSessionDraft((c) => ({ ...c, gate: session.gate }));
       persistSession(session);
       setNotice({ kind: 'success', text: `Session started for ${session.staffName} (${session.gate}).` });
       await Promise.all([loadSummary(), loadTimeline(), loadAnalytics()]);
-    } catch (err) {
-      setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to start session' });
-    }
+    } catch (err) { setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to start session' }); }
   };
 
   const endSession = async () => {
     if (!scannerSession) return;
     try {
-      await adminFetch('/api/admin/check-in/session/end', {
-        method: 'POST',
-        body: JSON.stringify({ sessionToken: scannerSession.sessionToken })
-      });
-      setScannerSession(null);
-      persistSession(null);
+      await adminFetch('/api/admin/check-in/session/end', { method: 'POST', body: JSON.stringify({ sessionToken: scannerSession.sessionToken }) });
+      setScannerSession(null); persistSession(null);
       setNotice({ kind: 'success', text: 'Scanner session ended.' });
-    } catch (err) {
-      setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to end session' });
-    }
+    } catch (err) { setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to end session' }); }
   };
 
   const undoCheckIn = async (ticket: ScannedTicket) => {
     if (!performanceId || !sessionReady) return;
-    setUndoBusyTicketId(ticket.id);
-    setNotice(null);
+    setUndoBusyTicketId(ticket.id); setNotice(null);
     try {
       const result = await adminFetch<UndoResponse>('/api/admin/check-in/undo', {
         method: 'POST',
-        body: JSON.stringify({
-          performanceId,
-          sessionToken: scannerSession!.sessionToken,
-          ticketId: ticket.id,
-          reasonCode,
-          notes: reasonNotes.trim() || undefined
-        })
+        body: JSON.stringify({ performanceId, sessionToken: scannerSession!.sessionToken, ticketId: ticket.id, reasonCode, notes: reasonNotes.trim() || undefined })
       });
-
       setNotice({ kind: result.success ? 'success' : 'error', text: result.message });
-      if (result.ticket) patchTicketInHistory(result.ticket);
+      if (result.ticket) { patchTicketInHistory(result.ticket); patchLookupTicket(result.ticket); }
       await Promise.all([loadSummary(), loadTimeline(), loadAnalytics()]);
-    } catch (err) {
-      setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to undo check-in' });
-    } finally {
-      setUndoBusyTicketId(null);
-    }
+    } catch (err) { setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to undo check-in' }); }
+    finally { setUndoBusyTicketId(null); }
   };
 
   const applySupervisorDecision = async (ticket: LookupResult, decision: 'FORCE_ADMIT' | 'DENY') => {
-    if (!performanceId || !sessionReady) {
-      setNotice({ kind: 'error', text: 'Start a scanner session first.' });
-      return;
-    }
-    setUndoBusyTicketId(ticket.id);
-    setNotice(null);
+    if (!performanceId || !sessionReady) { setNotice({ kind: 'error', text: 'Start a scanner session first.' }); return; }
+    setUndoBusyTicketId(ticket.id); setNotice(null);
     try {
-      const result = await adminFetch<{ success: boolean; message: string; ticket?: ScannedTicket }>(
-        '/api/admin/check-in/force-decision',
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            performanceId,
-            sessionToken: scannerSession!.sessionToken,
-            ticketId: ticket.id,
-            decision,
-            reasonCode,
-            notes: reasonNotes.trim() || undefined
-          })
-        }
-      );
+      const result = await adminFetch<{ success: boolean; message: string; ticket?: ScannedTicket }>('/api/admin/check-in/force-decision', {
+        method: 'POST',
+        body: JSON.stringify({ performanceId, sessionToken: scannerSession!.sessionToken, ticketId: ticket.id, decision, reasonCode, notes: reasonNotes.trim() || undefined })
+      });
       setNotice({ kind: 'success', text: result.message });
-      if (result.ticket) {
-        patchTicketInHistory(result.ticket);
-        setLookupRows((rows) => rows.map((row) => (row.id === result.ticket!.id ? { ...row, ...result.ticket } : row)));
-      }
+      if (result.ticket) { patchTicketInHistory(result.ticket); patchLookupTicket(result.ticket); }
       await Promise.all([loadSummary(), loadTimeline(), loadAnalytics()]);
-    } catch (err) {
-      setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to apply decision' });
-    } finally {
-      setUndoBusyTicketId(null);
-    }
+    } catch (err) { setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to apply decision' }); }
+    finally { setUndoBusyTicketId(null); }
   };
 
-  const searchLookup = async (event: FormEvent) => {
-    event.preventDefault();
+  const checkInLookupTicket = async (ticket: LookupResult) => {
+    if (busy || lookupBusyTicketId) return;
+    setLookupBusyTicketId(ticket.id);
+    try { await submitScan(ticket.publicId); } finally { setLookupBusyTicketId(null); }
+  };
+
+  const searchLookup = async (e: FormEvent) => {
+    e.preventDefault();
     if (!performanceId || !lookupQuery.trim()) return;
     try {
-      const rows = await adminFetch<LookupResult[]>(
-        `/api/admin/check-in/lookup?performanceId=${performanceId}&q=${encodeURIComponent(lookupQuery.trim())}&limit=40`
-      );
+      const rows = await adminFetch<LookupResult[]>(`/api/admin/check-in/lookup?performanceId=${performanceId}&q=${encodeURIComponent(lookupQuery.trim())}&limit=40`);
       setLookupRows(rows);
-    } catch (err) {
-      setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Lookup failed' });
-    }
+    } catch (err) { setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Lookup failed' }); }
   };
 
   const exportAnalyticsCsv = async () => {
     if (!performanceId || isExportingCsv) return;
     const token = getAdminToken();
-    if (!token) {
-      setNotice({ kind: 'error', text: 'Admin session expired. Log in again.' });
-      return;
-    }
-
-    setIsExportingCsv(true);
-    setNotice(null);
+    if (!token) { setNotice({ kind: 'error', text: 'Admin session expired. Log in again.' }); return; }
+    setIsExportingCsv(true); setNotice(null);
     try {
-      const response = await fetch(apiUrl(`/api/admin/check-in/analytics.csv?performanceId=${encodeURIComponent(performanceId)}`), {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-
+      const response = await fetch(apiUrl(`/api/admin/check-in/analytics.csv?performanceId=${encodeURIComponent(performanceId)}`), { method: 'GET', headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) {
-        const contentType = response.headers.get('content-type') || '';
+        const ct = response.headers.get('content-type') || '';
         let message = `CSV export failed (${response.status})`;
-        if (contentType.includes('application/json')) {
-          const errorBody = (await response.json().catch(() => null)) as { error?: string } | null;
-          if (errorBody?.error) message = errorBody.error;
-        }
+        if (ct.includes('application/json')) { const b = (await response.json().catch(() => null)) as { error?: string } | null; if (b?.error) message = b.error; }
         throw new Error(message);
       }
-
       const blob = await response.blob();
-      const disposition = response.headers.get('content-disposition') || '';
-      const nameMatch = disposition.match(/filename="([^"]+)"/i);
-      const filename = nameMatch?.[1] || `checkin-analytics-${performanceId}.csv`;
-      const objectUrl = URL.createObjectURL(blob);
-
-      const link = document.createElement('a');
-      link.href = objectUrl;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(objectUrl);
+      const disp = response.headers.get('content-disposition') || '';
+      const nm = disp.match(/filename="([^"]+)"/i);
+      const filename = nm?.[1] || `checkin-analytics-${performanceId}.csv`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
       setNotice({ kind: 'success', text: 'Analytics CSV downloaded.' });
-    } catch (err) {
-      setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to export CSV' });
-    } finally {
-      setIsExportingCsv(false);
-    }
+    } catch (err) { setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to export CSV' }); }
+    finally { setIsExportingCsv(false); }
   };
 
   const startCamera = async () => {
     setCameraError(null);
     if (cameraRunning) return;
-    if (!sessionReady) {
-      setCameraError('Start a scanner session first.');
-      return;
-    }
-
-    const detectorCtor = getDetectorConstructor();
-    if (!detectorCtor || !navigator.mediaDevices?.getUserMedia) {
-      setCameraError('Camera scanning is not supported on this browser. Use manual/hardware entry.');
-      return;
-    }
-
+    if (!sessionReady) { setCameraError('Start a scanner session first.'); return; }
+    if (!cameraSupported) { setCameraError('Camera scanning is not supported on this browser.'); return; }
     try {
-      const orientation = (screen as Screen & { orientation?: { lock?: (lockType: string) => Promise<void> } }).orientation;
+      const orientation = (screen as any).orientation;
       await orientation?.lock?.('portrait').catch(() => Promise.resolve());
-    } catch {
-      // Ignore orientation lock failures.
-    }
-
+    } catch { }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: 'environment' }
-        },
-        audio: false
-      });
-
       const video = videoRef.current;
-      if (!video) {
-        stream.getTracks().forEach((track) => track.stop());
-        throw new Error('Camera preview failed to initialize');
+      if (!video) throw new Error('Camera preview failed to initialize');
+      if (!scannerRef.current) {
+        scannerRef.current = createAdminQrScanner({
+          video,
+          onDecode: (val) => {
+            if (scanBusyRef.current) return;
+            const now = Date.now(); const last = lastScannedRef.current;
+            if (last && last.value === val && now - last.at < 1500) return;
+            lastScannedRef.current = { value: val, at: now };
+            void submitScan(val);
+          }
+        });
       }
-
-      video.srcObject = stream;
-      await video.play();
-
-      streamRef.current = stream;
-      detectorRef.current = new detectorCtor({ formats: ['qr_code'] });
+      await scannerRef.current.start();
       setCameraRunning(true);
-
-      intervalRef.current = window.setInterval(() => {
-        const detector = detectorRef.current;
-        const activeVideo = videoRef.current;
-        if (!detector || !activeVideo) return;
-        if (scanBusyRef.current) return;
-        if (activeVideo.readyState < 2) return;
-
-        detector
-          .detect(activeVideo)
-          .then((codes) => {
-            const raw = codes.find((code) => code.rawValue)?.rawValue?.trim();
-            if (!raw) return;
-
-            const now = Date.now();
-            const last = lastScannedRef.current;
-            if (last && last.value === raw && now - last.at < 1500) return;
-
-            lastScannedRef.current = { value: raw, at: now };
-            void submitScan(raw);
-          })
-          .catch(() => {
-            // Ignore frame-level decode errors.
-          });
-      }, 250);
-    } catch (err) {
-      stopCamera();
-      setCameraError(err instanceof Error ? err.message : 'Unable to access camera');
-    }
+    } catch (err) { stopCamera(); setCameraError(err instanceof Error ? err.message : 'Unable to access camera'); }
   };
 
   useEffect(() => {
-    setCameraSupported(Boolean(getDetectorConstructor() && navigator.mediaDevices?.getUserMedia));
     setOfflineQueue(readOfflineQueue());
-
+    let cancelled = false;
+    void detectQrCameraSupport().then((supported) => { if (!cancelled) setCameraSupported(supported); });
     adminFetch<PerformanceRow[]>('/api/admin/performances?scope=active')
       .then((rows) => {
-        const active = rows.filter((row) => !row.isArchived);
+        const active = rows.filter((r) => !r.isArchived);
         setPerformances(active);
-        if (active.length > 0) {
-          setPerformanceId(active[0].id);
-        }
+        if (active.length > 0) setPerformanceId(active[0].id);
       })
-      .catch((err) => {
-        setCameraError(err instanceof Error ? err.message : 'Failed to load performances');
-      });
-
-    const onlineHandler = () => {
-      void syncOfflineQueue();
-    };
+      .catch((err) => { setCameraError(err instanceof Error ? err.message : 'Failed to load performances'); });
+    const onlineHandler = () => { void syncOfflineQueue(); };
     window.addEventListener('online', onlineHandler);
-
-    return () => {
-      stopCamera();
-      window.removeEventListener('online', onlineHandler);
-    };
+    return () => { cancelled = true; stopCamera(); scannerRef.current?.destroy(); scannerRef.current = null; window.removeEventListener('online', onlineHandler); };
   }, []);
 
   useEffect(() => {
     if (!performanceId) return;
-
-    const storedSession = readStoredSessions()[performanceId];
-    setScannerSession(storedSession || null);
-    if (storedSession) {
-      setSessionDraft((current) => ({
-        ...current,
-        staffName: storedSession.staffName,
-        gate: storedSession.gate
-      }));
-    }
-
-    setLastResult(null);
-    setHistory([]);
-    setLookupRows([]);
-    setLookupQuery('');
-    setNotice(null);
-
+    const stored = readStoredSessions()[performanceId];
+    setScannerSession(stored || null);
+    if (stored) setSessionDraft((c) => ({ ...c, staffName: stored.staffName, gate: stored.gate }));
+    setLastResult(null); setHistory([]); setLookupRows([]); setLookupQuery(''); setNotice(null);
     void Promise.all([loadSummary(performanceId), loadTimeline(performanceId), loadAnalytics(performanceId)]);
   }, [performanceId]);
 
   useEffect(() => {
     const token = getAdminToken();
-    if (!token || !performanceId || !sessionReady) {
-      setIsRealtimeConnected(false);
-      return;
-    }
-
-    const streamUrl = apiUrl(
-      `/api/admin/check-in/events?performanceId=${encodeURIComponent(performanceId)}&token=${encodeURIComponent(token)}`
-    );
-    const source = new EventSource(streamUrl);
-
+    if (!token || !performanceId || !sessionReady) { setIsRealtimeConnected(false); return; }
+    const source = new EventSource(apiUrl(`/api/admin/check-in/events?performanceId=${encodeURIComponent(performanceId)}&token=${encodeURIComponent(token)}`));
     source.onopen = () => setIsRealtimeConnected(true);
     source.onerror = () => setIsRealtimeConnected(false);
-    source.addEventListener('checkin', () => {
-      void Promise.all([loadSummary(performanceId), loadTimeline(performanceId), loadAnalytics(performanceId)]);
-    });
-    source.addEventListener('decision', () => {
-      void Promise.all([loadSummary(performanceId), loadTimeline(performanceId), loadAnalytics(performanceId)]);
-    });
-    source.addEventListener('session', () => {
-      void loadSummary(performanceId);
-    });
-
-    return () => {
-      source.close();
-      setIsRealtimeConnected(false);
-    };
+    source.addEventListener('checkin', () => { void Promise.all([loadSummary(performanceId), loadTimeline(performanceId), loadAnalytics(performanceId)]); });
+    source.addEventListener('decision', () => { void Promise.all([loadSummary(performanceId), loadTimeline(performanceId), loadAnalytics(performanceId)]); });
+    source.addEventListener('session', () => { void loadSummary(performanceId); });
+    return () => { source.close(); setIsRealtimeConnected(false); };
   }, [performanceId, sessionReady]);
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
+    const onKeyDown = (e: KeyboardEvent) => {
       if (!sessionReady) return;
-
-      const target = event.target as HTMLElement | null;
-      const editable =
-        target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.getAttribute('contenteditable') === 'true';
+      const target = e.target as HTMLElement | null;
+      const editable = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.getAttribute('contenteditable') === 'true';
       if (editable) return;
-
-      if (event.key === 'Enter') {
+      if (e.key === 'Enter') {
         const value = hardwareBufferRef.current.trim();
         hardwareBufferRef.current = '';
-        if (hardwareClearTimerRef.current) {
-          window.clearTimeout(hardwareClearTimerRef.current);
-          hardwareClearTimerRef.current = null;
-        }
-        if (value) {
-          void submitScan(value);
-        }
+        if (hardwareClearTimerRef.current) { window.clearTimeout(hardwareClearTimerRef.current); hardwareClearTimerRef.current = null; }
+        if (value) void submitScan(value);
         return;
       }
-
-      if (event.key.length === 1) {
-        hardwareBufferRef.current += event.key;
-        if (hardwareClearTimerRef.current) {
-          window.clearTimeout(hardwareClearTimerRef.current);
-        }
-        hardwareClearTimerRef.current = window.setTimeout(() => {
-          hardwareBufferRef.current = '';
-          hardwareClearTimerRef.current = null;
-        }, 250);
+      if (e.key.length === 1) {
+        hardwareBufferRef.current += e.key;
+        if (hardwareClearTimerRef.current) window.clearTimeout(hardwareClearTimerRef.current);
+        hardwareClearTimerRef.current = window.setTimeout(() => { hardwareBufferRef.current = ''; hardwareClearTimerRef.current = null; }, 250);
       }
     };
-
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [sessionReady]);
 
-  const submitManual = (event: FormEvent) => {
-    event.preventDefault();
+  const submitManual = (e: FormEvent) => {
+    e.preventDefault();
     const value = manualValue.trim();
     if (!value || busy) return;
     setManualValue('');
     void submitScan(value);
   };
 
+  // ─── RENDER ─────────────────────────────────────────────────────────────────
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-stone-900">Ticket Scanner Console</h1>
-          <p className="text-sm text-stone-600">Simple check-in mode. Keep this page focused on scanning and use Advanced Settings only when needed.</p>
-        </div>
-        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-          <Link
-            to="/admin/scanner/live"
-            className="w-full rounded-xl border border-stone-300 bg-white px-4 py-2 text-center text-sm font-semibold text-stone-700 hover:bg-stone-50 sm:w-auto"
-          >
-            Open Full-Screen Scanner
-          </Link>
+    <div className="min-h-screen bg-zinc-950 text-zinc-100" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+      {/* Top bar */}
+      <div className="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur-sm">
+        <div className="mx-auto max-w-2xl px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="truncate text-base font-bold tracking-tight text-zinc-100">Ticket Scanner</h1>
+              {selectedPerformance && (
+                <p className="truncate text-xs text-zinc-500">{selectedPerformance.title} · {new Date(selectedPerformance.startsAt).toLocaleString()}</p>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {/* Status dots */}
+              <span className={`h-2 w-2 rounded-full ${isRealtimeConnected ? 'bg-emerald-400' : 'bg-amber-400'}`} title={isRealtimeConnected ? 'Realtime connected' : 'Realtime disconnected'} />
+              <span className={`h-2 w-2 rounded-full ${navigator.onLine ? 'bg-emerald-400' : 'bg-red-400'}`} title={navigator.onLine ? 'Online' : 'Offline'} />
+              {offlineQueue.length > 0 && (
+                <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-black">{offlineQueue.length}</span>
+              )}
+              <Link
+                to="/admin/scanner/live"
+                className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-semibold text-zinc-300 active:bg-zinc-700"
+              >
+                Full Screen
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 text-xs">
-        <span
-          className={`rounded-full border px-3 py-1 ${isRealtimeConnected ? 'border-green-300 bg-green-50 text-green-900' : 'border-amber-300 bg-amber-50 text-amber-900'}`}
-        >
-          Realtime: {isRealtimeConnected ? 'Connected' : 'Disconnected'}
-        </span>
-        <span
-          className={`rounded-full border px-3 py-1 ${navigator.onLine ? 'border-green-300 bg-green-50 text-green-900' : 'border-red-300 bg-red-50 text-red-900'}`}
-        >
-          Network: {navigator.onLine ? 'Online' : 'Offline'}
-        </span>
-        <span className="rounded-full border border-stone-300 bg-stone-50 px-3 py-1 text-stone-700">
-          Offline Queue: {offlineQueue.length}
-        </span>
-      </div>
+      <div className="mx-auto max-w-2xl space-y-4 px-4 py-4 pb-12">
 
-      {notice ? (
-        <div className={`rounded-xl border px-3 py-2 text-sm ${notice.kind === 'success' ? 'border-green-300 bg-green-50 text-green-900' : 'border-red-300 bg-red-50 text-red-900'}`}>
-          {notice.text}
-        </div>
-      ) : null}
+        {/* Notice banner */}
+        {notice && (
+          <div className={`rounded-xl border px-4 py-3 text-sm font-medium ${notice.kind === 'success' ? 'border-emerald-700 bg-emerald-950 text-emerald-300' : 'border-red-700 bg-red-950 text-red-300'}`}>
+            {notice.text}
+          </div>
+        )}
 
-      <div className="space-y-6">
-        <section className="space-y-4 rounded-2xl border border-stone-200 p-4">
-          <h2 className="font-bold text-stone-900">Session Setup</h2>
-
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        {/* ── PERFORMANCE + SESSION ── */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+          <div className="border-b border-zinc-800 px-4 py-3">
+            <span className="text-xs font-bold uppercase tracking-widest text-zinc-500">Session Setup</span>
+          </div>
+          <div className="space-y-3 p-4">
             <select
               value={performanceId}
-              onChange={(event) => setPerformanceId(event.target.value)}
-              className="rounded-xl border border-stone-300 px-3 py-2 text-sm"
+              onChange={(e) => setPerformanceId(e.target.value)}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm text-zinc-100 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
             >
-              {performances.map((performance) => (
-                <option key={performance.id} value={performance.id}>
-                  {performance.title} - {new Date(performance.startsAt).toLocaleString()}
-                </option>
+              {performances.map((p) => (
+                <option key={p.id} value={p.id}>{p.title} — {new Date(p.startsAt).toLocaleString()}</option>
               ))}
             </select>
-            <button
-              type="button"
-              onClick={() => void syncOfflineQueue()}
-              className="rounded-xl border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 disabled:opacity-60"
-              disabled={isSyncingOffline || offlineQueue.length === 0}
-            >
-              {isSyncingOffline ? 'Syncing Offline Queue...' : `Sync Offline Queue (${offlineQueue.length})`}
-            </button>
-          </div>
 
-          {!sessionReady ? (
-            <form onSubmit={startSession} className="grid grid-cols-1 gap-3 md:grid-cols-4">
-              <input
-                value={sessionDraft.staffName}
-                onChange={(event) => setSessionDraft({ ...sessionDraft, staffName: event.target.value })}
-                placeholder="Staff name"
-                className="rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                required
-              />
-              <input
-                value={sessionDraft.gate}
-                onChange={(event) => setSessionDraft({ ...sessionDraft, gate: event.target.value })}
-                placeholder="Gate"
-                className="rounded-xl border border-stone-300 px-3 py-2 text-sm"
-                required
-              />
-              <input
-                value={sessionDraft.deviceLabel}
-                onChange={(event) => setSessionDraft({ ...sessionDraft, deviceLabel: event.target.value })}
-                placeholder="Device label (optional)"
-                className="rounded-xl border border-stone-300 px-3 py-2 text-sm"
-              />
-              <button className="rounded-xl bg-red-700 px-4 py-2 text-sm font-bold text-white">Start Session</button>
-            </form>
-          ) : (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-green-300 bg-green-50 p-3">
-              <div className="text-sm text-green-900">
-                <div className="font-bold">{scannerSession.staffName} @ {scannerSession.gate}</div>
-                <div>Started {new Date(scannerSession.createdAt).toLocaleString()}</div>
+            {!sessionReady ? (
+              <form onSubmit={startSession} className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    value={sessionDraft.staffName}
+                    onChange={(e) => setSessionDraft({ ...sessionDraft, staffName: e.target.value })}
+                    placeholder="Your name"
+                    className="rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
+                    required
+                  />
+                  <input
+                    value={sessionDraft.gate}
+                    onChange={(e) => setSessionDraft({ ...sessionDraft, gate: e.target.value })}
+                    placeholder="Gate"
+                    className="rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
+                    required
+                  />
+                </div>
+                <input
+                  value={sessionDraft.deviceLabel}
+                  onChange={(e) => setSessionDraft({ ...sessionDraft, deviceLabel: e.target.value })}
+                  placeholder="Device label (optional)"
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
+                />
+                <button className="w-full rounded-xl bg-red-600 px-4 py-3.5 text-sm font-bold text-white active:bg-red-700">
+                  Start Session
+                </button>
+              </form>
+            ) : (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-800 bg-emerald-950 px-4 py-3">
+                <div>
+                  <div className="text-sm font-bold text-emerald-300">{scannerSession!.staffName} · {scannerSession!.gate}</div>
+                  <div className="text-xs text-emerald-600">Since {new Date(scannerSession!.createdAt).toLocaleTimeString()}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={endSession}
+                  className="shrink-0 rounded-lg border border-red-700 bg-red-950 px-3 py-2 text-xs font-semibold text-red-400 active:bg-red-900"
+                >
+                  End Session
+                </button>
               </div>
+            )}
+
+            {/* Offline queue sync */}
+            {offlineQueue.length > 0 && (
               <button
                 type="button"
-                onClick={endSession}
-                className="rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-700"
+                onClick={() => void syncOfflineQueue()}
+                disabled={isSyncingOffline}
+                className="w-full rounded-xl border border-amber-700 bg-amber-950 px-4 py-3 text-sm font-semibold text-amber-300 disabled:opacity-60 active:bg-amber-900"
               >
-                End Session
+                {isSyncingOffline ? 'Syncing…' : `Sync Offline Queue (${offlineQueue.length} pending)`}
               </button>
-            </div>
-          )}
-
-          <div>
-            <div className="mb-2 text-sm text-stone-600">
-              {selectedPerformance ? `Scanning for ${selectedPerformance.title}` : 'Select a performance to scan'}
-            </div>
-            <div className="rounded-xl overflow-hidden border border-stone-300 bg-black">
-              <video ref={videoRef} className="h-[280px] w-full object-cover" playsInline muted />
-            </div>
+            )}
           </div>
+        </section>
 
-          <div className="flex flex-wrap gap-2">
+        {/* ── CAMERA VIEWFINDER ── */}
+        <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-black">
+          <div className="relative">
+            <video ref={videoRef} className="h-64 w-full object-cover sm:h-80" playsInline muted />
+            {!cameraRunning && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70">
+                <svg className="h-10 w-10 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75h-.75v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75h-.75v-.75z" />
+                </svg>
+                <span className="text-xs text-zinc-500">Camera off</span>
+              </div>
+            )}
+            {/* corner guides when running */}
+            {cameraRunning && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="relative h-44 w-44">
+                  <span className="absolute left-0 top-0 h-6 w-6 border-l-2 border-t-2 border-red-500" />
+                  <span className="absolute right-0 top-0 h-6 w-6 border-r-2 border-t-2 border-red-500" />
+                  <span className="absolute bottom-0 left-0 h-6 w-6 border-b-2 border-l-2 border-red-500" />
+                  <span className="absolute bottom-0 right-0 h-6 w-6 border-b-2 border-r-2 border-red-500" />
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2 border-t border-zinc-800 p-3">
             <button
               type="button"
-              onClick={() => {
-                if (cameraRunning) {
-                  stopCamera();
-                } else {
-                  void startCamera();
-                }
-              }}
-              className="rounded-xl bg-red-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
+              onClick={() => { if (cameraRunning) stopCamera(); else void startCamera(); }}
               disabled={!sessionReady}
+              className={`flex-1 rounded-xl py-3.5 text-sm font-bold disabled:opacity-50 active:scale-[0.98] ${cameraRunning ? 'border border-zinc-600 bg-zinc-800 text-zinc-300' : 'bg-red-600 text-white'}`}
             >
               {cameraRunning ? 'Stop Camera' : 'Start Camera'}
             </button>
-            {!cameraSupported ? <span className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Camera unsupported on this browser.</span> : null}
-            {cameraError ? <span className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{cameraError}</span> : null}
           </div>
+          {(cameraError || !cameraSupported) && (
+            <div className="border-t border-zinc-800 px-4 py-2 text-xs text-amber-400">
+              {cameraError || 'Camera scanning unsupported on this browser.'}
+            </div>
+          )}
+        </section>
 
-          <form onSubmit={submitManual} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
+        {/* ── LAST SCAN RESULT ── */}
+        {lastResult ? (
+          <section className={`rounded-2xl border p-4 ${outcomeConfig[lastResult.outcome].border} ${outcomeConfig[lastResult.outcome].bg}`}>
+            <div className="flex items-start gap-3">
+              <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-lg font-bold ${outcomeConfig[lastResult.outcome].text} border ${outcomeConfig[lastResult.outcome].border}`}>
+                {outcomeConfig[lastResult.outcome].icon}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className={`text-sm font-bold uppercase tracking-widest ${outcomeConfig[lastResult.outcome].text}`}>
+                  {outcomeConfig[lastResult.outcome].label}
+                </div>
+                <div className="mt-0.5 text-sm text-zinc-300">{lastResult.message}</div>
+                {lastResult.ticket && (
+                  <div className="mt-2 space-y-0.5 text-xs text-zinc-400">
+                    <div className="font-semibold text-zinc-200">{lastResult.ticket.holder.customerName}</div>
+                    <div>{lastResult.ticket.holder.customerEmail}</div>
+                    <div>{lastResult.ticket.seat.sectionName} · Row {lastResult.ticket.seat.row} · Seat {lastResult.ticket.seat.number}</div>
+                  </div>
+                )}
+                {lastResult.ticket?.checkedInAt && (
+                  <button
+                    type="button"
+                    disabled={undoBusyTicketId === lastResult.ticket.id || !sessionReady}
+                    onClick={() => { void undoCheckIn(lastResult.ticket!); }}
+                    className="mt-3 rounded-lg border border-amber-600 bg-amber-950 px-3 py-2 text-xs font-semibold text-amber-300 disabled:opacity-60 active:bg-amber-900"
+                  >
+                    {undoBusyTicketId === lastResult.ticket.id ? 'Undoing…' : 'Undo Check-In'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </section>
+        ) : (
+          <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+            <div className="flex items-center gap-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 text-zinc-500">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+              </span>
+              <div>
+                <div className="text-xs font-bold uppercase tracking-widest text-zinc-500">Latest Scan</div>
+                <div className="text-sm font-semibold text-zinc-400">Ready to scan</div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ── MANUAL / HARDWARE INPUT ── */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+          <div className="border-b border-zinc-800 px-4 py-3">
+            <span className="text-xs font-bold uppercase tracking-widest text-zinc-500">Manual / Hardware Input</span>
+          </div>
+          <form onSubmit={submitManual} className="flex gap-2 p-3">
             <input
               ref={hardwareInputRef}
               value={manualValue}
-              onChange={(event) => setManualValue(event.target.value)}
-              className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"
-              placeholder="Paste QR payload, ticket URL, ticket ID, or hardware scanner input"
+              onChange={(e) => setManualValue(e.target.value)}
+              className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
+              placeholder="QR payload, ticket URL, or ID"
             />
             <button
               disabled={busy || !sessionReady}
-              className="rounded-xl border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 disabled:opacity-60"
+              className="shrink-0 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm font-semibold text-zinc-300 disabled:opacity-50 active:bg-zinc-700"
             >
-              {busy ? 'Scanning...' : 'Submit'}
+              {busy ? '…' : 'Submit'}
             </button>
           </form>
         </section>
 
-        <div className="space-y-4">
-          <section className="space-y-3 rounded-2xl border border-stone-200 p-4">
+        {/* ── LIVE STATUS ── */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+          <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+            <span className="text-xs font-bold uppercase tracking-widest text-zinc-500">Live Status</span>
+            <button
+              type="button"
+              onClick={() => void Promise.all([loadSummary(), loadTimeline(), loadAnalytics()])}
+              className="rounded-lg border border-zinc-700 px-3 py-1 text-xs font-semibold text-zinc-400 active:bg-zinc-800"
+            >
+              Refresh
+            </button>
+          </div>
+          {summary ? (
+            <div className="p-4 space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <StatCard label="Checked In" value={String(summary.totalCheckedIn)} />
+                <StatCard label="Admittable" value={String(summary.totalAdmittable)} />
+                <StatCard label="Rate" value={`${checkInPct}%`} accent />
+              </div>
+              {/* Progress bar */}
+              <div>
+                <div className="mb-1.5 flex justify-between text-xs text-zinc-500">
+                  <span>Check-in progress</span>
+                  <span>{checkInPct}%</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-800">
+                  <div className="h-full rounded-full bg-red-600 transition-all" style={{ width: `${checkInPct}%` }} />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 text-sm text-zinc-500">{summaryError || 'Loading…'}</div>
+          )}
+        </section>
+
+        {/* ── FALLBACK SEARCH ── */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+          <div className="border-b border-zinc-800 px-4 py-3">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="font-bold text-stone-900">Live Status</h2>
+              <div>
+                <span className="text-xs font-bold uppercase tracking-widest text-red-500">Fallback Check-In</span>
+                <h3 className="mt-0.5 text-sm font-bold text-zinc-100">Search by name or email</h3>
+              </div>
+              {lookupRows.length > 0 && (
+                <span className="rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-0.5 text-xs font-semibold text-zinc-400">
+                  {lookupRows.length} match{lookupRows.length !== 1 ? 'es' : ''}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-3 p-4">
+            <form onSubmit={searchLookup} className="flex gap-2">
+              <input
+                value={lookupQuery}
+                onChange={(e) => setLookupQuery(e.target.value)}
+                placeholder="Name, email, seat, order ID…"
+                className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
+              />
               <button
-                type="button"
-                onClick={() => void Promise.all([loadSummary(), loadTimeline(), loadAnalytics()])}
-                className="rounded-lg border border-stone-300 px-3 py-1 text-xs font-semibold text-stone-700"
+                disabled={!performanceId}
+                className="shrink-0 rounded-xl bg-red-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-50 active:bg-red-700"
               >
-                Refresh
+                Search
               </button>
-            </div>
+            </form>
 
-            {summary ? (
-              <>
-                <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-                  <StatCard label="Checked In" value={`${summary.totalCheckedIn}`} />
-                  <StatCard label="Admittable" value={`${summary.totalAdmittable}`} />
-                  <StatCard label="Progress" value={`${checkInPct}%`} />
-                </div>
-              </>
-            ) : (
-              <div className="text-sm text-stone-500">Loading summary...</div>
-            )}
-
-            {summaryError ? <div className="text-xs text-red-600">{summaryError}</div> : null}
-          </section>
-
-          {lastResult ? (
-            <section className={`space-y-2 rounded-2xl border p-4 ${outcomeStyles[lastResult.outcome]}`}>
-              <h2 className="font-bold">{lastResult.outcome.replaceAll('_', ' ')}</h2>
-              <div className="text-sm">{lastResult.message}</div>
-              {lastResult.ticket ? (
-                <div className="space-y-1 text-xs">
-                  <div>
-                    Ticket {lastResult.ticket.publicId} • {lastResult.ticket.seat.sectionName} {lastResult.ticket.seat.row}-{lastResult.ticket.seat.number}
-                  </div>
-                  <div>{lastResult.ticket.holder.customerName} ({lastResult.ticket.holder.customerEmail})</div>
-                  {lastResult.ticket.checkedInAt ? (
-                    <button
-                      type="button"
-                      className="rounded-md border border-amber-500 bg-amber-100 px-2 py-1 text-xs text-amber-900 disabled:opacity-60"
-                      disabled={undoBusyTicketId === lastResult.ticket.id || !sessionReady}
-                      onClick={() => {
-                        void undoCheckIn(lastResult.ticket!);
-                      }}
-                    >
-                      {undoBusyTicketId === lastResult.ticket.id ? 'Undoing...' : 'Undo Check-In'}
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-            </section>
-          ) : null}
-
-          <section className="rounded-2xl border border-stone-200 p-4">
-            <h2 className="mb-3 font-bold text-stone-900">Recent Scans (This Device)</h2>
-            <div className="max-h-[320px] space-y-2 overflow-auto">
-              {history.map((item) => (
-                <div key={item.id} className="rounded-xl border border-stone-200 p-3 text-sm">
-                  <div className="font-semibold text-stone-900">{item.outcome.replaceAll('_', ' ')}</div>
-                  <div className="text-xs text-stone-500">{new Date(item.scannedAt).toLocaleString()}</div>
-                  <div className="text-xs text-stone-700">{item.message}</div>
-                  {item.ticket ? (
-                    <div className="mt-1 text-xs text-stone-600">
-                      {item.ticket.publicId} • {item.ticket.seat.sectionName} {item.ticket.seat.row}-{item.ticket.seat.number}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-              {history.length === 0 ? <div className="text-sm text-stone-500">No scans yet.</div> : null}
-            </div>
-          </section>
-        </div>
-      </div>
-
-      <details className="rounded-2xl border border-stone-200 bg-white p-4">
-        <summary className="cursor-pointer list-none text-sm font-semibold text-stone-700">
-          Advanced Settings
-        </summary>
-
-        <div className="mt-4 space-y-6">
-          <section className="space-y-3 rounded-2xl border border-stone-200 p-4">
-            <h2 className="font-bold text-stone-900">Detailed Status</h2>
-            {summary ? (
-              <>
-                <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-                  <StatCard label="Denied" value={`${summary.deniedCount}`} />
-                  <StatCard label="Force Admit" value={`${summary.forceAdmitCount}`} />
-                  <StatCard label="Sessions" value={`${summary.activeSessions.length}`} />
-                </div>
-                <div>
-                  <div className="mb-2 text-xs font-semibold text-stone-500">Gate Breakdown</div>
-                  <div className="flex flex-wrap gap-2">
-                    {summary.gateBreakdown.length === 0 ? <span className="text-xs text-stone-500">No check-ins yet.</span> : null}
-                    {summary.gateBreakdown.map((item) => (
-                      <span key={item.gate} className="rounded-full border border-stone-300 bg-stone-50 px-3 py-1 text-xs">
-                        {item.gate}: {item.count}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="text-sm text-stone-500">Loading detailed status...</div>
-            )}
-          </section>
-
-          <section className="space-y-3 rounded-2xl border border-stone-200 p-4">
-            <h2 className="font-bold text-stone-900">Supervisor Controls</h2>
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-              <select value={reasonCode} onChange={(event) => setReasonCode(event.target.value as ReasonCode)} className="rounded-xl border border-stone-300 px-3 py-2 text-sm">
-                {reasonOptions.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={reasonCode}
+                onChange={(e) => setReasonCode(e.target.value as ReasonCode)}
+                className="rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-xs text-zinc-300 focus:border-red-500 focus:outline-none"
+              >
+                {reasonOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
               <input
                 value={reasonNotes}
-                onChange={(event) => setReasonNotes(event.target.value)}
-                placeholder="Reason notes (optional)"
-                className="rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                onChange={(e) => setReasonNotes(e.target.value)}
+                placeholder="Notes (optional)"
+                className="rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-xs text-zinc-300 placeholder-zinc-500 focus:border-red-500 focus:outline-none"
               />
             </div>
 
-            <form onSubmit={searchLookup} className="flex flex-col gap-2 sm:flex-row">
-              <input
-                value={lookupQuery}
-                onChange={(event) => setLookupQuery(event.target.value)}
-                placeholder="Lookup by name, seat, order id, ticket id/public id"
-                className="flex-1 rounded-xl border border-stone-300 px-3 py-2 text-sm"
-              />
-              <button className="w-full rounded-xl border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 sm:w-auto">Search</button>
-            </form>
-
-            <div className="max-h-[340px] space-y-2 overflow-auto">
-              {lookupRows.map((ticket) => (
-                <div key={ticket.id} className="rounded-xl border border-stone-200 p-3 text-sm">
-                  <div className="font-semibold text-stone-900">{ticket.publicId} • {ticket.holder.customerName}</div>
-                  <div className="text-xs text-stone-500">
-                    {ticket.seat.sectionName} {ticket.seat.row}-{ticket.seat.number} • Order {ticket.order.id} ({ticket.order.status}) • {ticket.checkedInBy || 'Not checked in'}
+            <div className="max-h-96 space-y-2 overflow-auto">
+              {lookupRows.map((ticket) => {
+                const checkedIn = Boolean(ticket.checkedInAt);
+                const denied = ticket.admissionDecision === 'DENY';
+                const lBusy = lookupBusyTicketId === ticket.id;
+                const aBusy = undoBusyTicketId === ticket.id;
+                return (
+                  <div key={ticket.id} className="rounded-2xl border border-zinc-700 bg-zinc-800 p-4">
+                    <div className="mb-3 flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-zinc-100">{ticket.holder.customerName}</span>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${checkedIn ? 'bg-emerald-900 text-emerald-300' : denied ? 'bg-red-900 text-red-300' : 'bg-amber-900 text-amber-300'}`}>
+                            {checkedIn ? 'In' : denied ? 'Denied' : 'Ready'}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 text-xs text-zinc-500">{ticket.holder.customerEmail}</div>
+                        <div className="mt-0.5 text-xs text-zinc-600">
+                          {ticket.seat.sectionName} · R{ticket.seat.row}-{ticket.seat.number} · #{ticket.publicId}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap">
+                      <button type="button" onClick={() => void checkInLookupTicket(ticket)}
+                        disabled={!sessionReady || checkedIn || busy || Boolean(lookupBusyTicketId) || aBusy}
+                        className="rounded-lg bg-red-600 px-3 py-2.5 text-xs font-bold text-white disabled:opacity-50 active:bg-red-700">
+                        {lBusy ? '…' : checkedIn ? 'Checked In' : 'Check In'}
+                      </button>
+                      <button type="button" onClick={() => void undoCheckIn(ticket)}
+                        disabled={aBusy || busy || Boolean(lookupBusyTicketId) || !sessionReady || !checkedIn}
+                        className="rounded-lg border border-amber-700 bg-amber-950 px-3 py-2.5 text-xs font-semibold text-amber-300 disabled:opacity-50 active:bg-amber-900">
+                        {aBusy ? '…' : 'Undo'}
+                      </button>
+                      <button type="button" onClick={() => void applySupervisorDecision(ticket, 'FORCE_ADMIT')}
+                        disabled={aBusy || busy || Boolean(lookupBusyTicketId) || !sessionReady}
+                        className="rounded-lg border border-emerald-700 bg-emerald-950 px-3 py-2.5 text-xs font-semibold text-emerald-300 disabled:opacity-50 active:bg-emerald-900">
+                        Force Admit
+                      </button>
+                      <button type="button" onClick={() => void applySupervisorDecision(ticket, 'DENY')}
+                        disabled={aBusy || busy || Boolean(lookupBusyTicketId) || !sessionReady}
+                        className="rounded-lg border border-red-800 bg-red-950 px-3 py-2.5 text-xs font-semibold text-red-400 disabled:opacity-50 active:bg-red-900">
+                        Deny
+                      </button>
+                    </div>
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void applySupervisorDecision(ticket, 'FORCE_ADMIT');
-                      }}
-                      disabled={undoBusyTicketId === ticket.id || !sessionReady}
-                      className="rounded border border-green-400 bg-green-50 px-2 py-1 text-xs text-green-800 disabled:opacity-60"
-                    >
-                      Force Admit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void applySupervisorDecision(ticket, 'DENY');
-                      }}
-                      disabled={undoBusyTicketId === ticket.id || !sessionReady}
-                      className="rounded border border-red-400 bg-red-50 px-2 py-1 text-xs text-red-800 disabled:opacity-60"
-                    >
-                      Deny
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void undoCheckIn(ticket);
-                      }}
-                      disabled={undoBusyTicketId === ticket.id || !sessionReady}
-                      className="rounded border border-amber-400 bg-amber-50 px-2 py-1 text-xs text-amber-800 disabled:opacity-60"
-                    >
-                      Undo Check-In
-                    </button>
+                );
+              })}
+              {lookupRows.length === 0 && (
+                <div className="rounded-xl border border-dashed border-zinc-700 px-4 py-8 text-center text-sm text-zinc-600">
+                  {lookupQuery.trim() ? 'No matching guests found.' : 'Search results appear here.'}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* ── RECENT SCANS ── */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+          <div className="border-b border-zinc-800 px-4 py-3">
+            <span className="text-xs font-bold uppercase tracking-widest text-zinc-500">Recent Scans · This Device</span>
+          </div>
+          <div className="max-h-72 space-y-1.5 overflow-auto p-3">
+            {history.map((item) => {
+              const cfg = outcomeConfig[item.outcome];
+              return (
+                <div key={item.id} className={`flex items-start gap-3 rounded-xl border p-3 ${cfg.border} ${cfg.bg}`}>
+                  <span className={`mt-0.5 text-lg font-bold leading-none ${cfg.text}`}>{cfg.icon}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className={`text-xs font-bold uppercase tracking-wide ${cfg.text}`}>{cfg.label}</div>
+                    {item.ticket && (
+                      <div className="truncate text-xs text-zinc-400">{item.ticket.holder.customerName} · {item.ticket.seat.sectionName} {item.ticket.seat.row}-{item.ticket.seat.number}</div>
+                    )}
+                    <div className="text-xs text-zinc-600">{new Date(item.scannedAt).toLocaleTimeString()}</div>
                   </div>
                 </div>
-              ))}
-              {lookupRows.length === 0 ? <div className="text-sm text-stone-500">Search results will appear here.</div> : null}
-            </div>
-          </section>
+              );
+            })}
+            {history.length === 0 && <div className="py-6 text-center text-sm text-zinc-600">No scans yet.</div>}
+          </div>
+        </section>
 
-          <div className="grid gap-6 xl:grid-cols-2">
-            <section className="rounded-2xl border border-stone-200 p-4">
-              <h2 className="mb-3 font-bold text-stone-900">Undo / Force Timeline</h2>
-              <div className="max-h-[280px] space-y-2 overflow-auto">
+        {/* ── ADVANCED (collapsed) ── */}
+        <details className="rounded-2xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-4">
+            <span className="text-xs font-bold uppercase tracking-widest text-zinc-500">Advanced</span>
+            <svg className="h-4 w-4 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+          </summary>
+
+          <div className="space-y-4 border-t border-zinc-800 p-4">
+            {/* Detailed status */}
+            {summary && (
+              <div>
+                <div className="mb-2 text-xs font-bold uppercase tracking-widest text-zinc-500">Detailed Status</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <StatCard label="Denied" value={String(summary.deniedCount)} />
+                  <StatCard label="Force Admit" value={String(summary.forceAdmitCount)} />
+                  <StatCard label="Sessions" value={String(summary.activeSessions.length)} />
+                </div>
+                {summary.gateBreakdown.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {summary.gateBreakdown.map((g) => (
+                      <span key={g.gate} className="rounded-full border border-zinc-700 bg-zinc-800 px-3 py-1 text-xs text-zinc-400">
+                        {g.gate}: {g.count}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Timeline */}
+            <div>
+              <div className="mb-2 text-xs font-bold uppercase tracking-widest text-zinc-500">Undo / Force Timeline</div>
+              <div className="max-h-56 space-y-1.5 overflow-auto rounded-xl border border-zinc-800 bg-zinc-950 p-3">
                 {timeline?.rows.map((row) => (
-                  <div key={row.id} className="rounded-xl border border-stone-200 p-3 text-sm">
-                    <div className="font-semibold text-stone-900">{row.action}</div>
-                    <div className="text-xs text-stone-500">{row.actor} • {new Date(row.createdAt).toLocaleString()}</div>
-                    <div className="text-xs text-stone-500">Entity: {row.entityId}</div>
+                  <div key={row.id} className="rounded-lg border border-zinc-800 p-2.5 text-xs">
+                    <div className="font-semibold text-zinc-300">{row.action}</div>
+                    <div className="text-zinc-600">{row.actor} · {new Date(row.createdAt).toLocaleString()}</div>
                   </div>
                 ))}
-                {!timeline || timeline.rows.length === 0 ? <div className="text-sm text-stone-500">No timeline events yet.</div> : null}
+                {(!timeline || timeline.rows.length === 0) && <div className="py-4 text-center text-xs text-zinc-600">No timeline events yet.</div>}
               </div>
-            </section>
+            </div>
 
-            <section className="space-y-3 rounded-2xl border border-stone-200 p-4">
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="font-bold text-stone-900">Post-Show Analytics</h2>
-                {performanceId ? (
+            {/* Analytics */}
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-xs font-bold uppercase tracking-widest text-zinc-500">Post-Show Analytics</div>
+                {performanceId && (
                   <button
                     type="button"
-                    onClick={() => {
-                      void exportAnalyticsCsv();
-                    }}
+                    onClick={() => void exportAnalyticsCsv()}
                     disabled={isExportingCsv}
-                    className="rounded-lg border border-stone-300 px-3 py-1 text-xs font-semibold text-stone-700"
+                    className="rounded-lg border border-zinc-700 px-3 py-1 text-xs font-semibold text-zinc-400 disabled:opacity-50 active:bg-zinc-800"
                   >
-                    {isExportingCsv ? 'Exporting...' : 'Export CSV'}
+                    {isExportingCsv ? 'Exporting…' : 'Export CSV'}
                   </button>
-                ) : null}
+                )}
               </div>
-
               {analytics ? (
-                <>
-                  <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-                    <StatCard label="No-show Est." value={`${analytics.totals.noShowEstimate}`} />
-                    <StatCard label="Peak / min" value={`${analytics.peakPerMinute}`} />
-                    <StatCard label="Fraud Est." value={`${analytics.attempts.fraudAttemptEstimate}`} />
-                    <StatCard label="Duplicates" value={`${analytics.attempts.duplicateAttempts}`} />
+                <div className="space-y-2">
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+                    <StatCard label="No-show" value={String(analytics.totals.noShowEstimate)} />
+                    <StatCard label="Peak/min" value={String(analytics.peakPerMinute)} />
+                    <StatCard label="Fraud Est." value={String(analytics.attempts.fraudAttemptEstimate)} />
+                    <StatCard label="Dupes" value={String(analytics.attempts.duplicateAttempts)} />
                     <StatCard label="Rate" value={`${analytics.totals.checkInRate}%`} />
                   </div>
-                  <div className="text-xs text-stone-500">
-                    Invalid QR: {analytics.attempts.invalidQrAttempts} • Not found: {analytics.attempts.notFoundAttempts} • Wrong performance: {analytics.attempts.wrongPerformanceAttempts} • Not admitted: {analytics.attempts.notAdmittedAttempts}
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-500">
+                    Invalid QR: {analytics.attempts.invalidQrAttempts} · Not found: {analytics.attempts.notFoundAttempts} · Wrong show: {analytics.attempts.wrongPerformanceAttempts} · Not admitted: {analytics.attempts.notAdmittedAttempts}
                   </div>
-                </>
+                </div>
               ) : (
-                <div className="text-sm text-stone-500">Loading analytics...</div>
+                <div className="text-xs text-zinc-600">Loading analytics…</div>
               )}
-            </section>
+            </div>
           </div>
-        </div>
-      </details>
+        </details>
+      </div>
     </div>
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className="border border-stone-200 rounded-xl p-3">
-      <div className="text-xs uppercase tracking-wide text-stone-500">{label}</div>
-      <div className="text-2xl font-bold text-stone-900">{value}</div>
+    <div className={`rounded-xl border p-3 ${accent ? 'border-red-800 bg-red-950' : 'border-zinc-800 bg-zinc-950'}`}>
+      <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">{label}</div>
+      <div className={`mt-0.5 text-2xl font-bold tabular-nums ${accent ? 'text-red-400' : 'text-zinc-100'}`}>{value}</div>
     </div>
   );
 }
