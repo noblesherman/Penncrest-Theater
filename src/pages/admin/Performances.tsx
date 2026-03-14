@@ -12,7 +12,9 @@ import {
 type CastMember = { id?: string; name: string; role: string; photoUrl?: string | null };
 type Performance = {
   id: string; title: string;
+  showDescription?: string | null;
   showPosterUrl?: string | null;
+  showType?: string | null;
   startsAt: string; salesCutoffAt: string | null;
   staffCompsEnabled: boolean; staffCompLimitPerUser: number; staffTicketLimit: number;
   familyFreeTicketEnabled: boolean;
@@ -24,7 +26,7 @@ type Performance = {
 type FormCastMember = { name: string; role: string; photoUrl: string };
 type FormSchedule   = { startsAt: string; salesCutoffAt: string };
 type FormState = {
-  title: string; posterUrl: string;
+  title: string; type: string; description: string; posterUrl: string;
   schedules: FormSchedule[];
   venue: string; notes: string; tiersText: string;
   castMembers: FormCastMember[];
@@ -37,7 +39,7 @@ const emptySchedule   = (): FormSchedule   => ({ startsAt: '', salesCutoffAt: ''
 
 function createInitialForm(): FormState {
   return {
-    title: '', posterUrl: '',
+    title: '', type: '', description: '', posterUrl: '',
     schedules: [emptySchedule()],
     venue: 'Penncrest High School Auditorium', notes: '',
     tiersText: 'Adult:1800\nStudent:1200\nChild:1000\nSenior:1400',
@@ -118,7 +120,10 @@ export default function AdminPerformancesPage() {
     if (!perfs.length) { setError('Add at least one performance date.'); return; }
     const cast = form.castMembers.map(m => ({ name: m.name.trim(), role: m.role.trim(), photoUrl: m.photoUrl.trim() })).filter(m => m.name && m.role);
     const payload = {
-      title: form.title, posterUrl: form.posterUrl.trim() || undefined,
+      title: form.title.trim(),
+      type: form.type.trim() || undefined,
+      description: form.description.trim() || undefined,
+      posterUrl: form.posterUrl.trim() || undefined,
       staffCompsEnabled: true,
       staffCompLimitPerUser: 1,
       familyFreeTicketEnabled: true,
@@ -140,7 +145,10 @@ export default function AdminPerformancesPage() {
   const startEditing = (item: Performance) => {
     setEditingId(item.id);
     setForm({
-      title: item.title, posterUrl: item.showPosterUrl || '',
+      title: item.title,
+      type: item.showType || '',
+      description: item.showDescription || '',
+      posterUrl: item.showPosterUrl || '',
       schedules: [{ startsAt: item.startsAt.slice(0, 16), salesCutoffAt: item.salesCutoffAt ? item.salesCutoffAt.slice(0, 16) : '' }],
       venue: item.venue, notes: item.notes || '',
       tiersText: item.pricingTiers.map(t => `${t.name}:${t.priceCents}`).join('\n'),
@@ -198,6 +206,17 @@ export default function AdminPerformancesPage() {
         <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })}
           placeholder="e.g. Into the Woods" className={inp}
           style={{ fontSize: '1.05rem', fontFamily: 'Georgia, serif' }} />
+      </div>
+      <div>
+        <label className="block text-xs font-bold uppercase tracking-widest text-stone-400 mb-2">Tag</label>
+        <input value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}
+          placeholder="e.g. Musical" className={inp} />
+      </div>
+      <div>
+        <label className="block text-xs font-bold uppercase tracking-widest text-stone-400 mb-2">Description</label>
+        <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
+          rows={4} placeholder="A short description shown on the public show page and season card."
+          className={inp + ' resize-none'} />
       </div>
       <div>
         <label className="block text-xs font-bold uppercase tracking-widest text-stone-400 mb-2">Venue</label>
@@ -329,6 +348,8 @@ export default function AdminPerformancesPage() {
       <div className="rounded-2xl border border-stone-100 divide-y divide-stone-100 overflow-hidden bg-white">
         {[
           { label: 'Title',        value: form.title || <span className="text-red-400 font-semibold">Missing!</span> },
+          { label: 'Tag',          value: form.type || <span className="text-stone-300">None</span> },
+          { label: 'Description',  value: form.description || <span className="text-stone-300">None</span> },
           { label: 'Venue',        value: form.venue },
           { label: 'Dates',        value: `${form.schedules.filter(s => s.startsAt).length} date(s)` },
           { label: 'Pricing',      value: tiers.length > 0 ? tiers.map(t => `${t.name} $${(t.priceCents/100).toFixed(2)}`).join(' · ') : <span className="text-red-400 font-semibold">Missing!</span> },

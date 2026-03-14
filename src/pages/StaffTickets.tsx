@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiFetch, apiUrl } from '../lib/api';
-import { clearStaffToken, getStaffToken, setStaffToken, staffFetch } from '../lib/staffAuth';
+import { clearStaffToken, consumeStaffTokenFromUrlHash, getStaffToken, setStaffToken, staffFetch } from '../lib/staffAuth';
 
 type StaffUser = {
   id: string;
@@ -125,7 +125,7 @@ export default function StaffTicketsPage() {
   };
 
   useEffect(() => {
-    const oauthToken = searchParams.get('authToken');
+    const oauthToken = consumeStaffTokenFromUrlHash() || searchParams.get('authToken');
     if (oauthToken) {
       setStaffToken(oauthToken);
       const next = new URLSearchParams(searchParams);

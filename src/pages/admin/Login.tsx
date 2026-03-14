@@ -1,8 +1,9 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { apiFetch, apiUrl } from '../../lib/api';
 import { setAdminToken } from '../../lib/adminAuth';
+import { toQrCodeDataUrl } from '../../lib/qrCode';
 
 type LoginResponse =
   | { token: string }
@@ -98,13 +99,37 @@ export default function AdminLoginPage() {
   const [setupToken,  setSetupToken]  = useState<string | null>(null);
   const [manualKey,   setManualKey]   = useState<string | null>(null);
   const [otpAuthUrl,  setOtpAuthUrl]  = useState<string | null>(null);
+  const [qrImageUrl,  setQrImageUrl]  = useState<string | null>(null);
   const [error,       setError]       = useState<string | null>(null);
   const [loading,     setLoading]     = useState(false);
   const [phase,       setPhase]       = useState<'credentials' | '2fa' | 'setup'>('credentials');
 
-  const qrImageUrl = otpAuthUrl
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(otpAuthUrl)}`
-    : null;
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!otpAuthUrl) {
+      setQrImageUrl(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void toQrCodeDataUrl(otpAuthUrl, 240)
+      .then((nextUrl) => {
+        if (!cancelled) {
+          setQrImageUrl(nextUrl);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setQrImageUrl(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [otpAuthUrl]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault(); setLoading(true); setError(null);

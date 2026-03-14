@@ -2,6 +2,7 @@ import './lib/load-env.js';
 import Fastify from 'fastify';
 import { env } from './lib/env.js';
 import { prisma } from './lib/prisma.js';
+import { helmetPlugin } from './plugins/helmet.js';
 import { corsPlugin } from './plugins/cors.js';
 import { jwtPlugin } from './plugins/jwt.js';
 import { rawBodyPlugin } from './plugins/raw-body.js';
@@ -40,6 +41,7 @@ async function createServer() {
     bodyLimit: 10 * 1024 * 1024
   });
 
+  await app.register(helmetPlugin);
   await app.register(corsPlugin);
   await app.register(jwtPlugin);
   await app.register(rawBodyPlugin);

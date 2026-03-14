@@ -116,6 +116,7 @@ See:
 ### Frontend (`.env`)
 - `VITE_API_BASE_URL` optional, defaults to same-origin
 - `VITE_API_PROXY_TARGET` optional, default `http://localhost:4000`
+- `VITE_SITE_URL` recommended, used for canonical URLs, sitemap.xml, robots.txt, and social metadata
 
 ### Backend (`backend/.env`)
 - `PORT`

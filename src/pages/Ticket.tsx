@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Calendar, MapPin } from 'lucide-react';
 import { format } from 'date-fns';
 import { apiFetch } from '../lib/api';
+import { toQrCodeDataUrl } from '../lib/qrCode';
 
 type TicketResponse = {
   id: string;
@@ -31,6 +32,7 @@ export default function TicketPage() {
   const { publicId } = useParams();
   const [ticket, setTicket] = useState<TicketResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [qrImageUrl, setQrImageUrl] = useState<string>('');
 
   useEffect(() => {
     if (!publicId) {
@@ -43,10 +45,32 @@ export default function TicketPage() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load ticket'));
   }, [publicId]);
 
-  const qrImage = useMemo(() => {
-    if (!ticket) return '';
-    return `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(ticket.qrPayload)}`;
-  }, [ticket]);
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!ticket?.qrPayload) {
+      setQrImageUrl('');
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void toQrCodeDataUrl(ticket.qrPayload, 260)
+      .then((nextUrl) => {
+        if (!cancelled) {
+          setQrImageUrl(nextUrl);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setQrImageUrl('');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ticket?.qrPayload]);
 
   if (error) {
     return <div className="min-h-screen flex items-center justify-center text-red-600">{error}</div>;
@@ -66,7 +90,13 @@ export default function TicketPage() {
 
         <div className="p-5 sm:p-8">
           <div className="flex flex-col items-center mb-6">
-            <img src={qrImage} alt="Ticket QR" className="h-52 w-52 rounded-xl border border-stone-200 sm:h-64 sm:w-64" />
+            {qrImageUrl ? (
+              <img src={qrImageUrl} alt="Ticket QR" className="h-52 w-52 rounded-xl border border-stone-200 sm:h-64 sm:w-64" />
+            ) : (
+              <div className="flex h-52 w-52 items-center justify-center rounded-xl border border-stone-200 bg-stone-50 text-sm text-stone-400 sm:h-64 sm:w-64">
+                Generating QR…
+              </div>
+            )}
             <div className="text-[11px] text-stone-400 mt-2">Present this QR at the door</div>
           </div>
 

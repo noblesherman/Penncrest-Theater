@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title>Penncrest Theater</title>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#7f1d1d" />
+      <stop offset="100%" stop-color="#b91c1c" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)" />
+  <path
+    d="M16 18h32a4 4 0 0 1 4 4v9a4 4 0 0 1-4 4h-7.2l2.6 8H36l-2.5-8h-3L28 43h-7.4l2.6-8H16a4 4 0 0 1-4-4v-9a4 4 0 0 1 4-4Z"
+    fill="#fff7ed"
+  />
+  <circle cx="24" cy="26" r="2.6" fill="#b91c1c" />
+  <circle cx="40" cy="26" r="2.6" fill="#b91c1c" />
+</svg>

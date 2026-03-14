@@ -16,7 +16,7 @@ import {
 import { SeatMapViewport } from '../components/SeatMapViewport';
 import { apiFetch, apiUrl } from '../lib/api';
 import { getClientToken } from '../lib/clientToken';
-import { clearStaffToken, getStaffToken, setStaffToken, staffFetch } from '../lib/staffAuth';
+import { clearStaffToken, consumeStaffTokenFromUrlHash, getStaffToken, setStaffToken, staffFetch } from '../lib/staffAuth';
 
 interface Seat {
   id: string;
@@ -199,7 +199,7 @@ export default function Booking() {
   }, []);
 
   useEffect(() => {
-    const oauthToken = searchParams.get('authToken');
+    const oauthToken = consumeStaffTokenFromUrlHash() || searchParams.get('authToken');
     const oauthError = oauthErrorMessage(searchParams.get('error'));
     const teacherCheckoutParam = searchParams.get('teacherCheckout') === '1';
 

@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
+import RouteSeo from './components/RouteSeo';
 import Home from './pages/Home';
 import Shows from './pages/Shows';
 import ShowDetails from './pages/ShowDetails';
@@ -42,6 +43,7 @@ function PublicLayout() {
 export default function App() {
   return (
     <Router>
+      <RouteSeo />
       <Routes>
         <Route path="/admin/login" element={<AdminLoginPage />} />
         <Route path="/booking/:performanceId" element={<Booking />} />
