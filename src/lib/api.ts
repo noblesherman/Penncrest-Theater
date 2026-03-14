@@ -1,10 +1,7 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || '';
 
-export function apiUrl(path: string): string {
-  if (!API_BASE_URL) {
-    return path;
-  }
-  return `${API_BASE_URL}${path}`;
+export function apiUrl(path: string) {
+  return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
 function collectErrorMessages(value: unknown): string[] {

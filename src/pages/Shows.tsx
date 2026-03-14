@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { ArrowRight, Ticket } from 'lucide-react';
+import { apiUrl } from '../lib/api';
 
 interface Show {
   id: string;
@@ -24,7 +25,7 @@ export default function Shows() {
   const [shows, setShows] = useState<Show[]>([]);
 
   useEffect(() => {
-    fetch('/api/shows')
+    fetch(apiUrl('/api/shows'))
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok || !Array.isArray(data)) {

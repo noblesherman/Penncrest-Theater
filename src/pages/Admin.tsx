@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { BarChart, Users, DollarSign, Calendar } from 'lucide-react';
+import { apiUrl } from '../lib/api';
 
 export default function Admin() {
   const [stats, setStats] = useState({ totalSales: 0, ticketsSold: 0 });
 
   useEffect(() => {
-    fetch('/api/admin/stats')
+    fetch(apiUrl('/api/admin/stats'))
       .then(res => res.json())
       .then(data => setStats(data));
   }, []);

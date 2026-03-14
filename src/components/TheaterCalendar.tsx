@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday } from 'date-fns';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Download, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { apiUrl } from '../lib/api';
 
 interface CalendarEvent {
   title: string;
@@ -28,7 +29,7 @@ export default function TheaterCalendar() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/calendar')
+    fetch(apiUrl('/api/calendar'))
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok || !Array.isArray(data)) {

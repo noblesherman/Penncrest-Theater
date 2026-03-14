@@ -5,6 +5,7 @@ import { Calendar, Clock, MapPin, ArrowLeft } from 'lucide-react';
 import { format } from 'date-fns';
 import Seo from '../components/Seo';
 import { buildBreadcrumbSchema, cleanText, trimDescription } from '../lib/seo';
+import { apiUrl } from '../lib/api';
 import { SITE_ADDRESS, SITE_NAME } from '../lib/siteMeta';
 
 interface Performance {
@@ -38,7 +39,7 @@ export default function ShowDetails() {
   const [show, setShow] = useState<Show | null>(null);
 
   useEffect(() => {
-    fetch(`/api/shows/${id}`)
+    fetch(apiUrl(`/api/shows/${id}`))
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok) {

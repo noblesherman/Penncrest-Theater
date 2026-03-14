@@ -2,6 +2,7 @@ import { motion, useScroll, useTransform, useSpring } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Star, Ticket } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
+import { apiUrl } from '../lib/api';
 
 interface Show {
   id: string;
@@ -95,7 +96,7 @@ export default function Home() {
   const cardRotate = useSpring(rawRot, { stiffness: 60, damping: 20 });
 
   useEffect(() => {
-    fetch('/api/shows')
+    fetch(apiUrl('/api/shows'))
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok || !Array.isArray(data)) { setShows([]); return; }
