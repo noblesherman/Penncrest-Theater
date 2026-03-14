@@ -131,8 +131,8 @@ export default function AdminLoginPage() {
     };
   }, [otpAuthUrl]);
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault(); setLoading(true); setError(null);
+  const submitLogin = async () => {
+    setLoading(true); setError(null);
     try {
       const res = await fetch(apiUrl('/api/admin/login'), {
         method: 'POST',
@@ -149,7 +149,13 @@ export default function AdminLoginPage() {
       }
       if ('token' in result) { setAdminToken(result.token); navigate('/admin/dashboard', { replace: true }); return; }
       if ('twoFactorRequired' in result) { setPhase('2fa'); setError('Enter the 6-digit code from your authenticator app.'); return; }
-      if ('twoFactorSetupRequired' in result) { setSetupToken(result.setupToken); setManualKey(result.manualEntryKey); setOtpAuthUrl(result.otpAuthUrl); setPhase('setup'); }
+      if ('twoFactorSetupRequired' in result) {
+        setSetupToken(result.setupToken);
+        setManualKey(result.manualEntryKey);
+        setOtpAuthUrl(result.otpAuthUrl);
+        setOtpCode('');
+        setPhase('setup');
+      }
     } catch (err) { setError(err instanceof Error ? err.message : 'Login failed'); }
     finally { setLoading(false); }
   };
@@ -159,11 +165,21 @@ export default function AdminLoginPage() {
     setLoading(true); setError(null);
     try {
       const result = await apiFetch<{ token: string }>('/api/admin/2fa/setup/complete', {
-        method: 'POST', body: JSON.stringify({ setupToken, otpCode }),
+        method: 'POST', body: JSON.stringify({ setupToken, otpCode: otpCode.trim() }),
       });
       setAdminToken(result.token); navigate('/admin/dashboard', { replace: true });
     } catch (err) { setError(err instanceof Error ? err.message : 'Failed to finish two-factor setup'); }
     finally { setLoading(false); }
+  };
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (phase === 'setup') {
+      await completeSetup();
+      return;
+    }
+
+    await submitLogin();
   };
 
   // ── render ─────────────────────────────────────────────────────────────────
@@ -225,7 +241,7 @@ export default function AdminLoginPage() {
           animate={curtainDone ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 24, scale: 0.97 }}
           transition={{ duration: 0.55, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
         >
-          <form onSubmit={submit} className="space-y-4">
+          <form onSubmit={(event) => { void submit(event); }} className="space-y-4">
 
             <AnimatePresence mode="wait" initial={false}>
 
@@ -264,7 +280,7 @@ export default function AdminLoginPage() {
                       inputMode="numeric" pattern="[0-9]*" placeholder="000 000" required autoFocus
                       className={inp + ' text-center text-2xl tracking-[0.5em] font-mono'} />
                   </div>
-                  <button type="button" onClick={() => { setPhase('credentials'); setError(null); }}
+                  <button type="button" onClick={() => { setOtpCode(''); setPhase('credentials'); setError(null); }}
                     className="w-full text-center text-xs text-stone-400 hover:text-red-700 transition">
                     ← Back to credentials
                   </button>
@@ -320,8 +336,7 @@ export default function AdminLoginPage() {
 
             {/* button */}
             <motion.button
-              type={phase === 'setup' ? 'button' : 'submit'}
-              onClick={phase === 'setup' ? () => { void completeSetup(); } : undefined}
+              type="submit"
               disabled={loading}
               whileHover={{ scale: 1.015 }}
               whileTap={{ scale: 0.985 }}
