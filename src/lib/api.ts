@@ -1,4 +1,28 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || '';
+function normalizeApiBaseUrl(url?: string): string {
+  const trimmed = url?.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  try {
+    const normalized = new URL(trimmed);
+    if (normalized.protocol === 'http:' || normalized.protocol === 'https:') {
+      return normalized.toString().replace(/\/$/, '');
+    }
+  } catch {
+  }
+
+  const isLocalHost = /^(localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0)(:\d+)?(\/|$)/i.test(trimmed);
+  const protocol = isLocalHost ? 'http://' : 'https://';
+
+  try {
+    return new URL(`${protocol}${trimmed}`).toString().replace(/\/$/, '');
+  } catch {
+    return trimmed.replace(/\/$/, '');
+  }
+}
+
+const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
 
 export function apiUrl(path: string) {
   return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
