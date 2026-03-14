@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { adminFetch, getAdminToken } from '../../lib/adminAuth';
 import { createAdminQrScanner, detectQrCameraSupport } from '../../lib/adminQrScanner';
@@ -89,11 +89,11 @@ function beep(ok: boolean) {
   } catch {}
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function SectionLabel({ children }: { children: ReactNode }) {
   return <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">{children}</p>;
 }
 
-function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
   return <div className={`rounded-2xl bg-zinc-900 ring-1 ring-zinc-800 ${className}`}>{children}</div>;
 }
 

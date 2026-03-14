@@ -50,6 +50,12 @@ type ScanResponse = {
   ticket?: ScannedTicket;
 };
 
+type LookupResult = ScannedTicket & {
+  ticketStatus: string;
+  ticketType: string;
+  createdAt: string;
+};
+
 type ScannerSession = {
   sessionId: string;
   sessionToken: string;
@@ -90,7 +96,6 @@ export default function AdminScannerLivePage() {
   const [performanceId, setPerformanceId] = useState('');
   const [sessionDraft, setSessionDraft] = useState({ staffName: '', gate: 'Main Entrance', deviceLabel: '' });
   const [scannerSession, setScannerSession] = useState<ScannerSession | null>(null);
-  const [manualValue, setManualValue] = useState('');
   const [cameraSupported, setCameraSupported] = useState(false);
   const [cameraRunning, setCameraRunning] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -98,7 +103,11 @@ export default function AdminScannerLivePage() {
   const [notice, setNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const [lastResult, setLastResult] = useState<ScanResponse | null>(null);
   const [flashTone, setFlashTone] = useState<FlashTone>(null);
-  const [showManual, setShowManual] = useState(false);
+  const [showLookup, setShowLookup] = useState(false);
+  const [lookupQuery, setLookupQuery] = useState('');
+  const [lookupRows, setLookupRows] = useState<LookupResult[]>([]);
+  const [lookupBusyTicketId, setLookupBusyTicketId] = useState<string | null>(null);
+  const [lookupSearched, setLookupSearched] = useState(false);
   const [showSessionPanel, setShowSessionPanel] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -108,7 +117,7 @@ export default function AdminScannerLivePage() {
   const hardwareBufferRef = useRef('');
   const hardwareClearTimerRef = useRef<number | null>(null);
   const flashTimerRef = useRef<number | null>(null);
-  const manualInputRef = useRef<HTMLInputElement | null>(null);
+  const lookupInputRef = useRef<HTMLInputElement | null>(null);
 
   const selectedPerformance = useMemo(
     () => performances.find((p) => p.id === performanceId) || null,
@@ -134,7 +143,7 @@ export default function AdminScannerLivePage() {
   const submitScan = async (scannedValue: string) => {
     if (!sessionReady || !performanceId) {
       setNotice({ kind: 'error', text: 'Start a scanner session first.' });
-      return;
+      return null;
     }
     setBusy(true);
     scanBusyRef.current = true;
@@ -146,14 +155,16 @@ export default function AdminScannerLivePage() {
       });
       setLastResult(result);
       setFlash(flashForOutcome(result.outcome));
+      setLookupRows((rows) => rows.map((row) => (row.id === result.ticket?.id ? { ...row, ...result.ticket } : row)));
+      return result;
     } catch (err) {
       const fallback: ScanResponse = { outcome: 'INVALID_QR', message: err instanceof Error ? err.message : 'Scan failed', scannedAt: new Date().toISOString() };
       setLastResult(fallback);
       setFlash('error');
+      return fallback;
     } finally {
       setBusy(false);
       scanBusyRef.current = false;
-      setManualValue('');
     }
   };
 
@@ -238,6 +249,10 @@ export default function AdminScannerLivePage() {
 
   useEffect(() => {
     setLastResult(null); setNotice(null);
+    setShowLookup(false);
+    setLookupQuery('');
+    setLookupRows([]);
+    setLookupSearched(false);
     setScannerSession((c) => (c?.performanceId === performanceId ? c : null));
     stopCamera();
   }, [performanceId]);
@@ -265,10 +280,37 @@ export default function AdminScannerLivePage() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [sessionReady, scannerSession, performanceId]);
 
-  // Auto-focus manual input when panel opens
+  // Auto-focus lookup input when panel opens
   useEffect(() => {
-    if (showManual) setTimeout(() => manualInputRef.current?.focus(), 50);
-  }, [showManual]);
+    if (showLookup) setTimeout(() => lookupInputRef.current?.focus(), 50);
+  }, [showLookup]);
+
+  const searchLookup = async () => {
+    if (!performanceId || !lookupQuery.trim()) return;
+    setLookupSearched(true);
+    setNotice(null);
+    try {
+      const rows = await adminFetch<LookupResult[]>(
+        `/api/admin/check-in/lookup?performanceId=${performanceId}&q=${encodeURIComponent(lookupQuery.trim())}&limit=8`
+      );
+      setLookupRows(rows);
+    } catch (err) {
+      setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Lookup failed' });
+    }
+  };
+
+  const checkInLookupTicket = async (ticket: LookupResult) => {
+    if (busy || lookupBusyTicketId) return;
+    setLookupBusyTicketId(ticket.id);
+    try {
+      const result = await submitScan(ticket.publicId);
+      if (result?.outcome === 'VALID') {
+        setShowLookup(false);
+      }
+    } finally {
+      setLookupBusyTicketId(null);
+    }
+  };
 
   const cfg = lastResult ? outcomeConfig[lastResult.outcome] : null;
 
@@ -490,11 +532,11 @@ export default function AdminScannerLivePage() {
           {/* Manual entry toggle */}
           <button
             type="button"
-            onClick={() => setShowManual((v) => !v)}
-            className={`rounded-2xl border px-4 py-4 text-sm font-semibold transition-transform active:scale-[0.98] ${showManual ? 'border-white/30 bg-white/20 text-white' : 'border-white/15 bg-black/60 text-white/70'} backdrop-blur-sm`}
+            onClick={() => setShowLookup((v) => !v)}
+            className={`rounded-2xl border px-4 py-4 text-sm font-semibold transition-transform active:scale-[0.98] ${showLookup ? 'border-white/30 bg-white/20 text-white' : 'border-white/15 bg-black/60 text-white/70'} backdrop-blur-sm`}
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35m1.85-5.15a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </button>
 
@@ -513,35 +555,76 @@ export default function AdminScannerLivePage() {
           </button>
         </div>
 
-        {/* Manual input (expands) */}
-        {showManual && (
+        {/* Compact lookup (expands) */}
+        {showLookup && (
           <div className="mt-2 rounded-2xl border border-white/15 bg-zinc-950/95 p-3 backdrop-blur-md">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                const v = manualValue.trim();
-                if (!v || busy) return;
-                void submitScan(v);
+                void searchLookup();
               }}
               className="flex gap-2"
             >
               <input
-                ref={manualInputRef}
-                value={manualValue}
-                onChange={(e) => setManualValue(e.target.value)}
-                placeholder="Paste QR payload, ticket ID, or URL"
+                ref={lookupInputRef}
+                value={lookupQuery}
+                onChange={(e) => setLookupQuery(e.target.value)}
+                placeholder="Search name or email"
                 className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500"
               />
               <button
-                disabled={!sessionReady || busy}
+                disabled={!sessionReady || !lookupQuery.trim()}
                 className="shrink-0 rounded-xl bg-red-600 px-5 py-3 text-sm font-bold text-white disabled:opacity-50 active:bg-red-700"
               >
-                {busy ? '…' : 'Go'}
+                Find
               </button>
             </form>
+
+            <div className="mt-2 max-h-52 space-y-2 overflow-auto">
+              {lookupRows.map((ticket) => {
+                const checkedIn = Boolean(ticket.checkedInAt);
+                const checkingIn = lookupBusyTicketId === ticket.id;
+
+                return (
+                  <div key={ticket.id} className="rounded-xl border border-zinc-800 bg-zinc-900/90 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-zinc-100">{ticket.holder.customerName}</div>
+                        <div className="truncate text-xs text-zinc-400">{ticket.holder.customerEmail}</div>
+                        <div className="mt-1 text-[11px] text-zinc-500">
+                          {ticket.seat.sectionName} · {ticket.seat.row}-{ticket.seat.number}
+                          {checkedIn ? ` · In at ${ticket.checkInGate || 'gate'}` : ''}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void checkInLookupTicket(ticket);
+                        }}
+                        disabled={!sessionReady || busy || checkedIn || Boolean(lookupBusyTicketId)}
+                        className="shrink-0 rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                      >
+                        {checkingIn ? '...' : checkedIn ? 'In' : 'Check In'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {lookupSearched && lookupRows.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-zinc-700 px-3 py-4 text-center text-xs text-zinc-500">
+                  No guests matched this search.
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-2 text-[11px] text-zinc-500">
+              Search a guest by name or email and tap <span className="font-semibold text-zinc-300">Check In</span>.
+            </div>
+
             {(cameraError || !cameraSupported) && (
               <div className="mt-2 text-xs text-amber-400">
-                {cameraError || 'Camera scanning unsupported on this browser — use manual input.'}
+                {cameraError || 'Camera scanning unsupported on this browser — use guest lookup.'}
               </div>
             )}
           </div>
