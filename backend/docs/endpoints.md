@@ -737,11 +737,27 @@ Request:
 {
   "customerName": "Jordan Taylor",
   "customerEmail": "jordan@example.com",
-  "description": "Spring Gala Sponsorship",
-  "amountCents": 15000,
-  "dueInDays": 30
+  "description": "Spring Gala Sponsorship Invoice",
+  "customerNote": "Please pay within 30 days.",
+  "dueInDays": 30,
+  "lineItems": [
+    {
+      "description": "Sponsorship Package",
+      "quantity": 1,
+      "unitAmountCents": 12500
+    },
+    {
+      "description": "Playbill ad",
+      "quantity": 2,
+      "unitAmountCents": 1250
+    }
+  ]
 }
 ```
+Notes:
+- `lineItems` is optional if `amountCents` is provided for a single-line invoice.
+- `description` is the invoice title shown in Stripe.
+
 Response:
 ```json
 {

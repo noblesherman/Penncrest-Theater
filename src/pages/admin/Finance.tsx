@@ -50,6 +50,47 @@ type SendFinanceInvoiceResponse = {
   hostedInvoiceUrl: string | null;
 };
 
+type InvoiceComposerLineItemDraft = {
+  id: string;
+  description: string;
+  details: string;
+  quantity: string;
+  unitAmountDollars: string;
+};
+
+type InvoiceComposerDraft = {
+  customerName: string;
+  customerEmail: string;
+  description: string;
+  customerNote: string;
+  dueInDays: string;
+  lineItems: InvoiceComposerLineItemDraft[];
+};
+
+let invoiceComposerLineItemSequence = 0;
+
+function createInvoiceLineItemDraft(): InvoiceComposerLineItemDraft {
+  invoiceComposerLineItemSequence += 1;
+  return {
+    id: `invoice-item-${invoiceComposerLineItemSequence}`,
+    description: '',
+    details: '',
+    quantity: '1',
+    unitAmountDollars: ''
+  };
+}
+
+function createInvoiceComposerDraft(): InvoiceComposerDraft {
+  return {
+    customerName: '',
+    customerEmail: '',
+    description: '',
+    customerNote: '',
+    dueInDays: '30',
+    lineItems: [createInvoiceLineItemDraft()]
+  };
+}
+
 function pad2(value: number): string {
   return String(value).padStart(2, '0');
 }
@@ -251,14 +292,9 @@ export default function AdminFinancePage() {
   const [downloadingLocalCsv, setDownloadingLocalCsv] = useState(false);
   const [stripeCsvStatus, setStripeCsvStatus] = useState<string | null>(null);
   const [sendingInvoice, setSendingInvoice] = useState(false);
+  const [showInvoiceComposer, setShowInvoiceComposer] = useState(false);
   const [lastInvoiceUrl, setLastInvoiceUrl] = useState<string | null>(null);
-  const [invoiceDraft, setInvoiceDraft] = useState({
-    customerName: '',
-    customerEmail: '',
-    amountDollars: '',
-    description: '',
-    dueInDays: '30'
-  });
+  const [invoiceDraft, setInvoiceDraft] = useState<InvoiceComposerDraft>(createInvoiceComposerDraft);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -432,7 +468,6 @@ export default function AdminFinancePage() {
     const customerName = invoiceDraft.customerName.trim();
     const customerEmail = invoiceDraft.customerEmail.trim().toLowerCase();
     const description = invoiceDraft.description.trim();
-    const amountDollars = Number(invoiceDraft.amountDollars);
     const dueInDays = Number(invoiceDraft.dueInDays);
 
     if (!customerName) {
@@ -453,21 +488,68 @@ export default function AdminFinancePage() {
       return;
     }
 
-    if (!Number.isFinite(amountDollars) || amountDollars <= 0) {
-      setError('Invoice amount must be greater than 0');
-      setNotice(null);
-      return;
-    }
-
-    const amountCents = Math.round(amountDollars * 100);
-    if (amountCents < 50) {
-      setError('Invoice amount must be at least $0.50');
-      setNotice(null);
-      return;
-    }
-
     if (!Number.isInteger(dueInDays) || dueInDays < 1 || dueInDays > 90) {
       setError('Due in days must be between 1 and 90');
+      setNotice(null);
+      return;
+    }
+
+    const lineItems: Array<{ description: string; quantity: number; unitAmountCents: number }> = [];
+
+    for (const row of invoiceDraft.lineItems) {
+      const itemDescription = row.description.trim();
+      const itemDetails = row.details.trim();
+      const quantityRaw = row.quantity.trim();
+      const unitAmountRaw = row.unitAmountDollars.trim();
+
+      const hasAnyValue = Boolean(itemDescription || itemDetails || quantityRaw || unitAmountRaw);
+      if (!hasAnyValue) {
+        continue;
+      }
+
+      if (!itemDescription) {
+        setError('Each invoice item needs a description');
+        setNotice(null);
+        return;
+      }
+
+      const quantity = Number(quantityRaw || '1');
+      if (!Number.isInteger(quantity) || quantity <= 0 || quantity > 1000) {
+        setError('Item quantity must be a whole number between 1 and 1000');
+        setNotice(null);
+        return;
+      }
+
+      const unitAmountDollars = Number(unitAmountRaw);
+      if (!Number.isFinite(unitAmountDollars) || unitAmountDollars <= 0) {
+        setError(`Item "${itemDescription}" needs a valid unit price`);
+        setNotice(null);
+        return;
+      }
+
+      const unitAmountCents = Math.round(unitAmountDollars * 100);
+      if (unitAmountCents <= 0) {
+        setError(`Item "${itemDescription}" unit price must be greater than 0`);
+        setNotice(null);
+        return;
+      }
+
+      lineItems.push({
+        description: itemDetails ? `${itemDescription} — ${itemDetails}` : itemDescription,
+        quantity,
+        unitAmountCents
+      });
+    }
+
+    if (lineItems.length === 0) {
+      setError('Add at least one invoice item');
+      setNotice(null);
+      return;
+    }
+
+    const totalAmountCents = lineItems.reduce((sum, item) => sum + item.quantity * item.unitAmountCents, 0);
+    if (totalAmountCents < 50) {
+      setError('Invoice total must be at least $0.50');
       setNotice(null);
       return;
     }
@@ -483,24 +565,76 @@ export default function AdminFinancePage() {
           customerName,
           customerEmail,
           description,
-          amountCents,
-          dueInDays
+          customerNote: invoiceDraft.customerNote.trim() || undefined,
+          dueInDays,
+          lineItems
         })
       });
 
       setLastInvoiceUrl(result.hostedInvoiceUrl || null);
-      setNotice(`Invoice sent to ${result.customerEmail} for ${cents(result.amountDueCents)}.`);
-      setInvoiceDraft((current) => ({
-        ...current,
-        amountDollars: '',
-        description: ''
-      }));
+      setNotice(
+        `Invoice sent to ${result.customerEmail} for ${cents(result.amountDueCents)} (${lineItems.length} item${lineItems.length === 1 ? '' : 's'}).`
+      );
+      setInvoiceDraft(createInvoiceComposerDraft());
+      setShowInvoiceComposer(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send invoice');
     } finally {
       setSendingInvoice(false);
     }
   };
+
+  const openInvoiceComposer = () => {
+    setError(null);
+    setNotice(null);
+    setShowInvoiceComposer(true);
+  };
+
+  const closeInvoiceComposer = () => {
+    if (sendingInvoice) return;
+    setShowInvoiceComposer(false);
+  };
+
+  const updateInvoiceField = <K extends keyof InvoiceComposerDraft>(field: K, value: InvoiceComposerDraft[K]) => {
+    setInvoiceDraft((current) => ({
+      ...current,
+      [field]: value
+    }));
+  };
+
+  const updateInvoiceLineItem = (id: string, next: Partial<InvoiceComposerLineItemDraft>) => {
+    setInvoiceDraft((current) => ({
+      ...current,
+      lineItems: current.lineItems.map((item) => (item.id === id ? { ...item, ...next } : item))
+    }));
+  };
+
+  const addInvoiceLineItem = () => {
+    setInvoiceDraft((current) => ({
+      ...current,
+      lineItems: [...current.lineItems, createInvoiceLineItemDraft()]
+    }));
+  };
+
+  const removeInvoiceLineItem = (id: string) => {
+    setInvoiceDraft((current) => {
+      const nextItems = current.lineItems.filter((item) => item.id !== id);
+      return {
+        ...current,
+        lineItems: nextItems.length > 0 ? nextItems : [createInvoiceLineItemDraft()]
+      };
+    });
+  };
+
+  const invoicePreviewTotalCents = useMemo(() => {
+    return invoiceDraft.lineItems.reduce((sum, row) => {
+      const quantity = Number(row.quantity.trim() || '1');
+      const unitAmountDollars = Number(row.unitAmountDollars.trim());
+      if (!Number.isFinite(quantity) || !Number.isInteger(quantity) || quantity <= 0) return sum;
+      if (!Number.isFinite(unitAmountDollars) || unitAmountDollars <= 0) return sum;
+      return sum + quantity * Math.round(unitAmountDollars * 100);
+    }, 0);
+  }, [invoiceDraft.lineItems]);
 
   // ─── styles ────────────────────────────────────────────────────────────────
 
@@ -1051,7 +1185,7 @@ export default function AdminFinancePage() {
               ...cardStyle,
               display: 'flex',
               flexDirection: 'column',
-              gap: 10,
+              gap: 0,
               position: 'relative',
               overflow: 'hidden',
             }}
@@ -1098,69 +1232,16 @@ export default function AdminFinancePage() {
               </span>
             </div>
             <p style={{ fontSize: 13, color: '#6b7280', margin: 0, lineHeight: 1.5, fontFamily: "var(--font-sans)" }}>
-              Send Stripe-hosted invoices directly from Finance.
+              Open a full invoice composer with customer details, invoice notes, and optional multi-line items.
             </p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <input
-                type="text"
-                placeholder="Customer name"
-                value={invoiceDraft.customerName}
-                onChange={(e) => setInvoiceDraft((current) => ({ ...current, customerName: e.target.value }))}
-                className="finance-input"
-                style={{ ...inputStyle, fontSize: 13, padding: '9px 10px' }}
-              />
-              <input
-                type="email"
-                placeholder="Customer email"
-                value={invoiceDraft.customerEmail}
-                onChange={(e) => setInvoiceDraft((current) => ({ ...current, customerEmail: e.target.value }))}
-                className="finance-input"
-                style={{ ...inputStyle, fontSize: 13, padding: '9px 10px' }}
-              />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 8 }}>
-              <input
-                type="text"
-                placeholder="Description"
-                value={invoiceDraft.description}
-                onChange={(e) => setInvoiceDraft((current) => ({ ...current, description: e.target.value }))}
-                className="finance-input"
-                style={{ ...inputStyle, fontSize: 13, padding: '9px 10px' }}
-              />
-              <input
-                type="number"
-                min="0.5"
-                step="0.01"
-                placeholder="Amount"
-                value={invoiceDraft.amountDollars}
-                onChange={(e) => setInvoiceDraft((current) => ({ ...current, amountDollars: e.target.value }))}
-                className="finance-input"
-                style={{ ...inputStyle, fontSize: 13, padding: '9px 10px' }}
-              />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <label style={{ fontSize: 11, color: '#6b7280', fontFamily: "var(--font-sans)" }}>Due in</label>
-              <input
-                type="number"
-                min="1"
-                max="90"
-                value={invoiceDraft.dueInDays}
-                onChange={(e) => setInvoiceDraft((current) => ({ ...current, dueInDays: e.target.value }))}
-                className="finance-input"
-                style={{ ...inputStyle, width: 80, fontSize: 13, padding: '8px 10px' }}
-              />
-              <span style={{ fontSize: 11, color: '#6b7280', fontFamily: "var(--font-sans)" }}>days</span>
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
               <button
                 type="button"
-                onClick={() => void sendInvoice()}
-                disabled={sendingInvoice}
+                onClick={openInvoiceComposer}
                 className="btn-pill btn-invoice"
                 style={{ alignSelf: 'flex-start' }}
               >
-                {sendingInvoice ? 'Sending…' : 'Send Invoice'}
+                Open Invoice Composer
               </button>
               {lastInvoiceUrl && (
                 <button
@@ -1306,6 +1387,269 @@ export default function AdminFinancePage() {
           )}
         </div>
       </div>
+
+      {showInvoiceComposer && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={closeInvoiceComposer}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 80,
+            background: 'rgba(15, 23, 42, 0.45)',
+            backdropFilter: 'blur(2px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px 14px',
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: 'min(980px, 100%)',
+              maxHeight: '92dvh',
+              background: '#ffffff',
+              borderRadius: 24,
+              border: '1px solid #e5e7eb',
+              boxShadow: '0 24px 56px rgba(15, 23, 42, 0.28)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                borderBottom: '1px solid #f1f5f9',
+                padding: '18px 22px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                flexWrap: 'wrap',
+              }}
+            >
+              <div>
+                <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0f172a', fontFamily: "var(--font-sans)" }}>
+                  New Invoice
+                </p>
+                <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b', fontFamily: "var(--font-sans)" }}>
+                  Enter customer details and add one or more billable line items.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeInvoiceComposer}
+                disabled={sendingInvoice}
+                className="btn-pill btn-ghost"
+                style={{ padding: '7px 14px', fontSize: 12 }}
+              >
+                Close
+              </button>
+            </div>
+
+            <div style={{ overflowY: 'auto', padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={labelStyle}>Invoice Title</label>
+                  <input
+                    type="text"
+                    value={invoiceDraft.description}
+                    onChange={(e) => updateInvoiceField('description', e.target.value)}
+                    placeholder="Example: Spring Gala Sponsorship Invoice"
+                    className="finance-input"
+                    style={inputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Customer Name</label>
+                  <input
+                    type="text"
+                    value={invoiceDraft.customerName}
+                    onChange={(e) => updateInvoiceField('customerName', e.target.value)}
+                    placeholder="Jordan Taylor"
+                    className="finance-input"
+                    style={inputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Customer Email</label>
+                  <input
+                    type="email"
+                    value={invoiceDraft.customerEmail}
+                    onChange={(e) => updateInvoiceField('customerEmail', e.target.value)}
+                    placeholder="jordan@example.com"
+                    className="finance-input"
+                    style={inputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Due In Days</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="90"
+                    value={invoiceDraft.dueInDays}
+                    onChange={(e) => updateInvoiceField('dueInDays', e.target.value)}
+                    className="finance-input"
+                    style={inputStyle}
+                  />
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={labelStyle}>Customer Note (Optional)</label>
+                  <textarea
+                    value={invoiceDraft.customerNote}
+                    onChange={(e) => updateInvoiceField('customerNote', e.target.value)}
+                    placeholder="Payment terms, contact details, or extra note shown on the invoice."
+                    className="finance-input"
+                    rows={3}
+                    style={{ ...inputStyle, resize: 'vertical' }}
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 14,
+                  padding: 14,
+                  background: '#f8fafc',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                  <p style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#64748b', fontFamily: "var(--font-sans)" }}>
+                    Line Items
+                  </p>
+                  <button type="button" onClick={addInvoiceLineItem} className="btn-pill btn-ghost" style={{ padding: '7px 14px', fontSize: 12 }}>
+                    + Add Item
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {invoiceDraft.lineItems.map((item, index) => {
+                    const rowQuantity = Number(item.quantity.trim() || '1');
+                    const rowUnitAmount = Number(item.unitAmountDollars.trim());
+                    const rowTotalCents =
+                      Number.isInteger(rowQuantity) && rowQuantity > 0 && Number.isFinite(rowUnitAmount) && rowUnitAmount > 0
+                        ? rowQuantity * Math.round(rowUnitAmount * 100)
+                        : 0;
+                    return (
+                      <div
+                        key={item.id}
+                        style={{
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 12,
+                          background: '#ffffff',
+                          padding: 10,
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                          gap: 8,
+                          alignItems: 'center',
+                        }}
+                      >
+                        <input
+                          type="text"
+                          placeholder={`Item ${index + 1} description`}
+                          value={item.description}
+                          onChange={(e) => updateInvoiceLineItem(item.id, { description: e.target.value })}
+                          className="finance-input"
+                          style={{ ...inputStyle, padding: '9px 10px', fontSize: 13 }}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Optional details"
+                          value={item.details}
+                          onChange={(e) => updateInvoiceLineItem(item.id, { details: e.target.value })}
+                          className="finance-input"
+                          style={{ ...inputStyle, padding: '9px 10px', fontSize: 13 }}
+                        />
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          placeholder="Qty"
+                          value={item.quantity}
+                          onChange={(e) => updateInvoiceLineItem(item.id, { quantity: e.target.value })}
+                          className="finance-input"
+                          style={{ ...inputStyle, padding: '9px 10px', fontSize: 13, textAlign: 'right' }}
+                        />
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          placeholder="Unit $"
+                          value={item.unitAmountDollars}
+                          onChange={(e) => updateInvoiceLineItem(item.id, { unitAmountDollars: e.target.value })}
+                          className="finance-input"
+                          style={{ ...inputStyle, padding: '9px 10px', fontSize: 13, textAlign: 'right' }}
+                        />
+                        <div
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 700,
+                            color: '#0f172a',
+                            textAlign: 'left',
+                            minWidth: 78,
+                            fontFamily: "var(--font-sans)",
+                          }}
+                        >
+                          {rowTotalCents > 0 ? cents(rowTotalCents) : '$0.00'}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeInvoiceLineItem(item.id)}
+                          className="btn-pill btn-ghost"
+                          style={{ padding: '7px 10px', fontSize: 12 }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <p style={{ margin: 0, fontSize: 11, color: '#64748b', fontFamily: "var(--font-sans)" }}>
+                    Add as many items as you need. Amount is calculated per line as quantity × unit price.
+                  </p>
+                  <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#0f172a', fontFamily: "var(--font-sans)" }}>
+                    Preview Total: {cents(invoicePreviewTotalCents)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                borderTop: '1px solid #f1f5f9',
+                background: '#f8fafc',
+                padding: '14px 22px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 10,
+              }}
+            >
+              <p style={{ margin: 0, fontSize: 11, color: '#64748b', fontFamily: "var(--font-sans)" }}>
+                Stripe sends this invoice email immediately after submission.
+              </p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button type="button" onClick={closeInvoiceComposer} disabled={sendingInvoice} className="btn-pill btn-ghost">
+                  Cancel
+                </button>
+                <button type="button" onClick={() => void sendInvoice()} disabled={sendingInvoice} className="btn-pill btn-invoice">
+                  {sendingInvoice ? 'Sending…' : 'Send Invoice'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* spinner keyframe */}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>

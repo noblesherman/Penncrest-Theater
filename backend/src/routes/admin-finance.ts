@@ -25,13 +25,28 @@ const stripeReportDownloadQuerySchema = z.object({
   reportTypeId: z.string().min(1).optional()
 });
 
-const sendInvoiceSchema = z.object({
-  customerEmail: z.string().trim().email(),
-  customerName: z.string().trim().min(1).max(120),
-  description: z.string().trim().min(1).max(400),
-  amountCents: z.number().int().min(50).max(2_500_000),
-  dueInDays: z.number().int().min(1).max(90).default(30)
+const sendInvoiceLineItemSchema = z.object({
+  description: z.string().trim().min(1).max(240),
+  quantity: z.number().int().min(1).max(1000),
+  unitAmountCents: z.number().int().min(1).max(2_500_000)
 });
+
+const sendInvoiceSchema = z
+  .object({
+    customerEmail: z.string().trim().email(),
+    customerName: z.string().trim().min(1).max(120),
+    description: z.string().trim().min(1).max(400),
+    customerNote: z.string().trim().max(2000).optional(),
+    amountCents: z.number().int().min(50).max(2_500_000).optional(),
+    lineItems: z.array(sendInvoiceLineItemSchema).min(1).max(25).optional(),
+    dueInDays: z.number().int().min(1).max(90).default(30)
+  })
+  .refine((value) => {
+    return Boolean(value.amountCents && value.amountCents > 0) || Boolean(value.lineItems?.length);
+  }, {
+    message: 'Provide either amountCents or at least one line item',
+    path: ['lineItems']
+  });
 
 const STRIPE_ITEMIZED_BALANCE_PREFIX = 'balance_change_from_activity.itemized.';
 const STRIPE_BALANCE_SUMMARY_PREFIX = 'balance.summary.';
@@ -951,6 +966,28 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
       const customerEmail = parsed.data.customerEmail.trim().toLowerCase();
       const customerName = parsed.data.customerName.trim();
       const description = parsed.data.description.trim();
+      const customerNote = parsed.data.customerNote?.trim() || null;
+
+      const invoiceLineItems = parsed.data.lineItems?.length
+        ? parsed.data.lineItems.map((item) => ({
+            description: item.description.trim(),
+            quantity: item.quantity,
+            unitAmountCents: item.unitAmountCents,
+            amountCents: item.quantity * item.unitAmountCents
+          }))
+        : [
+            {
+              description,
+              quantity: 1,
+              unitAmountCents: parsed.data.amountCents || 0,
+              amountCents: parsed.data.amountCents || 0
+            }
+          ];
+
+      const totalAmountCents = invoiceLineItems.reduce((sum, item) => sum + item.amountCents, 0);
+      if (totalAmountCents < 50) {
+        throw new HttpError(400, 'Invoice total must be at least $0.50');
+      }
 
       const customer = await findOrCreateInvoiceCustomer({
         email: customerEmail,
@@ -963,6 +1000,7 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         days_until_due: parsed.data.dueInDays,
         auto_advance: false,
         description,
+        footer: customerNote || undefined,
         metadata: {
           source: 'admin_finance_tab',
           sentByAdminId: request.adminUser?.id || '',
@@ -970,13 +1008,19 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         }
       });
 
-      await stripe.invoiceItems.create({
-        customer: customer.id,
-        invoice: invoice.id,
-        currency: 'usd',
-        amount: parsed.data.amountCents,
-        description
-      });
+      for (const item of invoiceLineItems) {
+        const itemDescription =
+          item.quantity > 1
+            ? `${item.description} (x${item.quantity} @ ${centsToDollars(item.unitAmountCents)})`
+            : item.description;
+        await stripe.invoiceItems.create({
+          customer: customer.id,
+          invoice: invoice.id,
+          currency: 'usd',
+          amount: item.amountCents,
+          description: itemDescription
+        });
+      }
 
       await stripe.invoices.finalizeInvoice(invoice.id);
       const sent = await stripe.invoices.sendInvoice(invoice.id);
@@ -990,9 +1034,12 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
           customerId: customer.id,
           customerEmail,
           customerName,
-          amountCents: parsed.data.amountCents,
+          amountCents: totalAmountCents,
           dueInDays: parsed.data.dueInDays,
           description,
+          customerNote,
+          lineItemCount: invoiceLineItems.length,
+          lineItems: invoiceLineItems,
           hostedInvoiceUrl: sent.hosted_invoice_url
         }
       });
