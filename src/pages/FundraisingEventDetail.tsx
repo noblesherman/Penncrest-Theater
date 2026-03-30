@@ -75,6 +75,13 @@ function formatPriceLabel(minPrice: number, maxPrice: number): string {
   return formatUsd(Math.max(minPrice, maxPrice));
 }
 
+function sponsorTierBadgeClass(tier: LiveFundraisingSponsor['tier']): string {
+  if (tier === 'Center Stage') return 'bg-red-700 text-white';
+  if (tier === 'Orchestra') return 'bg-amber-100 text-amber-900';
+  if (tier === 'Mezzanine') return 'bg-stone-200 text-stone-700';
+  return 'bg-orange-100 text-orange-900';
+}
+
 export default function FundraisingEventDetail() {
   const { slug } = useParams<{ slug: string }>();
   const staticEvent = slug ? getFundraisingEventBySlug(slug) : undefined;
@@ -163,32 +170,21 @@ export default function FundraisingEventDetail() {
   }, [event, liveEvents]);
 
   const styles = `
-    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=DM+Sans:wght@300;400;500;600&display=swap');
-    .fund-detail { font-family: 'DM Sans', sans-serif; }
-    .serif { font-family: 'Playfair Display', Georgia, serif; }
+    .serif { font-family: Georgia, serif; }
     .primary-btn {
-      background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%);
-      box-shadow: 0 4px 14px rgba(185,28,28,0.28);
-      transition: all 0.15s;
+      background: #b91c1c;
+      transition: background-color 0.15s;
     }
     .primary-btn:hover {
-      background: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%);
-      box-shadow: 0 6px 20px rgba(185,28,28,0.38);
-      transform: translateY(-1px);
+      background: #991b1b;
     }
     .detail-pill {
       display: flex; align-items: flex-start; gap: 12px;
-      border-radius: 14px; border: 1.5px solid #f3f4f6;
+      border-radius: 14px; border: 1px solid #e7e5e4;
       background: white; padding: 14px 16px;
       transition: border-color 0.15s, box-shadow 0.15s;
     }
-    .detail-pill:hover { border-color: #e5e7eb; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-    .tier-balcony { background: linear-gradient(135deg,#fdba74,#fb923c); color: #7c2d12; }
-    .tier-mezzanine { background: linear-gradient(135deg,#e5e7eb,#d1d5db); color: #374151; }
-    .tier-orchestra { background: linear-gradient(135deg,#fbbf24,#f59e0b); color: #78350f; }
-    .tier-center-stage { background: linear-gradient(135deg,#dc2626,#991b1b); color: #fee2e2; }
-    .related-card img { transition: transform 0.5s ease; }
-    .related-card:hover img { transform: scale(1.04); }
+    .detail-pill:hover { border-color: #d6d3d1; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
   `;
 
   // ── Loading state ──
@@ -196,11 +192,11 @@ export default function FundraisingEventDetail() {
     return (
       <>
         <style>{styles}</style>
-        <div className="fund-detail flex min-h-[60vh] items-center justify-center bg-white">
+        <div className="flex min-h-[60vh] items-center justify-center bg-white font-sans">
           <div className="text-center">
-            <div className="mx-auto mb-5 h-10 w-10 animate-spin rounded-full border-2 border-zinc-200 border-t-red-700" />
-            <p className="serif text-2xl font-bold text-zinc-900">Loading Event</p>
-            <p className="mt-2 text-sm text-zinc-500">Retrieving the latest details…</p>
+            <div className="mx-auto mb-5 h-10 w-10 animate-spin rounded-full border-2 border-stone-200 border-t-red-700" />
+            <p className="serif text-2xl font-bold text-stone-900">Loading Event</p>
+            <p className="mt-2 text-sm text-stone-500">Retrieving the latest details…</p>
           </div>
         </div>
       </>
@@ -212,11 +208,11 @@ export default function FundraisingEventDetail() {
     return (
       <>
         <style>{styles}</style>
-        <div className="fund-detail flex min-h-[60vh] items-center justify-center bg-white px-4">
+        <div className="flex min-h-[60vh] items-center justify-center bg-white px-4 font-sans">
           <div className="max-w-md text-center">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-800">Fundraising</p>
-            <h1 className="serif mt-3 text-4xl font-bold text-zinc-900">Event Not Found</h1>
-            <p className="mx-auto mt-4 text-sm leading-relaxed text-zinc-500">
+            <h1 className="serif mt-3 text-4xl font-bold text-stone-900">Event Not Found</h1>
+            <p className="mx-auto mt-4 text-sm leading-relaxed text-stone-500">
               This fundraising event isn't available yet. Return to fundraising to view other active events.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
@@ -237,7 +233,7 @@ export default function FundraisingEventDetail() {
   return (
     <>
       <style>{styles}</style>
-      <div className="fund-detail bg-white text-zinc-900">
+      <div className="bg-white font-sans text-stone-900">
 
         {/* ── HERO ── */}
         <section className="relative overflow-hidden">
@@ -271,7 +267,7 @@ export default function FundraisingEventDetail() {
               {event.bookingHref && event.salesOpen !== false && (
                 <Link
                   to={event.bookingHref}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-xs font-semibold text-zinc-900 transition hover:bg-zinc-100"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-xs font-semibold text-stone-900 transition hover:bg-stone-100"
                 >
                   <Ticket className="h-3.5 w-3.5 text-red-700" />
                   Buy Tickets
@@ -291,7 +287,7 @@ export default function FundraisingEventDetail() {
               <h1 className="serif max-w-3xl text-4xl font-bold text-white sm:text-5xl lg:text-6xl">
                 {event.title}
               </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-zinc-300 sm:text-base">
+              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-stone-300 sm:text-base">
                 {event.longDescription}
               </p>
             </motion.div>
@@ -299,13 +295,13 @@ export default function FundraisingEventDetail() {
         </section>
 
         {/* ── META STRIP ── */}
-        <div className="border-b border-zinc-100 bg-zinc-50/70">
+        <div className="border-b border-stone-100 bg-stone-50/70">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, delay: 0.2 }}
-              className="grid grid-cols-2 divide-x divide-zinc-100 md:grid-cols-4"
+              className="grid grid-cols-2 divide-x divide-stone-100 md:grid-cols-4"
             >
               <MetaCell icon={<CalendarDays className="h-4 w-4 text-red-700" />} label="Date" value={event.dateLabel} />
               <MetaCell icon={<Clock3 className="h-4 w-4 text-red-700" />} label="Time" value={event.timeLabel} />
@@ -327,17 +323,17 @@ export default function FundraisingEventDetail() {
               className="lg:col-span-3 space-y-6"
             >
               {/* Overview */}
-              <div className="rounded-3xl border border-zinc-200 bg-white p-7">
+              <div className="rounded-3xl border border-stone-200 bg-white p-7">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-800">Event Overview</p>
-                <h2 className="serif mt-2 text-2xl font-bold text-zinc-900">About This Event</h2>
-                <p className="mt-3 text-sm leading-relaxed text-zinc-600">{event.summary}</p>
+                <h2 className="serif mt-2 text-2xl font-bold text-stone-900">About This Event</h2>
+                <p className="mt-3 text-sm leading-relaxed text-stone-600">{event.summary}</p>
 
                 {event.details.length > 0 && (
                   <div className="mt-6 space-y-2">
                     {event.details.map((detail) => (
                       <div key={detail} className="detail-pill">
                         <div className="mt-0.5 h-1.5 w-1.5 flex-none rounded-full bg-red-700" />
-                        <span className="text-sm text-zinc-700">{detail}</span>
+                        <span className="text-sm text-stone-700">{detail}</span>
                       </div>
                     ))}
                   </div>
@@ -346,7 +342,7 @@ export default function FundraisingEventDetail() {
 
               {/* CTA for mobile — shown before sidebar on small screens */}
               {event.bookingHref && (
-                <div className="rounded-3xl border border-zinc-200 bg-white p-6 lg:hidden">
+                <div className="rounded-3xl border border-stone-200 bg-white p-6 lg:hidden">
                   <TicketCta event={event} />
                 </div>
               )}
@@ -361,17 +357,17 @@ export default function FundraisingEventDetail() {
             >
               {/* Ticket CTA — desktop */}
               {event.bookingHref && (
-                <div className="hidden rounded-3xl border border-zinc-200 bg-white p-6 lg:block">
+                <div className="hidden rounded-3xl border border-stone-200 bg-white p-6 lg:block">
                   <TicketCta event={event} />
                 </div>
               )}
 
               {/* Sponsors */}
               {featuredSponsors.length > 0 && (
-                <div className="rounded-3xl border border-zinc-200 bg-white p-6">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">Sponsor Spotlight</p>
-                  <h3 className="serif mt-1.5 text-lg font-bold text-zinc-900">Our Partners</h3>
-                  <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                <div className="rounded-3xl border border-stone-200 bg-white p-6">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Sponsor Spotlight</p>
+                  <h3 className="serif mt-1.5 text-lg font-bold text-stone-900">Our Partners</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-stone-500">
                     Local partners help fund the student experience behind every production.
                   </p>
                   <div className="mt-5 space-y-3">
@@ -381,14 +377,11 @@ export default function FundraisingEventDetail() {
                         href={sponsor.websiteUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex items-center gap-3 rounded-2xl border border-zinc-100 p-3 transition hover:border-zinc-200 hover:shadow-sm"
+                        className="flex items-center gap-3 rounded-2xl border border-stone-100 p-3 transition hover:border-stone-200 hover:shadow-sm"
                       >
                         <img src={sponsor.logoUrl} alt={sponsor.name} className="h-8 w-auto object-contain opacity-80" />
                         <span className={`ml-auto rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                          sponsor.tier === 'Center Stage' ? 'tier-center-stage'
-                          : sponsor.tier === 'Orchestra' ? 'tier-orchestra'
-                          : sponsor.tier === 'Mezzanine' ? 'tier-mezzanine'
-                          : 'tier-balcony'
+                          sponsorTierBadgeClass(sponsor.tier)
                         }`}>
                           {sponsor.tier}
                         </span>
@@ -403,12 +396,12 @@ export default function FundraisingEventDetail() {
 
         {/* ── RELATED EVENTS ── */}
         {relatedEvents.length > 0 && (
-          <section className="border-t border-zinc-100 bg-zinc-50/60 py-14">
+          <section className="border-t border-stone-100 bg-stone-50/60 py-14">
             <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
               <div className="mb-7 flex items-end justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-800">Keep Exploring</p>
-                  <h2 className="serif mt-1.5 text-2xl font-bold text-zinc-900 sm:text-3xl">More Events</h2>
+                  <h2 className="serif mt-1.5 text-2xl font-bold text-stone-900 sm:text-3xl">More Events</h2>
                 </div>
                 <Link
                   to="/fundraising"
@@ -429,15 +422,15 @@ export default function FundraisingEventDetail() {
                   >
                     <Link
                       to={related.linkHref}
-                      className="related-card group block overflow-hidden rounded-2xl border border-zinc-200 bg-white transition hover:shadow-md"
+                      className="group block overflow-hidden rounded-2xl border border-stone-200 bg-white transition hover:shadow-md"
                     >
                       <div className="overflow-hidden">
-                        <img src={related.imageUrl} alt={related.title} className="h-44 w-full object-cover" />
+                        <img src={related.imageUrl} alt={related.title} className="h-44 w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                       </div>
                       <div className="p-4">
                         <p className="text-xs font-semibold uppercase tracking-[0.13em] text-red-700">{related.dateLabel}</p>
-                        <h3 className="serif mt-1 text-lg font-bold text-zinc-900">{related.title}</h3>
-                        <div className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-zinc-400 transition group-hover:text-red-700">
+                        <h3 className="serif mt-1 text-lg font-bold text-stone-900">{related.title}</h3>
+                        <div className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-stone-400 transition group-hover:text-red-700">
                           View Event
                           <ArrowRight className="h-3 w-3" />
                         </div>
@@ -451,7 +444,7 @@ export default function FundraisingEventDetail() {
         )}
 
         {event.source === 'live' && liveEventsLoadFailed && (
-          <p className="mx-auto max-w-7xl px-4 pb-8 text-xs text-zinc-400 sm:px-6 lg:px-8">
+          <p className="mx-auto max-w-7xl px-4 pb-8 text-xs text-stone-400 sm:px-6 lg:px-8">
             Live event details could not be refreshed right now.
           </p>
         )}
@@ -467,9 +460,9 @@ function MetaCell({ icon, label, value }: { icon: ReactNode; label: string; valu
     <div className="flex flex-col gap-1.5 px-5 py-5 first:pl-0 last:pr-0">
       <div className="flex items-center gap-1.5">
         {icon}
-        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">{label}</span>
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">{label}</span>
       </div>
-      <p className="text-sm font-semibold text-zinc-800">{value}</p>
+      <p className="text-sm font-semibold text-stone-800">{value}</p>
     </div>
   );
 }
@@ -478,8 +471,8 @@ function TicketCta({ event }: { event: DetailEvent }) {
   return (
     <div className="space-y-3">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">Tickets</p>
-        <p className="serif mt-1 text-lg font-bold text-zinc-900">{event.goalLabel}</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Tickets</p>
+        <p className="serif mt-1 text-lg font-bold text-stone-900">{event.goalLabel}</p>
       </div>
       {event.salesOpen !== false ? (
         <Link
@@ -490,7 +483,7 @@ function TicketCta({ event }: { event: DetailEvent }) {
           Continue to Tickets
         </Link>
       ) : (
-        <div className="rounded-2xl bg-zinc-100 px-4 py-3.5 text-center text-sm font-semibold text-zinc-500">
+        <div className="rounded-2xl bg-stone-100 px-4 py-3.5 text-center text-sm font-semibold text-stone-500">
           Online sales are closed
         </div>
       )}

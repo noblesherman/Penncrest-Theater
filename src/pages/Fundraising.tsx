@@ -12,8 +12,6 @@ import {
   Loader2,
   Mail,
   Megaphone,
-  Sparkles,
-  Users,
   ArrowRight,
   Star
 } from 'lucide-react';
@@ -116,6 +114,18 @@ function formatEventDate(iso: string): { dateLabel: string; timeLabel: string } 
   };
 }
 
+const PRIMARY_BUTTON_CLASS =
+  'inline-flex items-center justify-center gap-2 rounded-full bg-red-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60';
+const INPUT_FIELD_CLASS =
+  'w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm font-medium text-stone-900 placeholder:text-stone-400 focus:border-red-700 focus:outline-none focus:ring-2 focus:ring-red-100';
+
+function sponsorTierBadgeClass(tier: LiveFundraisingSponsor['tier']): string {
+  if (tier === 'Center Stage') return 'bg-red-700 text-white';
+  if (tier === 'Orchestra') return 'bg-amber-100 text-amber-900';
+  if (tier === 'Mezzanine') return 'bg-stone-200 text-stone-700';
+  return 'bg-orange-100 text-orange-900';
+}
+
 function DonationPaymentForm({
   amountCents, donorName, donorEmail, onSuccess, onError
 }: {
@@ -145,13 +155,13 @@ function DonationPaymentForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+      <div className="rounded-2xl border border-stone-200 bg-white p-4">
         <PaymentElement />
       </div>
       <button
         type="submit"
         disabled={submitting || !stripe || !elements}
-        className="donate-btn inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-bold text-white transition-all disabled:cursor-not-allowed disabled:opacity-60"
+        className={`${PRIMARY_BUTTON_CLASS} w-full`}
       >
         {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
         Donate {formatUsd(amountCents)}
@@ -277,94 +287,10 @@ export default function Fundraising() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=DM+Sans:wght@300;400;500;600&display=swap');
-
-        .fund-root { font-family: 'DM Sans', sans-serif; }
-        .serif { font-family: 'Playfair Display', Georgia, serif; }
-
-        .hero-accent {
-          background: linear-gradient(135deg, #fef2f2 0%, #fff7ed 40%, #fafafa 100%);
-        }
-
-        .donate-btn {
-          background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%);
-          box-shadow: 0 4px 14px rgba(185, 28, 28, 0.3);
-        }
-        .donate-btn:hover {
-          background: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%);
-          box-shadow: 0 6px 20px rgba(185, 28, 28, 0.4);
-          transform: translateY(-1px);
-        }
-
-        .pill-tab-active {
-          background: #991b1b;
-          color: white;
-          box-shadow: 0 2px 8px rgba(153, 27, 27, 0.25);
-        }
-
-        .event-card-hover:hover img { transform: scale(1.04); }
-
-        .sponsor-ticker {
-          mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
-        }
-
-        .tier-badge-balcony { background: linear-gradient(135deg, #fdba74, #fb923c); color: #7c2d12; }
-        .tier-badge-mezzanine { background: linear-gradient(135deg, #e5e7eb, #d1d5db); color: #374151; }
-        .tier-badge-orchestra { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #78350f; }
-        .tier-badge-center-stage { background: linear-gradient(135deg, #dc2626, #991b1b); color: #fee2e2; }
-
-        .input-field {
-          width: 100%;
-          border-radius: 12px;
-          border: 1.5px solid #e5e7eb;
-          background: white;
-          padding: 11px 14px;
-          font-size: 0.875rem;
-          font-weight: 500;
-          color: #111;
-          outline: none;
-          transition: border-color 0.15s;
-          font-family: 'DM Sans', sans-serif;
-        }
-        .input-field:focus { border-color: #b91c1c; box-shadow: 0 0 0 3px rgba(185,28,28,0.08); }
-        .input-field::placeholder { color: #9ca3af; font-weight: 400; }
-
-        .amount-chip {
-          border-radius: 999px;
-          border: 1.5px solid #e5e7eb;
-          padding: 8px 18px;
-          font-size: 0.875rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.15s;
-          background: white;
-          color: #374151;
-        }
-        .amount-chip:hover { border-color: #b91c1c; color: #b91c1c; background: #fef2f2; }
-        .amount-chip.selected { background: #991b1b; border-color: #991b1b; color: white; box-shadow: 0 2px 8px rgba(153,27,27,0.25); }
-
-        .section-divider {
-          height: 1px;
-          background: linear-gradient(to right, transparent, #e5e7eb 20%, #e5e7eb 80%, transparent);
-        }
-
-        .donation-level-card {
-          position: relative;
-          overflow: hidden;
-        }
-        .donation-level-card::before {
-          content: '';
-          position: absolute;
-          top: 0; left: 0; right: 0;
-          height: 3px;
-          background: linear-gradient(90deg, #b91c1c, #f59e0b);
-          opacity: 0;
-          transition: opacity 0.2s;
-        }
-        .donation-level-card:hover::before { opacity: 1; }
+        .serif { font-family: Georgia, serif; }
 
         .donation-celebration-backdrop {
-          background: radial-gradient(circle at 20% 20%, rgba(185, 28, 28, 0.35) 0%, rgba(127, 29, 29, 0.24) 30%, rgba(12, 10, 9, 0.82) 100%);
+          background: radial-gradient(circle at 20% 20%, rgba(185, 28, 28, 0.3) 0%, rgba(127, 29, 29, 0.22) 30%, rgba(12, 10, 9, 0.82) 100%);
           backdrop-filter: blur(4px);
         }
         .donation-celebration-heart {
@@ -399,7 +325,7 @@ export default function Fundraising() {
         }
       `}</style>
 
-      <div className="fund-root bg-white text-zinc-900">
+      <div className="bg-white font-sans text-stone-900">
         <AnimatePresence>
           {showDonationCelebration && (
             <motion.div
@@ -442,8 +368,8 @@ export default function Fundraising() {
                   <Heart className="donation-heart-icon h-7 w-7 fill-current" />
                 </div>
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-red-700">Donation Received</p>
-                <h3 className="serif mt-1 text-3xl font-bold text-zinc-900">Thank You!</h3>
-                <p className="mt-3 text-sm leading-relaxed text-zinc-600">
+                <h3 className="serif mt-1 text-3xl font-bold text-stone-900">Thank You!</h3>
+                <p className="mt-3 text-sm leading-relaxed text-stone-600">
                   {lastDonationAmountCents
                     ? `Your ${formatUsd(lastDonationAmountCents)} gift helps Penncrest Theater students shine on stage.`
                     : 'Your gift helps Penncrest Theater students shine on stage.'}
@@ -451,7 +377,7 @@ export default function Fundraising() {
                 <button
                   type="button"
                   onClick={() => setShowDonationCelebration(false)}
-                  className="donate-btn mt-5 inline-flex items-center justify-center rounded-2xl px-6 py-2.5 text-sm font-semibold text-white transition-all"
+                  className={`${PRIMARY_BUTTON_CLASS} mt-5`}
                 >
                   Continue
                 </button>
@@ -461,7 +387,7 @@ export default function Fundraising() {
         </AnimatePresence>
 
         {/* ── HERO ── */}
-        <section className="hero-accent border-b border-zinc-100 pb-16 pt-14 sm:pt-20">
+        <section className="border-b border-stone-100 bg-stone-50 pb-16 pt-14 sm:pt-20">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 
             {/* Eyebrow */}
@@ -484,7 +410,7 @@ export default function Fundraising() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.45, delay: 0.05 }}
-                className="serif text-5xl font-bold tracking-tight text-zinc-900 sm:text-6xl lg:text-7xl"
+                className="serif text-5xl font-bold tracking-tight text-stone-900 sm:text-6xl lg:text-7xl"
               >
                 Support<br />
                 <em className="text-red-800 not-italic">the Stage</em>
@@ -493,7 +419,7 @@ export default function Fundraising() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.45, delay: 0.15 }}
-                className="max-w-sm text-sm leading-relaxed text-zinc-500 sm:text-right sm:text-base"
+                className="max-w-sm text-sm leading-relaxed text-stone-500 sm:text-right sm:text-base"
               >
                 Discover upcoming events, then contribute through donations or sponsorships to directly power student theater at Penncrest.
               </motion.p>
@@ -510,13 +436,13 @@ export default function Fundraising() {
                 {/* Featured */}
                 <Link
                   to={featuredEvent.linkHref}
-                  className="event-card-hover group relative overflow-hidden rounded-3xl lg:col-span-7"
+                  className="group relative overflow-hidden rounded-3xl lg:col-span-7"
                   style={{ minHeight: 420 }}
                 >
                   <img
                     src={featuredEvent.imageUrl}
                     alt={featuredEvent.title}
-                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-700"
+                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
                   <div className="absolute bottom-0 p-7 sm:p-8">
@@ -527,9 +453,9 @@ export default function Fundraising() {
                       </span>
                     </div>
                     <h2 className="serif text-3xl font-bold text-white sm:text-4xl">{featuredEvent.title}</h2>
-                    <p className="mt-2 max-w-lg text-sm text-zinc-300">{featuredEvent.summary}</p>
-                    {featuredEvent.location && <p className="mt-1 text-xs text-zinc-400">{featuredEvent.location}</p>}
-                    <div className="mt-5 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-zinc-900 transition group-hover:bg-zinc-100">
+                    <p className="mt-2 max-w-lg text-sm text-stone-300">{featuredEvent.summary}</p>
+                    {featuredEvent.location && <p className="mt-1 text-xs text-stone-400">{featuredEvent.location}</p>}
+                    <div className="mt-5 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-stone-900 transition group-hover:bg-stone-100">
                       {featuredEvent.ctaLabel}
                       <ArrowRight className="h-3.5 w-3.5" />
                     </div>
@@ -547,13 +473,13 @@ export default function Fundraising() {
                       transition={{ duration: 0.4, delay: i * 0.1 }}
                       className="flex-1"
                     >
-                      <Link to={event.linkHref} className="event-card-hover group relative flex h-full min-h-[190px] overflow-hidden rounded-3xl">
-                        <img src={event.imageUrl} alt={event.title} className="absolute inset-0 h-full w-full object-cover transition-transform duration-700" />
+                      <Link to={event.linkHref} className="group relative flex h-full min-h-[190px] overflow-hidden rounded-3xl">
+                        <img src={event.imageUrl} alt={event.title} className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
                         <div className="absolute bottom-0 p-5">
                           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-300">{event.dateLabel}</p>
                           <h3 className="serif mt-1 text-xl font-bold text-white">{event.title}</h3>
-                          {event.seatModeLabel && <p className="mt-0.5 text-xs text-zinc-400">{event.seatModeLabel}</p>}
+                          {event.seatModeLabel && <p className="mt-0.5 text-xs text-stone-400">{event.seatModeLabel}</p>}
                         </div>
                       </Link>
                     </motion.div>
@@ -566,22 +492,22 @@ export default function Fundraising() {
 
         {/* ── SPONSOR TICKER ── */}
         {displayedSponsors.length > 0 && (
-          <div className="border-y border-zinc-100 bg-white py-4">
-            <div className="mx-auto flex max-w-7xl items-center gap-5 overflow-x-auto px-4 sponsor-ticker sm:px-6 lg:px-8 no-scrollbar">
+          <div className="border-y border-stone-100 bg-white py-4">
+            <div className="mx-auto flex max-w-7xl items-center gap-5 overflow-x-auto px-4 sm:px-6 lg:px-8 no-scrollbar">
               <div className="flex flex-none items-center gap-2">
                 <Star className="h-3.5 w-3.5 text-amber-500" />
-                <span className="text-xs font-semibold uppercase tracking-[0.15em] text-zinc-500 whitespace-nowrap">
+                <span className="text-xs font-semibold uppercase tracking-[0.15em] text-stone-500 whitespace-nowrap">
                   Our Sponsors
                 </span>
               </div>
-              <div className="mx-3 h-4 w-px bg-zinc-200 flex-none" />
+              <div className="mx-3 h-4 w-px bg-stone-200 flex-none" />
               {displayedSponsors.map((sponsor) => (
                 <a
                   key={sponsor.id}
                   href={sponsor.websiteUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex-none rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-2 transition hover:border-zinc-200 hover:bg-white hover:shadow-sm"
+                  className="flex-none rounded-xl border border-stone-100 bg-stone-50 px-4 py-2 transition hover:border-stone-200 hover:bg-white hover:shadow-sm"
                 >
                   <img src={sponsor.logoUrl} alt={sponsor.name} className="h-6 w-auto min-w-[80px] object-contain opacity-70 hover:opacity-100 transition-opacity" />
                 </a>
@@ -597,14 +523,18 @@ export default function Fundraising() {
           <div className="mb-10 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-800">Get Involved</p>
-              <h2 className="serif mt-1.5 text-3xl font-bold text-zinc-900 sm:text-4xl">Make an Impact</h2>
+              <h2 className="serif mt-1.5 text-3xl font-bold text-stone-900 sm:text-4xl">Make an Impact</h2>
             </div>
             {/* Tab switcher */}
-            <div className="inline-flex self-start rounded-2xl border border-zinc-200 bg-zinc-50 p-1 sm:self-auto">
+            <div className="inline-flex self-start rounded-2xl border border-stone-200 bg-stone-50 p-1 sm:self-auto">
               <button
                 type="button"
                 onClick={() => setActiveTab('donation')}
-                className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${activeTab === 'donation' ? 'pill-tab-active' : 'text-zinc-500 hover:text-zinc-800'}`}
+                className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition ${
+                  activeTab === 'donation'
+                    ? 'bg-red-700 text-white shadow-sm'
+                    : 'text-stone-500 hover:text-stone-800'
+                }`}
               >
                 <HandCoins className="h-4 w-4" />
                 Donate
@@ -612,7 +542,11 @@ export default function Fundraising() {
               <button
                 type="button"
                 onClick={() => setActiveTab('sponsor')}
-                className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${activeTab === 'sponsor' ? 'pill-tab-active' : 'text-zinc-500 hover:text-zinc-800'}`}
+                className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition ${
+                  activeTab === 'sponsor'
+                    ? 'bg-red-700 text-white shadow-sm'
+                    : 'text-stone-500 hover:text-stone-800'
+                }`}
               >
                 <HeartHandshake className="h-4 w-4" />
                 Sponsor
@@ -631,13 +565,13 @@ export default function Fundraising() {
 
                 {/* Donation form — left col */}
                 <div className="lg:col-span-3">
-                  <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm sm:p-8">
+                  <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
                     <div className="mb-6 flex items-center justify-between">
                       <div>
-                        <h3 className="serif text-xl font-bold text-zinc-900">Leave a Donation</h3>
-                        <p className="mt-1 text-sm text-zinc-500">Every gift helps students grow in confidence on stage.</p>
+                        <h3 className="serif text-xl font-bold text-stone-900">Leave a Donation</h3>
+                        <p className="mt-1 text-sm text-stone-500">Every gift helps students grow in confidence on stage.</p>
                       </div>
-                      <div className="flex items-center gap-1.5 rounded-full border border-zinc-100 bg-zinc-50 px-3 py-1.5 text-xs font-semibold text-zinc-500">
+                      <div className="flex items-center gap-1.5 rounded-full border border-stone-100 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-500">
                         <CreditCard className="h-3 w-3" />
                         Secure
                       </div>
@@ -650,29 +584,33 @@ export default function Fundraising() {
                         value={donorName}
                         onChange={(e) => setDonorName(e.target.value)}
                         placeholder="Your full name"
-                        className="input-field"
+                        className={INPUT_FIELD_CLASS}
                       />
                       <input
                         type="email"
                         value={donorEmail}
                         onChange={(e) => setDonorEmail(e.target.value)}
                         placeholder="Email for receipt"
-                        className="input-field"
+                        className={INPUT_FIELD_CLASS}
                       />
                     </div>
-                    <p className="mt-2 text-xs text-zinc-400">We'll send your thank-you note and Stripe receipt here.</p>
+                    <p className="mt-2 text-xs text-stone-400">We'll send your thank-you note and Stripe receipt here.</p>
 
-                    <div className="section-divider my-5" />
+                    <div className="my-5 h-px bg-stone-200" />
 
                     {/* Preset amounts */}
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">Choose Amount</p>
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Choose Amount</p>
                     <div className="flex flex-wrap gap-2">
                       {DONATION_PRESET_AMOUNTS_CENTS.map((amountCents) => (
                         <button
                           key={amountCents}
                           type="button"
                           onClick={() => void requestDonationIntent(amountCents)}
-                          className={`amount-chip ${selectedDonationAmountCents === amountCents ? 'selected' : ''}`}
+                          className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                            selectedDonationAmountCents === amountCents
+                              ? 'border-red-700 bg-red-700 text-white'
+                              : 'border-stone-300 bg-white text-stone-700 hover:border-red-700 hover:bg-red-50 hover:text-red-700'
+                          }`}
                         >
                           {formatUsd(amountCents)}
                         </button>
@@ -680,7 +618,11 @@ export default function Fundraising() {
                       <button
                         type="button"
                         onClick={handleOtherDonationSelect}
-                        className={`amount-chip ${isOtherDonationSelected ? 'selected' : ''}`}
+                        className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                          isOtherDonationSelected
+                            ? 'border-red-700 bg-red-700 text-white'
+                            : 'border-stone-300 bg-white text-stone-700 hover:border-red-700 hover:bg-red-50 hover:text-red-700'
+                        }`}
                       >
                         Custom
                       </button>
@@ -689,7 +631,7 @@ export default function Fundraising() {
                     {/* Custom amount */}
                     <div className="mt-3 flex gap-2">
                       <div className="relative flex-1">
-                        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-zinc-400">$</span>
+                        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-stone-400">$</span>
                         <input
                           ref={customAmountInputRef}
                           type="text"
@@ -697,13 +639,13 @@ export default function Fundraising() {
                           placeholder="Other amount"
                           value={customDonationAmount}
                           onChange={(e) => setCustomDonationAmount(e.target.value)}
-                          className="input-field pl-8"
+                          className={`${INPUT_FIELD_CLASS} pl-8`}
                         />
                       </div>
                       <button
                         type="button"
                         onClick={applyCustomDonationAmount}
-                        className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-red-700 hover:bg-red-50 hover:text-red-700"
+                        className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:border-red-700 hover:bg-red-50 hover:text-red-700"
                       >
                         Apply
                       </button>
@@ -711,7 +653,7 @@ export default function Fundraising() {
 
                     {/* Loading */}
                     {donationIntentLoading && (
-                      <div className="mt-5 inline-flex items-center gap-2 text-sm text-zinc-500">
+                      <div className="mt-5 inline-flex items-center gap-2 text-sm text-stone-500">
                         <Loader2 className="h-4 w-4 animate-spin text-red-700" />
                         Loading secure payment form…
                       </div>
@@ -741,9 +683,9 @@ export default function Fundraising() {
                       <motion.div
                         initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="mt-6 rounded-2xl border border-zinc-100 bg-zinc-50 p-4 sm:p-5"
+                        className="mt-6 rounded-2xl border border-stone-100 bg-stone-50 p-4 sm:p-5"
                       >
-                        <p className="mb-4 text-xs font-semibold uppercase tracking-[0.13em] text-zinc-500">
+                        <p className="mb-4 text-xs font-semibold uppercase tracking-[0.13em] text-stone-500">
                           Paying {formatUsd(activeDonationIntent.amountCents)}
                         </p>
                         <Elements
@@ -772,7 +714,7 @@ export default function Fundraising() {
 
                 {/* Donation levels — right col */}
                 <div className="lg:col-span-2 space-y-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400 lg:mt-0 mt-2">Donation Levels</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400 lg:mt-0 mt-2">Donation Levels</p>
                   {donationLevels.map((card, i) => (
                     <motion.article
                       key={card.label}
@@ -780,11 +722,11 @@ export default function Fundraising() {
                       whileInView={{ opacity: 1, x: 0 }}
                       viewport={{ once: true }}
                       transition={{ duration: 0.35, delay: i * 0.08 }}
-                      className="donation-level-card rounded-2xl border border-zinc-200 bg-white p-5 transition hover:border-zinc-300 hover:shadow-sm"
+                      className="rounded-2xl border border-stone-200 bg-white p-5 transition hover:border-stone-300 hover:shadow-sm"
                     >
                       <p className="text-xs font-bold uppercase tracking-[0.14em] text-red-700">{card.amount}</p>
-                      <h3 className="serif mt-1 text-lg font-bold text-zinc-900">{card.label}</h3>
-                      <p className="mt-2 text-sm leading-relaxed text-zinc-500">{card.detail}</p>
+                      <h3 className="serif mt-1 text-lg font-bold text-stone-900">{card.label}</h3>
+                      <p className="mt-2 text-sm leading-relaxed text-stone-500">{card.detail}</p>
                     </motion.article>
                   ))}
                 </div>
@@ -794,16 +736,16 @@ export default function Fundraising() {
               /* ── SPONSOR TAB ── */
               <div className="space-y-8">
                 {/* Header */}
-                <div className="flex flex-wrap items-start justify-between gap-4 rounded-3xl border border-zinc-200 bg-white p-6 sm:p-8">
+                <div className="flex flex-wrap items-start justify-between gap-4 rounded-3xl border border-stone-200 bg-white p-6 sm:p-8">
                   <div className="max-w-lg">
-                    <h3 className="serif text-xl font-bold text-zinc-900">Become a Sponsor</h3>
-                    <p className="mt-2 text-sm leading-relaxed text-zinc-500">
+                    <h3 className="serif text-xl font-bold text-stone-900">Become a Sponsor</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-stone-500">
                       Partner with Penncrest Theater and place your organization in front of students, families, and the broader community this season.
                     </p>
                   </div>
                   <a
                     href="mailto:jsmith3@rtmsd.org?subject=Penncrest%20Theater%20Sponsorship"
-                    className="donate-btn inline-flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-bold text-white transition-all"
+                    className={PRIMARY_BUTTON_CLASS}
                   >
                     <Mail className="h-4 w-4" />
                     Request Sponsor Packet
@@ -812,7 +754,7 @@ export default function Fundraising() {
 
                 {/* Tiers */}
                 <div>
-                  <p className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">Sponsorship Levels</p>
+                  <p className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Sponsorship Levels</p>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                     {sponsorshipTiers.map((card, i) => (
                       <motion.article
@@ -821,15 +763,15 @@ export default function Fundraising() {
                         whileInView={{ opacity: 1, y: 0 }}
                         viewport={{ once: true }}
                         transition={{ duration: 0.35, delay: i * 0.08 }}
-                        className="donation-level-card rounded-2xl border border-zinc-200 bg-white p-5 transition hover:border-zinc-300 hover:shadow-sm"
+                        className="rounded-2xl border border-stone-200 bg-white p-5 transition hover:border-stone-300 hover:shadow-sm"
                       >
                         <p className="text-xs font-bold uppercase tracking-[0.14em] text-red-700">{card.amount}</p>
-                        <h3 className="serif mt-1 text-lg font-bold text-zinc-900">{card.level}</h3>
-                        <p className="mt-2 text-sm leading-relaxed text-zinc-500">{card.benefit}</p>
+                        <h3 className="serif mt-1 text-lg font-bold text-stone-900">{card.level}</h3>
+                        <p className="mt-2 text-sm leading-relaxed text-stone-500">{card.benefit}</p>
                       </motion.article>
                     ))}
                   </div>
-                  <p className="mt-4 text-sm text-zinc-500">
+                  <p className="mt-4 text-sm text-stone-500">
                     All donations of $250 and above are tax-deductible, and documentation is provided.
                   </p>
                 </div>
@@ -837,24 +779,21 @@ export default function Fundraising() {
                 {/* Current Sponsors */}
                 {displayedSponsors.length > 0 && (
                   <div>
-                    <p className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">Current Sponsors</p>
+                    <p className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Current Sponsors</p>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                       {displayedSponsors.map((sponsor) => (
-                        <article key={sponsor.id} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white transition hover:shadow-md">
+                        <article key={sponsor.id} className="overflow-hidden rounded-2xl border border-stone-200 bg-white transition hover:shadow-md">
                           <div className="relative">
                             <img src={sponsor.imageUrl} alt={`${sponsor.name} spotlight`} className="h-44 w-full object-cover" />
                             <div className={`absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.1em] ${
-                              sponsor.tier === 'Center Stage' ? 'tier-badge-center-stage'
-                              : sponsor.tier === 'Orchestra' ? 'tier-badge-orchestra'
-                              : sponsor.tier === 'Mezzanine' ? 'tier-badge-mezzanine'
-                              : 'tier-badge-balcony'
+                              sponsorTierBadgeClass(sponsor.tier)
                             }`}>
                               {sponsor.tier}
                             </div>
                           </div>
                           <div className="p-5">
                             <img src={sponsor.logoUrl} alt={sponsor.name} className="h-9 w-auto object-contain" />
-                            <p className="mt-3 text-sm leading-relaxed text-zinc-500">{sponsor.spotlight}</p>
+                            <p className="mt-3 text-sm leading-relaxed text-stone-500">{sponsor.spotlight}</p>
                             <a
                               href={sponsor.websiteUrl}
                               target="_blank"
@@ -877,10 +816,10 @@ export default function Fundraising() {
 
         {/* ── ALL EVENTS FOOTER ── */}
         {displayedEvents.length > 0 && (
-          <section className="border-t border-zinc-100 bg-zinc-50/60 py-12">
+          <section className="border-t border-stone-100 bg-stone-50/60 py-12">
             <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
               <div className="mb-5 flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">
                   All Fundraising Events
                 </p>
                 {featuredEvent && (
@@ -898,10 +837,10 @@ export default function Fundraising() {
                   <Link
                     key={event.id}
                     to={event.linkHref}
-                    className="flex items-center justify-between rounded-xl border border-zinc-200 bg-white px-4 py-3.5 text-sm font-medium text-zinc-700 transition hover:border-zinc-300 hover:shadow-sm"
+                    className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-4 py-3.5 text-sm font-medium text-stone-700 transition hover:border-stone-300 hover:shadow-sm"
                   >
                     {event.title}
-                    <ArrowRight className="h-3.5 w-3.5 text-zinc-400 flex-none" />
+                    <ArrowRight className="h-3.5 w-3.5 text-stone-400 flex-none" />
                   </Link>
                 ))}
               </div>
