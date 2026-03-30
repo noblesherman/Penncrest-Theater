@@ -719,6 +719,42 @@ Response:
 { "success": true }
 ```
 
+### `GET /api/admin/finance/summary?startDate=2026-03-01&endDate=2026-03-31`
+Returns finance totals and breakdowns for the selected date range.
+
+### `GET /api/admin/finance/report.pdf?startDate=2026-03-01&endDate=2026-03-31`
+Downloads branded finance PDF for the selected range.
+
+### `GET /api/admin/finance/local-report.csv?startDate=2026-03-01&endDate=2026-03-31`
+Downloads local finance CSV with order-level rows (cash/card/comp split).
+
+### `GET /api/admin/finance/stripe-report.csv?startDate=2026-03-01&endDate=2026-03-31`
+Downloads Stripe balance transactions CSV.
+
+### `POST /api/admin/finance/invoices/send`
+Request:
+```json
+{
+  "customerName": "Jordan Taylor",
+  "customerEmail": "jordan@example.com",
+  "description": "Spring Gala Sponsorship",
+  "amountCents": 15000,
+  "dueInDays": 30
+}
+```
+Response:
+```json
+{
+  "invoiceId": "in_123",
+  "invoiceNumber": "A1B2C3D4-0001",
+  "customerId": "cus_123",
+  "customerEmail": "jordan@example.com",
+  "amountDueCents": 15000,
+  "status": "open",
+  "hostedInvoiceUrl": "https://invoice.stripe.com/..."
+}
+```
+
 ### `GET /api/admin/roster`
 Query params:
 - `performanceId` (optional)

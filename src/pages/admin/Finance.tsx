@@ -40,6 +40,16 @@ type FinanceSummary = {
   sourceBreakdown: FinanceBreakdownRow[];
 };
 
+type SendFinanceInvoiceResponse = {
+  invoiceId: string;
+  invoiceNumber: string | null;
+  customerId: string;
+  customerEmail: string;
+  amountDueCents: number;
+  status: string | null;
+  hostedInvoiceUrl: string | null;
+};
+
 function pad2(value: number): string {
   return String(value).padStart(2, '0');
 }
@@ -240,6 +250,15 @@ export default function AdminFinancePage() {
   const [downloadingStripeCsv, setDownloadingStripeCsv] = useState(false);
   const [downloadingLocalCsv, setDownloadingLocalCsv] = useState(false);
   const [stripeCsvStatus, setStripeCsvStatus] = useState<string | null>(null);
+  const [sendingInvoice, setSendingInvoice] = useState(false);
+  const [lastInvoiceUrl, setLastInvoiceUrl] = useState<string | null>(null);
+  const [invoiceDraft, setInvoiceDraft] = useState({
+    customerName: '',
+    customerEmail: '',
+    amountDollars: '',
+    description: '',
+    dueInDays: '30'
+  });
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -409,6 +428,80 @@ export default function AdminFinancePage() {
     }
   };
 
+  const sendInvoice = async () => {
+    const customerName = invoiceDraft.customerName.trim();
+    const customerEmail = invoiceDraft.customerEmail.trim().toLowerCase();
+    const description = invoiceDraft.description.trim();
+    const amountDollars = Number(invoiceDraft.amountDollars);
+    const dueInDays = Number(invoiceDraft.dueInDays);
+
+    if (!customerName) {
+      setError('Customer name is required');
+      setNotice(null);
+      return;
+    }
+
+    if (!customerEmail || !customerEmail.includes('@')) {
+      setError('A valid customer email is required');
+      setNotice(null);
+      return;
+    }
+
+    if (!description) {
+      setError('Invoice description is required');
+      setNotice(null);
+      return;
+    }
+
+    if (!Number.isFinite(amountDollars) || amountDollars <= 0) {
+      setError('Invoice amount must be greater than 0');
+      setNotice(null);
+      return;
+    }
+
+    const amountCents = Math.round(amountDollars * 100);
+    if (amountCents < 50) {
+      setError('Invoice amount must be at least $0.50');
+      setNotice(null);
+      return;
+    }
+
+    if (!Number.isInteger(dueInDays) || dueInDays < 1 || dueInDays > 90) {
+      setError('Due in days must be between 1 and 90');
+      setNotice(null);
+      return;
+    }
+
+    setSendingInvoice(true);
+    setError(null);
+    setNotice(null);
+    setLastInvoiceUrl(null);
+    try {
+      const result = await adminFetch<SendFinanceInvoiceResponse>('/api/admin/finance/invoices/send', {
+        method: 'POST',
+        body: JSON.stringify({
+          customerName,
+          customerEmail,
+          description,
+          amountCents,
+          dueInDays
+        })
+      });
+
+      setLastInvoiceUrl(result.hostedInvoiceUrl || null);
+      setNotice(`Invoice sent to ${result.customerEmail} for ${cents(result.amountDueCents)}.`);
+      setInvoiceDraft((current) => ({
+        ...current,
+        amountDollars: '',
+        description: ''
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send invoice');
+    } finally {
+      setSendingInvoice(false);
+    }
+  };
+
   // ─── styles ────────────────────────────────────────────────────────────────
 
   const inputStyle: CSSProperties = {
@@ -491,6 +584,15 @@ export default function AdminFinancePage() {
           background: #be123c;
           transform: translateY(-1px);
           box-shadow: 0 4px 16px rgba(225,29,72,0.3);
+        }
+        .btn-invoice {
+          background: #0f766e;
+          color: #fff;
+        }
+        .btn-invoice:not(:disabled):hover {
+          background: #0d5f58;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 16px rgba(15,118,110,0.28);
         }
         .btn-ghost {
           background: transparent;
@@ -940,6 +1042,136 @@ export default function AdminFinancePage() {
               >
                 {downloadingLocalCsv ? 'Preparing…' : '↓  Download Local CSV'}
               </button>
+            </div>
+          </div>
+
+          {/* Invoices */}
+          <div
+            style={{
+              ...cardStyle,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                position: 'absolute',
+                top: -30,
+                right: -30,
+                width: 100,
+                height: 100,
+                borderRadius: '50%',
+                background: 'rgba(15,118,110,0.07)',
+              }}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+              <div
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 10,
+                  background: '#0f766e',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  fontSize: 15,
+                  flexShrink: 0,
+                }}
+              >
+                $
+              </div>
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                  color: '#6b7280',
+                  fontFamily: "var(--font-sans)",
+                }}
+              >
+                Invoices
+              </span>
+            </div>
+            <p style={{ fontSize: 13, color: '#6b7280', margin: 0, lineHeight: 1.5, fontFamily: "var(--font-sans)" }}>
+              Send Stripe-hosted invoices directly from Finance.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <input
+                type="text"
+                placeholder="Customer name"
+                value={invoiceDraft.customerName}
+                onChange={(e) => setInvoiceDraft((current) => ({ ...current, customerName: e.target.value }))}
+                className="finance-input"
+                style={{ ...inputStyle, fontSize: 13, padding: '9px 10px' }}
+              />
+              <input
+                type="email"
+                placeholder="Customer email"
+                value={invoiceDraft.customerEmail}
+                onChange={(e) => setInvoiceDraft((current) => ({ ...current, customerEmail: e.target.value }))}
+                className="finance-input"
+                style={{ ...inputStyle, fontSize: 13, padding: '9px 10px' }}
+              />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 8 }}>
+              <input
+                type="text"
+                placeholder="Description"
+                value={invoiceDraft.description}
+                onChange={(e) => setInvoiceDraft((current) => ({ ...current, description: e.target.value }))}
+                className="finance-input"
+                style={{ ...inputStyle, fontSize: 13, padding: '9px 10px' }}
+              />
+              <input
+                type="number"
+                min="0.5"
+                step="0.01"
+                placeholder="Amount"
+                value={invoiceDraft.amountDollars}
+                onChange={(e) => setInvoiceDraft((current) => ({ ...current, amountDollars: e.target.value }))}
+                className="finance-input"
+                style={{ ...inputStyle, fontSize: 13, padding: '9px 10px' }}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 11, color: '#6b7280', fontFamily: "var(--font-sans)" }}>Due in</label>
+              <input
+                type="number"
+                min="1"
+                max="90"
+                value={invoiceDraft.dueInDays}
+                onChange={(e) => setInvoiceDraft((current) => ({ ...current, dueInDays: e.target.value }))}
+                className="finance-input"
+                style={{ ...inputStyle, width: 80, fontSize: 13, padding: '8px 10px' }}
+              />
+              <span style={{ fontSize: 11, color: '#6b7280', fontFamily: "var(--font-sans)" }}>days</span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => void sendInvoice()}
+                disabled={sendingInvoice}
+                className="btn-pill btn-invoice"
+                style={{ alignSelf: 'flex-start' }}
+              >
+                {sendingInvoice ? 'Sending…' : 'Send Invoice'}
+              </button>
+              {lastInvoiceUrl && (
+                <button
+                  type="button"
+                  onClick={() => window.open(lastInvoiceUrl, '_blank', 'noopener,noreferrer')}
+                  className="btn-pill btn-ghost"
+                  style={{ alignSelf: 'flex-start' }}
+                >
+                  Open Hosted Invoice
+                </button>
+              )}
             </div>
           </div>
         </div>

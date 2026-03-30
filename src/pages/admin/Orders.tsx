@@ -339,6 +339,9 @@ export default function AdminOrdersPage() {
     if (assignForm.source !== 'COMP') {
       setError('Door sales must use the in-person finalize flow.'); return;
     }
+    if (assignForm.sendEmail && !assignForm.customerEmail.trim()) {
+      setError('Enter an email address to send comp tickets.'); return;
+    }
     const ticketTypeBySeatId = Object.fromEntries(seatIds.map(id => [id, assignForm.ticketType || 'Comp']));
     const priceBySeatId = Object.fromEntries(seatIds.map(id => [id, 0]));
     const fallbackName = assignForm.customerName.trim() || 'Comp Guest';
@@ -1140,6 +1143,50 @@ export default function AdminOrdersPage() {
               </div>
             )}
           </Card>
+
+          {/* Comp guest + email section */}
+          {assignForm.source === 'COMP' && (
+            <Card className="overflow-hidden">
+              <div className="bg-slate-50 px-5 py-3 border-b border-slate-100">
+                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Guest & delivery</p>
+              </div>
+              <div className="p-5 space-y-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <input
+                    type="text"
+                    value={assignForm.customerName}
+                    onChange={e => setAssignForm({ ...assignForm, customerName: e.target.value })}
+                    placeholder="Guest name (optional)"
+                    className={baseInput}
+                  />
+                  <input
+                    type="email"
+                    value={assignForm.customerEmail}
+                    onChange={e => setAssignForm({ ...assignForm, customerEmail: e.target.value })}
+                    placeholder="guest@email.com"
+                    className={baseInput}
+                  />
+                </div>
+
+                <label className="flex cursor-pointer items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setAssignForm(prev => ({ ...prev, sendEmail: !prev.sendEmail }))}
+                    className={`relative h-6 w-11 flex-shrink-0 rounded-full transition-colors ${assignForm.sendEmail ? 'bg-rose-600' : 'bg-slate-200'}`}
+                  >
+                    <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${assignForm.sendEmail ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                  <span className="text-sm font-semibold text-slate-700">Send comp tickets by email</span>
+                </label>
+
+                {assignForm.sendEmail && !assignForm.customerEmail.trim() && (
+                  <p className="text-xs font-semibold text-amber-700">
+                    Enter an email address above before assigning this comp order.
+                  </p>
+                )}
+              </div>
+            </Card>
+          )}
 
           {/* Payment section — door only */}
           {assignForm.source === 'DOOR' && (

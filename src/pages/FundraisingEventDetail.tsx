@@ -218,7 +218,7 @@ export default function FundraisingEventDetail() {
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <Link
                 to="/fundraising"
-                className="primary-btn inline-flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-semibold text-white"
+                className="primary-btn inline-flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-semibold text-white max-sm:w-full max-sm:justify-center"
               >
                 <ArrowLeft className="h-4 w-4" />
                 Back to Fundraising
@@ -237,7 +237,7 @@ export default function FundraisingEventDetail() {
 
         {/* ── HERO ── */}
         <section className="relative overflow-hidden">
-          <div className="relative h-[58vh] min-h-[400px]">
+          <div className="relative h-[58vh] min-h-[400px] max-sm:h-[52vh] max-sm:min-h-[320px]">
             <img
               src={event.heroImageUrl}
               alt={event.title}
@@ -249,13 +249,13 @@ export default function FundraisingEventDetail() {
           </div>
 
           {/* Hero content */}
-          <div className="absolute inset-x-0 bottom-0 mx-auto max-w-7xl px-4 pb-10 sm:px-6 lg:px-8">
+          <div className="absolute inset-x-0 bottom-0 mx-auto max-w-7xl px-4 pb-10 sm:px-6 lg:px-8 max-sm:pb-6">
             {/* Nav pills */}
             <motion.div
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3 }}
-              className="mb-6 flex flex-wrap gap-2"
+              className="mb-6 flex flex-wrap gap-2 max-sm:mb-4 max-sm:flex-col max-sm:items-start"
             >
               <Link
                 to="/fundraising"
@@ -284,10 +284,10 @@ export default function FundraisingEventDetail() {
                 <CalendarDays className="h-3 w-3 text-amber-300" />
                 <span className="text-xs font-semibold text-amber-200">{event.goalLabel}</span>
               </div>
-              <h1 className="serif max-w-3xl text-4xl font-bold text-white sm:text-5xl lg:text-6xl">
+              <h1 className="serif max-w-3xl text-4xl font-bold text-white sm:text-5xl lg:text-6xl max-sm:text-3xl max-sm:leading-tight">
                 {event.title}
               </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-stone-300 sm:text-base">
+              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-stone-300 sm:text-base max-sm:line-clamp-3">
                 {event.longDescription}
               </p>
             </motion.div>
@@ -312,7 +312,7 @@ export default function FundraisingEventDetail() {
         </div>
 
         {/* ── BODY ── */}
-        <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
+        <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8 max-sm:py-10">
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
 
             {/* Main content */}
@@ -323,7 +323,7 @@ export default function FundraisingEventDetail() {
               className="lg:col-span-3 space-y-6"
             >
               {/* Overview */}
-              <div className="rounded-3xl border border-stone-200 bg-white p-7">
+              <div className="rounded-3xl border border-stone-200 bg-white p-7 max-sm:p-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-800">Event Overview</p>
                 <h2 className="serif mt-2 text-2xl font-bold text-stone-900">About This Event</h2>
                 <p className="mt-3 text-sm leading-relaxed text-stone-600">{event.summary}</p>
@@ -342,7 +342,7 @@ export default function FundraisingEventDetail() {
 
               {/* CTA for mobile — shown before sidebar on small screens */}
               {event.bookingHref && (
-                <div className="rounded-3xl border border-stone-200 bg-white p-6 lg:hidden">
+                <div className="rounded-3xl border border-stone-200 bg-white p-6 max-sm:p-5 lg:hidden">
                   <TicketCta event={event} />
                 </div>
               )}
@@ -364,7 +364,7 @@ export default function FundraisingEventDetail() {
 
               {/* Sponsors */}
               {featuredSponsors.length > 0 && (
-                <div className="rounded-3xl border border-stone-200 bg-white p-6">
+                <div className="rounded-3xl border border-stone-200 bg-white p-6 max-sm:p-5">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Sponsor Spotlight</p>
                   <h3 className="serif mt-1.5 text-lg font-bold text-stone-900">Our Partners</h3>
                   <p className="mt-1 text-xs leading-relaxed text-stone-500">
@@ -396,7 +396,7 @@ export default function FundraisingEventDetail() {
 
         {/* ── RELATED EVENTS ── */}
         {relatedEvents.length > 0 && (
-          <section className="border-t border-stone-100 bg-stone-50/60 py-14">
+          <section className="border-t border-stone-100 bg-stone-50/60 py-14 max-sm:py-10">
             <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
               <div className="mb-7 flex items-end justify-between">
                 <div>
@@ -457,7 +457,7 @@ export default function FundraisingEventDetail() {
 
 function MetaCell({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
-    <div className="flex flex-col gap-1.5 px-5 py-5 first:pl-0 last:pr-0">
+    <div className="flex flex-col gap-1.5 px-5 py-5 sm:first:pl-0 sm:last:pr-0">
       <div className="flex items-center gap-1.5">
         {icon}
         <span className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400">{label}</span>

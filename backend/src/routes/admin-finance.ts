@@ -10,6 +10,7 @@ import { prisma } from '../lib/prisma.js';
 import { stripe } from '../lib/stripe.js';
 import { handleRouteError } from '../lib/route-error.js';
 import { HttpError } from '../lib/http-error.js';
+import { logAudit } from '../lib/audit-log.js';
 
 const financeQuerySchema = z.object({
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -22,6 +23,14 @@ const stripeReportDownloadQuerySchema = z.object({
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   reportTypeId: z.string().min(1).optional()
+});
+
+const sendInvoiceSchema = z.object({
+  customerEmail: z.string().trim().email(),
+  customerName: z.string().trim().min(1).max(120),
+  description: z.string().trim().min(1).max(400),
+  amountCents: z.number().int().min(50).max(2_500_000),
+  dueInDays: z.number().int().min(1).max(90).default(30)
 });
 
 const STRIPE_ITEMIZED_BALANCE_PREFIX = 'balance_change_from_activity.itemized.';
@@ -230,6 +239,27 @@ async function waitForStripeReportRun(reportRunId: string): Promise<Stripe.Repor
     504,
     'Stripe is still preparing this report. Try again in a minute or use a shorter date range.'
   );
+}
+
+async function findOrCreateInvoiceCustomer(params: {
+  email: string;
+  name: string;
+}): Promise<Stripe.Customer> {
+  const existing = await stripe.customers.list({
+    email: params.email,
+    limit: 1
+  });
+  const customer = existing.data[0];
+  if (customer) {
+    if (customer.name !== params.name) {
+      return stripe.customers.update(customer.id, { name: params.name });
+    }
+    return customer;
+  }
+  return stripe.customers.create({
+    email: params.email,
+    name: params.name
+  });
 }
 
 function labelForPaymentMethod(order: {
@@ -716,6 +746,11 @@ async function renderFinanceReportPdf(data: FinanceReportData): Promise<Buffer> 
 }
 
 export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
+  const adminActor = (request: { adminUser?: { username: string; id: string } }) => ({
+    actor: request.adminUser?.username || 'admin',
+    actorAdminId: request.adminUser?.id || null
+  });
+
   app.get('/api/admin/finance/summary', { preHandler: app.authenticateAdmin }, async (request, reply) => {
     const parsed = financeQuerySchema.safeParse(request.query || {});
     if (!parsed.success) {
@@ -903,6 +938,80 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(statusCode).send({ error: err.message || 'Stripe reporting error' });
       }
       handleRouteError(reply, err, 'Failed to generate Stripe finance report');
+    }
+  });
+
+  app.post('/api/admin/finance/invoices/send', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
+    const parsed = sendInvoiceSchema.safeParse(request.body || {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+
+    try {
+      const customerEmail = parsed.data.customerEmail.trim().toLowerCase();
+      const customerName = parsed.data.customerName.trim();
+      const description = parsed.data.description.trim();
+
+      const customer = await findOrCreateInvoiceCustomer({
+        email: customerEmail,
+        name: customerName
+      });
+
+      const invoice = await stripe.invoices.create({
+        customer: customer.id,
+        collection_method: 'send_invoice',
+        days_until_due: parsed.data.dueInDays,
+        auto_advance: false,
+        description,
+        metadata: {
+          source: 'admin_finance_tab',
+          sentByAdminId: request.adminUser?.id || '',
+          sentByAdminUsername: request.adminUser?.username || ''
+        }
+      });
+
+      await stripe.invoiceItems.create({
+        customer: customer.id,
+        invoice: invoice.id,
+        currency: 'usd',
+        amount: parsed.data.amountCents,
+        description
+      });
+
+      await stripe.invoices.finalizeInvoice(invoice.id);
+      const sent = await stripe.invoices.sendInvoice(invoice.id);
+
+      await logAudit({
+        ...adminActor(request),
+        action: 'FINANCE_INVOICE_SENT',
+        entityType: 'Invoice',
+        entityId: sent.id,
+        metadata: {
+          customerId: customer.id,
+          customerEmail,
+          customerName,
+          amountCents: parsed.data.amountCents,
+          dueInDays: parsed.data.dueInDays,
+          description,
+          hostedInvoiceUrl: sent.hosted_invoice_url
+        }
+      });
+
+      reply.status(201).send({
+        invoiceId: sent.id,
+        invoiceNumber: sent.number || null,
+        customerId: customer.id,
+        customerEmail,
+        amountDueCents: sent.amount_due,
+        status: sent.status,
+        hostedInvoiceUrl: sent.hosted_invoice_url || null
+      });
+    } catch (err) {
+      if (err instanceof Stripe.errors.StripeError) {
+        const statusCode = err.type === 'StripeInvalidRequestError' ? 400 : 502;
+        return reply.status(statusCode).send({ error: err.message || 'Stripe invoice send failed' });
+      }
+      handleRouteError(reply, err, 'Failed to send invoice');
     }
   });
 };

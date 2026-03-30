@@ -362,7 +362,7 @@ export default function Fundraising() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 12, scale: 0.97 }}
                 transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-                className="relative w-full max-w-md rounded-3xl border border-red-100 bg-white/95 p-7 text-center shadow-2xl"
+                className="relative w-full max-w-md rounded-3xl border border-red-100 bg-white/95 p-7 text-center shadow-2xl max-sm:rounded-2xl max-sm:p-5"
               >
                 <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-red-700">
                   <Heart className="donation-heart-icon h-7 w-7 fill-current" />
@@ -387,7 +387,7 @@ export default function Fundraising() {
         </AnimatePresence>
 
         {/* ── HERO ── */}
-        <section className="border-b border-stone-100 bg-stone-50 pb-16 pt-14 sm:pt-20">
+        <section className="border-b border-stone-100 bg-stone-50 pb-16 pt-14 sm:pt-20 max-sm:pb-12 max-sm:pt-10">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 
             {/* Eyebrow */}
@@ -410,7 +410,7 @@ export default function Fundraising() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.45, delay: 0.05 }}
-                className="serif text-5xl font-bold tracking-tight text-stone-900 sm:text-6xl lg:text-7xl"
+                className="serif text-5xl font-bold tracking-tight text-stone-900 sm:text-6xl lg:text-7xl max-sm:text-4xl max-sm:leading-tight"
               >
                 Support<br />
                 <em className="text-red-800 not-italic">the Stage</em>
@@ -419,7 +419,7 @@ export default function Fundraising() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.45, delay: 0.15 }}
-                className="max-w-sm text-sm leading-relaxed text-stone-500 sm:text-right sm:text-base"
+                className="max-w-sm text-sm leading-relaxed text-stone-500 sm:text-right sm:text-base max-sm:max-w-none"
               >
                 Discover upcoming events, then contribute through donations or sponsorships to directly power student theater at Penncrest.
               </motion.p>
@@ -436,8 +436,7 @@ export default function Fundraising() {
                 {/* Featured */}
                 <Link
                   to={featuredEvent.linkHref}
-                  className="group relative overflow-hidden rounded-3xl lg:col-span-7"
-                  style={{ minHeight: 420 }}
+                  className="group relative min-h-[320px] overflow-hidden rounded-3xl sm:min-h-[420px] lg:col-span-7"
                 >
                   <img
                     src={featuredEvent.imageUrl}
@@ -445,14 +444,14 @@ export default function Fundraising() {
                     className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-                  <div className="absolute bottom-0 p-7 sm:p-8">
+                  <div className="absolute bottom-0 p-7 sm:p-8 max-sm:p-5">
                     <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur-sm">
                       <CalendarDays className="h-3 w-3 text-amber-300" />
                       <span className="text-xs font-semibold text-amber-200">
                         {featuredEvent.dateLabel} · {featuredEvent.timeLabel}
                       </span>
                     </div>
-                    <h2 className="serif text-3xl font-bold text-white sm:text-4xl">{featuredEvent.title}</h2>
+                    <h2 className="serif text-3xl font-bold text-white sm:text-4xl max-sm:text-2xl">{featuredEvent.title}</h2>
                     <p className="mt-2 max-w-lg text-sm text-stone-300">{featuredEvent.summary}</p>
                     {featuredEvent.location && <p className="mt-1 text-xs text-stone-400">{featuredEvent.location}</p>}
                     <div className="mt-5 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-stone-900 transition group-hover:bg-stone-100">
@@ -473,7 +472,7 @@ export default function Fundraising() {
                       transition={{ duration: 0.4, delay: i * 0.1 }}
                       className="flex-1"
                     >
-                      <Link to={event.linkHref} className="group relative flex h-full min-h-[190px] overflow-hidden rounded-3xl">
+                      <Link to={event.linkHref} className="group relative flex h-full min-h-[190px] overflow-hidden rounded-3xl max-sm:min-h-[170px]">
                         <img src={event.imageUrl} alt={event.title} className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
                         <div className="absolute bottom-0 p-5">
@@ -493,7 +492,7 @@ export default function Fundraising() {
         {/* ── SPONSOR TICKER ── */}
         {displayedSponsors.length > 0 && (
           <div className="border-y border-stone-100 bg-white py-4">
-            <div className="mx-auto flex max-w-7xl items-center gap-5 overflow-x-auto px-4 sm:px-6 lg:px-8 no-scrollbar">
+            <div className="mx-auto flex max-w-7xl items-center gap-5 overflow-x-auto px-4 sm:px-6 lg:px-8 no-scrollbar max-sm:gap-3 max-sm:px-3">
               <div className="flex flex-none items-center gap-2">
                 <Star className="h-3.5 w-3.5 text-amber-500" />
                 <span className="text-xs font-semibold uppercase tracking-[0.15em] text-stone-500 whitespace-nowrap">
@@ -517,7 +516,7 @@ export default function Fundraising() {
         )}
 
         {/* ── GET INVOLVED ── */}
-        <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+        <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 max-sm:py-12">
 
           {/* Section heading */}
           <div className="mb-10 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -526,11 +525,11 @@ export default function Fundraising() {
               <h2 className="serif mt-1.5 text-3xl font-bold text-stone-900 sm:text-4xl">Make an Impact</h2>
             </div>
             {/* Tab switcher */}
-            <div className="inline-flex self-start rounded-2xl border border-stone-200 bg-stone-50 p-1 sm:self-auto">
+            <div className="inline-flex self-start rounded-2xl border border-stone-200 bg-stone-50 p-1 sm:self-auto max-sm:w-full">
               <button
                 type="button"
                 onClick={() => setActiveTab('donation')}
-                className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition ${
+                className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition max-sm:flex-1 max-sm:justify-center max-sm:px-3 ${
                   activeTab === 'donation'
                     ? 'bg-red-700 text-white shadow-sm'
                     : 'text-stone-500 hover:text-stone-800'
@@ -542,7 +541,7 @@ export default function Fundraising() {
               <button
                 type="button"
                 onClick={() => setActiveTab('sponsor')}
-                className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition ${
+                className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition max-sm:flex-1 max-sm:justify-center max-sm:px-3 ${
                   activeTab === 'sponsor'
                     ? 'bg-red-700 text-white shadow-sm'
                     : 'text-stone-500 hover:text-stone-800'
@@ -565,8 +564,8 @@ export default function Fundraising() {
 
                 {/* Donation form — left col */}
                 <div className="lg:col-span-3">
-                  <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
-                    <div className="mb-6 flex items-center justify-between">
+                  <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8 max-sm:p-5">
+                    <div className="mb-6 flex items-center justify-between max-sm:flex-col max-sm:items-start max-sm:gap-3">
                       <div>
                         <h3 className="serif text-xl font-bold text-stone-900">Leave a Donation</h3>
                         <p className="mt-1 text-sm text-stone-500">Every gift helps students grow in confidence on stage.</p>
@@ -629,7 +628,7 @@ export default function Fundraising() {
                     </div>
 
                     {/* Custom amount */}
-                    <div className="mt-3 flex gap-2">
+                    <div className="mt-3 flex gap-2 max-sm:flex-col">
                       <div className="relative flex-1">
                         <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-stone-400">$</span>
                         <input
@@ -645,7 +644,7 @@ export default function Fundraising() {
                       <button
                         type="button"
                         onClick={applyCustomDonationAmount}
-                        className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:border-red-700 hover:bg-red-50 hover:text-red-700"
+                        className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:border-red-700 hover:bg-red-50 hover:text-red-700 max-sm:w-full"
                       >
                         Apply
                       </button>
@@ -745,7 +744,7 @@ export default function Fundraising() {
                   </div>
                   <a
                     href="mailto:jsmith3@rtmsd.org?subject=Penncrest%20Theater%20Sponsorship"
-                    className={PRIMARY_BUTTON_CLASS}
+                    className={`${PRIMARY_BUTTON_CLASS} max-sm:w-full`}
                   >
                     <Mail className="h-4 w-4" />
                     Request Sponsor Packet
@@ -825,7 +824,7 @@ export default function Fundraising() {
                 {featuredEvent && (
                   <Link
                     to={featuredEvent.linkHref}
-                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-red-700 transition hover:text-red-900"
+                    className="hidden items-center gap-1.5 text-sm font-semibold text-red-700 transition hover:text-red-900 sm:inline-flex"
                   >
                     {featuredEvent.ctaLabel}
                     <ArrowRight className="h-3.5 w-3.5" />
