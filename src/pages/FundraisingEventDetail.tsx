@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, CalendarDays, Clock3, MapPin, Settings, Target, Ticket } from 'lucide-react';
+import { motion } from 'motion/react';
+import { ArrowLeft, ArrowRight, CalendarDays, Clock3, MapPin, Settings, Target, Ticket } from 'lucide-react';
 import { getFundraisingEventBySlug, fundraisingEvents, fundraisingSponsors } from '../lib/fundraisingContent';
 import { apiFetch } from '../lib/api';
 
@@ -57,10 +58,7 @@ type RelatedEvent = {
 
 function formatEventDate(iso: string): { dateLabel: string; timeLabel: string } {
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) {
-    return { dateLabel: 'TBD', timeLabel: 'TBD' };
-  }
-
+  if (Number.isNaN(date.getTime())) return { dateLabel: 'TBD', timeLabel: 'TBD' };
   return {
     dateLabel: date.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }),
     timeLabel: date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
@@ -73,7 +71,7 @@ function formatUsd(cents: number): string {
 
 function formatPriceLabel(minPrice: number, maxPrice: number): string {
   if (minPrice <= 0 && maxPrice <= 0) return 'Free';
-  if (maxPrice > minPrice) return `${formatUsd(minPrice)} - ${formatUsd(maxPrice)}`;
+  if (maxPrice > minPrice) return `${formatUsd(minPrice)} – ${formatUsd(maxPrice)}`;
   return formatUsd(Math.max(minPrice, maxPrice));
 }
 
@@ -88,82 +86,48 @@ export default function FundraisingEventDetail() {
 
   useEffect(() => {
     apiFetch<LiveFundraisingSponsor[]>('/api/fundraising/sponsors')
-      .then((items) => {
-        if (Array.isArray(items)) {
-          setLiveSponsors(items);
-          setSponsorLoadFailed(false);
-        }
-      })
-      .catch(() => {
-        setLiveSponsors([]);
-        setSponsorLoadFailed(true);
-      });
+      .then((items) => { if (Array.isArray(items)) { setLiveSponsors(items); setSponsorLoadFailed(false); } })
+      .catch(() => { setLiveSponsors([]); setSponsorLoadFailed(true); });
   }, []);
 
   useEffect(() => {
     setLiveEventsLoading(true);
     apiFetch<LiveFundraisingEvent[]>('/api/fundraising/events')
-      .then((items) => {
-        if (Array.isArray(items)) {
-          setLiveEvents(items);
-          setLiveEventsLoadFailed(false);
-        }
-      })
-      .catch(() => {
-        setLiveEvents([]);
-        setLiveEventsLoadFailed(true);
-      })
-      .finally(() => {
-        setLiveEventsLoading(false);
-      });
+      .then((items) => { if (Array.isArray(items)) { setLiveEvents(items); setLiveEventsLoadFailed(false); } })
+      .catch(() => { setLiveEvents([]); setLiveEventsLoadFailed(true); })
+      .finally(() => setLiveEventsLoading(false));
   }, []);
 
-  const liveEvent = useMemo(() => {
-    if (!slug) return undefined;
-    return liveEvents.find((event) => event.id === slug);
-  }, [liveEvents, slug]);
+  const liveEvent = useMemo(
+    () => (slug ? liveEvents.find((e) => e.id === slug) : undefined),
+    [liveEvents, slug]
+  );
 
   const event = useMemo<DetailEvent | null>(() => {
     if (staticEvent) {
       return {
-        id: staticEvent.id,
-        title: staticEvent.title,
-        dateLabel: staticEvent.dateLabel,
-        timeLabel: staticEvent.timeLabel,
-        location: staticEvent.location,
-        heroImageUrl: staticEvent.heroImageUrl,
-        summary: staticEvent.summary,
-        longDescription: staticEvent.longDescription,
-        goalLabel: staticEvent.goalLabel,
-        details: staticEvent.details,
-        linkHref: `/fundraising/events/${staticEvent.slug}`,
-        source: 'static'
+        id: staticEvent.id, title: staticEvent.title, dateLabel: staticEvent.dateLabel,
+        timeLabel: staticEvent.timeLabel, location: staticEvent.location,
+        heroImageUrl: staticEvent.heroImageUrl, summary: staticEvent.summary,
+        longDescription: staticEvent.longDescription, goalLabel: staticEvent.goalLabel,
+        details: staticEvent.details, linkHref: `/fundraising/events/${staticEvent.slug}`, source: 'static'
       };
     }
-
     if (liveEvent) {
       const { dateLabel, timeLabel } = formatEventDate(liveEvent.startsAt);
-      const seatModeLabel = liveEvent.seatSelectionEnabled ? 'Reserved Seating' : 'General Admission';
       const priceLabel = formatPriceLabel(liveEvent.minPrice, liveEvent.maxPrice);
       const salesCutoffLine = liveEvent.salesCutoffAt
         ? `Online sales close: ${formatEventDate(liveEvent.salesCutoffAt).dateLabel} at ${formatEventDate(liveEvent.salesCutoffAt).timeLabel}`
         : null;
-
       return {
-        id: liveEvent.id,
-        title: liveEvent.title,
-        dateLabel,
-        timeLabel,
+        id: liveEvent.id, title: liveEvent.title, dateLabel, timeLabel,
         location: liveEvent.venue,
         heroImageUrl: liveEvent.posterUrl || 'https://picsum.photos/id/1043/1600/900',
         summary: liveEvent.description || liveEvent.notes || 'This fundraiser supports Penncrest Theater students and production programs.',
-        longDescription:
-          liveEvent.notes ||
-          liveEvent.description ||
-          'Join this fundraising event to support student performers, technicians, and theater programs all season long.',
+        longDescription: liveEvent.notes || liveEvent.description || 'Join this fundraising event to support student performers, technicians, and theater programs all season long.',
         goalLabel: liveEvent.salesOpen ? `Tickets ${priceLabel}` : 'Sales Closed',
         details: [
-          `Ticketing: ${seatModeLabel}`,
+          `Ticketing: ${liveEvent.seatSelectionEnabled ? 'Reserved Seating' : 'General Admission'}`,
           `Available tickets: ${liveEvent.availableTickets}`,
           `Price: ${priceLabel}`,
           salesCutoffLine
@@ -174,7 +138,6 @@ export default function FundraisingEventDetail() {
         source: 'live'
       };
     }
-
     return null;
   }, [liveEvent, staticEvent]);
 
@@ -185,232 +148,371 @@ export default function FundraisingEventDetail() {
 
   const relatedEvents = useMemo<RelatedEvent[]>(() => {
     if (!event) return [];
-
     if (event.source === 'live') {
-      return liveEvents
-        .filter((item) => item.id !== event.id)
-        .slice(0, 4)
-        .map((item) => ({
-          id: item.id,
-          title: item.title,
-          imageUrl: item.posterUrl || 'https://picsum.photos/id/1074/1200/800',
-          dateLabel: formatEventDate(item.startsAt).dateLabel,
-          linkHref: `/fundraising/events/${item.id}`
-        }));
-    }
-
-    return fundraisingEvents
-      .filter((item) => item.id !== event.id)
-      .slice(0, 4)
-      .map((item) => ({
-        id: item.id,
-        title: item.title,
-        imageUrl: item.heroImageUrl,
-        dateLabel: item.dateLabel,
-        linkHref: `/fundraising/events/${item.slug}`
+      return liveEvents.filter((item) => item.id !== event.id).slice(0, 4).map((item) => ({
+        id: item.id, title: item.title,
+        imageUrl: item.posterUrl || 'https://picsum.photos/id/1074/1200/800',
+        dateLabel: formatEventDate(item.startsAt).dateLabel,
+        linkHref: `/fundraising/events/${item.id}`
       }));
+    }
+    return fundraisingEvents.filter((item) => item.id !== event.id).slice(0, 4).map((item) => ({
+      id: item.id, title: item.title, imageUrl: item.heroImageUrl,
+      dateLabel: item.dateLabel, linkHref: `/fundraising/events/${item.slug}`
+    }));
   }, [event, liveEvents]);
 
+  const styles = `
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=DM+Sans:wght@300;400;500;600&display=swap');
+    .fund-detail { font-family: 'DM Sans', sans-serif; }
+    .serif { font-family: 'Playfair Display', Georgia, serif; }
+    .primary-btn {
+      background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%);
+      box-shadow: 0 4px 14px rgba(185,28,28,0.28);
+      transition: all 0.15s;
+    }
+    .primary-btn:hover {
+      background: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%);
+      box-shadow: 0 6px 20px rgba(185,28,28,0.38);
+      transform: translateY(-1px);
+    }
+    .detail-pill {
+      display: flex; align-items: flex-start; gap: 12px;
+      border-radius: 14px; border: 1.5px solid #f3f4f6;
+      background: white; padding: 14px 16px;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .detail-pill:hover { border-color: #e5e7eb; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .tier-gold { background: linear-gradient(135deg,#fbbf24,#f59e0b); color: #78350f; }
+    .tier-silver { background: linear-gradient(135deg,#e5e7eb,#d1d5db); color: #374151; }
+    .tier-bronze { background: linear-gradient(135deg,#fb923c,#ea580c); color: #fff7ed; }
+    .related-card img { transition: transform 0.5s ease; }
+    .related-card:hover img { transform: scale(1.04); }
+  `;
+
+  // ── Loading state ──
   if (!staticEvent && liveEventsLoading && !liveEventsLoadFailed) {
     return (
-      <section className="mx-auto max-w-4xl px-4 py-20 text-center sm:px-6 lg:px-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-red-700">Fundraising Event</p>
-        <h1 className="mt-2 text-4xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
-          Loading Event Details
-        </h1>
-        <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-stone-600">
-          Retrieving the latest fundraiser information...
-        </p>
-      </section>
+      <>
+        <style>{styles}</style>
+        <div className="fund-detail flex min-h-[60vh] items-center justify-center bg-white">
+          <div className="text-center">
+            <div className="mx-auto mb-5 h-10 w-10 animate-spin rounded-full border-2 border-zinc-200 border-t-red-700" />
+            <p className="serif text-2xl font-bold text-zinc-900">Loading Event</p>
+            <p className="mt-2 text-sm text-zinc-500">Retrieving the latest details…</p>
+          </div>
+        </div>
+      </>
     );
   }
 
+  // ── Not found state ──
   if (!event) {
     return (
-      <section className="mx-auto max-w-4xl px-4 py-20 text-center sm:px-6 lg:px-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-red-700">Fundraising Event</p>
-        <h1 className="mt-2 text-4xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
-          Event Not Found
-        </h1>
-        <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-stone-600">
-          This fundraising event page is not available yet. You can return to fundraising or manage events from the admin portal.
-        </p>
-        <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
-          <Link
-            to="/fundraising"
-            className="inline-flex items-center gap-2 rounded-full bg-red-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-800"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Fundraising
-          </Link>
-          <Link
-            to="/admin/fundraise"
-            className="inline-flex items-center gap-2 rounded-full border border-stone-300 bg-white px-5 py-2.5 text-sm font-semibold text-stone-700 transition-colors hover:border-stone-400"
-          >
-            <Settings className="h-4 w-4" />
-            Admin Portal
-          </Link>
+      <>
+        <style>{styles}</style>
+        <div className="fund-detail flex min-h-[60vh] items-center justify-center bg-white px-4">
+          <div className="max-w-md text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-800">Fundraising</p>
+            <h1 className="serif mt-3 text-4xl font-bold text-zinc-900">Event Not Found</h1>
+            <p className="mx-auto mt-4 text-sm leading-relaxed text-zinc-500">
+              This fundraising event isn't available yet. Return to fundraising or open the admin portal to manage events.
+            </p>
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+              <Link
+                to="/fundraising"
+                className="primary-btn inline-flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-semibold text-white"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to Fundraising
+              </Link>
+              <Link
+                to="/admin/fundraise"
+                className="inline-flex items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-5 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-zinc-300 hover:shadow-sm"
+              >
+                <Settings className="h-4 w-4" />
+                Admin Portal
+              </Link>
+            </div>
+          </div>
         </div>
-      </section>
+      </>
     );
   }
 
   return (
-    <div className="bg-white text-stone-900">
-      <section className="relative overflow-hidden border-b border-stone-200">
-        <img src={event.heroImageUrl} alt={event.title} className="h-[52vh] min-h-[360px] w-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/35 to-black/10" />
-        <div className="absolute inset-x-0 bottom-0 mx-auto max-w-7xl px-4 pb-9 sm:px-6 lg:px-8">
-          <div className="mb-4 flex flex-wrap gap-2">
-            <Link
-              to="/fundraising"
-              className="inline-flex items-center gap-2 rounded-full border border-white/35 bg-black/20 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-black/35"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Back to Fundraising
-            </Link>
-            <Link
-              to="/admin/fundraise"
-              className="inline-flex items-center gap-2 rounded-full border border-white/35 bg-black/20 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-black/35"
-            >
-              <Settings className="h-3.5 w-3.5" />
-              Admin Portal
-            </Link>
-            {event.bookingHref && event.salesOpen !== false ? (
-              <Link
-                to={event.bookingHref}
-                className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-stone-900 transition-colors hover:bg-stone-100"
-              >
-                <Ticket className="h-3.5 w-3.5" />
-                Buy Tickets
-              </Link>
-            ) : null}
+    <>
+      <style>{styles}</style>
+      <div className="fund-detail bg-white text-zinc-900">
+
+        {/* ── HERO ── */}
+        <section className="relative overflow-hidden">
+          <div className="relative h-[58vh] min-h-[400px]">
+            <img
+              src={event.heroImageUrl}
+              alt={event.title}
+              className="h-full w-full object-cover"
+            />
+            {/* Multi-layer gradient for legibility */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-black/10" />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/30 to-transparent" />
           </div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-200">{event.goalLabel}</p>
-          <h1 className="mt-2 text-4xl font-bold text-white sm:text-5xl" style={{ fontFamily: 'Georgia, serif' }}>
-            {event.title}
-          </h1>
-          <p className="mt-3 max-w-3xl text-sm leading-relaxed text-stone-200 sm:text-base">{event.longDescription}</p>
-        </div>
-      </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-          <InfoCard icon={<CalendarDays className="h-4 w-4 text-red-700" />} label="Date" value={event.dateLabel} />
-          <InfoCard icon={<Clock3 className="h-4 w-4 text-red-700" />} label="Time" value={event.timeLabel} />
-          <InfoCard icon={<MapPin className="h-4 w-4 text-red-700" />} label="Location" value={event.location} />
-          <InfoCard icon={<Target className="h-4 w-4 text-red-700" />} label="Event Focus" value={event.goalLabel} />
-        </div>
-
-        <div className="mt-10 grid grid-cols-1 gap-8 lg:grid-cols-5">
-          <article className="lg:col-span-3 rounded-2xl border border-stone-200 bg-stone-50 p-6">
-            <h2 className="text-2xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
-              Event Overview
-            </h2>
-            <p className="mt-3 text-sm leading-relaxed text-stone-600">{event.summary}</p>
-            <ul className="mt-5 space-y-2">
-              {event.details.map((detail) => (
-                <li key={detail} className="rounded-lg bg-white px-4 py-3 text-sm text-stone-700">
-                  {detail}
-                </li>
-              ))}
-            </ul>
-          </article>
-
-          <aside className="lg:col-span-2 rounded-2xl border border-stone-200 bg-white p-6">
-            <h2 className="text-xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
-              Sponsor Spotlight
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-stone-600">
-              Local partners help fund the student experience behind every production.
-            </p>
-            <div className="mt-4 space-y-3">
-              {featuredSponsors.map((sponsor) => (
-                <a
-                  key={sponsor.id}
-                  href={sponsor.websiteUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block rounded-xl border border-stone-200 p-3 transition-colors hover:border-stone-300"
-                >
-                  <img src={sponsor.logoUrl} alt={sponsor.name} className="h-9 w-auto object-contain" />
-                  <p className="mt-2 text-xs uppercase tracking-[0.13em] text-red-700">{sponsor.tier} Sponsor</p>
-                </a>
-              ))}
-            </div>
-
-            {event.bookingHref ? (
-              <div className="mt-6 rounded-xl border border-stone-200 bg-stone-50 p-4">
-                {event.salesOpen !== false ? (
-                  <Link
-                    to={event.bookingHref}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-800"
-                  >
-                    <Ticket className="h-4 w-4" />
-                    Continue to Tickets
-                  </Link>
-                ) : (
-                  <div className="rounded-xl bg-stone-200 px-4 py-2.5 text-center text-sm font-semibold text-stone-600">
-                    Online sales are closed for this event
-                  </div>
-                )}
+          {/* Hero content */}
+          <div className="absolute inset-x-0 bottom-0 mx-auto max-w-7xl px-4 pb-10 sm:px-6 lg:px-8">
+            {/* Nav pills */}
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+              className="mb-6 flex flex-wrap gap-2"
+            >
+              <Link
+                to="/fundraising"
+                className="inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-black/25 px-4 py-2 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-black/40"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Fundraising
+              </Link>
+              <Link
+                to="/admin/fundraise"
+                className="inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-black/25 px-4 py-2 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-black/40"
+              >
+                <Settings className="h-3.5 w-3.5" />
+                Admin
+              </Link>
+              {event.bookingHref && event.salesOpen !== false && (
                 <Link
-                  to="/admin/fundraise"
-                  className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 transition-colors hover:border-stone-400"
+                  to={event.bookingHref}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-xs font-semibold text-zinc-900 transition hover:bg-zinc-100"
                 >
-                  <Settings className="h-4 w-4" />
-                  Open In Admin Portal
+                  <Ticket className="h-3.5 w-3.5 text-red-700" />
+                  Buy Tickets
                 </Link>
+              )}
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.1 }}
+            >
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur-sm">
+                <CalendarDays className="h-3 w-3 text-amber-300" />
+                <span className="text-xs font-semibold text-amber-200">{event.goalLabel}</span>
               </div>
-            ) : null}
-          </aside>
-        </div>
-      </section>
-
-      {relatedEvents.length > 0 ? (
-        <section className="border-t border-stone-200 bg-stone-50 py-12">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <h2 className="text-2xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
-              More Fundraising Events
-            </h2>
-            <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
-              {relatedEvents.map((related) => (
-                <Link
-                  key={related.id}
-                  to={related.linkHref}
-                  className="overflow-hidden rounded-2xl border border-stone-200 bg-white transition-shadow hover:shadow-md"
-                >
-                  <img src={related.imageUrl} alt={related.title} className="h-44 w-full object-cover" />
-                  <div className="p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-red-700">{related.dateLabel}</p>
-                    <h3 className="mt-1 text-xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
-                      {related.title}
-                    </h3>
-                  </div>
-                </Link>
-              ))}
-            </div>
+              <h1 className="serif max-w-3xl text-4xl font-bold text-white sm:text-5xl lg:text-6xl">
+                {event.title}
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-zinc-300 sm:text-base">
+                {event.longDescription}
+              </p>
+            </motion.div>
           </div>
         </section>
-      ) : null}
 
-      {event.source === 'live' && liveEventsLoadFailed ? (
-        <div className="mx-auto max-w-7xl px-4 pb-10 text-xs text-stone-500 sm:px-6 lg:px-8">
-          Live event details could not be refreshed right now.
+        {/* ── META STRIP ── */}
+        <div className="border-b border-zinc-100 bg-zinc-50/70">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.2 }}
+              className="grid grid-cols-2 divide-x divide-zinc-100 md:grid-cols-4"
+            >
+              <MetaCell icon={<CalendarDays className="h-4 w-4 text-red-700" />} label="Date" value={event.dateLabel} />
+              <MetaCell icon={<Clock3 className="h-4 w-4 text-red-700" />} label="Time" value={event.timeLabel} />
+              <MetaCell icon={<MapPin className="h-4 w-4 text-red-700" />} label="Location" value={event.location} />
+              <MetaCell icon={<Target className="h-4 w-4 text-red-700" />} label="Focus" value={event.goalLabel} />
+            </motion.div>
+          </div>
         </div>
-      ) : null}
+
+        {/* ── BODY ── */}
+        <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
+
+            {/* Main content */}
+            <motion.article
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.25 }}
+              className="lg:col-span-3 space-y-6"
+            >
+              {/* Overview */}
+              <div className="rounded-3xl border border-zinc-200 bg-white p-7">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-800">Event Overview</p>
+                <h2 className="serif mt-2 text-2xl font-bold text-zinc-900">About This Event</h2>
+                <p className="mt-3 text-sm leading-relaxed text-zinc-600">{event.summary}</p>
+
+                {event.details.length > 0 && (
+                  <div className="mt-6 space-y-2">
+                    {event.details.map((detail) => (
+                      <div key={detail} className="detail-pill">
+                        <div className="mt-0.5 h-1.5 w-1.5 flex-none rounded-full bg-red-700" />
+                        <span className="text-sm text-zinc-700">{detail}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* CTA for mobile — shown before sidebar on small screens */}
+              {event.bookingHref && (
+                <div className="rounded-3xl border border-zinc-200 bg-white p-6 lg:hidden">
+                  <TicketCta event={event} />
+                </div>
+              )}
+            </motion.article>
+
+            {/* Sidebar */}
+            <motion.aside
+              initial={{ opacity: 0, x: 12 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.4, delay: 0.3 }}
+              className="lg:col-span-2 space-y-5"
+            >
+              {/* Ticket CTA — desktop */}
+              {event.bookingHref && (
+                <div className="hidden rounded-3xl border border-zinc-200 bg-white p-6 lg:block">
+                  <TicketCta event={event} />
+                </div>
+              )}
+
+              {/* Sponsors */}
+              {featuredSponsors.length > 0 && (
+                <div className="rounded-3xl border border-zinc-200 bg-white p-6">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">Sponsor Spotlight</p>
+                  <h3 className="serif mt-1.5 text-lg font-bold text-zinc-900">Our Partners</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                    Local partners help fund the student experience behind every production.
+                  </p>
+                  <div className="mt-5 space-y-3">
+                    {featuredSponsors.map((sponsor) => (
+                      <a
+                        key={sponsor.id}
+                        href={sponsor.websiteUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-3 rounded-2xl border border-zinc-100 p-3 transition hover:border-zinc-200 hover:shadow-sm"
+                      >
+                        <img src={sponsor.logoUrl} alt={sponsor.name} className="h-8 w-auto object-contain opacity-80" />
+                        <span className={`ml-auto rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                          sponsor.tier === 'Gold' ? 'tier-gold'
+                          : sponsor.tier === 'Silver' ? 'tier-silver'
+                          : 'tier-bronze'
+                        }`}>
+                          {sponsor.tier}
+                        </span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </motion.aside>
+          </div>
+        </section>
+
+        {/* ── RELATED EVENTS ── */}
+        {relatedEvents.length > 0 && (
+          <section className="border-t border-zinc-100 bg-zinc-50/60 py-14">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+              <div className="mb-7 flex items-end justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-800">Keep Exploring</p>
+                  <h2 className="serif mt-1.5 text-2xl font-bold text-zinc-900 sm:text-3xl">More Events</h2>
+                </div>
+                <Link
+                  to="/fundraising"
+                  className="hidden items-center gap-1.5 text-sm font-semibold text-red-700 transition hover:text-red-900 sm:inline-flex"
+                >
+                  All Events
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {relatedEvents.map((related, i) => (
+                  <motion.div
+                    key={related.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.35, delay: i * 0.07 }}
+                  >
+                    <Link
+                      to={related.linkHref}
+                      className="related-card group block overflow-hidden rounded-2xl border border-zinc-200 bg-white transition hover:shadow-md"
+                    >
+                      <div className="overflow-hidden">
+                        <img src={related.imageUrl} alt={related.title} className="h-44 w-full object-cover" />
+                      </div>
+                      <div className="p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.13em] text-red-700">{related.dateLabel}</p>
+                        <h3 className="serif mt-1 text-lg font-bold text-zinc-900">{related.title}</h3>
+                        <div className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-zinc-400 transition group-hover:text-red-700">
+                          View Event
+                          <ArrowRight className="h-3 w-3" />
+                        </div>
+                      </div>
+                    </Link>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {event.source === 'live' && liveEventsLoadFailed && (
+          <p className="mx-auto max-w-7xl px-4 pb-8 text-xs text-zinc-400 sm:px-6 lg:px-8">
+            Live event details could not be refreshed right now.
+          </p>
+        )}
+      </div>
+    </>
+  );
+}
+
+/* ── Sub-components ── */
+
+function MetaCell({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-1.5 px-5 py-5 first:pl-0 last:pr-0">
+      <div className="flex items-center gap-1.5">
+        {icon}
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">{label}</span>
+      </div>
+      <p className="text-sm font-semibold text-zinc-800">{value}</p>
     </div>
   );
 }
 
-function InfoCard({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+function TicketCta({ event }: { event: DetailEvent }) {
   return (
-    <article className="rounded-xl border border-stone-200 bg-white p-4">
-      <p className="mb-2 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
-        {icon}
-        {label}
-      </p>
-      <p className="text-sm font-semibold text-stone-900">{value}</p>
-    </article>
+    <div className="space-y-3">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">Tickets</p>
+        <p className="serif mt-1 text-lg font-bold text-zinc-900">{event.goalLabel}</p>
+      </div>
+      {event.salesOpen !== false ? (
+        <Link
+          to={event.bookingHref!}
+          className="primary-btn inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-bold text-white"
+        >
+          <Ticket className="h-4 w-4" />
+          Continue to Tickets
+        </Link>
+      ) : (
+        <div className="rounded-2xl bg-zinc-100 px-4 py-3.5 text-center text-sm font-semibold text-zinc-500">
+          Online sales are closed
+        </div>
+      )}
+      <Link
+        to="/admin/fundraise"
+        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-semibold text-zinc-600 transition hover:border-zinc-300 hover:bg-white"
+      >
+        <Settings className="h-4 w-4" />
+        Open in Admin Portal
+      </Link>
+    </div>
   );
 }

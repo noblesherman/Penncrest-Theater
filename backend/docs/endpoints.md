@@ -117,7 +117,9 @@ Response:
 Request:
 ```json
 {
-  "amountCents": 1000
+  "amountCents": 1000,
+  "donorName": "Jamie Rivera",
+  "donorEmail": "jamie@example.com"
 }
 ```
 Response:
@@ -130,6 +132,9 @@ Response:
   "currency": "usd"
 }
 ```
+Notes:
+- `donorEmail` is sent to Stripe as `receipt_email` for payment receipts.
+- Successful donations trigger a thank-you email (SMTP must be configured).
 
 ### `POST /api/webhooks/stripe`
 Stripe sends events to this endpoint with raw body signature verification.

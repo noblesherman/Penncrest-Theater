@@ -12,7 +12,9 @@ import {
   Mail,
   Megaphone,
   Sparkles,
-  Users
+  Users,
+  ArrowRight,
+  Star
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
@@ -85,21 +87,16 @@ function formatUsd(cents: number): string {
 function parseDonationInputToCents(value: string): number | null {
   const normalized = value.replace(/[^\d.]/g, '').trim();
   if (!normalized) return null;
-
   const amount = Number(normalized);
   if (!Number.isFinite(amount) || amount <= 0) return null;
-
   const cents = Math.round(amount * 100);
   if (cents < 100) return null;
-
   return cents;
 }
 
 function formatEventDate(iso: string): { dateLabel: string; timeLabel: string } {
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) {
-    return { dateLabel: 'TBD', timeLabel: 'TBD' };
-  }
+  if (Number.isNaN(date.getTime())) return { dateLabel: 'TBD', timeLabel: 'TBD' };
   return {
     dateLabel: date.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }),
     timeLabel: date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
@@ -107,13 +104,10 @@ function formatEventDate(iso: string): { dateLabel: string; timeLabel: string } 
 }
 
 function DonationPaymentForm({
-  amountCents,
-  onSuccess,
-  onError
+  amountCents, donorName, donorEmail, onSuccess, onError
 }: {
-  amountCents: number;
-  onSuccess: () => void;
-  onError: (message: string | null) => void;
+  amountCents: number; donorName: string; donorEmail: string;
+  onSuccess: () => void; onError: (message: string | null) => void;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -122,42 +116,29 @@ function DonationPaymentForm({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     onError(null);
-
-    if (!stripe || !elements) {
-      onError('Payment form is still loading. Please try again.');
-      return;
-    }
-
+    if (!stripe || !elements) { onError('Payment form is still loading. Please try again.'); return; }
     setSubmitting(true);
     const result = await stripe.confirmPayment({
       elements,
+      confirmParams: { payment_method_data: { billing_details: { name: donorName, email: donorEmail } } },
       redirect: 'if_required'
     });
     setSubmitting(false);
-
-    if (result.error) {
-      onError(result.error.message || 'Payment could not be completed.');
-      return;
-    }
-
+    if (result.error) { onError(result.error.message || 'Payment could not be completed.'); return; }
     const status = result.paymentIntent?.status;
-    if (status === 'succeeded' || status === 'processing' || status === 'requires_capture') {
-      onSuccess();
-      return;
-    }
-
+    if (status === 'succeeded' || status === 'processing' || status === 'requires_capture') { onSuccess(); return; }
     onError(`Payment did not complete. Current status: ${status || 'unknown'}.`);
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="rounded-xl border border-stone-200 bg-white p-3 sm:p-4">
+      <div className="rounded-2xl border border-zinc-200 bg-white p-4">
         <PaymentElement />
       </div>
       <button
         type="submit"
         disabled={submitting || !stripe || !elements}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+        className="donate-btn inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-bold text-white transition-all disabled:cursor-not-allowed disabled:opacity-60"
       >
         {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
         Donate {formatUsd(amountCents)}
@@ -173,6 +154,8 @@ export default function Fundraising() {
   const [liveSponsors, setLiveSponsors] = useState<LiveFundraisingSponsor[]>([]);
   const [sponsorLoadFailed, setSponsorLoadFailed] = useState(false);
   const [selectedDonationAmountCents, setSelectedDonationAmountCents] = useState<number | null>(null);
+  const [donorName, setDonorName] = useState('');
+  const [donorEmail, setDonorEmail] = useState('');
   const [customDonationAmount, setCustomDonationAmount] = useState('');
   const [activeDonationIntent, setActiveDonationIntent] = useState<ActiveDonationIntent | null>(null);
   const [donationIntentLoading, setDonationIntentLoading] = useState(false);
@@ -180,99 +163,48 @@ export default function Fundraising() {
   const [donationSuccessMessage, setDonationSuccessMessage] = useState<string | null>(null);
   const customAmountInputRef = useRef<HTMLInputElement | null>(null);
 
-  const activeTabContent = useMemo(() => {
-    if (activeTab === 'donation') {
-      return {
-        icon: HandCoins,
-        title: 'Leave a Donation',
-        description:
-          'Every gift  helps students create outstanding productions, learn theater craft, and grow in confidence.'
-      };
-    }
-
-    return {
-      icon: HeartHandshake,
-      title: 'Become a Sponsor',
-      description:
-        'Partner with Penncrest Theater and place your organization in front of students, families, and our community.',
-      buttonLabel: 'Request Sponsor Packet',
-      buttonHref: 'mailto:jsmith3@rtmsd.org?subject=Penncrest%20Theater%20Sponsorship'
-    };
-  }, [activeTab]);
-
   useEffect(() => {
     apiFetch<LiveFundraisingEvent[]>('/api/fundraising/events')
-      .then((items) => {
-        if (Array.isArray(items)) {
-          setLiveEvents(items);
-          setLiveLoadFailed(false);
-        }
-      })
-      .catch(() => {
-        setLiveEvents([]);
-        setLiveLoadFailed(true);
-      });
+      .then((items) => { if (Array.isArray(items)) { setLiveEvents(items); setLiveLoadFailed(false); } })
+      .catch(() => { setLiveEvents([]); setLiveLoadFailed(true); });
   }, []);
 
   useEffect(() => {
     apiFetch<LiveFundraisingSponsor[]>('/api/fundraising/sponsors')
-      .then((items) => {
-        if (Array.isArray(items)) {
-          setLiveSponsors(items);
-          setSponsorLoadFailed(false);
-        }
-      })
-      .catch(() => {
-        setLiveSponsors([]);
-        setSponsorLoadFailed(true);
-      });
+      .then((items) => { if (Array.isArray(items)) { setLiveSponsors(items); setSponsorLoadFailed(false); } })
+      .catch(() => { setLiveSponsors([]); setSponsorLoadFailed(true); });
   }, []);
 
   const liveDisplayEvents = useMemo<DisplayEvent[]>(
-    () =>
-      liveEvents.map((event) => {
-        const { dateLabel, timeLabel } = formatEventDate(event.startsAt);
-        return {
-          id: event.id,
-          title: event.title,
-          dateLabel,
-          timeLabel,
-          summary:
-            event.description ||
-            (event.minPrice > 0 ? `Starting at $${(event.minPrice / 100).toFixed(2)}` : 'General Admission'),
-          imageUrl: event.posterUrl || 'https://picsum.photos/id/1015/1600/900',
-          linkHref: `/fundraising/events/${event.id}`,
-          ctaLabel: event.salesOpen ? 'View Details' : 'View Event',
-          location: event.venue,
-          seatModeLabel: event.seatSelectionEnabled ? 'Seat Selection' : 'General Admission'
-        };
-      }),
+    () => liveEvents.map((event) => {
+      const { dateLabel, timeLabel } = formatEventDate(event.startsAt);
+      return {
+        id: event.id, title: event.title, dateLabel, timeLabel,
+        summary: event.description || (event.minPrice > 0 ? `Starting at $${(event.minPrice / 100).toFixed(2)}` : 'General Admission'),
+        imageUrl: event.posterUrl || 'https://picsum.photos/id/1015/1600/900',
+        linkHref: `/fundraising/events/${event.id}`,
+        ctaLabel: event.salesOpen ? 'View Details' : 'View Event',
+        location: event.venue,
+        seatModeLabel: event.seatSelectionEnabled ? 'Seat Selection' : 'General Admission'
+      };
+    }),
     [liveEvents]
   );
 
   const fallbackDisplayEvents = useMemo<DisplayEvent[]>(
-    () =>
-      fundraisingEvents.map((event) => ({
-        id: event.id,
-        title: event.title,
-        dateLabel: event.dateLabel,
-        timeLabel: event.timeLabel,
-        summary: event.summary,
-        imageUrl: event.heroImageUrl,
-        linkHref: `/fundraising/events/${event.slug}`,
-        ctaLabel: 'View Event Details',
-        location: event.location
-      })),
+    () => fundraisingEvents.map((event) => ({
+      id: event.id, title: event.title, dateLabel: event.dateLabel, timeLabel: event.timeLabel,
+      summary: event.summary, imageUrl: event.heroImageUrl,
+      linkHref: `/fundraising/events/${event.slug}`, ctaLabel: 'View Event Details', location: event.location
+    })),
     []
   );
 
   const displayedEvents = liveDisplayEvents.length > 0 ? liveDisplayEvents : liveLoadFailed ? fallbackDisplayEvents : [];
   const displayedSponsors = liveSponsors.length > 0 ? liveSponsors : sponsorLoadFailed ? fundraisingSponsors : [];
-  const ActiveTabIcon = activeTabContent.icon;
   const featuredEvent = displayedEvents[0];
   const secondaryEvents = displayedEvents.slice(1);
-  const isOtherDonationSelected =
-    selectedDonationAmountCents === null || !DONATION_PRESET_AMOUNTS_CENTS.includes(selectedDonationAmountCents);
+  const isOtherDonationSelected = selectedDonationAmountCents === null || !DONATION_PRESET_AMOUNTS_CENTS.includes(selectedDonationAmountCents);
 
   const donationStripePromise = useMemo(() => {
     if (!activeDonationIntent?.publishableKey) return null;
@@ -281,37 +213,26 @@ export default function Fundraising() {
 
   const donationStripeOptions = useMemo<StripeElementsOptions | null>(() => {
     if (!activeDonationIntent?.clientSecret) return null;
-    return {
-      clientSecret: activeDonationIntent.clientSecret,
-      appearance: {
-        theme: 'stripe'
-      }
-    };
+    return { clientSecret: activeDonationIntent.clientSecret, appearance: { theme: 'stripe' } };
   }, [activeDonationIntent?.clientSecret]);
 
   const requestDonationIntent = async (amountCents: number) => {
-    setDonationSuccessMessage(null);
-    setDonationError(null);
-    setSelectedDonationAmountCents(amountCents);
-    setDonationIntentLoading(true);
-
+    const normalizedDonorName = donorName.trim();
+    const normalizedDonorEmail = donorEmail.trim().toLowerCase();
+    if (!normalizedDonorName) { setDonationError('Please enter your name before donating.'); return; }
+    if (!normalizedDonorEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedDonorEmail)) {
+      setDonationError('Please enter a valid email address for your receipt.'); return;
+    }
+    setDonationSuccessMessage(null); setDonationError(null);
+    setSelectedDonationAmountCents(amountCents); setDonationIntentLoading(true);
     try {
       const response = await apiFetch<DonationIntentResponse>('/api/fundraising/donations/intent', {
         method: 'POST',
-        body: JSON.stringify({ amountCents })
+        body: JSON.stringify({ amountCents, donorName: normalizedDonorName, donorEmail: normalizedDonorEmail })
       });
-
       const publishableKey = (response.publishableKey || FALLBACK_STRIPE_PUBLISHABLE_KEY || '').trim();
-      if (!publishableKey) {
-        throw new Error('Stripe publishable key is missing.');
-      }
-
-      setActiveDonationIntent({
-        paymentIntentId: response.paymentIntentId,
-        clientSecret: response.clientSecret,
-        publishableKey,
-        amountCents: response.amountCents
-      });
+      if (!publishableKey) throw new Error('Stripe publishable key is missing.');
+      setActiveDonationIntent({ paymentIntentId: response.paymentIntentId, clientSecret: response.clientSecret, publishableKey, amountCents: response.amountCents });
     } catch (err) {
       setActiveDonationIntent(null);
       setDonationError(err instanceof Error ? err.message : 'Unable to start donation checkout.');
@@ -321,383 +242,552 @@ export default function Fundraising() {
   };
 
   const handleOtherDonationSelect = () => {
-    setSelectedDonationAmountCents(null);
-    setActiveDonationIntent(null);
-    setDonationError(null);
-    setDonationSuccessMessage(null);
+    setSelectedDonationAmountCents(null); setActiveDonationIntent(null);
+    setDonationError(null); setDonationSuccessMessage(null);
     requestAnimationFrame(() => customAmountInputRef.current?.focus());
   };
 
   const applyCustomDonationAmount = () => {
     const amountCents = parseDonationInputToCents(customDonationAmount);
-    if (!amountCents) {
-      setDonationError('Enter a valid donation amount of at least $1.00.');
-      return;
-    }
-
+    if (!amountCents) { setDonationError('Enter a valid donation amount of at least $1.00.'); return; }
     void requestDonationIntent(amountCents);
   };
 
   return (
-    <div className="bg-stone-50 text-stone-900">
-      <section className="relative overflow-hidden border-b border-stone-200 bg-white pb-10 pt-14 sm:pb-14 sm:pt-16">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mb-7 flex items-center gap-2">
-            <Megaphone className="h-4 w-4 text-red-700" />
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-red-700">Fundraising Events</p>
-          </div>
-          <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <h1 className="text-4xl font-bold tracking-tight text-stone-900 sm:text-5xl" style={{ fontFamily: 'Georgia, serif' }}>
-              Support the Stage
-            </h1>
-            <p className="max-w-xl text-sm leading-relaxed text-stone-600 sm:text-base">
-              Discover upcoming events, then contribute through donations or sponsorship to directly power student theater.
-            </p>
-          </div>
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=DM+Sans:wght@300;400;500;600&display=swap');
 
-          {featuredEvent ? (
-            <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
-              <Link
-                to={featuredEvent.linkHref}
-                className="group relative overflow-hidden rounded-3xl border border-stone-200 lg:col-span-3"
-              >
-                <img
-                  src={featuredEvent.imageUrl}
-                  alt={featuredEvent.title}
-                  className="h-full min-h-[360px] w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/35 to-black/10" />
-                <div className="absolute bottom-0 p-6 sm:p-7">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-200">
-                    {featuredEvent.dateLabel} · {featuredEvent.timeLabel}
-                  </p>
-                  <h2 className="mt-2 text-3xl font-bold text-white" style={{ fontFamily: 'Georgia, serif' }}>
-                    {featuredEvent.title}
-                  </h2>
-                  <p className="mt-2 max-w-xl text-sm text-stone-200">{featuredEvent.summary}</p>
-                  {featuredEvent.location ? <p className="mt-1 text-xs text-stone-300">{featuredEvent.location}</p> : null}
-                  {featuredEvent.seatModeLabel ? <p className="mt-1 text-xs text-stone-300">{featuredEvent.seatModeLabel}</p> : null}
-                  <span className="mt-5 inline-flex rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-stone-900">
-                    {featuredEvent.ctaLabel}
-                  </span>
-                </div>
-              </Link>
+        .fund-root { font-family: 'DM Sans', sans-serif; }
+        .serif { font-family: 'Playfair Display', Georgia, serif; }
 
-              <div className="grid grid-cols-1 gap-5 lg:col-span-2">
-                {secondaryEvents.map((event) => (
-                  <motion.div
-                    key={event.id}
-                    initial={{ opacity: 0, y: 14 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true, margin: '-50px' }}
-                    transition={{ duration: 0.4 }}
-                  >
-                    <Link to={event.linkHref} className="group block overflow-hidden rounded-3xl border border-stone-200">
-                      <div className="relative">
-                        <img
-                          src={event.imageUrl}
-                          alt={event.title}
-                          className="h-56 w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                        <div className="absolute bottom-0 p-5">
-                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-200">{event.dateLabel}</p>
-                          <h3 className="mt-1 text-2xl font-bold text-white" style={{ fontFamily: 'Georgia, serif' }}>
-                            {event.title}
-                          </h3>
-                          {event.seatModeLabel ? <p className="mt-1 text-xs text-stone-300">{event.seatModeLabel}</p> : null}
-                        </div>
-                      </div>
-                    </Link>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </section>
+        .hero-accent {
+          background: linear-gradient(135deg, #fef2f2 0%, #fff7ed 40%, #fafafa 100%);
+        }
 
-      <section className="border-y border-red-800 bg-gradient-to-r from-red-800 via-red-700 to-amber-500 py-4">
-        <div className="mx-auto flex max-w-7xl items-center gap-4 overflow-x-auto px-4 sm:px-6 lg:px-8 no-scrollbar">
-          <Users className="h-4 w-4 flex-none text-amber-200" />
-          <span className="flex-none text-sm font-semibold uppercase tracking-[0.13em] text-white">
-            Thank You to Our Sponsors
-          </span>
-          {displayedSponsors.map((sponsor) => (
-            <a
-              key={sponsor.id}
-              href={sponsor.websiteUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="flex-none rounded-xl bg-white/90 px-3 py-1.5 transition hover:bg-white"
+        .donate-btn {
+          background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%);
+          box-shadow: 0 4px 14px rgba(185, 28, 28, 0.3);
+        }
+        .donate-btn:hover {
+          background: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%);
+          box-shadow: 0 6px 20px rgba(185, 28, 28, 0.4);
+          transform: translateY(-1px);
+        }
+
+        .pill-tab-active {
+          background: #991b1b;
+          color: white;
+          box-shadow: 0 2px 8px rgba(153, 27, 27, 0.25);
+        }
+
+        .event-card-hover:hover img { transform: scale(1.04); }
+
+        .sponsor-ticker {
+          mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
+        }
+
+        .tier-badge-gold { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #78350f; }
+        .tier-badge-silver { background: linear-gradient(135deg, #e5e7eb, #d1d5db); color: #374151; }
+        .tier-badge-bronze { background: linear-gradient(135deg, #fb923c, #ea580c); color: #fff7ed; }
+
+        .input-field {
+          width: 100%;
+          border-radius: 12px;
+          border: 1.5px solid #e5e7eb;
+          background: white;
+          padding: 11px 14px;
+          font-size: 0.875rem;
+          font-weight: 500;
+          color: #111;
+          outline: none;
+          transition: border-color 0.15s;
+          font-family: 'DM Sans', sans-serif;
+        }
+        .input-field:focus { border-color: #b91c1c; box-shadow: 0 0 0 3px rgba(185,28,28,0.08); }
+        .input-field::placeholder { color: #9ca3af; font-weight: 400; }
+
+        .amount-chip {
+          border-radius: 999px;
+          border: 1.5px solid #e5e7eb;
+          padding: 8px 18px;
+          font-size: 0.875rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s;
+          background: white;
+          color: #374151;
+        }
+        .amount-chip:hover { border-color: #b91c1c; color: #b91c1c; background: #fef2f2; }
+        .amount-chip.selected { background: #991b1b; border-color: #991b1b; color: white; box-shadow: 0 2px 8px rgba(153,27,27,0.25); }
+
+        .section-divider {
+          height: 1px;
+          background: linear-gradient(to right, transparent, #e5e7eb 20%, #e5e7eb 80%, transparent);
+        }
+
+        .donation-level-card {
+          position: relative;
+          overflow: hidden;
+        }
+        .donation-level-card::before {
+          content: '';
+          position: absolute;
+          top: 0; left: 0; right: 0;
+          height: 3px;
+          background: linear-gradient(90deg, #b91c1c, #f59e0b);
+          opacity: 0;
+          transition: opacity 0.2s;
+        }
+        .donation-level-card:hover::before { opacity: 1; }
+      `}</style>
+
+      <div className="fund-root bg-white text-zinc-900">
+
+        {/* ── HERO ── */}
+        <section className="hero-accent border-b border-zinc-100 pb-16 pt-14 sm:pt-20">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+
+            {/* Eyebrow */}
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+              className="mb-6 flex items-center gap-2.5"
             >
-              <img src={sponsor.logoUrl} alt={sponsor.name} className="h-6 w-auto min-w-20 object-contain" />
-            </a>
-          ))}
-        </div>
-      </section>
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-800">
+                <Megaphone className="h-3 w-3 text-white" />
+              </div>
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-red-800">
+                Fundraising Events
+              </span>
+            </motion.div>
 
-      <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
-        <div className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm sm:p-8">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-2xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
-                Get Involved
-              </h2>
-              <p className="mt-2 text-sm text-stone-600">
-                Choose how you want to support student theater this season.
-              </p>
+            <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <motion.h1
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.45, delay: 0.05 }}
+                className="serif text-5xl font-bold tracking-tight text-zinc-900 sm:text-6xl lg:text-7xl"
+              >
+                Support<br />
+                <em className="text-red-800 not-italic">the Stage</em>
+              </motion.h1>
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.45, delay: 0.15 }}
+                className="max-w-sm text-sm leading-relaxed text-zinc-500 sm:text-right sm:text-base"
+              >
+                Discover upcoming events, then contribute through donations or sponsorships to directly power student theater at Penncrest.
+              </motion.p>
             </div>
 
-            <div className="inline-flex rounded-full border border-stone-200 bg-stone-100 p-1">
+            {/* Events Grid */}
+            {featuredEvent ? (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+                className="grid grid-cols-1 gap-4 lg:grid-cols-12"
+              >
+                {/* Featured */}
+                <Link
+                  to={featuredEvent.linkHref}
+                  className="event-card-hover group relative overflow-hidden rounded-3xl lg:col-span-7"
+                  style={{ minHeight: 420 }}
+                >
+                  <img
+                    src={featuredEvent.imageUrl}
+                    alt={featuredEvent.title}
+                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-700"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+                  <div className="absolute bottom-0 p-7 sm:p-8">
+                    <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur-sm">
+                      <CalendarDays className="h-3 w-3 text-amber-300" />
+                      <span className="text-xs font-semibold text-amber-200">
+                        {featuredEvent.dateLabel} · {featuredEvent.timeLabel}
+                      </span>
+                    </div>
+                    <h2 className="serif text-3xl font-bold text-white sm:text-4xl">{featuredEvent.title}</h2>
+                    <p className="mt-2 max-w-lg text-sm text-zinc-300">{featuredEvent.summary}</p>
+                    {featuredEvent.location && <p className="mt-1 text-xs text-zinc-400">{featuredEvent.location}</p>}
+                    <div className="mt-5 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-zinc-900 transition group-hover:bg-zinc-100">
+                      {featuredEvent.ctaLabel}
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </div>
+                  </div>
+                </Link>
+
+                {/* Secondary */}
+                <div className="flex flex-col gap-4 lg:col-span-5">
+                  {secondaryEvents.map((event, i) => (
+                    <motion.div
+                      key={event.id}
+                      initial={{ opacity: 0, x: 16 }}
+                      whileInView={{ opacity: 1, x: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ duration: 0.4, delay: i * 0.1 }}
+                      className="flex-1"
+                    >
+                      <Link to={event.linkHref} className="event-card-hover group relative flex h-full min-h-[190px] overflow-hidden rounded-3xl">
+                        <img src={event.imageUrl} alt={event.title} className="absolute inset-0 h-full w-full object-cover transition-transform duration-700" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
+                        <div className="absolute bottom-0 p-5">
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-300">{event.dateLabel}</p>
+                          <h3 className="serif mt-1 text-xl font-bold text-white">{event.title}</h3>
+                          {event.seatModeLabel && <p className="mt-0.5 text-xs text-zinc-400">{event.seatModeLabel}</p>}
+                        </div>
+                      </Link>
+                    </motion.div>
+                  ))}
+                </div>
+              </motion.div>
+            ) : null}
+          </div>
+        </section>
+
+        {/* ── SPONSOR TICKER ── */}
+        {displayedSponsors.length > 0 && (
+          <div className="border-y border-zinc-100 bg-white py-4">
+            <div className="mx-auto flex max-w-7xl items-center gap-5 overflow-x-auto px-4 sponsor-ticker sm:px-6 lg:px-8 no-scrollbar">
+              <div className="flex flex-none items-center gap-2">
+                <Star className="h-3.5 w-3.5 text-amber-500" />
+                <span className="text-xs font-semibold uppercase tracking-[0.15em] text-zinc-500 whitespace-nowrap">
+                  Our Sponsors
+                </span>
+              </div>
+              <div className="mx-3 h-4 w-px bg-zinc-200 flex-none" />
+              {displayedSponsors.map((sponsor) => (
+                <a
+                  key={sponsor.id}
+                  href={sponsor.websiteUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-none rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-2 transition hover:border-zinc-200 hover:bg-white hover:shadow-sm"
+                >
+                  <img src={sponsor.logoUrl} alt={sponsor.name} className="h-6 w-auto min-w-[80px] object-contain opacity-70 hover:opacity-100 transition-opacity" />
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── GET INVOLVED ── */}
+        <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+
+          {/* Section heading */}
+          <div className="mb-10 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-800">Get Involved</p>
+              <h2 className="serif mt-1.5 text-3xl font-bold text-zinc-900 sm:text-4xl">Make an Impact</h2>
+            </div>
+            {/* Tab switcher */}
+            <div className="inline-flex self-start rounded-2xl border border-zinc-200 bg-zinc-50 p-1 sm:self-auto">
               <button
                 type="button"
                 onClick={() => setActiveTab('donation')}
-                className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-                  activeTab === 'donation' ? 'bg-red-700 text-white shadow-sm' : 'text-stone-600 hover:text-stone-900'
-                }`}
+                className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${activeTab === 'donation' ? 'pill-tab-active' : 'text-zinc-500 hover:text-zinc-800'}`}
               >
-                Leave a Donation
+                <HandCoins className="h-4 w-4" />
+                Donate
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab('sponsor')}
-                className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-                  activeTab === 'sponsor' ? 'bg-red-700 text-white shadow-sm' : 'text-stone-600 hover:text-stone-900'
-                }`}
+                className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${activeTab === 'sponsor' ? 'pill-tab-active' : 'text-zinc-500 hover:text-zinc-800'}`}
               >
-                Become a Sponsor
+                <HeartHandshake className="h-4 w-4" />
+                Sponsor
               </button>
             </div>
           </div>
 
           <motion.div
             key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.22 }}
-            className="mt-8 rounded-2xl border border-stone-200 bg-stone-50 p-5 sm:p-6"
+            transition={{ duration: 0.25 }}
           >
-            <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <p className="inline-flex items-center gap-2 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.13em] text-red-800">
-                  <ActiveTabIcon className="h-3.5 w-3.5" />
-                  {activeTabContent.title}
-                </p>
-                <p className="mt-3 max-w-2xl text-sm leading-relaxed text-stone-600">{activeTabContent.description}</p>
-              </div>
-
-              {activeTab === 'sponsor' ? (
-                <a
-                  href={
-                    'buttonHref' in activeTabContent
-                      ? activeTabContent.buttonHref
-                      : 'mailto:jsmith3@rtmsd.org?subject=Penncrest%20Theater%20Sponsorship'
-                  }
-                  className="inline-flex items-center gap-2 rounded-full bg-red-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-800"
-                >
-                  <Mail className="h-4 w-4" />
-                  {'buttonLabel' in activeTabContent ? activeTabContent.buttonLabel : 'Request Sponsor Packet'}
-                </a>
-              ) : (
-                <div className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-red-700">
-                  <CreditCard className="h-3.5 w-3.5" />
-                  Secure Card Payment
-                </div>
-              )}
-            </div>
-
             {activeTab === 'donation' ? (
-              <div className="space-y-5">
-                <div className="rounded-2xl border border-red-100 bg-white p-4 sm:p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.13em] text-red-700">Choose Donation Amount</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {DONATION_PRESET_AMOUNTS_CENTS.map((amountCents) => {
-                      const isSelected = selectedDonationAmountCents === amountCents;
-                      return (
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+
+                {/* Donation form — left col */}
+                <div className="lg:col-span-3">
+                  <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm sm:p-8">
+                    <div className="mb-6 flex items-center justify-between">
+                      <div>
+                        <h3 className="serif text-xl font-bold text-zinc-900">Leave a Donation</h3>
+                        <p className="mt-1 text-sm text-zinc-500">Every gift helps students grow in confidence on stage.</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 rounded-full border border-zinc-100 bg-zinc-50 px-3 py-1.5 text-xs font-semibold text-zinc-500">
+                        <CreditCard className="h-3 w-3" />
+                        Secure
+                      </div>
+                    </div>
+
+                    {/* Donor details */}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <input
+                        type="text"
+                        value={donorName}
+                        onChange={(e) => setDonorName(e.target.value)}
+                        placeholder="Your full name"
+                        className="input-field"
+                      />
+                      <input
+                        type="email"
+                        value={donorEmail}
+                        onChange={(e) => setDonorEmail(e.target.value)}
+                        placeholder="Email for receipt"
+                        className="input-field"
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-zinc-400">We'll send your thank-you note and Stripe receipt here.</p>
+
+                    <div className="section-divider my-5" />
+
+                    {/* Preset amounts */}
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">Choose Amount</p>
+                    <div className="flex flex-wrap gap-2">
+                      {DONATION_PRESET_AMOUNTS_CENTS.map((amountCents) => (
                         <button
                           key={amountCents}
                           type="button"
                           onClick={() => void requestDonationIntent(amountCents)}
-                          className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                            isSelected
-                              ? 'border-red-700 bg-red-700 text-white'
-                              : 'border-stone-300 bg-white text-stone-700 hover:border-red-500 hover:text-red-700'
-                          }`}
+                          className={`amount-chip ${selectedDonationAmountCents === amountCents ? 'selected' : ''}`}
                         >
                           {formatUsd(amountCents)}
                         </button>
-                      );
-                    })}
-                    <button
-                      type="button"
-                      onClick={handleOtherDonationSelect}
-                      className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                        isOtherDonationSelected
-                          ? 'border-red-700 bg-red-700 text-white'
-                          : 'border-stone-300 bg-white text-stone-700 hover:border-red-500 hover:text-red-700'
-                      }`}
-                    >
-                      Other
-                    </button>
-                  </div>
-
-                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                    <div className="relative flex-1">
-                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-stone-500">$</span>
-                      <input
-                        ref={customAmountInputRef}
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="Enter custom amount"
-                        value={customDonationAmount}
-                        onChange={(event) => setCustomDonationAmount(event.target.value)}
-                        className="w-full rounded-xl border border-stone-300 bg-white py-2.5 pl-8 pr-3 text-sm font-medium text-stone-900 outline-none focus:border-red-500"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={applyCustomDonationAmount}
-                      className="rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:border-red-500 hover:text-red-700"
-                    >
-                      Use Amount
-                    </button>
-                  </div>
-
-                  {donationIntentLoading && (
-                    <div className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-stone-600">
-                      <Loader2 className="h-4 w-4 animate-spin text-red-700" />
-                      Loading secure payment form...
-                    </div>
-                  )}
-
-                  {donationSuccessMessage && (
-                    <div className="mt-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-                      <p className="inline-flex items-center gap-2 font-semibold">
-                        <CheckCircle2 className="h-4 w-4" />
-                        {donationSuccessMessage}
-                      </p>
-                    </div>
-                  )}
-
-                  {donationError && (
-                    <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                      {donationError}
-                    </div>
-                  )}
-
-                  {activeDonationIntent && donationStripePromise && donationStripeOptions && !donationIntentLoading && (
-                    <div className="mt-5 rounded-2xl border border-stone-200 bg-stone-50 p-3 sm:p-4">
-                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.13em] text-stone-500">
-                        Pay {formatUsd(activeDonationIntent.amountCents)}
-                      </p>
-                      <Elements
-                        stripe={donationStripePromise}
-                        options={donationStripeOptions}
-                        key={activeDonationIntent.paymentIntentId}
+                      ))}
+                      <button
+                        type="button"
+                        onClick={handleOtherDonationSelect}
+                        className={`amount-chip ${isOtherDonationSelected ? 'selected' : ''}`}
                       >
-                        <DonationPaymentForm
-                          amountCents={activeDonationIntent.amountCents}
-                          onSuccess={() => {
-                            setDonationSuccessMessage(`Thank you. Your ${formatUsd(activeDonationIntent.amountCents)} donation was received.`);
-                            setActiveDonationIntent(null);
-                            setDonationError(null);
-                          }}
-                          onError={setDonationError}
-                        />
-                      </Elements>
+                        Custom
+                      </button>
                     </div>
-                  )}
+
+                    {/* Custom amount */}
+                    <div className="mt-3 flex gap-2">
+                      <div className="relative flex-1">
+                        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-zinc-400">$</span>
+                        <input
+                          ref={customAmountInputRef}
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="Other amount"
+                          value={customDonationAmount}
+                          onChange={(e) => setCustomDonationAmount(e.target.value)}
+                          className="input-field pl-8"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={applyCustomDonationAmount}
+                        className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-red-700 hover:bg-red-50 hover:text-red-700"
+                      >
+                        Apply
+                      </button>
+                    </div>
+
+                    {/* Loading */}
+                    {donationIntentLoading && (
+                      <div className="mt-5 inline-flex items-center gap-2 text-sm text-zinc-500">
+                        <Loader2 className="h-4 w-4 animate-spin text-red-700" />
+                        Loading secure payment form…
+                      </div>
+                    )}
+
+                    {/* Success */}
+                    {donationSuccessMessage && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.97 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="mt-5 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4"
+                      >
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 flex-none text-emerald-600" />
+                        <p className="text-sm font-semibold text-emerald-800">{donationSuccessMessage}</p>
+                      </motion.div>
+                    )}
+
+                    {/* Error */}
+                    {donationError && (
+                      <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                        {donationError}
+                      </div>
+                    )}
+
+                    {/* Stripe form */}
+                    {activeDonationIntent && donationStripePromise && donationStripeOptions && !donationIntentLoading && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mt-6 rounded-2xl border border-zinc-100 bg-zinc-50 p-4 sm:p-5"
+                      >
+                        <p className="mb-4 text-xs font-semibold uppercase tracking-[0.13em] text-zinc-500">
+                          Paying {formatUsd(activeDonationIntent.amountCents)}
+                        </p>
+                        <Elements
+                          stripe={donationStripePromise}
+                          options={donationStripeOptions}
+                          key={activeDonationIntent.paymentIntentId}
+                        >
+                          <DonationPaymentForm
+                            amountCents={activeDonationIntent.amountCents}
+                            donorName={donorName.trim()}
+                            donorEmail={donorEmail.trim().toLowerCase()}
+                            onSuccess={() => {
+                              setDonationSuccessMessage(`Thank you! Your ${formatUsd(activeDonationIntent.amountCents)} donation was received.`);
+                              setActiveDonationIntent(null);
+                              setDonationError(null);
+                            }}
+                            onError={setDonationError}
+                          />
+                        </Elements>
+                      </motion.div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  {donationLevels.map((card) => (
-                    <article key={card.label} className="rounded-xl border border-stone-200 bg-white p-4">
-                      <p className="text-sm font-semibold uppercase tracking-[0.12em] text-red-700">{card.amount}</p>
-                      <h3 className="mt-1 text-lg font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
-                        {card.label}
-                      </h3>
-                      <p className="mt-2 text-sm leading-relaxed text-stone-600">{card.detail}</p>
-                    </article>
+                {/* Donation levels — right col */}
+                <div className="lg:col-span-2 space-y-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400 lg:mt-0 mt-2">Donation Levels</p>
+                  {donationLevels.map((card, i) => (
+                    <motion.article
+                      key={card.label}
+                      initial={{ opacity: 0, x: 12 }}
+                      whileInView={{ opacity: 1, x: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ duration: 0.35, delay: i * 0.08 }}
+                      className="donation-level-card rounded-2xl border border-zinc-200 bg-white p-5 transition hover:border-zinc-300 hover:shadow-sm"
+                    >
+                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-red-700">{card.amount}</p>
+                      <h3 className="serif mt-1 text-lg font-bold text-zinc-900">{card.label}</h3>
+                      <p className="mt-2 text-sm leading-relaxed text-zinc-500">{card.detail}</p>
+                    </motion.article>
                   ))}
                 </div>
               </div>
+
             ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  {sponsorshipTiers.map((card) => (
-                    <article key={card.level} className="rounded-xl border border-stone-200 bg-white p-4">
-                      <p className="text-sm font-semibold uppercase tracking-[0.12em] text-red-700">{card.amount}</p>
-                      <h3 className="mt-1 text-lg font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
-                        {card.level}
-                      </h3>
-                      <p className="mt-2 text-sm leading-relaxed text-stone-600">{card.benefit}</p>
-                    </article>
-                  ))}
+              /* ── SPONSOR TAB ── */
+              <div className="space-y-8">
+                {/* Header */}
+                <div className="flex flex-wrap items-start justify-between gap-4 rounded-3xl border border-zinc-200 bg-white p-6 sm:p-8">
+                  <div className="max-w-lg">
+                    <h3 className="serif text-xl font-bold text-zinc-900">Become a Sponsor</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-zinc-500">
+                      Partner with Penncrest Theater and place your organization in front of students, families, and the broader community this season.
+                    </p>
+                  </div>
+                  <a
+                    href="mailto:jsmith3@rtmsd.org?subject=Penncrest%20Theater%20Sponsorship"
+                    className="donate-btn inline-flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-bold text-white transition-all"
+                  >
+                    <Mail className="h-4 w-4" />
+                    Request Sponsor Packet
+                  </a>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {displayedSponsors.map((sponsor) => (
-                    <article key={sponsor.id} className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
-                      <div className="relative">
-                        <img src={sponsor.imageUrl} alt={`${sponsor.name} spotlight`} className="h-40 w-full object-cover" />
-                        <div className="absolute left-3 top-3 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-stone-800">
-                          {sponsor.tier} Sponsor
-                        </div>
-                      </div>
-                      <div className="p-4">
-                        <img src={sponsor.logoUrl} alt={sponsor.name} className="h-10 w-auto object-contain" />
-                        <p className="mt-3 text-sm leading-relaxed text-stone-600">{sponsor.spotlight}</p>
-                        <a
-                          href={sponsor.websiteUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-red-700 hover:text-red-800"
-                        >
-                          <Sparkles className="h-3.5 w-3.5" />
-                          Visit Sponsor
-                        </a>
-                      </div>
-                    </article>
-                  ))}
+                {/* Tiers */}
+                <div>
+                  <p className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">Sponsorship Tiers</p>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    {sponsorshipTiers.map((card, i) => (
+                      <motion.article
+                        key={card.level}
+                        initial={{ opacity: 0, y: 10 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.35, delay: i * 0.08 }}
+                        className="donation-level-card rounded-2xl border border-zinc-200 bg-white p-5 transition hover:border-zinc-300 hover:shadow-sm"
+                      >
+                        <p className="text-xs font-bold uppercase tracking-[0.14em] text-red-700">{card.amount}</p>
+                        <h3 className="serif mt-1 text-lg font-bold text-zinc-900">{card.level}</h3>
+                        <p className="mt-2 text-sm leading-relaxed text-zinc-500">{card.benefit}</p>
+                      </motion.article>
+                    ))}
+                  </div>
                 </div>
+
+                {/* Current Sponsors */}
+                {displayedSponsors.length > 0 && (
+                  <div>
+                    <p className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">Current Sponsors</p>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                      {displayedSponsors.map((sponsor) => (
+                        <article key={sponsor.id} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white transition hover:shadow-md">
+                          <div className="relative">
+                            <img src={sponsor.imageUrl} alt={`${sponsor.name} spotlight`} className="h-44 w-full object-cover" />
+                            <div className={`absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.1em] ${
+                              sponsor.tier === 'Gold' ? 'tier-badge-gold'
+                              : sponsor.tier === 'Silver' ? 'tier-badge-silver'
+                              : 'tier-badge-bronze'
+                            }`}>
+                              {sponsor.tier}
+                            </div>
+                          </div>
+                          <div className="p-5">
+                            <img src={sponsor.logoUrl} alt={sponsor.name} className="h-9 w-auto object-contain" />
+                            <p className="mt-3 text-sm leading-relaxed text-zinc-500">{sponsor.spotlight}</p>
+                            <a
+                              href={sponsor.websiteUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-red-700 transition hover:text-red-900"
+                            >
+                              Visit Website
+                              <ArrowRight className="h-3.5 w-3.5" />
+                            </a>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </motion.div>
-        </div>
-      </section>
+        </section>
 
-      <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
-        <div className="rounded-3xl border border-stone-200 bg-white p-6 sm:p-8">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <CalendarDays className="h-4 w-4 text-red-700" />
-              <p className="text-xs font-semibold uppercase tracking-[0.15em] text-red-700">
-                {liveDisplayEvents.length > 0 ? 'Live Fundraising Checkouts' : 'All Event Pages'}
-              </p>
+        {/* ── ALL EVENTS FOOTER ── */}
+        {displayedEvents.length > 0 && (
+          <section className="border-t border-zinc-100 bg-zinc-50/60 py-12">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+              <div className="mb-5 flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">
+                  All Fundraising Events
+                </p>
+                {featuredEvent && (
+                  <Link
+                    to={featuredEvent.linkHref}
+                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-red-700 transition hover:text-red-900"
+                  >
+                    {featuredEvent.ctaLabel}
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                )}
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {displayedEvents.map((event) => (
+                  <Link
+                    key={event.id}
+                    to={event.linkHref}
+                    className="flex items-center justify-between rounded-xl border border-zinc-200 bg-white px-4 py-3.5 text-sm font-medium text-zinc-700 transition hover:border-zinc-300 hover:shadow-sm"
+                  >
+                    {event.title}
+                    <ArrowRight className="h-3.5 w-3.5 text-zinc-400 flex-none" />
+                  </Link>
+                ))}
+              </div>
             </div>
-            {featuredEvent ? (
-              <Link
-                to={featuredEvent.linkHref}
-                className="inline-flex rounded-full border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 transition-colors hover:border-red-700 hover:text-red-700"
-              >
-                {featuredEvent.ctaLabel}
-              </Link>
-            ) : null}
-          </div>
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {displayedEvents.map((event) => (
-              <Link
-                key={event.id}
-                to={event.linkHref}
-                className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm font-medium text-stone-700 transition-colors hover:border-stone-300 hover:bg-white"
-              >
-                {event.title}
-              </Link>
-            ))}
-          </div>
-        </div>
-      </section>
-    </div>
+          </section>
+        )}
+
+      </div>
+    </>
   );
 }

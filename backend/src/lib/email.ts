@@ -24,6 +24,14 @@ type TicketEmailPayload = {
   tickets: TicketEmailTicket[];
 };
 
+type DonationThankYouEmailPayload = {
+  donorName: string;
+  donorEmail: string;
+  amountCents: number;
+  currency: string;
+  paymentIntentId: string;
+};
+
 type EmailLogoAttachment = {
   filename: string;
   content: Buffer;
@@ -67,6 +75,20 @@ function formatPerformanceDate(startsAtIso: string): string {
     minute: '2-digit',
     timeZoneName: 'short'
   }).format(new Date(startsAtIso));
+}
+
+function formatMoney(amountCents: number, currency: string): string {
+  const resolvedCurrency = (currency || 'usd').toUpperCase();
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: resolvedCurrency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(amountCents / 100);
+  } catch {
+    return `$${(amountCents / 100).toFixed(2)}`;
+  }
 }
 
 function inferMimeTypeFromFile(path: string): string {
@@ -333,5 +355,84 @@ export async function sendTicketsEmail(payload: TicketEmailPayload): Promise<voi
           }
         ]
       : undefined
+  });
+}
+
+export async function sendDonationThankYouEmail(payload: DonationThankYouEmailPayload): Promise<void> {
+  if (!transporter || !env.SMTP_FROM) {
+    console.warn('SMTP is not configured; skipping donation thank-you email send.');
+    return;
+  }
+
+  const donorName = payload.donorName.trim() || 'Supporter';
+  const donorEmail = payload.donorEmail.trim().toLowerCase();
+  const amountLabel = formatMoney(payload.amountCents, payload.currency);
+  const safeDonorName = escapeHtml(donorName);
+  const safeAmountLabel = escapeHtml(amountLabel);
+  const safeDonationId = escapeHtml(payload.paymentIntentId);
+  const safeDonorEmail = escapeHtml(donorEmail);
+
+  const text = [
+    `Hi ${donorName},`,
+    '',
+    `Thank you for your donation to ${BRAND_NAME}.`,
+    `Donation amount: ${amountLabel}`,
+    `Donation ID: ${payload.paymentIntentId}`,
+    '',
+    'Your support directly helps student performers and crew members.',
+    '',
+    `A Stripe receipt was sent to ${donorEmail}.`,
+    '',
+    `With gratitude,`,
+    BRAND_NAME
+  ].join('\n');
+
+  const html = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:24px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;">
+            <tr>
+              <td style="background:linear-gradient(160deg,#1a0505 0%,#3d0a0a 100%);border-radius:14px 14px 0 0;padding:24px;">
+                <div style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#c9a84c;margin-bottom:8px;">${BRAND_NAME}</div>
+                <div style="font-family:Georgia,'Times New Roman',serif;font-size:28px;font-weight:700;color:#f5f0e8;line-height:1.2;">Thank You</div>
+                <div style="margin-top:8px;font-family:Arial,sans-serif;font-size:14px;color:#f5d98b;line-height:1.5;">Your donation helps our students build incredible productions.</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="height:3px;background:linear-gradient(90deg,#8b1a1a,#c9a84c,#8b1a1a);"></td>
+            </tr>
+            <tr>
+              <td style="background:#fffdf7;border:1px solid #e8dfc8;border-top:none;padding:24px;">
+                <p style="margin:0 0 10px 0;font-family:Georgia,'Times New Roman',serif;font-size:18px;color:#1a0a0a;">Hi ${safeDonorName},</p>
+                <p style="margin:0 0 14px 0;font-family:Arial,sans-serif;font-size:14px;line-height:1.7;color:#3d2020;">
+                  Thank you for your generous donation to ${BRAND_NAME}. We truly appreciate your support.
+                </p>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #c9a84c;border-radius:10px;background:#fdf8ee;">
+                  <tr>
+                    <td style="padding:12px 14px;font-family:Arial,sans-serif;font-size:13px;color:#1a0a0a;line-height:1.8;">
+                      <div><strong style="color:#8b6914;">Donation amount:</strong> ${safeAmountLabel}</div>
+                      <div><strong style="color:#8b6914;">Donation ID:</strong> ${safeDonationId}</div>
+                      <div><strong style="color:#8b6914;">Receipt email:</strong> ${safeDonorEmail}</div>
+                    </td>
+                  </tr>
+                </table>
+                <p style="margin:14px 0 0 0;font-family:Arial,sans-serif;font-size:13px;line-height:1.6;color:#3d2020;">
+                  Stripe also sent your official payment receipt to your email.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  `;
+
+  await transporter.sendMail({
+    from: env.SMTP_FROM,
+    to: donorEmail,
+    subject: `Thank you for your donation — ${BRAND_NAME}`,
+    text,
+    html
   });
 }

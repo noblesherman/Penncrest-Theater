@@ -7,7 +7,9 @@ import { handleRouteError } from '../lib/route-error.js';
 import { stripe } from '../lib/stripe.js';
 
 const donationIntentSchema = z.object({
-  amountCents: z.coerce.number().int().min(100).max(100000)
+  amountCents: z.coerce.number().int().min(100).max(100000),
+  donorName: z.string().trim().min(1).max(120),
+  donorEmail: z.string().trim().email().max(320)
 });
 
 function isSeatEffectivelyAvailable(seat: {
@@ -47,14 +49,19 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
 
       try {
         const amountCents = parsed.data.amountCents;
+        const donorName = parsed.data.donorName.trim();
+        const donorEmail = parsed.data.donorEmail.trim().toLowerCase();
         const paymentIntent = await stripe.paymentIntents.create({
           amount: amountCents,
           currency: 'usd',
           automatic_payment_methods: { enabled: true },
-          description: 'Penncrest Theater donation',
+          receipt_email: donorEmail,
+          description: `Penncrest Theater donation (${donorName})`,
           metadata: {
             source: 'fundraising_donation',
-            amountCents: String(amountCents)
+            amountCents: String(amountCents),
+            donorName,
+            donorEmail
           }
         });
 
