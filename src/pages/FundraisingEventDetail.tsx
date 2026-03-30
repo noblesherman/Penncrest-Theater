@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { ArrowLeft, ArrowRight, CalendarDays, Clock3, MapPin, Settings, Target, Ticket } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CalendarDays, Clock3, MapPin, Target, Ticket } from 'lucide-react';
 import { getFundraisingEventBySlug, fundraisingEvents, fundraisingSponsors } from '../lib/fundraisingContent';
 import { apiFetch } from '../lib/api';
 
@@ -217,7 +217,7 @@ export default function FundraisingEventDetail() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-800">Fundraising</p>
             <h1 className="serif mt-3 text-4xl font-bold text-zinc-900">Event Not Found</h1>
             <p className="mx-auto mt-4 text-sm leading-relaxed text-zinc-500">
-              This fundraising event isn't available yet. Return to fundraising or open the admin portal to manage events.
+              This fundraising event isn't available yet. Return to fundraising to view other active events.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <Link
@@ -226,13 +226,6 @@ export default function FundraisingEventDetail() {
               >
                 <ArrowLeft className="h-4 w-4" />
                 Back to Fundraising
-              </Link>
-              <Link
-                to="/admin/fundraise"
-                className="inline-flex items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-5 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-zinc-300 hover:shadow-sm"
-              >
-                <Settings className="h-4 w-4" />
-                Admin Portal
               </Link>
             </div>
           </div>
@@ -274,13 +267,6 @@ export default function FundraisingEventDetail() {
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
                 Fundraising
-              </Link>
-              <Link
-                to="/admin/fundraise"
-                className="inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-black/25 px-4 py-2 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-black/40"
-              >
-                <Settings className="h-3.5 w-3.5" />
-                Admin
               </Link>
               {event.bookingHref && event.salesOpen !== false && (
                 <Link
@@ -508,13 +494,6 @@ function TicketCta({ event }: { event: DetailEvent }) {
           Online sales are closed
         </div>
       )}
-      <Link
-        to="/admin/fundraise"
-        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-semibold text-zinc-600 transition hover:border-zinc-300 hover:bg-white"
-      >
-        <Settings className="h-4 w-4" />
-        Open in Admin Portal
-      </Link>
     </div>
   );
 }

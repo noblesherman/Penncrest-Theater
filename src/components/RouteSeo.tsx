@@ -255,8 +255,8 @@ const routes: RouteDefinition[] = [
   },
   {
     path: '/admin/*',
-    title: 'Admin Portal | Penncrest Theater',
-    description: 'Penncrest Theater administrative access.',
+    title: 'Staff Access | Penncrest Theater',
+    description: 'Penncrest Theater staff access.',
     noindex: true
   }
 ];

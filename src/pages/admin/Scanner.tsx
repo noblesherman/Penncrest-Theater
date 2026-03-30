@@ -14,7 +14,7 @@ import {
   writeOfflineScannerQueue
 } from '../../lib/scannerRecovery';
 
-type PerformanceRow = { id: string; title: string; startsAt: string; isArchived?: boolean };
+type PerformanceRow = { id: string; title: string; startsAt: string; isArchived?: boolean; isFundraiser?: boolean };
 type ScanOutcome = 'VALID' | 'ALREADY_CHECKED_IN' | 'WRONG_PERFORMANCE' | 'NOT_ADMITTED' | 'INVALID_QR' | 'NOT_FOUND';
 type ReasonCode = 'DUPLICATE_SCAN' | 'VIP_OVERRIDE' | 'PAYMENT_EXCEPTION' | 'INVALID_TICKET' | 'SAFETY_CONCERN' | 'MANUAL_CORRECTION' | 'OTHER';
 
@@ -333,7 +333,7 @@ export default function AdminScannerPage() {
     setOfflineQueue(readOfflineScannerQueue());
     let cancelled = false;
     detectQrCameraSupport().then(ok => { if (!cancelled) setCameraSupported(ok); });
-    adminFetch<PerformanceRow[]>('/api/admin/performances?scope=active')
+    adminFetch<PerformanceRow[]>('/api/admin/performances?scope=active&kind=all')
       .then(rows => { const a = rows.filter(r => !r.isArchived); setPerformances(a); if (a.length) setPerformanceId(a[0].id); })
       .catch(err => setCameraError(err instanceof Error ? err.message : 'Failed to load'));
     const onOnline = () => syncOfflineQueue();
@@ -469,7 +469,12 @@ export default function AdminScannerPage() {
 
           <select value={performanceId} onChange={e => setPerformanceId(e.target.value)} className={selectCls}>
             {performances.map(p => (
-              <option key={p.id} value={p.id}>{p.title} — {new Date(p.startsAt).toLocaleString()}</option>
+              <option key={p.id} value={p.id}>
+                {p.title}
+                {p.isFundraiser ? ' [Fundraiser]' : ''}
+                {' — '}
+                {new Date(p.startsAt).toLocaleString()}
+              </option>
             ))}
           </select>
 

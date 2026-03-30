@@ -28,6 +28,7 @@ type Performance = {
   id: string;
   title: string;
   startsAt: string;
+  isFundraiser?: boolean;
   pricingTiers: PricingTier[];
   staffCompsEnabled?: boolean;
   studentCompTicketsEnabled?: boolean;
@@ -88,6 +89,7 @@ const TEACHER_TICKET_OPTION_ID = 'teacher-comp';
 const STUDENT_SHOW_TICKET_OPTION_ID = 'student-show-comp';
 const MAX_TEACHER_COMP_TICKETS = 2;
 const MAX_STUDENT_COMP_TICKETS = 2;
+const CASHIER_DEFAULT_PERFORMANCE_STORAGE_KEY = 'theater_cashier_default_performance_v1';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -96,6 +98,28 @@ const naturalSort = (a: string, b: string) =>
 
 const parseSeatIds = (input: string) =>
   [...new Set(input.split(',').map(v => v.trim()).filter((v): v is string => Boolean(v)))];
+
+function readCashierDefaultPerformanceId(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    return window.localStorage.getItem(CASHIER_DEFAULT_PERFORMANCE_STORAGE_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+function writeCashierDefaultPerformanceId(performanceId: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!performanceId) {
+      window.localStorage.removeItem(CASHIER_DEFAULT_PERFORMANCE_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(CASHIER_DEFAULT_PERFORMANCE_STORAGE_KEY, performanceId);
+  } catch {
+    // Ignore storage failures; cashier flow still works with in-memory state.
+  }
+}
 
 const isTeacherTicketName = (name: string) => {
   const normalized = name.trim().toLowerCase();
@@ -214,6 +238,8 @@ export default function AdminOrdersPage() {
   const [error,        setError]        = useState<string | null>(null);
   const [notice,       setNotice]       = useState<string | null>(null);
   const [showWizard,   setShowWizard]   = useState(false);
+  const [showCashierPerformancePicker, setShowCashierPerformancePicker] = useState(false);
+  const [cashierPerformanceDraftId, setCashierPerformanceDraftId] = useState('');
   const [step,         setStep]         = useState(0);
   const [dir,          setDir]          = useState<1 | -1>(1);
   const didAutoOpenSeatPickerRef = useRef(false);
@@ -267,25 +293,33 @@ export default function AdminOrdersPage() {
         title: string;
         startsAt: string;
         isArchived?: boolean;
+        isFundraiser?: boolean;
         pricingTiers?: PricingTier[];
         staffCompsEnabled?: boolean;
         studentCompTicketsEnabled?: boolean;
-      }>>('/api/admin/performances?scope=active');
+      }>>('/api/admin/performances?scope=active&kind=all');
       const mapped = items.filter(i => !i.isArchived)
         .map(i => ({
           id: i.id,
           title: i.title,
           startsAt: i.startsAt,
+          isFundraiser: Boolean(i.isFundraiser),
           pricingTiers: i.pricingTiers || [],
           staffCompsEnabled: Boolean(i.staffCompsEnabled),
           studentCompTicketsEnabled: Boolean(i.studentCompTicketsEnabled),
         }));
       setPerformances(mapped);
-      if (mapped.length > 0)
-        setAssignForm(prev => ({
-          ...prev,
-          performanceId: mapped.some(r => r.id === prev.performanceId) ? prev.performanceId : mapped[0].id
-        }));
+      if (mapped.length > 0) {
+        const storedPerformanceId = readCashierDefaultPerformanceId();
+        const fallbackPerformanceId = mapped[0].id;
+        setAssignForm(prev => {
+          const nextPerformanceId =
+            mapped.some(r => r.id === prev.performanceId) ? prev.performanceId
+            : mapped.some(r => r.id === storedPerformanceId) ? storedPerformanceId
+            : fallbackPerformanceId;
+          return { ...prev, performanceId: nextPerformanceId };
+        });
+      }
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load performances'); }
   };
 
@@ -529,6 +563,42 @@ export default function AdminOrdersPage() {
     setSeatPickerOpen(false); setSeatPickerError(null);
     setTicketSelectionBySeatId({}); resetInPersonFlow();
   }
+
+  const openCashierFlow = () => {
+    if (performances.length === 0) {
+      setError('No active performances available for cashier checkout.');
+      return;
+    }
+    const fallbackPerformanceId = performances[0]?.id || '';
+    const nextDraftId =
+      performances.some((item) => item.id === assignForm.performanceId)
+        ? assignForm.performanceId
+        : performances.some((item) => item.id === readCashierDefaultPerformanceId())
+          ? readCashierDefaultPerformanceId()
+          : fallbackPerformanceId;
+    setCashierPerformanceDraftId(nextDraftId);
+    setShowCashierPerformancePicker(true);
+    setError(null);
+  };
+
+  const confirmCashierPerformanceSelection = () => {
+    const chosenPerformanceId =
+      performances.some((item) => item.id === cashierPerformanceDraftId)
+        ? cashierPerformanceDraftId
+        : performances[0]?.id || '';
+    if (!chosenPerformanceId) {
+      setError('No active performances available for cashier checkout.');
+      setShowCashierPerformancePicker(false);
+      return;
+    }
+
+    writeCashierDefaultPerformanceId(chosenPerformanceId);
+    setAssignForm((prev) => ({ ...prev, performanceId: chosenPerformanceId }));
+    setShowCashierPerformancePicker(false);
+    setShowWizard(true);
+    setStep(0);
+    setError(null);
+  };
 
   useEffect(() => {
     if (!saleRecap) {
@@ -839,12 +909,19 @@ export default function AdminOrdersPage() {
         <FieldLabel>Performance</FieldLabel>
         <select
           value={assignForm.performanceId}
-          onChange={e => setAssignForm({ ...assignForm, performanceId: e.target.value })}
+          onChange={e => {
+            const nextPerformanceId = e.target.value;
+            setAssignForm({ ...assignForm, performanceId: nextPerformanceId });
+            writeCashierDefaultPerformanceId(nextPerformanceId);
+          }}
           className={baseSelect}
         >
           {performances.map(p => (
             <option key={p.id} value={p.id}>
-              {p.title} — {new Date(p.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              {p.title}
+              {p.isFundraiser ? ' [Fundraiser]' : ''}
+              {' — '}
+              {new Date(p.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
             </option>
           ))}
         </select>
@@ -1211,7 +1288,7 @@ export default function AdminOrdersPage() {
         </div>
         <motion.button
           whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-          onClick={() => { setShowWizard(true); setStep(0); setError(null); }}
+          onClick={openCashierFlow}
           className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-rose-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-rose-700 sm:w-auto"
         >
           <Plus className="h-4 w-4" /> Cashier checkout
@@ -1247,6 +1324,65 @@ export default function AdminOrdersPage() {
       </AnimatePresence>
 
       <AnimatePresence>
+        {showCashierPerformancePicker && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[65] flex items-end justify-center bg-black/40 backdrop-blur-sm sm:items-center sm:p-4"
+          >
+            <motion.div
+              initial={{ y: 18, opacity: 0, scale: 0.98 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 18, opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              className="w-full rounded-t-3xl border border-slate-100 bg-white shadow-2xl sm:max-w-lg sm:rounded-3xl"
+            >
+              <div className="border-b border-slate-100 px-5 pb-4 pt-5">
+                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Cashier Setup</p>
+                <h2 className="mt-1 text-xl font-black text-slate-900">Choose performance</h2>
+                <p className="mt-1 text-sm text-slate-500">This selection will be remembered as your cashier default.</p>
+              </div>
+
+              <div className="px-5 py-5">
+                <FieldLabel>Performance</FieldLabel>
+                <select
+                  value={cashierPerformanceDraftId}
+                  onChange={(e) => setCashierPerformanceDraftId(e.target.value)}
+                  className={baseSelect}
+                >
+                  {performances.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title}
+                      {p.isFundraiser ? ' [Fundraiser]' : ''}
+                      {' — '}
+                      {new Date(p.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-4">
+                <button
+                  type="button"
+                  onClick={() => setShowCashierPerformancePicker(false)}
+                  className="inline-flex items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmCashierPerformanceSelection}
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-rose-600 px-5 py-2 text-sm font-bold text-white transition hover:bg-rose-700"
+                >
+                  Continue
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
         {saleRecap && (
           <motion.div
             initial={{ opacity: 0 }}

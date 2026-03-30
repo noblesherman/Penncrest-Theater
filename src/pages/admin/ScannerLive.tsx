@@ -18,6 +18,7 @@ type PerformanceRow = {
   title: string;
   startsAt: string;
   isArchived?: boolean;
+  isFundraiser?: boolean;
 };
 
 type ScanOutcome =
@@ -332,7 +333,7 @@ export default function AdminScannerLivePage() {
     let cancelled = false;
     void detectQrCameraSupport().then((supported) => { if (!cancelled) setCameraSupported(supported); });
     setOfflineQueue(readOfflineScannerQueue());
-    adminFetch<PerformanceRow[]>('/api/admin/performances?scope=active')
+    adminFetch<PerformanceRow[]>('/api/admin/performances?scope=active&kind=all')
       .then((rows) => {
         const active = rows.filter((r) => !r.isArchived);
         setPerformances(active);
@@ -517,7 +518,10 @@ export default function AdminScannerLivePage() {
                 className="w-full rounded-xl border border-white/20 bg-black/70 px-3 py-2 text-xs text-white backdrop-blur-sm"
               >
                 {performances.map((p) => (
-                  <option key={p.id} value={p.id}>{p.title}</option>
+                  <option key={p.id} value={p.id}>
+                    {p.title}
+                    {p.isFundraiser ? ' [Fundraiser]' : ''}
+                  </option>
                 ))}
               </select>
             )}
@@ -568,7 +572,12 @@ export default function AdminScannerLivePage() {
               className="mb-3 w-full rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm text-zinc-100 focus:border-red-500 focus:outline-none"
             >
               {performances.map((p) => (
-                <option key={p.id} value={p.id}>{p.title} — {new Date(p.startsAt).toLocaleString()}</option>
+                <option key={p.id} value={p.id}>
+                  {p.title}
+                  {p.isFundraiser ? ' [Fundraiser]' : ''}
+                  {' — '}
+                  {new Date(p.startsAt).toLocaleString()}
+                </option>
               ))}
             </select>
 
