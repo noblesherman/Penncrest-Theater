@@ -51,6 +51,7 @@ const sendInvoiceSchema = z
 const financeInvoiceListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(40),
   status: z.enum(['all', 'draft', 'open', 'paid', 'void', 'uncollectible']).default('all'),
+  archive: z.enum(['active', 'archived', 'all']).default('active'),
   q: z.string().trim().max(160).optional()
 });
 
@@ -209,6 +210,20 @@ function buildInvoiceProcess(invoice: Stripe.Invoice): {
     paidAt: toIsoFromEpochSeconds(invoice.status_transitions.paid_at),
     voidedAt: toIsoFromEpochSeconds(invoice.status_transitions.voided_at),
     markedUncollectibleAt: toIsoFromEpochSeconds(invoice.status_transitions.marked_uncollectible_at)
+  };
+}
+
+function parseInvoiceArchivedFlag(rawValue: string | undefined): boolean {
+  const normalized = (rawValue || '').trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
+function getInvoiceArchiveState(invoice: Stripe.Invoice): { isArchived: boolean; archivedAt: string | null } {
+  const isArchived = parseInvoiceArchivedFlag(invoice.metadata?.adminArchived);
+  const archivedAtRaw = invoice.metadata?.adminArchivedAt?.trim();
+  return {
+    isArchived,
+    archivedAt: archivedAtRaw || null
   };
 }
 
@@ -820,28 +835,33 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
     actorAdminId: request.adminUser?.id || null
   });
 
-  const serializeInvoiceSummary = (invoice: Stripe.Invoice) => ({
-    id: invoice.id,
-    number: invoice.number || null,
-    status: invoice.status,
-    collectionMethod: invoice.collection_method,
-    description: invoice.description || null,
-    customerId:
-      typeof invoice.customer === 'string'
-        ? invoice.customer
-        : invoice.customer?.id || null,
-    customerName: invoice.customer_name || null,
-    customerEmail: invoice.customer_email || null,
-    currency: invoice.currency.toUpperCase(),
-    amountDueCents: invoice.amount_due,
-    amountPaidCents: invoice.amount_paid,
-    amountRemainingCents: invoice.amount_remaining,
-    createdAt: toIsoFromEpochSeconds(invoice.created) || new Date().toISOString(),
-    dueDate: toIsoFromEpochSeconds(invoice.due_date),
-    hostedInvoiceUrl: invoice.hosted_invoice_url || null,
-    invoicePdfUrl: invoice.invoice_pdf || null,
-    process: buildInvoiceProcess(invoice)
-  });
+  const serializeInvoiceSummary = (invoice: Stripe.Invoice) => {
+    const archiveState = getInvoiceArchiveState(invoice);
+    return {
+      id: invoice.id,
+      number: invoice.number || null,
+      status: invoice.status,
+      collectionMethod: invoice.collection_method,
+      description: invoice.description || null,
+      customerId:
+        typeof invoice.customer === 'string'
+          ? invoice.customer
+          : invoice.customer?.id || null,
+      customerName: invoice.customer_name || null,
+      customerEmail: invoice.customer_email || null,
+      currency: invoice.currency.toUpperCase(),
+      amountDueCents: invoice.amount_due,
+      amountPaidCents: invoice.amount_paid,
+      amountRemainingCents: invoice.amount_remaining,
+      createdAt: toIsoFromEpochSeconds(invoice.created) || new Date().toISOString(),
+      dueDate: toIsoFromEpochSeconds(invoice.due_date),
+      hostedInvoiceUrl: invoice.hosted_invoice_url || null,
+      invoicePdfUrl: invoice.invoice_pdf || null,
+      isArchived: archiveState.isArchived,
+      archivedAt: archiveState.archivedAt,
+      process: buildInvoiceProcess(invoice)
+    };
+  };
 
   app.get('/api/admin/finance/summary', { preHandler: app.authenticateAdmin }, async (request, reply) => {
     const parsed = financeQuerySchema.safeParse(request.query || {});
@@ -1046,9 +1066,16 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         ...(statusFilter ? { status: statusFilter as Stripe.InvoiceListParams.Status } : {})
       });
 
+      const archiveFiltered = invoices.data.filter((invoice) => {
+        if (parsed.data.archive === 'all') return true;
+        const isArchived = getInvoiceArchiveState(invoice).isArchived;
+        if (parsed.data.archive === 'archived') return isArchived;
+        return !isArchived;
+      });
+
       const query = parsed.data.q?.trim().toLowerCase();
       const filtered = query
-        ? invoices.data.filter((invoice) => {
+        ? archiveFiltered.filter((invoice) => {
             const fields = [
               invoice.number || '',
               invoice.description || '',
@@ -1058,7 +1085,7 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
             ];
             return fields.some((field) => field.toLowerCase().includes(query));
           })
-        : invoices.data;
+        : archiveFiltered;
 
       reply.send({
         rows: filtered.map((invoice) => serializeInvoiceSummary(invoice)),
@@ -1104,6 +1131,82 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(statusCode).send({ error: err.message || 'Stripe invoice detail lookup failed' });
       }
       handleRouteError(reply, err, 'Failed to fetch invoice detail');
+    }
+  });
+
+  app.post('/api/admin/finance/invoices/:invoiceId/archive', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
+    const parsed = financeInvoiceParamsSchema.safeParse(request.params || {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+
+    try {
+      const archivedAt = new Date().toISOString();
+      const updated = await stripe.invoices.update(parsed.data.invoiceId, {
+        metadata: {
+          adminArchived: '1',
+          adminArchivedAt: archivedAt,
+          adminArchivedBy: request.adminUser?.username || 'admin'
+        }
+      });
+
+      await logAudit({
+        ...adminActor(request),
+        action: 'FINANCE_INVOICE_ARCHIVED',
+        entityType: 'Invoice',
+        entityId: updated.id,
+        metadata: {
+          archivedAt,
+          invoiceStatus: updated.status
+        }
+      });
+
+      reply.send({
+        invoice: serializeInvoiceSummary(updated)
+      });
+    } catch (err) {
+      if (err instanceof Stripe.errors.StripeError) {
+        const statusCode = err.type === 'StripeInvalidRequestError' ? 404 : 502;
+        return reply.status(statusCode).send({ error: err.message || 'Stripe invoice archive failed' });
+      }
+      handleRouteError(reply, err, 'Failed to archive invoice');
+    }
+  });
+
+  app.post('/api/admin/finance/invoices/:invoiceId/unarchive', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
+    const parsed = financeInvoiceParamsSchema.safeParse(request.params || {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+
+    try {
+      const updated = await stripe.invoices.update(parsed.data.invoiceId, {
+        metadata: {
+          adminArchived: '0',
+          adminArchivedAt: '',
+          adminArchivedBy: ''
+        }
+      });
+
+      await logAudit({
+        ...adminActor(request),
+        action: 'FINANCE_INVOICE_UNARCHIVED',
+        entityType: 'Invoice',
+        entityId: updated.id,
+        metadata: {
+          invoiceStatus: updated.status
+        }
+      });
+
+      reply.send({
+        invoice: serializeInvoiceSummary(updated)
+      });
+    } catch (err) {
+      if (err instanceof Stripe.errors.StripeError) {
+        const statusCode = err.type === 'StripeInvalidRequestError' ? 404 : 502;
+        return reply.status(statusCode).send({ error: err.message || 'Stripe invoice unarchive failed' });
+      }
+      handleRouteError(reply, err, 'Failed to unarchive invoice');
     }
   });
 

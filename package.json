@@ -18,6 +18,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
+    "load:flash-sale": "k6 run scripts/load/k6-prod-flash-sale.js",
+    "load:flash-sale:spike": "SPIKE_MODE=true k6 run scripts/load/k6-prod-flash-sale.js",
     "backup:db": "bash ./scripts/backup-postgres.sh",
     "restore:db": "bash ./scripts/restore-postgres-backup.sh"
   },

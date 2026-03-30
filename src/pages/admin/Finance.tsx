@@ -77,6 +77,8 @@ type FinanceInvoiceSummary = {
   dueDate: string | null;
   hostedInvoiceUrl: string | null;
   invoicePdfUrl: string | null;
+  isArchived: boolean;
+  archivedAt: string | null;
   process: FinanceInvoiceProcess;
 };
 
@@ -383,10 +385,12 @@ export default function AdminFinancePage() {
   const [invoiceHasMore, setInvoiceHasMore] = useState(false);
   const [loadingInvoices, setLoadingInvoices] = useState(false);
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<'all' | 'draft' | 'open' | 'paid' | 'void' | 'uncollectible'>('all');
+  const [invoiceArchiveFilter, setInvoiceArchiveFilter] = useState<'active' | 'archived' | 'all'>('active');
   const [invoiceSearch, setInvoiceSearch] = useState('');
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [selectedInvoiceDetail, setSelectedInvoiceDetail] = useState<FinanceInvoiceDetailResponse | null>(null);
   const [loadingInvoiceDetail, setLoadingInvoiceDetail] = useState(false);
+  const [processingInvoiceArchive, setProcessingInvoiceArchive] = useState(false);
   const [invoiceDraft, setInvoiceDraft] = useState<InvoiceComposerDraft>(createInvoiceComposerDraft);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -439,6 +443,7 @@ export default function AdminFinancePage() {
       const query = new URLSearchParams();
       query.set('limit', '60');
       query.set('status', invoiceStatusFilter);
+      query.set('archive', invoiceArchiveFilter);
       const trimmedSearch = invoiceSearch.trim();
       if (trimmedSearch) {
         query.set('q', trimmedSearch);
@@ -474,10 +479,37 @@ export default function AdminFinancePage() {
     }
   };
 
+  const setInvoiceArchived = async (nextArchived: boolean) => {
+    if (!selectedInvoiceId) return;
+    setProcessingInvoiceArchive(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const action = nextArchived ? 'archive' : 'unarchive';
+      const result = await adminFetch<{ invoice: FinanceInvoiceSummary }>(
+        `/api/admin/finance/invoices/${encodeURIComponent(selectedInvoiceId)}/${action}`,
+        { method: 'POST' }
+      );
+      setSelectedInvoiceDetail((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          invoice: result.invoice
+        };
+      });
+      setNotice(nextArchived ? 'Invoice archived.' : 'Invoice restored.');
+      void refreshInvoices();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update invoice archive state');
+    } finally {
+      setProcessingInvoiceArchive(false);
+    }
+  };
+
   useEffect(() => {
     if (activeFinanceTab !== 'invoices') return;
     void refreshInvoices();
-  }, [activeFinanceTab, invoiceStatusFilter]);
+  }, [activeFinanceTab, invoiceStatusFilter, invoiceArchiveFilter]);
 
   useEffect(() => {
     if (activeFinanceTab !== 'invoices') return;
@@ -1514,6 +1546,19 @@ export default function AdminFinancePage() {
                     <option value="uncollectible">Uncollectible</option>
                   </select>
                 </div>
+                <div>
+                  <label style={labelStyle}>Archive</label>
+                  <select
+                    value={invoiceArchiveFilter}
+                    onChange={(event) => setInvoiceArchiveFilter(event.target.value as typeof invoiceArchiveFilter)}
+                    className="finance-select"
+                    style={{ ...inputStyle, appearance: 'none' }}
+                  >
+                    <option value="active">Active</option>
+                    <option value="archived">Archived</option>
+                    <option value="all">All</option>
+                  </select>
+                </div>
                 <div style={{ gridColumn: 'span 2' }}>
                   <label style={labelStyle}>Search</label>
                   <input
@@ -1586,7 +1631,9 @@ export default function AdminFinancePage() {
                           style={{
                             textAlign: 'left',
                             border: isSelected ? '1px solid #0f766e' : '1px solid #e2e8f0',
-                            background: isSelected ? '#f0fdfa' : '#ffffff',
+                            background: row.isArchived
+                              ? (isSelected ? '#f8fafc' : '#f8fafc')
+                              : (isSelected ? '#f0fdfa' : '#ffffff'),
                             borderRadius: 12,
                             padding: 12,
                             cursor: 'pointer',
@@ -1599,20 +1646,38 @@ export default function AdminFinancePage() {
                             <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#0f172a', fontFamily: "var(--font-sans)" }}>
                               {row.customerName || 'Unknown customer'}
                             </p>
-                            <span
-                              style={{
-                                padding: '2px 9px',
-                                borderRadius: 999,
-                                fontSize: 11,
-                                fontWeight: 700,
-                                border: `1px solid ${statusTone.border}`,
-                                background: statusTone.bg,
-                                color: statusTone.text,
-                                fontFamily: "var(--font-sans)",
-                              }}
-                            >
-                              {invoiceStatusLabel(row.status)}
-                            </span>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              {row.isArchived && (
+                                <span
+                                  style={{
+                                    padding: '2px 9px',
+                                    borderRadius: 999,
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    border: '1px solid #cbd5e1',
+                                    background: '#f1f5f9',
+                                    color: '#475569',
+                                    fontFamily: "var(--font-sans)",
+                                  }}
+                                >
+                                  Archived
+                                </span>
+                              )}
+                              <span
+                                style={{
+                                  padding: '2px 9px',
+                                  borderRadius: 999,
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  border: `1px solid ${statusTone.border}`,
+                                  background: statusTone.bg,
+                                  color: statusTone.text,
+                                  fontFamily: "var(--font-sans)",
+                                }}
+                              >
+                                {invoiceStatusLabel(row.status)}
+                              </span>
+                            </div>
                           </div>
                           <p style={{ margin: 0, fontSize: 12, color: '#64748b', fontFamily: "var(--font-sans)" }}>
                             {row.number || row.id} · {row.customerEmail || 'no-email'}
@@ -1621,11 +1686,22 @@ export default function AdminFinancePage() {
                             {row.description || 'No title'} · Due {cents(row.amountDueCents)} · Paid {cents(row.amountPaidCents)}
                           </p>
                           <div style={{ height: 6, background: '#e2e8f0', borderRadius: 999, overflow: 'hidden' }}>
-                            <div style={{ width: `${progressPercent}%`, height: '100%', background: row.status === 'paid' ? '#16a34a' : '#0284c7' }} />
+                            <div
+                              style={{
+                                width: `${progressPercent}%`,
+                                height: '100%',
+                                background: row.isArchived ? '#64748b' : row.status === 'paid' ? '#16a34a' : '#0284c7'
+                              }}
+                            />
                           </div>
                           <p style={{ margin: 0, fontSize: 11, color: '#64748b', fontFamily: "var(--font-sans)" }}>
                             Progress: {completedStepCount}/{steps.length} steps
                           </p>
+                          {row.isArchived && row.archivedAt && (
+                            <p style={{ margin: 0, fontSize: 11, color: '#64748b', fontFamily: "var(--font-sans)" }}>
+                              Archived {new Date(row.archivedAt).toLocaleString()}
+                            </p>
+                          )}
                         </button>
                       );
                     })}
@@ -1653,8 +1729,53 @@ export default function AdminFinancePage() {
                         <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b', fontFamily: "var(--font-sans)" }}>
                           {selectedInvoiceDetail.invoice.number || selectedInvoiceDetail.invoice.id}
                         </p>
+                        <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {selectedInvoiceDetail.invoice.isArchived && (
+                            <span
+                              style={{
+                                padding: '2px 9px',
+                                borderRadius: 999,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                border: '1px solid #cbd5e1',
+                                background: '#f1f5f9',
+                                color: '#475569',
+                                fontFamily: "var(--font-sans)",
+                              }}
+                            >
+                              Archived
+                            </span>
+                          )}
+                          <span
+                            style={{
+                              padding: '2px 9px',
+                              borderRadius: 999,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              border: `1px solid ${invoiceStatusColor(selectedInvoiceDetail.invoice.status).border}`,
+                              background: invoiceStatusColor(selectedInvoiceDetail.invoice.status).bg,
+                              color: invoiceStatusColor(selectedInvoiceDetail.invoice.status).text,
+                              fontFamily: "var(--font-sans)",
+                            }}
+                          >
+                            {invoiceStatusLabel(selectedInvoiceDetail.invoice.status)}
+                          </span>
+                        </div>
                       </div>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="btn-pill btn-ghost"
+                          style={{ padding: '6px 12px', fontSize: 12 }}
+                          disabled={processingInvoiceArchive}
+                          onClick={() => void setInvoiceArchived(!selectedInvoiceDetail.invoice.isArchived)}
+                        >
+                          {processingInvoiceArchive
+                            ? 'Saving…'
+                            : selectedInvoiceDetail.invoice.isArchived
+                              ? 'Restore'
+                              : 'Archive'}
+                        </button>
                         {selectedInvoiceDetail.invoice.hostedInvoiceUrl && (
                           <button
                             type="button"
