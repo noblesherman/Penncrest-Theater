@@ -1,0 +1,192 @@
+export type FundraisingEvent = {
+  id: string;
+  slug: string;
+  title: string;
+  dateLabel: string;
+  timeLabel: string;
+  location: string;
+  heroImageUrl: string;
+  summary: string;
+  longDescription: string;
+  goalLabel: string;
+  details: string[];
+};
+
+export type SponsorshipTier = {
+  level: string;
+  amount: string;
+  benefit: string;
+};
+
+export type DonationLevel = {
+  amount: string;
+  label: string;
+  detail: string;
+};
+
+export type FundraisingSponsor = {
+  id: string;
+  name: string;
+  tier: 'Gold' | 'Silver' | 'Bronze';
+  logoUrl: string;
+  imageUrl: string;
+  spotlight: string;
+  websiteUrl: string;
+};
+
+export const fundraisingEvents: FundraisingEvent[] = [
+  {
+    id: 'event-spring-cabaret-night',
+    slug: 'spring-cabaret-night',
+    title: 'Spring Cabaret Night',
+    dateLabel: 'April 18, 2026',
+    timeLabel: '7:00 PM',
+    location: 'Penncrest Auditorium',
+    heroImageUrl: 'https://picsum.photos/id/1043/1600/900',
+    summary: 'An image-forward evening of student performances, raffle baskets, and family concessions.',
+    longDescription:
+      'Spring Cabaret Night highlights solo and ensemble performances while raising funds for costumes, sound support, and student production opportunities throughout the year.',
+    goalLabel: '$8,000 Goal',
+    details: [
+      'Student performances curated from this season.',
+      'Lobby raffle baskets donated by local businesses.',
+      'Concession sales support student tech scholarships.',
+      'Open seating and family-friendly run time.'
+    ]
+  },
+  {
+    id: 'event-backstage-open-house',
+    slug: 'backstage-open-house',
+    title: 'Backstage Open House',
+    dateLabel: 'May 2, 2026',
+    timeLabel: '1:00 PM - 4:00 PM',
+    location: 'Theater Lobby + Stage',
+    heroImageUrl: 'https://picsum.photos/id/1074/1600/900',
+    summary: 'Walk through the wings, lighting booth, and rehearsal spaces with student guides.',
+    longDescription:
+      'This open house is designed for families and community members who want to understand how fundraising directly supports every aspect of our productions.',
+    goalLabel: '$5,000 Goal',
+    details: [
+      'Guided tours led by student cast and crew.',
+      'Live mini demos for sound, lights, and stage management.',
+      'Sponsor showcase wall with logo placements.',
+      'Volunteer sign-up station for summer build days.'
+    ]
+  },
+  {
+    id: 'event-summer-build-day',
+    slug: 'summer-build-day',
+    title: 'Summer Build Day',
+    dateLabel: 'June 13, 2026',
+    timeLabel: '9:30 AM - 2:00 PM',
+    location: 'Scene Shop',
+    heroImageUrl: 'https://picsum.photos/id/1060/1600/900',
+    summary: 'A hands-on volunteer day for set prep, prop organization, and costume inventory.',
+    longDescription:
+      'Summer Build Day is where community volunteers and students work side by side to prepare the next season with practical support and direct material donations.',
+    goalLabel: '$3,500 Goal',
+    details: [
+      'Set framing and painting stations for volunteers.',
+      'Costume sorting and quick-repair tables.',
+      'Prop donation intake and inventory prep.',
+      'Crew mentor sessions with student leaders.'
+    ]
+  }
+];
+
+export const fundraisingSponsors: FundraisingSponsor[] = [
+  {
+    id: 'sponsor-main-street-bank',
+    name: 'Main Street Bank',
+    tier: 'Gold',
+    logoUrl: 'https://dummyimage.com/320x120/ffffff/991b1b.png&text=Main+Street+Bank',
+    imageUrl: 'https://picsum.photos/id/1025/900/600',
+    spotlight: 'Supporting production sound upgrades and student leadership scholarships.',
+    websiteUrl: 'https://www.penncresttheater.org'
+  },
+  {
+    id: 'sponsor-media-arts-council',
+    name: 'Media Arts Council',
+    tier: 'Gold',
+    logoUrl: 'https://dummyimage.com/320x120/ffffff/7f1d1d.png&text=Media+Arts+Council',
+    imageUrl: 'https://picsum.photos/id/1038/900/600',
+    spotlight: 'Funding scenic art materials and seasonal community arts collaborations.',
+    websiteUrl: 'https://www.penncresttheater.org'
+  },
+  {
+    id: 'sponsor-rose-tree-dental',
+    name: 'Rose Tree Dental',
+    tier: 'Silver',
+    logoUrl: 'https://dummyimage.com/320x120/ffffff/b45309.png&text=Rose+Tree+Dental',
+    imageUrl: 'https://picsum.photos/id/1067/900/600',
+    spotlight: 'Helping cover student costume and wardrobe costs.',
+    websiteUrl: 'https://www.penncresttheater.org'
+  },
+  {
+    id: 'sponsor-miller-family-foundation',
+    name: 'Miller Family Foundation',
+    tier: 'Silver',
+    logoUrl: 'https://dummyimage.com/320x120/ffffff/78350f.png&text=Miller+Family+Foundation',
+    imageUrl: 'https://picsum.photos/id/1011/900/600',
+    spotlight: 'Providing annual support for student theater training opportunities.',
+    websiteUrl: 'https://www.penncresttheater.org'
+  },
+  {
+    id: 'sponsor-cedar-realty-group',
+    name: 'Cedar Realty Group',
+    tier: 'Bronze',
+    logoUrl: 'https://dummyimage.com/320x120/ffffff/92400e.png&text=Cedar+Realty+Group',
+    imageUrl: 'https://picsum.photos/id/1041/900/600',
+    spotlight: 'Backing front-of-house improvements and audience accessibility support.',
+    websiteUrl: 'https://www.penncresttheater.org'
+  },
+  {
+    id: 'sponsor-brightline-fitness',
+    name: 'Brightline Fitness',
+    tier: 'Bronze',
+    logoUrl: 'https://dummyimage.com/320x120/ffffff/1f2937.png&text=Brightline+Fitness',
+    imageUrl: 'https://picsum.photos/id/1050/900/600',
+    spotlight: 'Contributing to rehearsal wellness supplies and cast support kits.',
+    websiteUrl: 'https://www.penncresttheater.org'
+  }
+];
+
+export const donationLevels: DonationLevel[] = [
+  {
+    amount: '$25',
+    label: 'Spotlight Supporter',
+    detail: 'Supports scripts, rehearsal essentials, and student project supplies.'
+  },
+  {
+    amount: '$100',
+    label: 'Stage Builder',
+    detail: 'Helps cover set construction materials, paint, and prop hardware.'
+  },
+  {
+    amount: '$250+',
+    label: 'Season Champion',
+    detail: 'Funds costumes, microphones, and production support for major shows.'
+  }
+];
+
+export const sponsorshipTiers: SponsorshipTier[] = [
+  {
+    level: 'Bronze Sponsor',
+    amount: '$250',
+    benefit: 'Program listing and website recognition.'
+  },
+  {
+    level: 'Silver Sponsor',
+    amount: '$500',
+    benefit: 'Event signage logo placement plus all Bronze benefits.'
+  },
+  {
+    level: 'Gold Sponsor',
+    amount: '$1,000+',
+    benefit: 'Featured logos, stage announcement, and social media spotlights.'
+  }
+];
+
+export function getFundraisingEventBySlug(slug: string): FundraisingEvent | undefined {
+  return fundraisingEvents.find((event) => event.slug === slug);
+}

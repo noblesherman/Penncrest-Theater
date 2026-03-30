@@ -1,0 +1,2 @@
+ALTER TABLE "Performance"
+  ADD COLUMN IF NOT EXISTS "isFundraiser" BOOLEAN NOT NULL DEFAULT false;

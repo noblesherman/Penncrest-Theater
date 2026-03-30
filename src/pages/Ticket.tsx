@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Calendar, MapPin } from 'lucide-react';
 import { format } from 'date-fns';
 import { apiFetch } from '../lib/api';
+import { toQrCodeDataUrl } from '../lib/qrCode';
 
 type TicketResponse = {
   id: string;
@@ -17,11 +18,12 @@ type TicketResponse = {
     sectionName: string;
     row: string;
     number: number;
+    isGeneralAdmission?: boolean;
   };
   holder: {
     customerName: string;
     customerEmail: string;
-    source: 'ONLINE' | 'DOOR' | 'COMP' | 'STAFF_FREE' | 'FAMILY_FREE';
+    source: 'ONLINE' | 'DOOR' | 'COMP' | 'STAFF_FREE' | 'FAMILY_FREE' | 'STUDENT_COMP';
     ticketType?: string | null;
     attendeeName?: string | null;
   };
@@ -31,6 +33,7 @@ export default function TicketPage() {
   const { publicId } = useParams();
   const [ticket, setTicket] = useState<TicketResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [qrImageUrl, setQrImageUrl] = useState<string>('');
 
   useEffect(() => {
     if (!publicId) {
@@ -43,10 +46,32 @@ export default function TicketPage() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load ticket'));
   }, [publicId]);
 
-  const qrImage = useMemo(() => {
-    if (!ticket) return '';
-    return `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(ticket.qrPayload)}`;
-  }, [ticket]);
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!ticket?.qrPayload) {
+      setQrImageUrl('');
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void toQrCodeDataUrl(ticket.qrPayload, 260)
+      .then((nextUrl) => {
+        if (!cancelled) {
+          setQrImageUrl(nextUrl);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setQrImageUrl('');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ticket?.qrPayload]);
 
   if (error) {
     return <div className="min-h-screen flex items-center justify-center text-red-600">{error}</div>;
@@ -57,23 +82,34 @@ export default function TicketPage() {
   }
 
   return (
-    <div className="min-h-screen bg-stone-100 py-16 px-4">
-      <div className="max-w-xl mx-auto bg-white rounded-3xl border border-stone-200 shadow-xl overflow-hidden">
-        <div className="bg-stone-900 text-white p-8 text-center">
-          <h1 className="text-3xl font-black mb-2">{ticket.performance.showTitle}</h1>
+    <div className="min-h-screen bg-stone-100 px-4 py-10 sm:py-16">
+      <div className="mx-auto max-w-xl overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-xl">
+        <div className="bg-stone-900 p-6 text-center text-white sm:p-8">
+          <h1 className="mb-2 text-2xl font-black sm:text-3xl">{ticket.performance.showTitle}</h1>
           <div className="text-stone-300 text-sm">Ticket #{ticket.publicId}</div>
         </div>
 
-        <div className="p-8">
+        <div className="p-5 sm:p-8">
           <div className="flex flex-col items-center mb-6">
-            <img src={qrImage} alt="Ticket QR" className="w-64 h-64 border border-stone-200 rounded-xl" />
+            {qrImageUrl ? (
+              <img src={qrImageUrl} alt="Ticket QR" className="h-52 w-52 rounded-xl border border-stone-200 sm:h-64 sm:w-64" />
+            ) : (
+              <div className="flex h-52 w-52 items-center justify-center rounded-xl border border-stone-200 bg-stone-50 text-sm text-stone-400 sm:h-64 sm:w-64">
+                Generating QR…
+              </div>
+            )}
             <div className="text-[11px] text-stone-400 mt-2">Present this QR at the door</div>
           </div>
 
           <div className="space-y-3 text-sm text-stone-700">
             <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-stone-500" /> {format(new Date(ticket.performance.startsAt), 'EEEE, MMMM d, yyyy @ h:mm a')}</div>
             <div className="flex items-center gap-2"><MapPin className="w-4 h-4 text-stone-500" /> {ticket.performance.venue}</div>
-            <div><span className="font-semibold">Seat:</span> {ticket.seat.sectionName} Row {ticket.seat.row} Seat {ticket.seat.number}</div>
+            <div>
+              <span className="font-semibold">Seat:</span>{' '}
+              {ticket.seat.isGeneralAdmission
+                ? `General Admission Ticket ${ticket.seat.number || 1}`
+                : `${ticket.seat.sectionName} Row ${ticket.seat.row} Seat ${ticket.seat.number}`}
+            </div>
             <div><span className="font-semibold">Name:</span> {ticket.holder.attendeeName || ticket.holder.customerName}</div>
             <div><span className="font-semibold">Email:</span> {ticket.holder.customerEmail}</div>
             {ticket.holder.ticketType && <div><span className="font-semibold">Type:</span> {ticket.holder.ticketType}</div>}

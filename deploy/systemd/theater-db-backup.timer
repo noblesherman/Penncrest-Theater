@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Penncrest Theater PostgreSQL backup daily
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+Unit=theater-db-backup.service
+
+[Install]
+WantedBy=timers.target

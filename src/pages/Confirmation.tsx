@@ -3,17 +3,20 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Calendar, MapPin, Ticket, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import { apiFetch } from '../lib/api';
+import { getRememberedOrderAccessToken, rememberOrderAccessToken } from '../lib/orderAccess';
 
 type OrderResponse = {
   order: {
     id: string;
-    status: 'PENDING' | 'PAID' | 'REFUNDED' | 'CANCELED';
-    source: 'ONLINE' | 'DOOR' | 'COMP' | 'STAFF_FREE' | 'FAMILY_FREE';
+    status: 'PENDING' | 'PAID' | 'FINALIZATION_FAILED' | 'REFUNDED' | 'CANCELED';
+    source: 'ONLINE' | 'DOOR' | 'COMP' | 'STAFF_FREE' | 'STAFF_COMP' | 'FAMILY_FREE' | 'STUDENT_COMP';
     email: string;
     customerName: string;
     amountTotal: number;
     currency: string;
     createdAt: string;
+    refundStatus?: string | null;
+    refundRequestedAt?: string | null;
   };
   performance: {
     id: string;
@@ -21,6 +24,7 @@ type OrderResponse = {
     showTitle: string;
     startsAt: string;
     venue: string;
+    isGeneralAdmission?: boolean;
   };
   tickets: Array<{
     id: string;
@@ -29,6 +33,7 @@ type OrderResponse = {
     sectionName: string;
     row: string;
     number: number;
+    isGeneralAdmission?: boolean;
     price: number;
     ticketType?: string | null;
     isComplimentary?: boolean;
@@ -39,6 +44,7 @@ type OrderResponse = {
 export default function Confirmation() {
   const [searchParams] = useSearchParams();
   const orderId = searchParams.get('orderId');
+  const tokenFromUrl = searchParams.get('token');
   const [orderData, setOrderData] = useState<OrderResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,17 +54,25 @@ export default function Confirmation() {
       return;
     }
 
+    const orderAccessToken = tokenFromUrl || getRememberedOrderAccessToken(orderId);
+    if (!orderAccessToken) {
+      setError('This confirmation link is incomplete. Use Order Lookup to retrieve your tickets.');
+      return;
+    }
+
+    rememberOrderAccessToken(orderId, orderAccessToken);
+
     let cancelled = false;
     let attempts = 0;
 
     const fetchOrder = async () => {
       try {
-        const result = await apiFetch<OrderResponse>(`/api/orders/${orderId}`);
+        const result = await apiFetch<OrderResponse>(`/api/orders/${orderId}?token=${encodeURIComponent(orderAccessToken)}`);
         if (cancelled) return;
         setOrderData(result);
 
         attempts += 1;
-        if (result.order.status !== 'PAID' && attempts < 20) {
+        if (result.order.status === 'PENDING' && attempts < 20) {
           setTimeout(fetchOrder, 2500);
         }
       } catch (err) {
@@ -72,7 +86,7 @@ export default function Confirmation() {
     return () => {
       cancelled = true;
     };
-  }, [orderId]);
+  }, [orderId, tokenFromUrl]);
 
   const totalLabel = useMemo(() => {
     if (!orderData) return '$0.00';
@@ -87,21 +101,32 @@ export default function Confirmation() {
     return <div className="min-h-screen flex items-center justify-center">Loading confirmation...</div>;
   }
 
-  const pending = orderData.order.status !== 'PAID';
+  const pending = orderData.order.status === 'PENDING';
+  const finalizationFailed = orderData.order.status === 'FINALIZATION_FAILED';
 
   return (
-    <div className="min-h-screen bg-yellow-50 py-20 px-4">
+    <div className="min-h-screen bg-yellow-50 px-4 py-10 sm:py-20">
       <div className="max-w-3xl mx-auto">
         <div className="bg-white rounded-[2rem] shadow-2xl overflow-hidden border border-stone-100">
-          <div className="bg-stone-900 text-white p-10 text-center">
-            <h1 className="text-4xl font-black mb-2">{pending ? 'PROCESSING PAYMENT' : 'YOU\'RE ALL SET!'}</h1>
+          <div className="bg-stone-900 p-6 text-center text-white sm:p-10">
+            <h1 className="mb-2 text-3xl font-black sm:text-4xl">
+              {pending ? 'PROCESSING PAYMENT' : finalizationFailed ? 'ORDER NEEDS REVIEW' : 'YOU\'RE ALL SET!'}
+            </h1>
             <p className="text-stone-400 text-sm">Order #{orderData.order.id.slice(0, 8)}</p>
           </div>
 
           <div className="p-8 md:p-12">
             {pending && (
               <div className="bg-yellow-100 border border-yellow-200 text-yellow-900 p-4 rounded-xl mb-8">
-                Your payment is still being confirmed by Stripe. This page will refresh automatically.
+                Your payment is still being confirmed. This page will refresh automatically.
+              </div>
+            )}
+
+            {finalizationFailed && (
+              <div className="bg-red-100 border border-red-200 text-red-900 p-4 rounded-xl mb-8">
+                We received a paid checkout event but could not safely finish ticket issuance. A refund has
+                {orderData.order.refundStatus ? ` (${orderData.order.refundStatus})` : ' '}
+                been requested automatically. Do not purchase the same seats again until staff confirms recovery.
               </div>
             )}
 
@@ -121,24 +146,26 @@ export default function Confirmation() {
             </div>
 
             <div className="bg-stone-50 rounded-2xl p-6 mb-8 border border-stone-100">
-              <div className="flex justify-between items-center mb-4">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-bold text-stone-900 uppercase tracking-wider text-sm">Tickets</h3>
                 <div className="text-sm font-bold text-stone-700">Total {totalLabel}</div>
               </div>
 
               <div className="space-y-3">
                 {orderData.tickets.map((ticket) => (
-                  <div key={ticket.seatId} className="bg-white p-4 rounded-xl border border-stone-100 flex items-center justify-between gap-3">
+                  <div key={ticket.seatId} className="flex flex-col gap-3 rounded-xl border border-stone-100 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <div className="font-bold text-stone-900">
-                        {ticket.sectionName} - Row {ticket.row} Seat {ticket.number}
+                        {ticket.isGeneralAdmission || orderData.performance.isGeneralAdmission
+                          ? `General Admission Ticket ${ticket.number || 1}`
+                          : `${ticket.sectionName} - Row ${ticket.row} Seat ${ticket.number}`}
                       </div>
                       {ticket.ticketType && <div className="text-xs text-stone-500">Type: {ticket.ticketType}</div>}
                       {ticket.attendeeName && <div className="text-xs text-stone-500">Attendee: {ticket.attendeeName}</div>}
                       {ticket.isComplimentary && <div className="text-xs text-green-700 font-semibold">Complimentary</div>}
                     </div>
-                    {ticket.publicId && (
-                      <Link to={`/tickets/${ticket.publicId}`} className="text-sm font-bold text-yellow-700 hover:text-yellow-900 inline-flex items-center gap-1">
+                    {ticket.publicId && !finalizationFailed && (
+                      <Link to={`/tickets/${ticket.publicId}`} className="inline-flex items-center gap-1 text-sm font-bold text-yellow-700 hover:text-yellow-900">
                         <Ticket className="w-4 h-4" /> View Ticket
                       </Link>
                     )}

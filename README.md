@@ -106,6 +106,29 @@ Release expired holds manually:
 npm --prefix backend run cron:release-holds
 ```
 
+Database backup:
+```bash
+npm run backup:db -- --dry-run
+```
+
+Database restore:
+```bash
+npm run restore:db -- --file backups/postgres/<file>.dump.enc --yes-i-understand
+```
+
+Safer restore into a separate database first:
+```bash
+npm run restore:db -- \
+  --file backups/postgres/<file>.dump.enc \
+  --target-db-url "postgresql://USER:PASSWORD@HOST:5432/theater_restore" \
+  --yes-i-understand
+```
+
+See:
+- `docs/database-backups.md`
+- `deploy/systemd/theater-db-backup.service`
+- `deploy/systemd/theater-db-backup.timer`
+
 ## API Documentation
 
 See:
@@ -116,6 +139,8 @@ See:
 ### Frontend (`.env`)
 - `VITE_API_BASE_URL` optional, defaults to same-origin
 - `VITE_API_PROXY_TARGET` optional, default `http://localhost:4000`
+- `VITE_ALLOWED_HOSTS` optional, comma-separated host allowlist for tunneling the Vite dev server; defaults to `.trycloudflare.com`
+- `VITE_SITE_URL` recommended, used for canonical URLs, sitemap.xml, robots.txt, and social metadata
 
 ### Backend (`backend/.env`)
 - `PORT`
@@ -131,6 +156,27 @@ See:
 - `HOLD_CLEANUP_INTERVAL_SECONDS`
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`
 - `GOOGLE_CALENDAR_ICS_URL` (optional)
+- `R2_ACCOUNT_ID` (optional if `R2_ENDPOINT` is set)
+- `R2_ENDPOINT` (optional if `R2_ACCOUNT_ID` is set)
+- `R2_BUCKET`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+- `R2_PUBLIC_BASE_URL`
+- `R2_UPLOAD_PREFIX` (optional, default `uploads`)
+- `R2_MAX_UPLOAD_BYTES` (optional, default `8388608`)
+
+### One-Time Image Migration to R2
+
+After configuring R2 vars in `backend/.env`, convert existing Base64-stored images in Postgres:
+
+```bash
+npm --prefix backend run images:migrate-r2
+```
+
+This migrates:
+- `show.posterUrl`
+- `castMember.photoUrl`
+- image data URLs nested in `contentPage.content` (About page editor content)
 
 ## Deployment Notes
 
@@ -140,7 +186,44 @@ See:
    ```bash
    npm --prefix backend run prisma:deploy
    ```
-4. Configure Stripe webhook endpoint:
+4. Build backend JS once per deploy so PM2 runs compiled output:
+   ```bash
+   npm --prefix backend run build
+   ```
+5. Start the backend and tunnel with PM2 so they stay up after shell disconnects or server restarts:
+   ```bash
+   npm install -g pm2
+   cp cloudflared/config.example.yml cloudflared/config.yml
+   # edit cloudflared/config.yml with your tunnel id, credentials path, and hostname
+   pm2 start ecosystem.config.cjs
+   pm2 save
+   pm2 startup
+   ```
+   For a temporary quick tunnel instead of a named tunnel:
+   ```bash
+   pm2 start ecosystem.quick-tunnel.config.cjs
+   pm2 save
+   ```
+   You can inspect/restart it with:
+   ```bash
+   pm2 status
+    pm2 logs theater-backend
+   pm2 logs theater-tunnel
+   pm2 restart theater-backend
+   pm2 restart theater-tunnel
+   ```
+   Quick tunnel logs:
+   ```bash
+   pm2 logs theater-quick-tunnel
+   ```
+6. Create a named Cloudflare Tunnel so the backend URL is stable. Point it at `http://localhost:$PORT` (for example `http://localhost:6000`), then set the frontend `VITE_API_BASE_URL` to that hostname and set backend `FRONTEND_ORIGIN` / `APP_BASE_URL` to your Vercel frontend URL.
+   Quick tunnels are fine for temporary testing:
+   ```bash
+   cloudflared tunnel --url http://localhost:6000
+   ```
+   They are not a good PM2 target because the hostname changes when the process restarts.
+   If you tunnel the Vite dev server instead of the backend, set `VITE_ALLOWED_HOSTS` so Vite accepts the tunnel hostname.
+7. Configure Stripe webhook endpoint:
    - `https://<backend-domain>/api/webhooks/stripe`
-5. Set all backend env vars in your host.
-6. Ensure hold cleanup runs continuously (in-process interval) or via scheduled job using `cron:release-holds`.
+8. Set all backend env vars in your host.
+9. Ensure hold cleanup runs continuously (in-process interval) or via scheduled job using `cron:release-holds`.

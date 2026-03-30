@@ -1,8 +1,9 @@
 import crypto from 'node:crypto';
-import { OrderSource, Prisma } from '@prisma/client';
+import { InPersonPaymentMethod, OrderSource, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { HttpError } from '../lib/http-error.js';
 import { buildQrPayload } from '../lib/qr.js';
+import { generateOrderAccessToken } from '../lib/order-access.js';
 import { sendTicketsEmail } from '../lib/email.js';
 
 type AssignedOrderParams = {
@@ -12,6 +13,7 @@ type AssignedOrderParams = {
   staffCompRedemptionUserId?: string;
   customerName: string;
   customerEmail: string;
+  customerPhone?: string;
   attendeeNames?: Record<string, string>;
   source: OrderSource;
   ticketTypeBySeatId?: Record<string, string>;
@@ -19,10 +21,25 @@ type AssignedOrderParams = {
   allowHeldSeats?: boolean;
   enforceSalesCutoff?: boolean;
   sendEmail?: boolean;
+  inPersonPaymentMethod?: InPersonPaymentMethod | null;
 };
 
 function dedupeSeatIds(seatIds: string[]): string[] {
   return [...new Set(seatIds)];
+}
+
+async function hasInPersonPaymentMethodColumn(): Promise<boolean> {
+  const rows = await prisma.$queryRaw<Array<{ inPersonPaymentMethodColumn: boolean }>>`
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'Order'
+        AND column_name = 'inPersonPaymentMethod'
+    ) AS "inPersonPaymentMethodColumn"
+  `;
+
+  return Boolean(rows[0]?.inPersonPaymentMethodColumn);
 }
 
 function sortSeats<T extends { sectionName: string; row: string; number: number }>(seats: T[]): T[] {
@@ -92,13 +109,23 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
   if (!name) {
     throw new HttpError(400, 'Customer name is required');
   }
+  const phone = params.customerPhone?.trim() || null;
 
   const allowHeldSeats = Boolean(params.allowHeldSeats);
   const enforceSalesCutoff = params.enforceSalesCutoff ?? false;
+  const supportsInPersonPaymentMethod = await hasInPersonPaymentMethodColumn();
 
   const order = await prisma.$transaction(async (tx) => {
-    const performance = await tx.performance.findUnique({
-      where: { id: params.performanceId },
+    if (params.source === 'DOOR' && !params.inPersonPaymentMethod) {
+      throw new HttpError(400, 'In-person door sales require a payment method');
+    }
+
+    if (params.source !== 'DOOR' && params.inPersonPaymentMethod) {
+      throw new HttpError(400, 'Payment method is only supported for in-person door sales');
+    }
+
+    const performance = await tx.performance.findFirst({
+      where: { id: params.performanceId, isArchived: false },
       include: {
         show: true,
         seats: {
@@ -174,8 +201,9 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
       .filter((value): value is string => Boolean(value));
     await closeEmptyHolds(tx, holdIds);
 
-    const complimentarySources = new Set<OrderSource>(['COMP', 'STAFF_FREE', 'STAFF_COMP', 'FAMILY_FREE']);
+    const complimentarySources = new Set<OrderSource>(['COMP', 'STAFF_FREE', 'STAFF_COMP', 'FAMILY_FREE', 'STUDENT_COMP']);
     const isSourceComplimentary = complimentarySources.has(params.source);
+    const isGeneralAdmissionNoSeatLinks = performance.seatSelectionEnabled === false;
 
     const sortedSeats = sortSeats(performance.seats);
     const seatAssignments = sortedSeats.map((seat) => {
@@ -199,18 +227,25 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
         userId: params.userId,
         email,
         customerName: name,
+        customerPhone: phone,
         attendeeNamesJson: params.attendeeNames || undefined,
         amountTotal,
         currency: 'usd',
         status: 'PAID',
-        source: params.source
+        source: params.source,
+        ...(supportsInPersonPaymentMethod
+          ? {
+              inPersonPaymentMethod: params.source === 'DOOR' ? params.inPersonPaymentMethod || 'STRIPE' : null
+            }
+          : {}),
+        accessToken: generateOrderAccessToken()
       }
     });
 
     await tx.orderSeat.createMany({
       data: seatAssignments.map((assignment) => ({
         orderId: createdOrder.id,
-        seatId: assignment.seat.id,
+        seatId: isGeneralAdmissionNoSeatLinks ? null : assignment.seat.id,
         price: assignment.price,
         ticketType: assignment.ticketType,
         attendeeName: assignment.attendeeName,
@@ -219,6 +254,7 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
     });
 
     const createdTicketIds: string[] = [];
+    const autoCheckInAt = params.source === 'DOOR' ? new Date() : null;
 
     for (const assignment of seatAssignments) {
       const ticketId = crypto.randomUUID();
@@ -229,28 +265,38 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
           orderId: createdOrder.id,
           performanceId: params.performanceId,
           userId: params.userId,
-          seatId: assignment.seat.id,
-          type: params.source === 'STAFF_COMP' || params.source === 'STAFF_FREE' ? 'STAFF_COMP' : 'PAID',
+          seatId: isGeneralAdmissionNoSeatLinks ? null : assignment.seat.id,
+          type:
+            params.source === 'STAFF_COMP' || params.source === 'STAFF_FREE'
+              ? 'STAFF_COMP'
+              : params.source === 'STUDENT_COMP' && assignment.isComplimentary
+                ? 'STUDENT_COMP'
+                : 'PAID',
           priceCents: assignment.price,
           status: 'ISSUED',
           publicId: crypto.randomBytes(8).toString('hex'),
           qrSecret,
-          qrPayload: buildQrPayload(ticketId, qrSecret)
+          qrPayload: buildQrPayload(ticketId, qrSecret),
+          checkedInAt: autoCheckInAt,
+          checkedInBy: autoCheckInAt ? 'BOX_OFFICE_AUTO' : null,
+          checkInGate: autoCheckInAt ? 'BOX_OFFICE' : null
         }
       });
       createdTicketIds.push(ticketId);
     }
 
     if (params.staffCompRedemptionUserId) {
-      if (createdTicketIds.length !== 1) {
-        throw new HttpError(400, 'Staff comp redemption requires exactly one ticket');
+      const redemptionTicketId = createdTicketIds[0];
+      if (!redemptionTicketId) {
+        throw new HttpError(400, 'Staff comp redemption requires at least one ticket');
       }
 
       await tx.staffCompRedemption.create({
         data: {
           performanceId: params.performanceId,
           userId: params.staffCompRedemptionUserId,
-          ticketId: createdTicketIds[0]
+          // A redemption is one claim per user/performance; tie it to the first issued ticket.
+          ticketId: redemptionTicketId
         }
       });
     }
@@ -259,8 +305,8 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
       where: { id: createdOrder.id },
       include: {
         performance: { include: { show: true } },
-        orderSeats: { include: { seat: true } },
-        tickets: { include: { seat: true } }
+        orderSeats: { include: { seat: true }, orderBy: { createdAt: 'asc' } },
+        tickets: { include: { seat: true }, orderBy: { createdAt: 'asc' } }
       }
     });
   });
@@ -270,7 +316,14 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
   }
 
   if (params.sendEmail) {
-    const orderSeatBySeatId = new Map(order.orderSeats.map((seat) => [seat.seatId, seat]));
+    const isGeneralAdmission = order.performance.seatSelectionEnabled === false;
+    const orderSeatBySeatId = new Map(
+      order.orderSeats
+        .filter((seat) => Boolean(seat.seatId))
+        .map((seat) => [seat.seatId as string, seat])
+    );
+    const generalAdmissionOrderSeats = order.orderSeats.filter((seat) => !seat.seatId);
+    let generalAdmissionSeatCursor = 0;
 
     await sendTicketsEmail({
       orderId: order.id,
@@ -279,14 +332,21 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
       showTitle: order.performance.title || order.performance.show.title,
       startsAtIso: order.performance.startsAt.toISOString(),
       venue: order.performance.venue,
-      tickets: order.tickets.map((ticket) => ({
-        publicId: ticket.publicId,
-        row: ticket.seat.row,
-        number: ticket.seat.number,
-        sectionName: ticket.seat.sectionName,
-        ticketType: orderSeatBySeatId.get(ticket.seatId)?.ticketType || null,
-        attendeeName: orderSeatBySeatId.get(ticket.seatId)?.attendeeName || null
-      }))
+      tickets: order.tickets.map((ticket, index) => {
+        const matchedOrderSeat =
+          (ticket.seatId ? orderSeatBySeatId.get(ticket.seatId) : null) ||
+          generalAdmissionOrderSeats[generalAdmissionSeatCursor++] ||
+          order.orderSeats[index];
+        return {
+          publicId: ticket.publicId,
+          row: isGeneralAdmission ? '' : ticket.seat?.row || '',
+          number: isGeneralAdmission ? index + 1 : ticket.seat?.number || index + 1,
+          sectionName: isGeneralAdmission ? 'General Admission' : ticket.seat?.sectionName || 'Unassigned Seat',
+          seatLabel: isGeneralAdmission ? `General Admission Ticket ${index + 1}` : null,
+          ticketType: matchedOrderSeat?.ticketType || null,
+          attendeeName: matchedOrderSeat?.attendeeName || null
+        };
+      })
     });
   }
 

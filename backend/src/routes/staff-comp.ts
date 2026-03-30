@@ -5,9 +5,13 @@ import { HttpError } from '../lib/http-error.js';
 import { handleRouteError } from '../lib/route-error.js';
 import { createAssignedOrder } from '../services/order-assignment.js';
 import { logAudit } from '../lib/audit-log.js';
+import { validateTeacherCompPromoCode } from '../services/teacher-comp-promo-code-service.js';
 
 const reserveStaffCompSchema = z.object({
   performanceId: z.string().min(1),
+  teacherPromoCode: z.string().min(4).max(64),
+  customerName: z.string().trim().min(1).max(120),
+  customerEmail: z.string().email(),
   seatId: z.string().min(1).optional(),
   attendeeName: z.string().trim().min(1).max(80).optional()
 });
@@ -16,7 +20,6 @@ export const staffCompRoutes: FastifyPluginAsync = async (app) => {
   app.post(
     '/tickets/staff-comp/reserve',
     {
-      preHandler: app.authenticateUser,
       config: {
         rateLimit: {
           max: 20,
@@ -30,18 +33,17 @@ export const staffCompRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(400).send({ error: parsed.error.flatten() });
       }
 
-      const user = request.staffUser;
-      if (!user) {
-        return reply.status(401).send({ error: 'Unauthorized' });
-      }
-
       try {
-        if (!user.verifiedStaff) {
-          throw new HttpError(403, 'Staff verification is required before reserving a comp ticket');
+        await validateTeacherCompPromoCode(parsed.data.teacherPromoCode);
+
+        const normalizedCustomerEmail = parsed.data.customerEmail.trim().toLowerCase();
+        const normalizedCustomerName = parsed.data.customerName.trim();
+        if (normalizedCustomerEmail.endsWith('@rtmsd.org')) {
+          throw new HttpError(400, 'Use a personal email for ticket delivery (not @rtmsd.org)');
         }
 
-        const performance = await prisma.performance.findUnique({
-          where: { id: parsed.data.performanceId },
+        const performance = await prisma.performance.findFirst({
+          where: { id: parsed.data.performanceId, isArchived: false },
           select: {
             id: true,
             startsAt: true,
@@ -64,16 +66,18 @@ export const staffCompRoutes: FastifyPluginAsync = async (app) => {
           throw new HttpError(400, 'Online sales are closed for this performance');
         }
 
-        const userRedemptionCount = await prisma.staffCompRedemption.count({
+        const userRedemptionCount = await prisma.order.count({
           where: {
             performanceId: performance.id,
-            userId: user.id
+            source: 'STAFF_COMP',
+            email: normalizedCustomerEmail,
+            status: { not: 'CANCELED' }
           }
         });
 
         const perUserLimit = Math.max(1, performance.staffCompLimitPerUser || 1);
         if (userRedemptionCount >= perUserLimit) {
-          throw new HttpError(409, `Staff comp limit reached for this performance (${perUserLimit})`);
+          throw new HttpError(409, `Staff comp limit reached for this email on this performance (${perUserLimit})`);
         }
 
         const seatCount = await prisma.seat.count({ where: { performanceId: performance.id } });
@@ -115,10 +119,8 @@ export const staffCompRoutes: FastifyPluginAsync = async (app) => {
         const order = await createAssignedOrder({
           performanceId: performance.id,
           seatIds: [seatId],
-          userId: user.id,
-          staffCompRedemptionUserId: user.id,
-          customerName: user.name,
-          customerEmail: user.email,
+          customerName: normalizedCustomerName,
+          customerEmail: normalizedCustomerEmail,
           attendeeNames,
           ticketTypeBySeatId: { [seatId]: 'Staff Comp' },
           priceBySeatId: { [seatId]: 0 },
@@ -131,8 +133,7 @@ export const staffCompRoutes: FastifyPluginAsync = async (app) => {
         const ticket = order.tickets[0];
 
         await logAudit({
-          actor: user.email,
-          actorUserId: user.id,
+          actor: normalizedCustomerEmail,
           action: 'STAFF_COMP_REDEEMED',
           entityType: 'Ticket',
           entityId: ticket.id,
@@ -140,12 +141,14 @@ export const staffCompRoutes: FastifyPluginAsync = async (app) => {
             performanceId: performance.id,
             ticketId: ticket.id,
             orderId: order.id,
-            seatId
+            seatId,
+            customerEmail: normalizedCustomerEmail
           }
         });
 
         return reply.status(201).send({
           orderId: order.id,
+          orderAccessToken: order.accessToken,
           ticket: {
             id: ticket.id,
             publicId: ticket.publicId,

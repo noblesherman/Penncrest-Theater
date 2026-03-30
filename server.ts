@@ -5,9 +5,8 @@ import { v4 as uuidv4 } from 'uuid';
 import Stripe from 'stripe';
 import ical from 'node-ical';
 
-// ... existing code ...
 
-// Initialize Stripe (mock or real)
+//  Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_mock', {
   // apiVersion: '2025-01-27.acacia', // Use latest API version available
 });
@@ -15,12 +14,13 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_mock', {
 async function startServer() {
   const app = express();
   const PORT = 3000;
+  const allowMockWebhook = process.env.NODE_ENV !== 'production' && process.env.ENABLE_MOCK_WEBHOOK === 'true';
 
-  app.use(express.json());
+  app.use(express.json({ limit: '100kb' }));
 
   // --- API Routes ---
 
-  // Get all shows
+  // Gets all shows
   app.get('/api/shows', (req, res) => {
     const shows = db.prepare('SELECT * FROM shows ORDER BY year DESC').all();
     res.json(shows);
@@ -73,7 +73,7 @@ async function startServer() {
     const token = uuidv4(); // Session token for the user
     const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
 
-    // Transaction to ensure atomicity
+    // Transaction to ensure avalibiltiy
     const holdTransaction = db.transaction(() => {
       // Check if any seat is already sold or held
       for (const seatId of seatIds) {
@@ -133,7 +133,7 @@ async function startServer() {
       // Create pending order
       const orderId = uuidv4();
       
-      // If we had a real Stripe key, we'd create a session
+      // Creeate Stripe session
       let session;
       if (process.env.STRIPE_SECRET_KEY) {
          session = await stripe.checkout.sessions.create({
@@ -174,35 +174,36 @@ async function startServer() {
     }
   });
 
-  // Mock Webhook (since we can't receive real webhooks easily in this env without ngrok)
-  // In a real app, this would be a POST from Stripe
-  app.post('/api/mock-webhook', (req, res) => {
-    const { orderId } = req.body;
-    
-    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
-    if (!order) return res.status(404).json({ error: 'Order not found' });
+  if (allowMockWebhook) {
+    // Mock webhook is available only for explicit local testing.
+    app.post('/api/mock-webhook', (req, res) => {
+      const { orderId } = req.body;
 
-    if (order.status === 'paid') return res.json({ success: true });
+      const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+      if (!order) return res.status(404).json({ error: 'Order not found' });
 
-    // Finalize order
-    const finalizeTransaction = db.transaction(() => {
-      db.prepare('UPDATE orders SET status = ? WHERE id = ?').run('paid', orderId);
-      
-      // Find holds by token
-      const holds = db.prepare('SELECT * FROM seat_holds WHERE token = ?').all(order.token);
-      
-      const insertTicket = db.prepare('INSERT INTO tickets (id, orderId, seatId, performanceId, qrCode) VALUES (?, ?, ?, ?, ?)');
-      
-      for (const hold of holds) {
-        insertTicket.run(uuidv4(), orderId, hold.seatId, hold.performanceId, uuidv4());
-        // Remove hold
-        db.prepare('DELETE FROM seat_holds WHERE id = ?').run(hold.id);
-      }
+      if (order.status === 'paid') return res.json({ success: true });
+
+      // Finalize order
+      const finalizeTransaction = db.transaction(() => {
+        db.prepare('UPDATE orders SET status = ? WHERE id = ?').run('paid', orderId);
+
+        // Find holds by token
+        const holds = db.prepare('SELECT * FROM seat_holds WHERE token = ?').all(order.token);
+
+        const insertTicket = db.prepare('INSERT INTO tickets (id, orderId, seatId, performanceId, qrCode) VALUES (?, ?, ?, ?, ?)');
+
+        for (const hold of holds) {
+          insertTicket.run(uuidv4(), orderId, hold.seatId, hold.performanceId, uuidv4());
+          // Remove hold
+          db.prepare('DELETE FROM seat_holds WHERE id = ?').run(hold.id);
+        }
+      });
+
+      finalizeTransaction();
+      res.json({ success: true });
     });
-
-    finalizeTransaction();
-    res.json({ success: true });
-  });
+  }
   
   // Get Order Confirmation
   app.get('/api/orders/:id', (req, res) => {

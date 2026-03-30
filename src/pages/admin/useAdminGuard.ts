@@ -1,3 +1,4 @@
+import type { AdminSession } from '../../lib/adminAuth';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clearAdminToken, ensureAdminSession, getAdminToken } from '../../lib/adminAuth';
@@ -5,6 +6,7 @@ import { clearAdminToken, ensureAdminSession, getAdminToken } from '../../lib/ad
 export function useAdminGuard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+  const [admin, setAdmin] = useState<AdminSession | null>(null);
 
   useEffect(() => {
     const token = getAdminToken();
@@ -14,12 +16,15 @@ export function useAdminGuard() {
     }
 
     ensureAdminSession()
-      .then(() => setLoading(false))
+      .then((session) => {
+        setAdmin(session);
+        setLoading(false);
+      })
       .catch(() => {
         clearAdminToken();
         navigate('/admin/login', { replace: true });
       });
   }, [navigate]);
 
-  return { loading };
+  return { loading, admin };
 }

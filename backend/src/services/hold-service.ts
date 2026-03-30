@@ -41,6 +41,92 @@ export async function releaseExpiredHolds(): Promise<number> {
   return prisma.$transaction(async (tx) => releaseExpiredHoldsInTx(tx));
 }
 
+function isStaleHeldSeat(
+  seat: {
+    status: 'AVAILABLE' | 'HELD' | 'SOLD' | 'BLOCKED';
+    holdSessionId: string | null;
+    holdSession?: {
+      status: 'ACTIVE' | 'EXPIRED' | 'CONVERTED' | 'CANCELED';
+      expiresAt: Date;
+    } | null;
+  },
+  currentHoldSessionId: string,
+  now: Date
+): boolean {
+  if (seat.status !== 'HELD' || !seat.holdSessionId || seat.holdSessionId === currentHoldSessionId) {
+    return false;
+  }
+
+  return !seat.holdSession || seat.holdSession.status !== 'ACTIVE' || seat.holdSession.expiresAt < now;
+}
+
+async function releaseStaleHoldSessionsInTx(
+  tx: Prisma.TransactionClient,
+  holdSessionIds: string[]
+): Promise<void> {
+  const uniqueHoldSessionIds = [...new Set(holdSessionIds)];
+  if (uniqueHoldSessionIds.length === 0) {
+    return;
+  }
+
+  const sessions = await tx.holdSession.findMany({
+    where: {
+      id: {
+        in: uniqueHoldSessionIds
+      }
+    },
+    select: {
+      id: true,
+      status: true,
+      expiresAt: true
+    }
+  });
+
+  if (sessions.length === 0) {
+    return;
+  }
+
+  const sessionIds = sessions.map((session) => session.id);
+
+  await tx.seat.updateMany({
+    where: {
+      holdSessionId: {
+        in: sessionIds
+      },
+      status: 'HELD'
+    },
+    data: {
+      status: 'AVAILABLE',
+      holdSessionId: null
+    }
+  });
+
+  await tx.seatHold.deleteMany({
+    where: {
+      holdSessionId: {
+        in: sessionIds
+      }
+    }
+  });
+
+  const expiredIds = sessions
+    .filter((session) => session.status === 'ACTIVE' && session.expiresAt < new Date())
+    .map((session) => session.id);
+
+  if (expiredIds.length > 0) {
+    await tx.holdSession.updateMany({
+      where: {
+        id: {
+          in: expiredIds
+        }
+      },
+      data: {
+        status: 'EXPIRED'
+      }
+    });
+  }
+}
+
 async function getOrCreateHoldSession(tx: Prisma.TransactionClient, performanceId: string, clientToken: string): Promise<HoldSession> {
   const now = new Date();
   const expiresAt = new Date(now.getTime() + env.HOLD_TTL_MINUTES * 60_000);
@@ -84,10 +170,8 @@ export async function syncSeatHold(params: {
   const seatIds = dedupeSeatIds(params.seatIds);
 
   return prisma.$transaction(async (tx) => {
-    await releaseExpiredHoldsInTx(tx);
-
-    const performance = await tx.performance.findUnique({
-      where: { id: params.performanceId },
+    const performance = await tx.performance.findFirst({
+      where: { id: params.performanceId, isArchived: false },
       select: { id: true, startsAt: true, salesCutoffAt: true }
     });
     if (!performance) {
@@ -100,8 +184,8 @@ export async function syncSeatHold(params: {
     }
 
     const holdSession = await getOrCreateHoldSession(tx, params.performanceId, params.clientToken);
-
-    const seats = seatIds.length
+    const loadSeats = async () =>
+      seatIds.length
       ? await tx.seat.findMany({
           where: {
             id: { in: seatIds },
@@ -113,13 +197,30 @@ export async function syncSeatHold(params: {
             holdSessionId: true,
             isAccessible: true,
             isCompanion: true,
-            companionForSeatId: true
+            companionForSeatId: true,
+            holdSession: {
+              select: {
+                status: true,
+                expiresAt: true
+              }
+            }
           }
         })
       : [];
+    let seats = await loadSeats();
 
     if (seats.length !== seatIds.length) {
       throw new HttpError(400, 'One or more selected seats are invalid for this performance');
+    }
+
+    const staleHoldSessionIds = seats
+      .filter((seat) => isStaleHeldSeat(seat, holdSession.id, new Date()))
+      .map((seat) => seat.holdSessionId)
+      .filter((value): value is string => Boolean(value));
+
+    if (staleHoldSessionIds.length > 0) {
+      await releaseStaleHoldSessionsInTx(tx, staleHoldSessionIds);
+      seats = await loadSeats();
     }
 
     const blockedOrSold = seats.find((seat) => seat.status === 'SOLD' || seat.status === 'BLOCKED');

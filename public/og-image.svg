@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Penncrest Theater</title>
+  <desc id="desc">Penncrest Theater shows, tickets, and student arts in Media, Pennsylvania.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#1c1917" />
+      <stop offset="55%" stop-color="#7f1d1d" />
+      <stop offset="100%" stop-color="#f59e0b" />
+    </linearGradient>
+    <radialGradient id="glow" cx="0.15" cy="0.2" r="0.9">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.22" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)" />
+  <rect width="1200" height="630" fill="url(#glow)" />
+  <rect x="62" y="62" width="1076" height="506" rx="30" fill="none" stroke="#fde68a" stroke-opacity="0.45" stroke-width="2" />
+  <g transform="translate(110 128)">
+    <rect width="118" height="118" rx="28" fill="#fff7ed" />
+    <path
+      d="M28 34h62a10 10 0 0 1 10 10v18a10 10 0 0 1-10 10H74.5l7.5 23H67.8l-7.2-23h-5.2L48.2 95H34l7.4-23H28a10 10 0 0 1-10-10V44a10 10 0 0 1 10-10Z"
+      fill="#b91c1c"
+    />
+    <circle cx="43" cy="53" r="5" fill="#fff7ed" />
+    <circle cx="75" cy="53" r="5" fill="#fff7ed" />
+  </g>
+  <text x="252" y="196" fill="#ffffff" font-family="Georgia, serif" font-size="88" font-weight="700">Penncrest Theater</text>
+  <text x="252" y="262" fill="#fde68a" font-family="Arial, sans-serif" font-size="30" letter-spacing="6">MEDIA, PENNSYLVANIA</text>
+  <text x="110" y="390" fill="#fff7ed" font-family="Arial, sans-serif" font-size="42" font-weight="700">Shows, Tickets, and Student Arts</text>
+  <text x="110" y="452" fill="#f5f5f4" font-family="Arial, sans-serif" font-size="32">
+    Explore productions, buy tickets, and learn how students get involved on stage and backstage.
+  </text>
+</svg>

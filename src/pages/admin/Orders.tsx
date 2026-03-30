@@ -1,232 +1,1885 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { motion, AnimatePresence } from 'motion/react';
 import { adminFetch } from '../../lib/adminAuth';
+import { apiFetch } from '../../lib/api';
+import { SeatMapViewport } from '../../components/SeatMapViewport';
+import {
+  Search, X, Check, ChevronRight, ChevronLeft,
+  Hash, Ticket, Plus, ExternalLink, AlertCircle,
+  CheckCircle2, RefreshCw, CreditCard, Banknote,
+  ArrowRight, MapPin, Tag, Users
+} from 'lucide-react';
+
+// ── types ────────────────────────────────────────────────────────────────────
 
 type Order = {
-  id: string;
-  status: string;
-  source: 'ONLINE' | 'DOOR' | 'COMP' | 'STAFF_FREE' | 'FAMILY_FREE';
-  email: string;
-  customerName: string;
-  amountTotal: number;
-  createdAt: string;
-  performanceTitle: string;
-  ticketCount: number;
+  id: string; status: string;
+  source: 'ONLINE' | 'DOOR' | 'COMP' | 'STAFF_FREE' | 'STAFF_COMP' | 'FAMILY_FREE' | 'STUDENT_COMP';
+  inPersonPaymentMethod?: 'STRIPE' | 'CASH' | null;
+  email: string; customerName: string;
+  amountTotal: number; createdAt: string;
+  performanceTitle: string; ticketCount: number;
 };
 
+type PricingTier = { id: string; name: string; priceCents: number; };
+type CashierTicketOption = { id: string; name: string; priceCents: number; isSynthetic?: boolean; };
 type Performance = {
   id: string;
   title: string;
   startsAt: string;
+  pricingTiers: PricingTier[];
+  staffCompsEnabled?: boolean;
+  studentCompTicketsEnabled?: boolean;
+};
+type Seat = {
+  id: string; sectionName: string; row: string; number: number;
+  x: number; y: number; price: number;
+  status: 'available' | 'held' | 'sold' | 'blocked';
+  isAccessible?: boolean; isCompanion?: boolean; companionForSeatId?: string | null;
+};
+type AssignForm = {
+  performanceId: string; source: 'DOOR' | 'COMP';
+  customerName: string; customerEmail: string;
+  seatIdsInput: string; ticketType: string; sendEmail: boolean;
+};
+type InPersonCashTonightSummary = {
+  totalCashCents: number; saleCount: number;
+  nightStartIso: string; nightEndIso: string; performanceId: string | null;
+};
+type InPersonFinalizeSeatSummary = {
+  id: string;
+  sectionName: string;
+  row: string;
+  number: number;
+  ticketType: string;
+  priceCents: number;
+};
+type InPersonSaleRecap = {
+  expectedAmountCents: number;
+  paymentMethod: 'STRIPE' | 'CASH';
+  seats: InPersonFinalizeSeatSummary[];
+  expiresAtMs: number;
+};
+type TerminalDevice = {
+  deviceId: string;
+  name: string;
+  lastHeartbeatAt: string;
+  isBusy: boolean;
+};
+type TerminalDispatch = {
+  dispatchId: string;
+  status: 'PENDING' | 'DELIVERED' | 'PROCESSING' | 'FAILED' | 'SUCCEEDED' | 'EXPIRED' | 'CANCELED';
+  failureReason?: string | null;
+  holdExpiresAt: string;
+  holdActive: boolean;
+  canRetry: boolean;
+  expectedAmountCents: number;
+  currency: string;
+  attemptCount: number;
+  finalOrderId?: string | null;
+  targetDeviceId: string;
+  targetDeviceName?: string | null;
+  seatCount: number;
+  seats: InPersonFinalizeSeatSummary[];
 };
 
+const TEACHER_TICKET_OPTION_ID = 'teacher-comp';
+const STUDENT_SHOW_TICKET_OPTION_ID = 'student-show-comp';
+const MAX_TEACHER_COMP_TICKETS = 2;
+const MAX_STUDENT_COMP_TICKETS = 2;
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+const naturalSort = (a: string, b: string) =>
+  a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+
+const parseSeatIds = (input: string) =>
+  [...new Set(input.split(',').map(v => v.trim()).filter((v): v is string => Boolean(v)))];
+
+const isTeacherTicketName = (name: string) => {
+  const normalized = name.trim().toLowerCase();
+  return normalized.includes('teacher') || (normalized.includes('rtmsd') && normalized.includes('staff'));
+};
+
+const isStudentInShowTicketName = (name: string) =>
+  name.trim().toLowerCase().includes('student in show');
+
+function pickComplimentarySeatIds(
+  seats: Array<{ id: string; sectionName: string; row: string; number: number; basePriceCents: number }>,
+  quantity: number
+): Set<string> {
+  if (quantity <= 0) return new Set();
+  const ranked = [...seats].sort((a, b) => {
+    if (a.basePriceCents !== b.basePriceCents) return b.basePriceCents - a.basePriceCents;
+    if (a.sectionName !== b.sectionName) return naturalSort(a.sectionName, b.sectionName);
+    if (a.row !== b.row) return naturalSort(a.row, b.row);
+    return a.number - b.number;
+  });
+  return new Set(ranked.slice(0, quantity).map((seat) => seat.id));
+}
+
+function normalizeSeat(raw: any): Seat {
+  const rawStatus = String(raw?.status || 'available').toLowerCase();
+  const status: Seat['status'] = ['available', 'held', 'sold', 'blocked'].includes(rawStatus)
+    ? (rawStatus as Seat['status']) : 'available';
+  const sectionOffset = raw?.sectionName === 'LEFT' ? 0 : raw?.sectionName === 'CENTER' ? 700 : 1400;
+  const rowCode = String(raw?.row || 'A').charCodeAt(0) || 65;
+  return {
+    id: String(raw?.id || ''),
+    sectionName: String(raw?.sectionName || 'Unknown'),
+    row: String(raw?.row || ''),
+    number: Number(raw?.number || 0),
+    x: Number.isFinite(Number(raw?.x)) ? Number(raw.x) : sectionOffset + Number(raw?.number || 0) * 36,
+    y: Number.isFinite(Number(raw?.y)) ? Number(raw.y) : (rowCode - 65) * 40,
+    price: Number(raw?.price || 0),
+    status,
+    isAccessible: Boolean(raw?.isAccessible),
+    isCompanion: Boolean(raw?.isCompanion),
+    companionForSeatId: raw?.companionForSeatId ?? null,
+  };
+}
+
+const STATUS_META: Record<string, { label: string; dot: string; text: string; bg: string }> = {
+  PAID:     { label: 'Paid',     dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50 ring-emerald-200' },
+  PENDING:  { label: 'Pending',  dot: 'bg-amber-400',   text: 'text-amber-700',   bg: 'bg-amber-50 ring-amber-200'    },
+  REFUNDED: { label: 'Refunded', dot: 'bg-slate-400',   text: 'text-slate-600',   bg: 'bg-slate-50 ring-slate-200'    },
+  CANCELED: { label: 'Canceled', dot: 'bg-red-400',     text: 'text-red-600',     bg: 'bg-red-50 ring-red-200'        },
+};
+
+const SOURCE_META: Record<string, { label: string; bg: string; text: string }> = {
+  ONLINE:       { label: 'Online',       bg: 'bg-blue-50 ring-blue-200',    text: 'text-blue-700'   },
+  DOOR:         { label: 'Door',         bg: 'bg-violet-50 ring-violet-200', text: 'text-violet-700' },
+  COMP:         { label: 'Comp',         bg: 'bg-slate-100 ring-slate-200',  text: 'text-slate-600'  },
+  STAFF_FREE:   { label: 'Staff',        bg: 'bg-amber-50 ring-amber-200',   text: 'text-amber-700'  },
+  STAFF_COMP:   { label: 'Staff',        bg: 'bg-amber-50 ring-amber-200',   text: 'text-amber-700'  },
+  FAMILY_FREE:  { label: 'Family',       bg: 'bg-pink-50 ring-pink-200',     text: 'text-pink-700'   },
+  STUDENT_COMP: { label: 'Student',      bg: 'bg-indigo-50 ring-indigo-200', text: 'text-indigo-700' },
+};
+
+function Badge({ label, bg, text, dot }: { label: string; bg: string; text: string; dot?: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${bg} ${text}`}>
+      {dot && <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />}
+      {label}
+    </span>
+  );
+}
+
+const STEPS = [
+  { id: 'show',    label: 'Performance', icon: Ticket },
+  { id: 'seats',   label: 'Seats',       icon: MapPin  },
+  { id: 'tickets', label: 'Checkout',    icon: Tag     },
+];
+
+// ── base input styles ─────────────────────────────────────────────────────────
+
+const baseInput = [
+  'w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900',
+  'placeholder:text-slate-300 transition',
+  'focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100',
+].join(' ');
+
+const baseSelect = baseInput + ' cursor-pointer';
+
+// ── label helper ──────────────────────────────────────────────────────────────
+
+function FieldLabel({ children }: { children: ReactNode }) {
+  return (
+    <p className="mb-2 text-xs font-bold uppercase tracking-widest text-slate-400">{children}</p>
+  );
+}
+
+// ── section card ─────────────────────────────────────────────────────────────
+
+function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={`rounded-2xl border border-slate-100 bg-white ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+// ── main ─────────────────────────────────────────────────────────────────────
+
 export default function AdminOrdersPage() {
-  const [rows, setRows] = useState<Order[]>([]);
-  const [query, setQuery] = useState('');
-  const [status, setStatus] = useState('');
+  const [rows,         setRows]         = useState<Order[]>([]);
+  const [query,        setQuery]        = useState('');
+  const [status,       setStatus]       = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
+  const [scope,        setScope]        = useState<'active' | 'archived' | 'all'>('active');
   const [performances, setPerformances] = useState<Performance[]>([]);
-  const [assignForm, setAssignForm] = useState({
-    performanceId: '',
-    source: 'DOOR' as 'DOOR' | 'COMP',
-    customerName: '',
-    customerEmail: '',
-    seatIdsInput: '',
-    ticketType: '',
-    priceCents: 1800,
-    sendEmail: false
+  const [loadingRows,  setLoadingRows]  = useState(false);
+  const [submitting,   setSubmitting]   = useState(false);
+  const [error,        setError]        = useState<string | null>(null);
+  const [notice,       setNotice]       = useState<string | null>(null);
+  const [showWizard,   setShowWizard]   = useState(false);
+  const [step,         setStep]         = useState(0);
+  const [dir,          setDir]          = useState<1 | -1>(1);
+  const didAutoOpenSeatPickerRef = useRef(false);
+  const [seatPickerOpen,  setSeatPickerOpen]  = useState(false);
+  const [seats,           setSeats]           = useState<Seat[]>([]);
+  const [loadingSeats,    setLoadingSeats]    = useState(false);
+  const [seatPickerError, setSeatPickerError] = useState<string | null>(null);
+  const [activeSection,   setActiveSection]   = useState<string>('All');
+  const [ticketSelectionBySeatId, setTicketSelectionBySeatId] = useState<Record<string, string>>({});
+  const [inPersonFlowError, setInPersonFlowError] = useState<string | null>(null);
+  const [inPersonSubmitting, setInPersonSubmitting] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'STRIPE' | 'CASH'>('STRIPE');
+  const [receiptEmail, setReceiptEmail] = useState('');
+  const [sendReceipt, setSendReceipt] = useState(false);
+  const [studentCode, setStudentCode] = useState('');
+  const [terminalDevices, setTerminalDevices] = useState<TerminalDevice[]>([]);
+  const [loadingTerminalDevices, setLoadingTerminalDevices] = useState(false);
+  const [selectedTerminalDeviceId, setSelectedTerminalDeviceId] = useState('');
+  const [terminalDispatch, setTerminalDispatch] = useState<TerminalDispatch | null>(null);
+  const [terminalDispatchActionBusy, setTerminalDispatchActionBusy] = useState(false);
+  const [cashTonight, setCashTonight] = useState<InPersonCashTonightSummary | null>(null);
+  const [loadingCashTonight, setLoadingCashTonight] = useState(false);
+  const [saleRecap, setSaleRecap] = useState<InPersonSaleRecap | null>(null);
+  const [saleRecapSecondsLeft, setSaleRecapSecondsLeft] = useState(0);
+
+  const [assignForm, setAssignForm] = useState<AssignForm>({
+    performanceId: '', source: 'DOOR',
+    customerName: '', customerEmail: '',
+    seatIdsInput: '', ticketType: '', sendEmail: false,
   });
 
-  const load = async () => {
-    const params = new URLSearchParams();
-    if (query.trim()) params.set('q', query.trim());
-    if (status) params.set('status', status);
-    if (sourceFilter) params.set('source', sourceFilter);
+  // ── data loading ───────────────────────────────────────────────────────────
 
-    const result = await adminFetch<Order[]>(`/api/admin/orders?${params.toString()}`);
-    setRows(result);
+  const load = async () => {
+    setLoadingRows(true); setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (query.trim()) params.set('q', query.trim());
+      if (status) params.set('status', status);
+      if (sourceFilter) params.set('source', sourceFilter);
+      params.set('scope', scope);
+      setRows(await adminFetch<Order[]>(`/api/admin/orders?${params.toString()}`));
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load orders'); }
+    finally { setLoadingRows(false); }
   };
 
-  useEffect(() => {
-    load().catch(console.error);
-    adminFetch<any[]>('/api/admin/performances')
-      .then((items) => {
-        const mapped = items.map((item) => ({ id: item.id, title: item.title, startsAt: item.startsAt }));
-        setPerformances(mapped);
-        if (mapped.length > 0) {
-          setAssignForm((prev) => ({ ...prev, performanceId: prev.performanceId || mapped[0].id }));
-        }
-      })
-      .catch(console.error);
+  const loadPerformances = async () => {
+    try {
+      const items = await adminFetch<Array<{
+        id: string;
+        title: string;
+        startsAt: string;
+        isArchived?: boolean;
+        pricingTiers?: PricingTier[];
+        staffCompsEnabled?: boolean;
+        studentCompTicketsEnabled?: boolean;
+      }>>('/api/admin/performances?scope=active');
+      const mapped = items.filter(i => !i.isArchived)
+        .map(i => ({
+          id: i.id,
+          title: i.title,
+          startsAt: i.startsAt,
+          pricingTiers: i.pricingTiers || [],
+          staffCompsEnabled: Boolean(i.staffCompsEnabled),
+          studentCompTicketsEnabled: Boolean(i.studentCompTicketsEnabled),
+        }));
+      setPerformances(mapped);
+      if (mapped.length > 0)
+        setAssignForm(prev => ({
+          ...prev,
+          performanceId: mapped.some(r => r.id === prev.performanceId) ? prev.performanceId : mapped[0].id
+        }));
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load performances'); }
+  };
+
+  useEffect(() => { void Promise.all([load(), loadPerformances()]); }, []);
+  useEffect(() => { void load(); }, [scope]);
+
+  const search = (e: FormEvent) => { e.preventDefault(); void load(); };
+
+  // ── assign ─────────────────────────────────────────────────────────────────
+
+  const assignOrder = async () => {
+    setError(null); setNotice(null);
+    const seatIds = parseSeatIds(assignForm.seatIdsInput);
+    if (!assignForm.performanceId || seatIds.length === 0) {
+      setError('Choose a performance and provide at least one seat ID.'); return;
+    }
+    if (assignForm.source !== 'COMP') {
+      setError('Door sales must use the in-person finalize flow.'); return;
+    }
+    const ticketTypeBySeatId = Object.fromEntries(seatIds.map(id => [id, assignForm.ticketType || 'Comp']));
+    const priceBySeatId = Object.fromEntries(seatIds.map(id => [id, 0]));
+    const fallbackName = assignForm.customerName.trim() || 'Comp Guest';
+    const fallbackEmail = assignForm.customerEmail.trim().toLowerCase() || `comp+${Date.now()}@boxoffice.local`;
+    setSubmitting(true);
+    try {
+      await adminFetch('/api/admin/orders/assign', {
+        method: 'POST',
+        body: JSON.stringify({
+          performanceId: assignForm.performanceId, seatIds,
+          customerName: fallbackName, customerEmail: fallbackEmail,
+          ticketTypeBySeatId, priceBySeatId,
+          source: assignForm.source,
+          sendEmail: Boolean(assignForm.sendEmail && assignForm.customerEmail.trim())
+        }),
+      });
+      setAssignForm(prev => ({ ...prev, customerName: '', customerEmail: '', seatIdsInput: '', ticketType: '' }));
+      setNotice(`Assigned ${seatIds.length} seat${seatIds.length === 1 ? '' : 's'} successfully.`);
+      closeWizard(); void load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to assign seats'); }
+    finally { setSubmitting(false); }
+  };
+
+  const loadCashTonight = useCallback(async (performanceId: string) => {
+    if (!performanceId) { setCashTonight(null); return; }
+    setLoadingCashTonight(true);
+    try {
+      const params = new URLSearchParams({ performanceId });
+      const summary = await adminFetch<InPersonCashTonightSummary>(`/api/admin/orders/in-person/cash-tonight?${params.toString()}`);
+      setCashTonight(summary);
+    } catch { setCashTonight(null); }
+    finally { setLoadingCashTonight(false); }
   }, []);
 
-  const search = (event: FormEvent) => {
-    event.preventDefault();
-    load().catch(console.error);
-  };
+  const loadTerminalDevices = useCallback(async () => {
+    setLoadingTerminalDevices(true);
+    try {
+      const payload = await adminFetch<{ devices: TerminalDevice[] }>('/api/admin/orders/in-person/terminal/devices');
+      setTerminalDevices(payload.devices);
+      setSelectedTerminalDeviceId(prev => {
+        if (prev && payload.devices.some((device) => device.deviceId === prev)) return prev;
+        const nextAvailable = payload.devices.find((device) => !device.isBusy)?.deviceId;
+        return nextAvailable || payload.devices[0]?.deviceId || '';
+      });
+    } catch {
+      setTerminalDevices([]);
+      setSelectedTerminalDeviceId('');
+    } finally {
+      setLoadingTerminalDevices(false);
+    }
+  }, []);
 
-  const assignOrder = async (event: FormEvent) => {
-    event.preventDefault();
-
-    const seatIds = assignForm.seatIdsInput
-      .split(',')
-      .map((value) => value.trim())
-      .filter(Boolean);
-
+  const finalizeInPersonSale = async () => {
+    setError(null); setNotice(null); setInPersonFlowError(null);
+    const seatIds = parseSeatIds(assignForm.seatIdsInput);
     if (!assignForm.performanceId || seatIds.length === 0) {
-      alert('Choose a performance and provide at least one seat ID.');
+      setError('Choose a performance and provide at least one seat ID.'); return;
+    }
+    if (selectedTicketOptions.length === 0) {
+      setError('No ticket pricing tiers are configured for this performance.'); return;
+    }
+    if (missingTicketTypeCount > 0) {
+      setError('Choose a ticket type for every selected seat before completing checkout.'); return;
+    }
+    if (hasMixedCompSelection) {
+      setInPersonFlowError('Teacher and Student in Show complimentary tickets cannot be mixed in one order.'); return;
+    }
+    const normalizedStudentCode = studentCode.trim().toLowerCase().replace(/\s+/g, '');
+    if (hasStudentInShowCompSelection && !normalizedStudentCode) {
+      setInPersonFlowError('Student code is required when Student in Show tickets are selected.'); return;
+    }
+    const normalizedReceiptEmail = receiptEmail.trim().toLowerCase();
+    if (sendReceipt && !normalizedReceiptEmail) {
+      setInPersonFlowError('Enter an email address before sending a receipt.'); return;
+    }
+
+    if (paymentMethod === 'STRIPE') {
+      if (!selectedTerminalDeviceId) {
+        setInPersonFlowError('Select an active terminal device before sending card payment.');
+        return;
+      }
+      setInPersonSubmitting(true);
+      try {
+        const dispatch = await adminFetch<TerminalDispatch>('/api/admin/orders/in-person/terminal/send', {
+          method: 'POST',
+          body: JSON.stringify({
+            performanceId: assignForm.performanceId,
+            seatIds,
+            ticketSelectionBySeatId,
+            receiptEmail: normalizedReceiptEmail || undefined,
+            sendReceipt,
+            customerName: assignForm.customerName.trim() || undefined,
+            studentCode: hasStudentInShowCompSelection ? normalizedStudentCode : undefined,
+            deviceId: selectedTerminalDeviceId
+          })
+        });
+        setTerminalDispatch(dispatch);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'Failed to send sale to terminal';
+        if (message.toLowerCase().includes('busy')) {
+          setInPersonFlowError('Selected terminal is busy. Pick another active terminal or wait.');
+          void loadTerminalDevices();
+        } else {
+          setInPersonFlowError(message);
+        }
+      } finally {
+        setInPersonSubmitting(false);
+      }
       return;
     }
 
-    const ticketTypeBySeatId = Object.fromEntries(
-      seatIds.map((seatId) => [seatId, assignForm.ticketType || (assignForm.source === 'COMP' ? 'Comp' : 'Door')])
-    );
-
-    const priceBySeatId = Object.fromEntries(
-      seatIds.map((seatId) => [seatId, assignForm.source === 'COMP' ? 0 : assignForm.priceCents])
-    );
-
-    await adminFetch('/api/admin/orders/assign', {
-      method: 'POST',
-      body: JSON.stringify({
-        performanceId: assignForm.performanceId,
-        seatIds,
-        customerName: assignForm.customerName,
-        customerEmail: assignForm.customerEmail,
-        ticketTypeBySeatId,
-        priceBySeatId,
-        source: assignForm.source,
-        sendEmail: assignForm.sendEmail
-      })
-    });
-
-    setAssignForm((prev) => ({
-      ...prev,
-      customerName: '',
-      customerEmail: '',
-      seatIdsInput: ''
-    }));
-
-    load().catch(console.error);
+    setInPersonSubmitting(true);
+    try {
+      const result = await adminFetch<{
+        expectedAmountCents: number;
+        paymentMethod: 'STRIPE' | 'CASH';
+        seats: InPersonFinalizeSeatSummary[];
+      }>('/api/admin/orders/in-person/finalize', {
+        method: 'POST',
+        body: JSON.stringify({
+          performanceId: assignForm.performanceId, seatIds,
+          ticketSelectionBySeatId, paymentMethod,
+          receiptEmail: normalizedReceiptEmail || undefined,
+          sendReceipt, customerName: assignForm.customerName.trim() || undefined,
+          studentCode: hasStudentInShowCompSelection ? normalizedStudentCode : undefined
+        })
+      });
+      setSaleRecap({
+        expectedAmountCents: result.expectedAmountCents,
+        paymentMethod: result.paymentMethod,
+        seats: result.seats,
+        expiresAtMs: Date.now() + 10000
+      });
+      setAssignForm(prev => ({ ...prev, customerName: '', customerEmail: '', seatIdsInput: '', ticketType: '' }));
+      setTicketSelectionBySeatId({});
+      setNotice(
+        `${paymentMethod === 'CASH' ? 'Cash' : 'Stripe'} sale completed — ${seatIds.length} seat${seatIds.length === 1 ? '' : 's'} · $${(result.expectedAmountCents / 100).toFixed(2)}`
+      );
+      closeWizard(); void load();
+    } catch (e) {
+      setInPersonFlowError(e instanceof Error ? e.message : 'Failed to finalize in-person sale');
+    } finally { setInPersonSubmitting(false); }
   };
 
-  return (
-    <div>
-      <h1 className="text-2xl font-black text-stone-900 mb-5">Orders</h1>
+  const finalizeSuccessfulTerminalDispatch = useCallback((dispatch: TerminalDispatch) => {
+    setSaleRecap({
+      expectedAmountCents: dispatch.expectedAmountCents,
+      paymentMethod: 'STRIPE',
+      seats: dispatch.seats,
+      expiresAtMs: Date.now() + 10000
+    });
+    setAssignForm(prev => ({ ...prev, customerName: '', customerEmail: '', seatIdsInput: '', ticketType: '' }));
+    setTicketSelectionBySeatId({});
+    setNotice(
+      `Stripe sale completed — ${dispatch.seatCount} seat${dispatch.seatCount === 1 ? '' : 's'} · $${(dispatch.expectedAmountCents / 100).toFixed(2)}`
+    );
+    setTerminalDispatch(null);
+    closeWizard(); void load();
+  }, [closeWizard, load]);
 
-      <form onSubmit={assignOrder} className="border border-stone-200 rounded-2xl p-4 mb-6 space-y-3">
-        <div className="font-bold text-sm text-stone-700">Assign Seats (Door / Comp)</div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          <select
-            value={assignForm.performanceId}
-            onChange={(event) => setAssignForm({ ...assignForm, performanceId: event.target.value })}
-            className="border border-stone-300 rounded-xl px-3 py-2"
-          >
-            {performances.map((performance) => (
-              <option key={performance.id} value={performance.id}>
-                {performance.title} - {new Date(performance.startsAt).toLocaleString()}
-              </option>
-            ))}
-          </select>
-          <select
-            value={assignForm.source}
-            onChange={(event) => setAssignForm({ ...assignForm, source: event.target.value as 'DOOR' | 'COMP' })}
-            className="border border-stone-300 rounded-xl px-3 py-2"
-          >
-            <option value="DOOR">Door Sale</option>
-            <option value="COMP">Comp</option>
-          </select>
-          <input
-            value={assignForm.ticketType}
-            onChange={(event) => setAssignForm({ ...assignForm, ticketType: event.target.value })}
-            placeholder="Ticket label (optional)"
-            className="border border-stone-300 rounded-xl px-3 py-2"
-          />
-          <input
-            value={assignForm.customerName}
-            onChange={(event) => setAssignForm({ ...assignForm, customerName: event.target.value })}
-            placeholder="Customer name"
-            className="border border-stone-300 rounded-xl px-3 py-2"
-            required
-          />
-          <input
-            type="email"
-            value={assignForm.customerEmail}
-            onChange={(event) => setAssignForm({ ...assignForm, customerEmail: event.target.value })}
-            placeholder="Customer email"
-            className="border border-stone-300 rounded-xl px-3 py-2"
-            required
-          />
-          <input
-            type="number"
-            min={0}
-            value={assignForm.priceCents}
-            onChange={(event) => setAssignForm({ ...assignForm, priceCents: Math.max(0, Number(event.target.value) || 0) })}
-            placeholder="Price cents"
-            className="border border-stone-300 rounded-xl px-3 py-2"
-            disabled={assignForm.source === 'COMP'}
-          />
+  const applyTerminalDispatchStatus = useCallback((dispatch: TerminalDispatch) => {
+    setTerminalDispatch(dispatch);
+  }, []);
+
+  const refreshTerminalDispatchStatus = useCallback(async (dispatchId: string) => {
+    const dispatch = await adminFetch<TerminalDispatch>(`/api/admin/orders/in-person/terminal/dispatch/${encodeURIComponent(dispatchId)}`);
+    applyTerminalDispatchStatus(dispatch);
+  }, [applyTerminalDispatchStatus]);
+
+  const retryTerminalDispatch = useCallback(async () => {
+    if (!terminalDispatch) return;
+    setTerminalDispatchActionBusy(true);
+    setInPersonFlowError(null);
+    try {
+      const dispatch = await adminFetch<TerminalDispatch>(
+        `/api/admin/orders/in-person/terminal/dispatch/${encodeURIComponent(terminalDispatch.dispatchId)}/retry`,
+        { method: 'POST' }
+      );
+      applyTerminalDispatchStatus(dispatch);
+    } catch (e) {
+      setInPersonFlowError(e instanceof Error ? e.message : 'Retry failed');
+      await refreshTerminalDispatchStatus(terminalDispatch.dispatchId).catch(() => undefined);
+    } finally {
+      setTerminalDispatchActionBusy(false);
+    }
+  }, [applyTerminalDispatchStatus, refreshTerminalDispatchStatus, terminalDispatch]);
+
+  const cancelTerminalDispatch = useCallback(async () => {
+    if (!terminalDispatch) return;
+    setTerminalDispatchActionBusy(true);
+    try {
+      const dispatch = await adminFetch<TerminalDispatch>(
+        `/api/admin/orders/in-person/terminal/dispatch/${encodeURIComponent(terminalDispatch.dispatchId)}/cancel`,
+        { method: 'POST' }
+      );
+      setTerminalDispatch(dispatch.status === 'CANCELED' ? null : dispatch);
+    } catch (e) {
+      setInPersonFlowError(e instanceof Error ? e.message : 'Cancel failed');
+    } finally {
+      setTerminalDispatchActionBusy(false);
+    }
+  }, [terminalDispatch]);
+
+  // ── wizard nav ─────────────────────────────────────────────────────────────
+
+  const goTo = (next: number) => { setDir(next > step ? 1 : -1); setStep(next); setError(null); };
+
+  const resetInPersonFlow = () => {
+    setInPersonFlowError(null); setInPersonSubmitting(false);
+    setPaymentMethod('STRIPE'); setReceiptEmail(''); setSendReceipt(false);
+    setStudentCode('');
+    setTerminalDevices([]);
+    setLoadingTerminalDevices(false);
+    setSelectedTerminalDeviceId('');
+    setTerminalDispatch(null);
+    setTerminalDispatchActionBusy(false);
+    setCashTonight(null); setLoadingCashTonight(false);
+  };
+
+  function closeWizard() {
+    setShowWizard(false); setStep(0); setError(null);
+    setSeatPickerOpen(false); setSeatPickerError(null);
+    setTicketSelectionBySeatId({}); resetInPersonFlow();
+  }
+
+  useEffect(() => {
+    if (!saleRecap) {
+      setSaleRecapSecondsLeft(0);
+      return;
+    }
+
+    const updateCountdown = () => {
+      const secondsLeft = Math.max(0, Math.ceil((saleRecap.expiresAtMs - Date.now()) / 1000));
+      setSaleRecapSecondsLeft(secondsLeft);
+      if (secondsLeft <= 0) {
+        setSaleRecap(null);
+      }
+    };
+
+    updateCountdown();
+    const timerId = window.setInterval(updateCountdown, 250);
+    return () => window.clearInterval(timerId);
+  }, [saleRecap]);
+
+  const handleWizardNext = () => {
+    if (step === 0) { goTo(1); return; }
+    if (step === 1) {
+      if (seatIds.length === 0) { setError('Select at least one seat to continue.'); setSeatPickerOpen(true); return; }
+      goTo(2); return;
+    }
+    goTo(step + 1);
+  };
+
+  const moveOnFromSeatPicker = () => {
+    if (step === 1) {
+      if (seatIds.length === 0) { setSeatPickerError('Select at least one seat before moving on.'); return; }
+      setSeatPickerOpen(false); goTo(2); return;
+    }
+    setSeatPickerOpen(false);
+  };
+
+  // ── seat loading ───────────────────────────────────────────────────────────
+
+  const loadSeatsForPerformance = useCallback(async (performanceId: string) => {
+    if (!performanceId) return;
+    setLoadingSeats(true);
+    try {
+      try {
+        const adminSeats = await adminFetch<any[]>(`/api/admin/performances/${performanceId}/seats`);
+        setSeats(adminSeats.map(normalizeSeat)); setSeatPickerError(null); return;
+      } catch (e) {
+        if (!(e instanceof Error && e.message.toLowerCase().includes('not found'))) throw e;
+      }
+      const publicSeats = await apiFetch<any[] | { seats: any[] }>(`/api/performances/${performanceId}/seats`);
+      const seatList = Array.isArray(publicSeats) ? publicSeats : publicSeats.seats;
+      setSeats(seatList.map(normalizeSeat)); setSeatPickerError(null);
+    } catch (e) {
+      setSeatPickerError(e instanceof Error ? e.message : 'Failed to load seats');
+    } finally { setLoadingSeats(false); }
+  }, []);
+
+  // ── derived state ──────────────────────────────────────────────────────────
+
+  const seatIds = useMemo(() => parseSeatIds(assignForm.seatIdsInput), [assignForm.seatIdsInput]);
+
+  useEffect(() => { if (!showWizard || step !== 1) setSeatPickerOpen(false); }, [showWizard, step]);
+
+  useEffect(() => {
+    if (!showWizard || step !== 1) { didAutoOpenSeatPickerRef.current = false; return; }
+    if (didAutoOpenSeatPickerRef.current || seatPickerOpen || seatIds.length > 0) return;
+    didAutoOpenSeatPickerRef.current = true;
+    setSeatPickerOpen(true);
+  }, [seatIds.length, seatPickerOpen, showWizard, step]);
+
+  useEffect(() => { setActiveSection('All'); setSeatPickerError(null); setSeats([]); }, [assignForm.performanceId]);
+  useEffect(() => { if (!seatPickerOpen || !assignForm.performanceId) return; void loadSeatsForPerformance(assignForm.performanceId); }, [assignForm.performanceId, loadSeatsForPerformance, seatPickerOpen]);
+  useEffect(() => {
+    if (!showWizard || assignForm.source !== 'DOOR') { setCashTonight(null); setLoadingCashTonight(false); return; }
+    void loadCashTonight(assignForm.performanceId);
+  }, [assignForm.performanceId, assignForm.source, loadCashTonight, showWizard]);
+  useEffect(() => {
+    if (!showWizard || assignForm.source !== 'DOOR' || paymentMethod !== 'STRIPE' || step !== 2) {
+      return;
+    }
+    void loadTerminalDevices();
+  }, [assignForm.source, loadTerminalDevices, paymentMethod, showWizard, step]);
+
+  useEffect(() => {
+    if (!terminalDispatch) return;
+    if (terminalDispatch.status === 'SUCCEEDED' || terminalDispatch.status === 'EXPIRED' || terminalDispatch.status === 'CANCELED') {
+      return;
+    }
+
+    const timerId = window.setInterval(() => {
+      void refreshTerminalDispatchStatus(terminalDispatch.dispatchId).catch(() => undefined);
+    }, 1000);
+
+    return () => window.clearInterval(timerId);
+  }, [refreshTerminalDispatchStatus, terminalDispatch]);
+
+  const selectedSeatIdSet = useMemo(() => new Set(seatIds), [seatIds]);
+
+  const updateSelectedSeatIds = useCallback((updater: (current: string[]) => string[]) => {
+    setAssignForm(prev => {
+      const current = parseSeatIds(prev.seatIdsInput);
+      const next = [...new Set(updater(current))];
+      return { ...prev, seatIdsInput: next.join(', ') };
+    });
+  }, []);
+
+  const toggleSeat = useCallback((id: string) => {
+    updateSelectedSeatIds(current =>
+      current.includes(id) ? current.filter(s => s !== id) : [...current, id]
+    );
+  }, [updateSelectedSeatIds]);
+
+  const sections = useMemo(() => [...new Set(seats.map(s => s.sectionName))].sort(naturalSort), [seats]);
+  useEffect(() => { if (activeSection !== 'All' && !sections.includes(activeSection)) setActiveSection('All'); }, [activeSection, sections]);
+
+  const visibleSeats = useMemo(
+    () => seats.filter(s => activeSection === 'All' || s.sectionName === activeSection),
+    [activeSection, seats]
+  );
+
+  const seatById = useMemo(() => new Map(seats.map(s => [s.id, s])), [seats]);
+  const hasAccessibleSelection = useMemo(() => seatIds.some(id => Boolean(seatById.get(id)?.isAccessible)), [seatById, seatIds]);
+
+  const selectedMappedSeats = useMemo(
+    () => seatIds.map(id => seatById.get(id)).filter((s): s is Seat => Boolean(s))
+      .sort((a, b) => naturalSort(a.sectionName, b.sectionName) || naturalSort(a.row, b.row) || a.number - b.number),
+    [seatById, seatIds]
+  );
+
+  const selectedUnknownSeatIds = useMemo(() => seatIds.filter(id => !seatById.has(id)), [seatById, seatIds]);
+
+  const selectedPerformance = performances.find(p => p.id === assignForm.performanceId);
+  const selectedTerminalDevice = useMemo(
+    () => terminalDevices.find((device) => device.deviceId === selectedTerminalDeviceId) || null,
+    [selectedTerminalDeviceId, terminalDevices]
+  );
+  const selectedTicketOptions = useMemo<CashierTicketOption[]>(() => {
+    if (!selectedPerformance) return [];
+    if (selectedPerformance.pricingTiers.length === 0) return [];
+    const options: CashierTicketOption[] = selectedPerformance.pricingTiers.map((tier) => ({
+      id: tier.id,
+      name: tier.name,
+      priceCents: tier.priceCents,
+    }));
+
+    const hasTeacherOption = options.some((option) => option.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketName(option.name));
+    if (selectedPerformance.staffCompsEnabled && !hasTeacherOption) {
+      options.push({
+        id: TEACHER_TICKET_OPTION_ID,
+        name: 'RTMSD STAFF',
+        priceCents: 0,
+        isSynthetic: true,
+      });
+    }
+
+    const hasStudentOption = options.some((option) => option.id === STUDENT_SHOW_TICKET_OPTION_ID || isStudentInShowTicketName(option.name));
+    if (selectedPerformance.studentCompTicketsEnabled && !hasStudentOption) {
+      options.push({
+        id: STUDENT_SHOW_TICKET_OPTION_ID,
+        name: 'Student in Show',
+        priceCents: 0,
+        isSynthetic: true,
+      });
+    }
+
+    return options;
+  }, [selectedPerformance]);
+  const primaryTicketTier = selectedTicketOptions[0] || null;
+
+  useEffect(() => {
+    if (seatIds.length === 0) { setTicketSelectionBySeatId({}); return; }
+    const defaultTierId = selectedTicketOptions[0]?.id || '';
+    setTicketSelectionBySeatId(prev => {
+      const next: Record<string, string> = {};
+      seatIds.forEach(seatId => {
+        const cur = prev[seatId];
+        const valid = Boolean(cur && selectedTicketOptions.some(t => t.id === cur));
+        if (valid) { next[seatId] = cur; return; }
+        if (defaultTierId) next[seatId] = defaultTierId;
+      });
+      return next;
+    });
+  }, [seatIds, selectedTicketOptions]);
+
+  const missingTicketTypeCount = useMemo(
+    () => seatIds.filter(id => !ticketSelectionBySeatId[id]).length,
+    [seatIds, ticketSelectionBySeatId]
+  );
+
+  const selectedSeatsWithTier = useMemo(
+    () => selectedMappedSeats.map(seat => ({
+      seat,
+      tier: selectedTicketOptions.find(t => t.id === ticketSelectionBySeatId[seat.id]) || null
+    })),
+    [selectedMappedSeats, selectedTicketOptions, ticketSelectionBySeatId]
+  );
+
+  const teacherSelectedSeatIds = useMemo(
+    () =>
+      selectedSeatsWithTier
+        .filter((item) => item.tier && (item.tier.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketName(item.tier.name)))
+        .map((item) => item.seat.id),
+    [selectedSeatsWithTier]
+  );
+  const studentInShowSelectedSeatIds = useMemo(
+    () =>
+      selectedSeatsWithTier
+        .filter((item) => item.tier && (item.tier.id === STUDENT_SHOW_TICKET_OPTION_ID || isStudentInShowTicketName(item.tier.name)))
+        .map((item) => item.seat.id),
+    [selectedSeatsWithTier]
+  );
+  const hasTeacherCompSelection = teacherSelectedSeatIds.length > 0;
+  const hasStudentInShowCompSelection = studentInShowSelectedSeatIds.length > 0;
+  const hasMixedCompSelection = hasTeacherCompSelection && hasStudentInShowCompSelection;
+
+  const selectedSeatsWithPricing = useMemo(() => {
+    let priced = selectedSeatsWithTier.map((item) => {
+      const isTeacherTicket = Boolean(item.tier && (item.tier.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketName(item.tier.name)));
+      const isStudentTicket = Boolean(item.tier && (item.tier.id === STUDENT_SHOW_TICKET_OPTION_ID || isStudentInShowTicketName(item.tier.name)));
+      const basePriceCents = item.tier
+        ? Math.max(0, item.tier.isSynthetic ? item.seat.price : item.tier.priceCents)
+        : 0;
+      return {
+        seat: item.seat,
+        tier: item.tier,
+        basePriceCents,
+        finalPriceCents: basePriceCents,
+        lineLabel: item.tier?.name || 'Unassigned',
+        isTeacherTicket,
+        isStudentTicket,
+      };
+    });
+
+    if (hasTeacherCompSelection && !hasStudentInShowCompSelection) {
+      const teacherSeats = priced.filter((item) => item.isTeacherTicket);
+      const complimentarySeatIds = pickComplimentarySeatIds(
+        teacherSeats.map((item) => ({
+          id: item.seat.id,
+          sectionName: item.seat.sectionName,
+          row: item.seat.row,
+          number: item.seat.number,
+          basePriceCents: item.basePriceCents
+        })),
+        Math.min(MAX_TEACHER_COMP_TICKETS, teacherSeats.length)
+      );
+      priced = priced.map((item) =>
+        item.isTeacherTicket && complimentarySeatIds.has(item.seat.id)
+          ? { ...item, finalPriceCents: 0, lineLabel: 'Teacher Comp' }
+          : item
+      );
+    }
+
+    if (hasStudentInShowCompSelection && !hasTeacherCompSelection) {
+      const studentSeats = priced.filter((item) => item.isStudentTicket);
+      const complimentarySeatIds = pickComplimentarySeatIds(
+        studentSeats.map((item) => ({
+          id: item.seat.id,
+          sectionName: item.seat.sectionName,
+          row: item.seat.row,
+          number: item.seat.number,
+          basePriceCents: item.basePriceCents
+        })),
+        Math.min(MAX_STUDENT_COMP_TICKETS, studentSeats.length)
+      );
+      priced = priced.map((item) =>
+        item.isStudentTicket && complimentarySeatIds.has(item.seat.id)
+          ? { ...item, finalPriceCents: 0, lineLabel: 'Student Comp' }
+          : item
+      );
+    }
+
+    return priced;
+  }, [hasStudentInShowCompSelection, hasTeacherCompSelection, selectedSeatsWithTier]);
+
+  const selectedTierSubtotalCents = useMemo(
+    () => selectedSeatsWithPricing.reduce((sum, item) => sum + item.finalPriceCents, 0),
+    [selectedSeatsWithPricing]
+  );
+
+  const selectedTierBreakdown = useMemo(() => {
+    const counts = new Map<string, { name: string; priceCents: number; count: number }>();
+    selectedSeatsWithPricing.forEach(item => {
+      const key = `${item.lineLabel}:${item.finalPriceCents}`;
+      const ex = counts.get(key);
+      if (ex) { ex.count += 1; return; }
+      counts.set(key, { name: item.lineLabel, priceCents: item.finalPriceCents, count: 1 });
+    });
+    return [...counts.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }));
+  }, [selectedSeatsWithPricing]);
+
+  const formatTicketOptionLabel = useCallback((tier: CashierTicketOption) => {
+    if (tier.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketName(tier.name)) {
+      return `${tier.name} · first ${MAX_TEACHER_COMP_TICKETS} free`;
+    }
+    if (tier.id === STUDENT_SHOW_TICKET_OPTION_ID || isStudentInShowTicketName(tier.name)) {
+      return `${tier.name} · first ${MAX_STUDENT_COMP_TICKETS} free`;
+    }
+    return `${tier.name} · $${(tier.priceCents / 100).toFixed(2)}`;
+  }, []);
+
+  // ── wizard step content ────────────────────────────────────────────────────
+
+  const wizardSteps = [
+
+    /* ── STEP 0: Performance ── */
+    <div key="show" className="space-y-5">
+      <div>
+        <FieldLabel>Performance</FieldLabel>
+        <select
+          value={assignForm.performanceId}
+          onChange={e => setAssignForm({ ...assignForm, performanceId: e.target.value })}
+          className={baseSelect}
+        >
+          {performances.map(p => (
+            <option key={p.id} value={p.id}>
+              {p.title} — {new Date(p.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <FieldLabel>Order type</FieldLabel>
+        <div className="grid grid-cols-2 gap-3">
+          {(['DOOR', 'COMP'] as const).map(src => (
+            <button
+              key={src}
+              type="button"
+              onClick={() => setAssignForm({ ...assignForm, source: src })}
+              className={`group relative overflow-hidden rounded-2xl border-2 px-5 py-4 text-left transition-all ${
+                assignForm.source === src
+                  ? 'border-rose-600 bg-rose-50'
+                  : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+              }`}
+            >
+              <div className={`mb-1 text-sm font-bold ${assignForm.source === src ? 'text-rose-700' : 'text-slate-700'}`}>
+                {src === 'DOOR' ? 'Door Sale' : 'Comp'}
+              </div>
+              <div className={`text-xs ${assignForm.source === src ? 'text-rose-500' : 'text-slate-400'}`}>
+                {src === 'DOOR' ? 'Paid in-person checkout' : 'Complimentary ticket'}
+              </div>
+              {assignForm.source === src && (
+                <div className="absolute right-3 top-3">
+                  <div className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-600">
+                    <Check className="h-3 w-3 text-white" />
+                  </div>
+                </div>
+              )}
+            </button>
+          ))}
         </div>
+      </div>
 
+      {selectedTicketOptions.length > 0 ? (
+        <Card className="p-4">
+          <FieldLabel>Pricing tiers</FieldLabel>
+          <div className="flex flex-wrap gap-2 mt-2">
+            {selectedTicketOptions.map(option => (
+              <span key={option.id} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700">
+                {formatTicketOptionLabel(option)}
+              </span>
+            ))}
+          </div>
+        </Card>
+      ) : (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+          No pricing tiers found. Add pricing tiers in Performances before cashier checkout.
+        </div>
+      )}
+    </div>,
+
+    /* ── STEP 1: Seats ── */
+    <div key="seats" className="space-y-4">
+      <div>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <FieldLabel>Selected seats</FieldLabel>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (!assignForm.performanceId) { setError('Choose a performance first.'); return; }
+                setSeatPickerOpen(true); setSeatPickerError(null);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700"
+            >
+              <MapPin className="h-3.5 w-3.5" /> Open seat map
+            </button>
+            {seatIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setAssignForm({ ...assignForm, seatIdsInput: '' })}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-50"
+              >
+                <X className="h-3.5 w-3.5" /> Clear all
+              </button>
+            )}
+          </div>
+        </div>
         <input
           value={assignForm.seatIdsInput}
-          onChange={(event) => setAssignForm({ ...assignForm, seatIdsInput: event.target.value })}
-          placeholder="Seat IDs (comma-separated)"
-          className="w-full border border-stone-300 rounded-xl px-3 py-2"
-          required
+          onChange={e => setAssignForm({ ...assignForm, seatIdsInput: e.target.value })}
+          placeholder="Paste seat IDs: A1, A2, B3…"
+          className={baseInput}
         />
+        {seatIds.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {seatIds.map(id => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => toggleSeat(id)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-sans font-semibold text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+              >
+                {id} <X className="h-3 w-3" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
-        <label className="inline-flex items-center gap-2 text-sm text-stone-700">
-          <input
-            type="checkbox"
-            checked={assignForm.sendEmail}
-            onChange={(event) => setAssignForm({ ...assignForm, sendEmail: event.target.checked })}
-          />
-          Email tickets immediately
-        </label>
-
-        <div>
-          <button className="bg-stone-900 text-white px-4 py-2 rounded-xl font-bold">Assign Seats</button>
-        </div>
-      </form>
-
-      <form onSubmit={search} className="flex flex-wrap gap-2 mb-5">
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search email, name, or order id" className="flex-1 min-w-[220px] border border-stone-300 rounded-xl px-3 py-2" />
-        <select value={status} onChange={(event) => setStatus(event.target.value)} className="border border-stone-300 rounded-xl px-3 py-2">
-          <option value="">All statuses</option>
-          <option value="PENDING">PENDING</option>
-          <option value="PAID">PAID</option>
-          <option value="REFUNDED">REFUNDED</option>
-          <option value="CANCELED">CANCELED</option>
-        </select>
-        <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} className="border border-stone-300 rounded-xl px-3 py-2">
-          <option value="">All sources</option>
-          <option value="ONLINE">ONLINE</option>
-          <option value="DOOR">DOOR</option>
-          <option value="COMP">COMP</option>
-          <option value="STAFF_FREE">STAFF_FREE</option>
-          <option value="FAMILY_FREE">FAMILY_FREE</option>
-        </select>
-        <button className="bg-stone-900 text-white px-4 py-2 rounded-xl font-bold">Search</button>
-      </form>
-
-      <div className="space-y-2">
-        {rows.map((order) => (
-          <div key={order.id} className="border border-stone-200 rounded-xl p-3 flex justify-between gap-3">
-            <div>
-              <div className="font-bold text-stone-900">{order.id}</div>
-              <div className="text-xs text-stone-500">{order.customerName} • {order.email}</div>
-              <div className="text-xs text-stone-500">{order.performanceTitle}</div>
-              <div className="text-xs text-stone-500">{new Date(order.createdAt).toLocaleString()}</div>
-            </div>
-            <div className="text-right">
-              <div className="font-bold text-stone-900">${(order.amountTotal / 100).toFixed(2)}</div>
-              <div className="text-xs text-stone-500">{order.status} • {order.source}</div>
-              <Link to={`/admin/orders/${order.id}`} className="text-xs font-bold text-yellow-700 hover:text-yellow-900">View</Link>
-            </div>
+      <Card>
+        {[
+          { label: 'Performance', value: selectedPerformance?.title ?? '—' },
+          { label: 'Type', value: assignForm.source === 'DOOR' ? 'Door Sale' : 'Comp' },
+          {
+            label: 'Seats selected',
+            value: seatIds.length > 0
+              ? <span className="font-bold text-slate-900">{seatIds.length} seat{seatIds.length !== 1 ? 's' : ''}</span>
+              : <span className="font-semibold text-amber-600">None selected</span>
+          },
+        ].map(({ label, value }, i, arr) => (
+          <div key={label} className={`flex items-center justify-between px-5 py-3.5 text-sm ${i < arr.length - 1 ? 'border-b border-slate-100' : ''}`}>
+            <span className="text-slate-400">{label}</span>
+            <span className="text-right font-semibold text-slate-700">{value}</span>
           </div>
         ))}
+      </Card>
+    </div>,
+
+    /* ── STEP 2: Checkout ── */
+    <div key="tickets" className="space-y-5">
+      {!seatIds.length ? (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+          Go back and select at least one seat.
+        </div>
+      ) : selectedTicketOptions.length === 0 ? (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+          No pricing tiers configured for this performance.
+        </div>
+      ) : (
+        <>
+          {/* Quick apply */}
+          <div>
+            <FieldLabel>Quick-apply to all seats</FieldLabel>
+            <div className="flex flex-wrap gap-2">
+              {selectedTicketOptions.map(tier => (
+                <button
+                  key={tier.id}
+                  type="button"
+                  onClick={() => {
+                    setTicketSelectionBySeatId(prev => {
+                      const next = { ...prev };
+                      seatIds.forEach(id => { next[id] = tier.id; });
+                      return next;
+                    });
+                  }}
+                  className={`rounded-xl border-2 px-4 py-2 text-sm font-semibold transition ${
+                    tier.id === primaryTicketTier?.id
+                      ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  {formatTicketOptionLabel(tier)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Per-seat type selection */}
+          <Card className="divide-y divide-slate-100 overflow-hidden">
+            {selectedMappedSeats.map(seat => (
+              <div key={seat.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">
+                    {seat.sectionName} · Row {seat.row} · #{seat.number}
+                  </p>
+                  <p className="text-xs font-sans text-slate-400">{seat.id}</p>
+                </div>
+                <select
+                  value={ticketSelectionBySeatId[seat.id] || ''}
+                  onChange={e => setTicketSelectionBySeatId(prev => ({ ...prev, [seat.id]: e.target.value }))}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100 sm:w-56"
+                >
+                  <option value="">Select type…</option>
+                  {selectedTicketOptions.map(tier => (
+                    <option key={tier.id} value={tier.id}>
+                      {formatTicketOptionLabel(tier)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </Card>
+
+          {/* Order summary */}
+          <Card className="overflow-hidden">
+            <div className="flex items-center justify-between bg-slate-50 px-5 py-3 border-b border-slate-100">
+              <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Order summary</p>
+              {missingTicketTypeCount > 0
+                ? <span className="text-xs font-semibold text-amber-600">{missingTicketTypeCount} seat{missingTicketTypeCount !== 1 ? 's' : ''} unassigned</span>
+                : <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600"><Check className="h-3 w-3" /> All assigned</span>
+              }
+            </div>
+            <div className="divide-y divide-slate-50 px-5">
+              {selectedTierBreakdown.map(item => (
+                <div key={item.name} className="flex items-center justify-between py-3 text-sm">
+                  <span className="text-slate-600">{item.name} <span className="text-slate-400">×{item.count}</span></span>
+                  <span className="font-semibold text-slate-900">${((item.priceCents * item.count) / 100).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-end justify-between bg-slate-50 px-5 py-4 border-t border-slate-100">
+              <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Total</p>
+              <p className="text-3xl font-black tracking-tight text-slate-900">${(selectedTierSubtotalCents / 100).toFixed(2)}</p>
+            </div>
+            {hasMixedCompSelection && (
+              <div className="border-t border-red-100 bg-red-50 px-5 py-3 text-xs font-semibold text-red-700">
+                Teacher and Student in Show complimentary tickets cannot be mixed in one order.
+              </div>
+            )}
+          </Card>
+
+          {/* Payment section — door only */}
+          {assignForm.source === 'DOOR' && (
+            <Card className="overflow-hidden">
+              <div className="bg-slate-50 px-5 py-3 border-b border-slate-100">
+                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Payment & receipt</p>
+              </div>
+              <div className="p-5 space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  {([['STRIPE', 'Card', CreditCard], ['CASH', 'Cash', Banknote]] as const).map(([method, label, Icon]) => (
+                    <button
+                      key={method}
+                      type="button"
+                      onClick={() => setPaymentMethod(method)}
+                      className={`flex items-center justify-center gap-2 rounded-xl border-2 py-3 text-sm font-bold transition ${
+                        paymentMethod === method
+                          ? 'border-rose-600 bg-rose-50 text-rose-700'
+                          : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {paymentMethod === 'STRIPE' && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <FieldLabel>Terminal device</FieldLabel>
+                      <button
+                        type="button"
+                        onClick={() => void loadTerminalDevices()}
+                        className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-100"
+                      >
+                        <RefreshCw className={`h-3 w-3 ${loadingTerminalDevices ? 'animate-spin' : ''}`} />
+                        Refresh
+                      </button>
+                    </div>
+                    <select
+                      value={selectedTerminalDeviceId}
+                      onChange={e => setSelectedTerminalDeviceId(e.target.value)}
+                      className={baseSelect}
+                    >
+                      {!terminalDevices.length && <option value="">No active terminals found</option>}
+                      {terminalDevices.map(device => (
+                        <option key={device.deviceId} value={device.deviceId}>
+                          {device.name}{device.isBusy ? ' (Busy)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-slate-500">
+                      Send card collection to an active phone in Terminal Station mode.
+                    </p>
+                    {selectedTerminalDevice?.isBusy && (
+                      <p className="text-xs font-semibold text-amber-700">
+                        This terminal is busy with another sale.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  {loadingCashTonight ? (
+                    <span className="text-slate-400">Loading cash total…</span>
+                  ) : (
+                    <span>
+                      Cash collected tonight:{' '}
+                      <strong className="text-slate-900">${((cashTonight?.totalCashCents || 0) / 100).toFixed(2)}</strong>
+                      <span className="ml-1 text-slate-400">({cashTonight?.saleCount || 0} sale{(cashTonight?.saleCount || 0) !== 1 ? 's' : ''})</span>
+                    </span>
+                  )}
+                </div>
+
+                {hasStudentInShowCompSelection && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <FieldLabel>Student code</FieldLabel>
+                    <input
+                      type="text"
+                      value={studentCode}
+                      onChange={e => setStudentCode(e.target.value)}
+                      placeholder="Student code on file (e.g. jsmith)"
+                      className={baseInput}
+                    />
+                    <p className="mt-2 text-xs text-slate-500">
+                      Student in Show comp seats still require the student code check.
+                    </p>
+                  </div>
+                )}
+
+                <div>
+                  <label className="flex cursor-pointer items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setSendReceipt(p => !p)}
+                      className={`relative h-6 w-11 flex-shrink-0 rounded-full transition-colors ${sendReceipt ? 'bg-rose-600' : 'bg-slate-200'}`}
+                    >
+                      <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${sendReceipt ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                    <span className="text-sm font-semibold text-slate-700">Send email receipt</span>
+                  </label>
+                  <AnimatePresence>
+                    {sendReceipt && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <input
+                          type="email"
+                          value={receiptEmail}
+                          onChange={e => setReceiptEmail(e.target.value)}
+                          placeholder="customer@email.com"
+                          className={baseInput + ' mt-3'}
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {inPersonFlowError && (
+                  <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                    {inPersonFlowError}
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
+        </>
+      )}
+    </div>,
+  ];
+
+  // ── render ─────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="max-w-3xl space-y-6">
+
+      {/* Page header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-[1.75rem] font-black tracking-tight text-slate-900" style={{ fontFamily: "var(--font-sans)" }}>Orders</h1>
+          <p className="mt-1 text-sm text-slate-400">Search, manage, and process ticket orders.</p>
+        </div>
+        <motion.button
+          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+          onClick={() => { setShowWizard(true); setStep(0); setError(null); }}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-rose-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-rose-700 sm:w-auto"
+        >
+          <Plus className="h-4 w-4" /> Cashier checkout
+        </motion.button>
       </div>
+
+      {/* Toast notices */}
+      <AnimatePresence>
+        {notice && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+            className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+          >
+            <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+            <span className="flex-1">{notice}</span>
+            <button onClick={() => setNotice(null)} className="text-emerald-400 transition hover:text-emerald-600">
+              <X className="h-4 w-4" />
+            </button>
+          </motion.div>
+        )}
+        {error && !showWizard && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+            className="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          >
+            <AlertCircle className="h-4 w-4 flex-shrink-0" />
+            <span className="flex-1">{error}</span>
+            <button onClick={() => setError(null)} className="text-red-400 transition hover:text-red-600">
+              <X className="h-4 w-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {saleRecap && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ y: 14, opacity: 0, scale: 0.98 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 14, opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              className="w-full max-w-2xl rounded-3xl border border-slate-200 bg-white shadow-2xl"
+            >
+              <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-6 py-5">
+                <div>
+                  <p className="text-sm font-bold uppercase tracking-widest text-slate-400">Seat write-down</p>
+                  <h2 className="mt-1 text-2xl font-black text-slate-900">
+                    {saleRecap.seats.length} seat{saleRecap.seats.length === 1 ? '' : 's'} sold
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {saleRecap.paymentMethod === 'CASH' ? 'Cash' : 'Card'} • ${(saleRecap.expectedAmountCents / 100).toFixed(2)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSaleRecap(null)}
+                  className="rounded-full p-1.5 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="max-h-[48dvh] overflow-y-auto px-6 py-5">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {saleRecap.seats.map((seat) => (
+                    <div key={seat.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
+                      <p className="text-sm font-bold text-slate-900">
+                        {seat.sectionName} · Row {seat.row} · Seat {seat.number}
+                      </p>
+                      <p className="text-xs text-slate-500">{seat.ticketType}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-6 py-4">
+                <p className="text-sm font-semibold text-slate-500">
+                  Auto-close in <span className="text-slate-900">{saleRecapSecondsLeft}s</span>
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSaleRecap((prev) =>
+                        prev
+                          ? { ...prev, expiresAtMs: Math.max(prev.expiresAtMs, Date.now()) + 10000 }
+                          : prev
+                      )
+                    }
+                    className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    Give me 10 seconds longer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSaleRecap(null)}
+                    className="inline-flex items-center justify-center rounded-full bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {terminalDispatch && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ y: 12, opacity: 0, scale: 0.98 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 12, opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white shadow-2xl"
+            >
+              <div className="border-b border-slate-100 px-6 py-5">
+                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Terminal dispatch</p>
+                <h2 className="mt-1 text-2xl font-black text-slate-900">
+                  {terminalDispatch.status === 'PENDING' && 'Sent to terminal'}
+                  {terminalDispatch.status === 'DELIVERED' && 'Terminal received'}
+                  {terminalDispatch.status === 'PROCESSING' && 'Processing payment'}
+                  {terminalDispatch.status === 'FAILED' && 'Payment failed'}
+                  {terminalDispatch.status === 'SUCCEEDED' && 'Payment approved'}
+                  {terminalDispatch.status === 'EXPIRED' && 'Dispatch expired'}
+                  {terminalDispatch.status === 'CANCELED' && 'Dispatch canceled'}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {terminalDispatch.targetDeviceName || terminalDispatch.targetDeviceId} • ${((terminalDispatch.expectedAmountCents || 0) / 100).toFixed(2)}
+                </p>
+              </div>
+
+              <div className="space-y-3 px-6 py-5 text-sm text-slate-600">
+                <p>
+                  Attempt {terminalDispatch.attemptCount} · Hold expires {new Date(terminalDispatch.holdExpiresAt).toLocaleTimeString()}
+                </p>
+                {terminalDispatch.failureReason && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-red-700">
+                    {terminalDispatch.failureReason}
+                  </div>
+                )}
+                {inPersonFlowError && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-red-700">
+                    {inPersonFlowError}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 px-6 py-4">
+                {terminalDispatch.status === 'FAILED' && terminalDispatch.canRetry && (
+                  <button
+                    type="button"
+                    onClick={retryTerminalDispatch}
+                    disabled={terminalDispatchActionBusy}
+                    className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+                  >
+                    Retry
+                  </button>
+                )}
+
+                {terminalDispatch.status === 'SUCCEEDED' ? (
+                  <button
+                    type="button"
+                    onClick={() => finalizeSuccessfulTerminalDispatch(terminalDispatch)}
+                    className="inline-flex items-center justify-center rounded-full bg-rose-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700"
+                  >
+                    Continue
+                  </button>
+                ) : (
+                  <>
+                    {terminalDispatch.status !== 'EXPIRED' && terminalDispatch.status !== 'CANCELED' && (
+                      <button
+                        type="button"
+                        onClick={cancelTerminalDispatch}
+                        disabled={terminalDispatchActionBusy}
+                        className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+                      >
+                        Cancel sale
+                      </button>
+                    )}
+                    {(terminalDispatch.status === 'FAILED' || terminalDispatch.status === 'EXPIRED' || terminalDispatch.status === 'CANCELED') && (
+                      <button
+                        type="button"
+                        onClick={() => setTerminalDispatch(null)}
+                        className="inline-flex items-center justify-center rounded-full bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
+                      >
+                        Close
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Checkout Wizard ── */}
+      <AnimatePresence>
+        {showWizard && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm sm:items-center sm:p-4"
+          >
+            <motion.div
+              initial={{ y: 24, opacity: 0, scale: 0.97 }}
+              animate={{ y: 0,  opacity: 1, scale: 1    }}
+              exit={{    y: 24, opacity: 0, scale: 0.97 }}
+              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              className="flex h-[100dvh] w-full flex-col bg-white shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:max-w-xl sm:rounded-3xl sm:overflow-hidden"
+            >
+              {/* Wizard header */}
+              <div className="flex-shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
+                <div className="mb-4 flex items-center justify-between">
+                  <p className="font-bold text-slate-900" style={{ fontFamily: "var(--font-sans)" }}>Cashier Checkout</p>
+                  <button
+                    onClick={closeWizard}
+                    className="rounded-full p-1.5 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                {/* Step indicator */}
+                <div className="flex items-center gap-1">
+                  {STEPS.map((s, i) => {
+                    const done = i < step, active = i === step;
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => goTo(i)}
+                        className={`flex flex-1 items-center justify-center gap-1.5 rounded-full py-2 text-xs font-bold transition-all ${
+                          active ? 'bg-rose-600 text-white' :
+                          done   ? 'bg-emerald-50 text-emerald-700' :
+                                   'text-slate-400 hover:text-slate-600'
+                        }`}
+                      >
+                        {done
+                          ? <Check className="h-3 w-3" />
+                          : <s.icon className="h-3 w-3" />
+                        }
+                        <span className="hidden sm:inline">{s.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 h-1 w-full rounded-full bg-slate-100 overflow-hidden">
+                  <motion.div
+                    className="h-full rounded-full bg-rose-500"
+                    animate={{ width: `${((step + 1) / STEPS.length) * 100}%` }}
+                    transition={{ duration: 0.3, ease: 'easeInOut' }}
+                  />
+                </div>
+              </div>
+
+              {/* Wizard body */}
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.div
+                    key={step}
+                    initial={{ x: dir * 28, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: dir * -28, opacity: 0 }}
+                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    {wizardSteps[step]}
+                  </motion.div>
+                </AnimatePresence>
+
+                <AnimatePresence>
+                  {error && showWizard && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                      className="mt-4 flex items-start gap-2.5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                    >
+                      <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                      {error}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Wizard footer */}
+              <div className="flex-shrink-0 border-t border-slate-100 bg-white px-5 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => goTo(step - 1)}
+                    disabled={step === 0}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-50 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    <ChevronLeft className="h-4 w-4" /> Back
+                  </button>
+
+                  <span className="text-xs font-semibold text-slate-300">{step + 1} / {STEPS.length}</span>
+
+                  {step < STEPS.length - 1 ? (
+                    <button
+                      type="button"
+                      onClick={handleWizardNext}
+                      className="inline-flex min-w-[160px] items-center justify-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
+                    >
+                      {step === 0 ? 'Choose seats' : 'Set ticket types'}
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                  ) : assignForm.source === 'DOOR' ? (
+                    <motion.button
+                      type="button"
+                      onClick={finalizeInPersonSale}
+                      disabled={inPersonSubmitting || (paymentMethod === 'STRIPE' && (!selectedTerminalDeviceId || Boolean(selectedTerminalDevice?.isBusy)))}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.97 }}
+                      className="inline-flex min-w-[180px] items-center justify-center gap-2 rounded-full bg-rose-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700 disabled:opacity-60"
+                    >
+                      <Check className="h-4 w-4" />
+                      {inPersonSubmitting
+                        ? (paymentMethod === 'STRIPE' ? 'Sending…' : 'Processing…')
+                        : (paymentMethod === 'STRIPE'
+                          ? `Send to terminal · $${(selectedTierSubtotalCents / 100).toFixed(2)}`
+                          : `Collect $${(selectedTierSubtotalCents / 100).toFixed(2)}`)}
+                    </motion.button>
+                  ) : (
+                    <motion.button
+                      type="button"
+                      onClick={assignOrder}
+                      disabled={submitting}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.97 }}
+                      className="inline-flex min-w-[160px] items-center justify-center gap-2 rounded-full bg-rose-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700 disabled:opacity-60"
+                    >
+                      <Check className="h-4 w-4" />
+                      {submitting ? 'Assigning…' : 'Assign comp'}
+                    </motion.button>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Seat Picker Modal ── */}
+      <AnimatePresence>
+        {showWizard && seatPickerOpen && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0, y: 16 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.96, opacity: 0, y: 16 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              className="flex h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:h-auto sm:max-h-[90dvh] sm:max-w-5xl sm:rounded-3xl"
+            >
+              {/* Seat picker header */}
+              <div className="flex-shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-bold text-slate-900" style={{ fontFamily: "var(--font-sans)" }}>Select seats</p>
+                    <p className="mt-0.5 text-xs text-slate-400">
+                      {selectedPerformance?.title ?? 'No performance selected'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={moveOnFromSeatPicker}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-rose-700"
+                    >
+                      Done <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSeatPickerOpen(false)}
+                      className="rounded-full p-1.5 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center gap-3 text-xs text-slate-400">
+                  <button
+                    type="button"
+                    onClick={() => void loadSeatsForPerformance(assignForm.performanceId)}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 font-semibold text-slate-500 transition hover:bg-slate-50"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" /> Refresh
+                  </button>
+                  <span className="font-semibold text-slate-700">{seatIds.length} seat{seatIds.length !== 1 ? 's' : ''} selected</span>
+                </div>
+              </div>
+
+              {/* Section tabs */}
+              <div className="flex-shrink-0 border-b border-slate-100 px-5 py-3">
+                <div className="flex flex-wrap gap-1.5">
+                  {['All', ...sections].map(section => (
+                    <button
+                      key={section}
+                      type="button"
+                      onClick={() => setActiveSection(section)}
+                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                        activeSection === section
+                          ? 'bg-slate-900 text-white'
+                          : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                      }`}
+                    >
+                      {section}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                  {[
+                    ['Available', 'bg-white border-2 border-slate-300'],
+                    ['Held',      'bg-amber-300'],
+                    ['Sold',      'bg-slate-300'],
+                    ['Blocked',   'bg-red-300'],
+                    ['Selected',  'bg-emerald-500'],
+                    ['Accessible','bg-blue-400'],
+                    ['Companion', 'bg-cyan-400'],
+                  ].map(([label, cls]) => (
+                    <span key={label} className="inline-flex items-center gap-1.5 text-xs text-slate-400">
+                      <span className={`h-2 w-2 rounded-full ${cls}`} />{label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {seatPickerError && (
+                <div className="px-5 pt-3">
+                  <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0" /> {seatPickerError}
+                  </div>
+                </div>
+              )}
+
+              {/* Seat map */}
+              <div className="min-h-0 flex-1 px-5 pb-2 pt-3">
+                <div className="h-full overflow-hidden rounded-2xl border border-slate-100">
+                  <SeatMapViewport
+                    seats={seats}
+                    visibleSeats={visibleSeats}
+                    loading={loadingSeats}
+                    loadingLabel="Loading seats…"
+                    emptyText="No seats for this performance."
+                    resetKey={assignForm.performanceId || 'admin-orders-seat-map'}
+                    containerClassName="h-[420px] sm:h-full"
+                    verticalAlign="top"
+                    controlsClassName="absolute bottom-4 right-4 z-30 flex flex-col gap-2"
+                    renderSeat={({ seat, x, y }) => {
+                      const isSelected = selectedSeatIdSet.has(seat.id);
+                      const isUnavailable = seat.status === 'sold' || seat.status === 'blocked';
+                      const companionOk =
+                        !seat.isCompanion || isSelected ||
+                        (seat.companionForSeatId ? selectedSeatIdSet.has(seat.companionForSeatId) : hasAccessibleSelection);
+                      const selectable = !isUnavailable && companionOk;
+                      return (
+                        <button
+                          key={seat.id}
+                          type="button"
+                          onClick={() => toggleSeat(seat.id)}
+                          disabled={!isSelected && !selectable}
+                          style={{ left: `${x}px`, top: `${y}px` }}
+                          title={`${seat.id} · ${seat.sectionName} ${seat.row}-${seat.number} · ${seat.status}`}
+                          className={[
+                            'seat-button absolute flex h-8 w-8 items-center justify-center rounded-t-lg rounded-b-md text-[10px] font-bold transition-all duration-150 md:h-10 md:w-10',
+                            isSelected
+                              ? 'z-10 scale-110 bg-emerald-500 text-white shadow-lg ring-2 ring-emerald-300'
+                              : isUnavailable
+                                ? 'cursor-not-allowed bg-slate-200 text-slate-400'
+                                : seat.status === 'held'
+                                  ? 'border-2 border-amber-300 bg-amber-100 text-amber-700 hover:-translate-y-1 hover:shadow-md'
+                                  : seat.isCompanion
+                                    ? 'border-2 border-cyan-400 bg-cyan-100 text-cyan-700 hover:-translate-y-1 hover:shadow-md'
+                                    : seat.isAccessible
+                                      ? 'border-2 border-blue-400 bg-blue-100 text-blue-700 hover:-translate-y-1 hover:shadow-md'
+                                      : 'border-2 border-slate-200 bg-white text-slate-600 hover:-translate-y-1 hover:border-rose-400 hover:shadow-md'
+                          ].join(' ')}
+                        >
+                          <div className={`absolute -left-1 bottom-1 h-4 w-1 rounded-full opacity-40 ${isSelected ? 'bg-emerald-600' : seat.isCompanion ? 'bg-cyan-500' : seat.isAccessible ? 'bg-blue-500' : 'bg-slate-300'}`} />
+                          <div className={`absolute -right-1 bottom-1 h-4 w-1 rounded-full opacity-40 ${isSelected ? 'bg-emerald-600' : seat.isCompanion ? 'bg-cyan-500' : seat.isAccessible ? 'bg-blue-500' : 'bg-slate-300'}`} />
+                          {seat.number}
+                        </button>
+                      );
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Seat picker footer */}
+              <div className="flex-shrink-0 border-t border-slate-100 px-5 py-4">
+                <div className="mb-3 min-h-[32px]">
+                  {selectedMappedSeats.length === 0 && selectedUnknownSeatIds.length === 0 ? (
+                    <p className="text-sm text-slate-400">No seats selected yet.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedMappedSeats.map(seat => (
+                        <button
+                          key={seat.id}
+                          type="button"
+                          onClick={() => toggleSeat(seat.id)}
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-rose-100 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
+                        >
+                          {seat.sectionName} {seat.row}-{seat.number}
+                          <X className="h-3 w-3" />
+                        </button>
+                      ))}
+                      {selectedUnknownSeatIds.map(id => (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => toggleSeat(id)}
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 transition hover:bg-amber-100"
+                        >
+                          {id} <X className="h-3 w-3" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={moveOnFromSeatPicker}
+                    className="inline-flex items-center gap-2 rounded-full bg-rose-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700"
+                  >
+                    Confirm seats <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Search bar ── */}
+      <form onSubmit={search} className="flex flex-wrap gap-2">
+        <div className="relative min-w-[200px] flex-1">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search by name, email, or order ID…"
+            className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 placeholder:text-slate-300 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+          />
+        </div>
+
+        <select
+          value={status}
+          onChange={e => setStatus(e.target.value)}
+          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100 sm:w-auto"
+        >
+          <option value="">All statuses</option>
+          <option value="PENDING">Pending</option>
+          <option value="PAID">Paid</option>
+          <option value="REFUNDED">Refunded</option>
+          <option value="CANCELED">Canceled</option>
+        </select>
+
+        <select
+          value={sourceFilter}
+          onChange={e => setSourceFilter(e.target.value)}
+          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100 sm:w-auto"
+        >
+          <option value="">All sources</option>
+          <option value="ONLINE">Online</option>
+          <option value="DOOR">Door</option>
+          <option value="COMP">Comp</option>
+          <option value="STAFF_FREE">Staff</option>
+          <option value="STAFF_COMP">Staff Comp</option>
+          <option value="STUDENT_COMP">Student</option>
+        </select>
+
+        <div className="flex rounded-xl border border-slate-200 overflow-hidden bg-white">
+          {(['active', 'archived', 'all'] as const).map(s => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setScope(s)}
+              className={`px-3 py-2 text-xs font-semibold capitalize transition ${
+                scope === s ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+
+        <button className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700 sm:w-auto">
+          <Search className="h-3.5 w-3.5" /> Search
+        </button>
+      </form>
+
+      {/* ── Orders list ── */}
+      {loadingRows ? (
+        <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-400">
+          <RefreshCw className="h-4 w-4 animate-spin" /> Loading orders…
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-3xl border border-dashed border-slate-200 py-16 text-center">
+          <Users className="h-8 w-8 text-slate-200" />
+          <p className="text-sm font-semibold text-slate-400">No orders found</p>
+          <p className="text-xs text-slate-300">Try adjusting your search or filters</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((order, idx) => {
+            const statusMeta = STATUS_META[order.status] ?? { label: order.status, dot: 'bg-slate-400', text: 'text-slate-600', bg: 'bg-slate-50 ring-slate-200' };
+            const sourceMeta = SOURCE_META[order.source] ?? { label: order.source, bg: 'bg-slate-100 ring-slate-200', text: 'text-slate-600' };
+            return (
+              <motion.div
+                key={order.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.025 }}
+                className="group flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 transition hover:border-slate-200 hover:shadow-sm sm:flex-row sm:items-center sm:justify-between"
+              >
+                {/* Left: info */}
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge label={statusMeta.label} bg={statusMeta.bg} text={statusMeta.text} dot={statusMeta.dot} />
+                    <Badge label={sourceMeta.label} bg={sourceMeta.bg} text={sourceMeta.text} />
+                    {order.source === 'DOOR' && order.inPersonPaymentMethod && (
+                      <Badge
+                        label={order.inPersonPaymentMethod === 'CASH' ? 'Cash' : 'Card'}
+                        bg={order.inPersonPaymentMethod === 'CASH' ? 'bg-emerald-50 ring-emerald-200' : 'bg-blue-50 ring-blue-200'}
+                        text={order.inPersonPaymentMethod === 'CASH' ? 'text-emerald-700' : 'text-blue-700'}
+                      />
+                    )}
+                    <span className="font-sans text-xs text-slate-300">{order.id}</span>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-800">{order.customerName}</p>
+                  <p className="text-xs text-slate-400">{order.email}</p>
+                  <p className="text-xs text-slate-400">
+                    {order.performanceTitle} · {new Date(order.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </p>
+                </div>
+
+                {/* Right: amount + link */}
+                <div className="flex items-center justify-between gap-6 sm:flex-col sm:items-end sm:justify-start">
+                  <div className="sm:text-right">
+                    <p className="text-lg font-black tracking-tight text-slate-900">${(order.amountTotal / 100).toFixed(2)}</p>
+                    <p className="text-xs text-slate-400">{order.ticketCount} ticket{order.ticketCount !== 1 ? 's' : ''}</p>
+                  </div>
+                  <Link
+                    to={`/admin/orders/${order.id}`}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                  >
+                    View <ExternalLink className="h-3 w-3" />
+                  </Link>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

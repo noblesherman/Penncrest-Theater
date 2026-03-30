@@ -15,12 +15,14 @@ type LookupResponse = {
     showTitle: string;
     startsAt: string;
     venue: string;
+    isGeneralAdmission?: boolean;
   };
   tickets: Array<{
     publicId: string;
     sectionName: string;
     row: string;
     number: number;
+    isGeneralAdmission?: boolean;
     attendeeName?: string | null;
   }>;
 };
@@ -52,9 +54,9 @@ export default function OrderLookup() {
   };
 
   return (
-    <div className="min-h-screen bg-stone-50 py-16 px-4">
-      <div className="max-w-2xl mx-auto bg-white border border-stone-200 rounded-3xl shadow-sm p-8">
-        <h1 className="text-3xl font-black text-stone-900 mb-2">Order Lookup</h1>
+    <div className="min-h-screen bg-stone-50 px-4 py-10 sm:py-16">
+      <div className="mx-auto max-w-2xl rounded-3xl border border-stone-200 bg-white p-5 shadow-sm sm:p-8">
+        <h1 className="mb-2 text-2xl font-black text-stone-900 sm:text-3xl">Order Lookup</h1>
         <p className="text-stone-500 mb-8">Enter your order ID and purchase email to retrieve ticket links.</p>
 
         <form onSubmit={onSubmit} className="space-y-3 mb-8">
@@ -90,9 +92,11 @@ export default function OrderLookup() {
             <div className="text-sm text-stone-600">{result.performance.showTitle} at {new Date(result.performance.startsAt).toLocaleString()}</div>
             <div className="space-y-2">
               {result.tickets.map((ticket) => (
-                <div key={ticket.publicId} className="bg-stone-50 border border-stone-200 rounded-xl p-3 flex items-center justify-between gap-3">
+                <div key={ticket.publicId} className="flex flex-col gap-2 rounded-xl border border-stone-200 bg-stone-50 p-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="text-sm text-stone-700">
-                    {ticket.sectionName} Row {ticket.row} Seat {ticket.number}
+                    {ticket.isGeneralAdmission || result.performance.isGeneralAdmission
+                      ? `General Admission Ticket ${ticket.number || 1}`
+                      : `${ticket.sectionName} Row ${ticket.row} Seat ${ticket.number}`}
                     {ticket.attendeeName ? ` (${ticket.attendeeName})` : ''}
                   </div>
                   <Link to={`/tickets/${ticket.publicId}`} className="text-sm font-bold text-yellow-700 hover:text-yellow-900">

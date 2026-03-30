@@ -248,10 +248,12 @@ async function fetchMicrosoftProfile(code: string): Promise<OAuthProfile> {
 }
 
 function buildStaffRedirect(params: { token?: string; error?: string; returnTo?: string }): string {
-  const targetPath = normalizeReturnTo(params.returnTo) || '/staff-tickets';
+  const targetPath = normalizeReturnTo(params.returnTo) || '/teacher-tickets';
   const url = new URL(targetPath, staffRedirectBaseUrl());
-  if (params.token) url.searchParams.set('authToken', params.token);
   if (params.error) url.searchParams.set('error', params.error);
+  if (params.token) {
+    url.hash = new URLSearchParams({ authToken: params.token }).toString();
+  }
   return url.toString();
 }
 
@@ -318,64 +320,28 @@ async function completeOAuthLogin(options: {
 }
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
-  app.get('/auth/google/start', async (request, reply) => {
-    const query = request.query as { returnTo?: string };
-    try {
-      const state = createStateToken('google', normalizeReturnTo(query.returnTo));
-      return reply.redirect(oauthStartUrl('google', state));
-    } catch (err) {
-      handleRouteError(reply, err, 'Failed to start Google OAuth');
-    }
+  app.get('/auth/google/start', async (_request, reply) => {
+    return reply.status(410).send({
+      error: 'Google OAuth sign-in is disabled. Use teacher promo code checkout instead.'
+    });
   });
 
-  app.get('/auth/microsoft/start', async (request, reply) => {
-    const query = request.query as { returnTo?: string };
-    try {
-      const state = createStateToken('microsoft', normalizeReturnTo(query.returnTo));
-      return reply.redirect(oauthStartUrl('microsoft', state));
-    } catch (err) {
-      handleRouteError(reply, err, 'Failed to start Microsoft OAuth');
-    }
+  app.get('/auth/microsoft/start', async (_request, reply) => {
+    return reply.status(410).send({
+      error: 'Microsoft OAuth sign-in is disabled. Use teacher promo code checkout instead.'
+    });
   });
 
-  app.get('/auth/google/callback', async (request, reply) => {
-    const query = request.query as { code?: string; state?: string; error?: string };
-    if (query.error || !query.code || !query.state) {
-      return reply.redirect(buildStaffRedirect({ error: query.error || 'oauth_failed' }));
-    }
-
-    try {
-      const result = await completeOAuthLogin({
-        app,
-        provider: 'google',
-        code: query.code,
-        state: query.state
-      });
-      return reply.redirect(buildStaffRedirect({ token: result.token, returnTo: result.returnTo }));
-    } catch (err) {
-      app.log.error(err);
-      return reply.redirect(buildStaffRedirect({ error: err instanceof Error ? err.message : 'oauth_failed' }));
-    }
+  app.get('/auth/google/callback', async (_request, reply) => {
+    return reply.status(410).send({
+      error: 'Google OAuth sign-in is disabled. Use teacher promo code checkout instead.'
+    });
   });
 
-  app.get('/auth/microsoft/callback', async (request, reply) => {
-    const query = request.query as { code?: string; state?: string; error?: string };
-    if (query.error || !query.code || !query.state) {
-      return reply.redirect(buildStaffRedirect({ error: query.error || 'oauth_failed' }));
-    }
-
-    try {
-      const result = await completeOAuthLogin({
-        app,
-        provider: 'microsoft',
-        code: query.code,
-        state: query.state
-      });
-      return reply.redirect(buildStaffRedirect({ token: result.token, returnTo: result.returnTo }));
-    } catch (err) {
-      app.log.error(err);
-      return reply.redirect(buildStaffRedirect({ error: err instanceof Error ? err.message : 'oauth_failed' }));
-    }
+  app.get('/auth/microsoft/callback', async (_request, reply) => {
+    return reply.status(410).send({
+      error: 'Microsoft OAuth sign-in is disabled. Use teacher promo code checkout instead.'
+    });
   });
 
   app.post(

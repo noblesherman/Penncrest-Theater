@@ -1,0 +1,5 @@
+ALTER TABLE "Performance"
+  ADD COLUMN IF NOT EXISTS "seatSelectionEnabled" BOOLEAN NOT NULL DEFAULT true;
+
+ALTER TABLE "Order"
+  ADD COLUMN IF NOT EXISTS "customerPhone" TEXT;

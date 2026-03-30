@@ -53,27 +53,43 @@ type RedemptionRow = {
   };
 };
 
+type TeacherPromoCodeRow = {
+  id: string;
+  createdByAdminId: string;
+  active: boolean;
+  expiresAt: string | null;
+  createdAt: string;
+  isExpired: boolean;
+};
+
 export default function AdminStaffCompsPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [codes, setCodes] = useState<RedeemCodeRow[]>([]);
   const [redemptions, setRedemptions] = useState<RedemptionRow[]>([]);
+  const [teacherPromoCodes, setTeacherPromoCodes] = useState<TeacherPromoCodeRow[]>([]);
 
-  const [count, setCount] = useState(1);
-  const [expiresInMinutes, setExpiresInMinutes] = useState(60 * 24 * 7);
-  const [generatedCodes, setGeneratedCodes] = useState<Array<{ id: string; code: string; expiresAt: string }>>([]);
+  const [teacherPromoCodeInput, setTeacherPromoCodeInput] = useState('');
+  const [teacherPromoCodeExpiresAt, setTeacherPromoCodeExpiresAt] = useState('');
+  const [createdTeacherPromoCode, setCreatedTeacherPromoCode] = useState<{ id: string; code: string; expiresAt: string | null } | null>(null);
+  const [promoCodeStatus, setPromoCodeStatus] = useState<'active' | 'inactive' | 'all'>('active');
+  const [scope, setScope] = useState<'active' | 'archived' | 'all'>('active');
   const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
     try {
-      const [userRows, codeRows, redemptionRows] = await Promise.all([
+      const [userRows, codeRows, redemptionRows, teacherPromoCodeRows] = await Promise.all([
         adminFetch<AdminUser[]>('/api/admin/staff/users?verified=true&limit=200'),
         adminFetch<{ rows: RedeemCodeRow[] }>('/api/admin/staff/redeem-codes?status=active&page=1&pageSize=50'),
-        adminFetch<{ rows: RedemptionRow[] }>('/api/admin/staff/redemptions?page=1&pageSize=100')
+        adminFetch<{ rows: RedemptionRow[] }>(`/api/admin/staff/redemptions?page=1&pageSize=100&scope=${scope}`),
+        adminFetch<{ rows: TeacherPromoCodeRow[] }>(
+          `/api/admin/staff/teacher-comp-promo-codes?status=${promoCodeStatus}&page=1&pageSize=100`
+        )
       ]);
 
       setUsers(userRows);
       setCodes(codeRows.rows);
       setRedemptions(redemptionRows.rows);
+      setTeacherPromoCodes(teacherPromoCodeRows.rows);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load staff comp data');
     }
@@ -81,24 +97,44 @@ export default function AdminStaffCompsPage() {
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [scope, promoCodeStatus]);
 
-  const generateCodes = async (event: FormEvent) => {
+  const createTeacherPromoCode = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
 
     try {
-      const result = await adminFetch<{ codes: Array<{ id: string; code: string; expiresAt: string }> }>(
-        '/api/admin/staff/redeem-codes',
+      const result = await adminFetch<{ promoCode: { id: string; code: string; expiresAt: string | null } }>(
+        '/api/admin/staff/teacher-comp-promo-codes',
         {
           method: 'POST',
-          body: JSON.stringify({ count, expiresInMinutes })
+          body: JSON.stringify({
+            code: teacherPromoCodeInput,
+            expiresAt: teacherPromoCodeExpiresAt ? new Date(teacherPromoCodeExpiresAt).toISOString() : null
+          })
         }
       );
-      setGeneratedCodes(result.codes);
+
+      setCreatedTeacherPromoCode(result.promoCode);
+      setTeacherPromoCodeInput('');
+      setTeacherPromoCodeExpiresAt('');
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate codes');
+      setError(err instanceof Error ? err.message : 'Failed to create teacher promo code');
+    }
+  };
+
+  const revokeTeacherPromoCode = async (codeId: string) => {
+    setError(null);
+
+    try {
+      await adminFetch(`/api/admin/staff/teacher-comp-promo-codes/${codeId}/revoke`, {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to revoke teacher promo code');
     }
   };
 
@@ -119,58 +155,100 @@ export default function AdminStaffCompsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-black text-stone-900 mb-1">Staff Verification & Comps</h1>
+        <h1 className="text-2xl font-bold text-stone-900 mb-1">Staff Verification & Comps</h1>
         <p className="text-sm text-stone-600">Manage redeem codes, verified staff users, and comp redemptions.</p>
+        <div className="mt-2">
+          <select
+            value={scope}
+            onChange={(event) => setScope(event.target.value as 'active' | 'archived' | 'all')}
+            className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm sm:w-auto"
+          >
+            <option value="active">Active</option>
+            <option value="archived">Archived</option>
+            <option value="all">All</option>
+          </select>
+        </div>
       </div>
 
-      <section className="border border-stone-200 rounded-2xl p-4">
-        <h2 className="font-bold text-stone-900 mb-3">Generate Redeem Codes</h2>
-        <form onSubmit={generateCodes} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+      <section className="border border-stone-200 rounded-2xl p-4 space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <label className="text-xs text-stone-500 font-semibold">Count</label>
+            <h2 className="font-bold text-stone-900">Teacher Comp Promo Codes</h2>
+            <p className="text-xs text-stone-500 mt-1">Teachers must enter one of these codes after OAuth to complete teacher comp checkout.</p>
+          </div>
+          <select
+            value={promoCodeStatus}
+            onChange={(event) => setPromoCodeStatus(event.target.value as 'active' | 'inactive' | 'all')}
+            className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm sm:w-auto"
+          >
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="all">All</option>
+          </select>
+        </div>
+
+        <form onSubmit={createTeacherPromoCode} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+          <div>
+            <label className="text-xs text-stone-500 font-semibold">Code</label>
             <input
-              type="number"
-              min={1}
-              max={100}
-              value={count}
-              onChange={(event) => setCount(Math.max(1, Number(event.target.value) || 1))}
+              value={teacherPromoCodeInput}
+              onChange={(event) => setTeacherPromoCodeInput(event.target.value)}
+              placeholder="SPRING-TEACHER-2026"
               className="w-full border border-stone-300 rounded-xl px-3 py-2"
+              required
             />
           </div>
           <div>
-            <label className="text-xs text-stone-500 font-semibold">Expires In (minutes)</label>
+            <label className="text-xs text-stone-500 font-semibold">Expires At (optional)</label>
             <input
-              type="number"
-              min={5}
-              max={60 * 24 * 30}
-              value={expiresInMinutes}
-              onChange={(event) => setExpiresInMinutes(Math.max(5, Number(event.target.value) || 5))}
+              type="datetime-local"
+              value={teacherPromoCodeExpiresAt}
+              onChange={(event) => setTeacherPromoCodeExpiresAt(event.target.value)}
               className="w-full border border-stone-300 rounded-xl px-3 py-2"
             />
           </div>
-          <button className="bg-stone-900 text-white px-4 py-2 rounded-xl font-bold">Generate</button>
+          <button className="w-full rounded-xl bg-stone-900 px-4 py-2 font-bold text-white md:w-auto">Create Promo Code</button>
         </form>
 
-        {generatedCodes.length > 0 && (
-          <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-xl p-3">
-            <div className="font-semibold text-stone-900 mb-2">New single-use codes</div>
-            <div className="space-y-1 text-sm text-stone-700">
-              {generatedCodes.map((item) => (
-                <div key={item.id}>
-                  <span className="font-mono font-bold">{item.code}</span>
-                  <span className="text-stone-500"> (expires {new Date(item.expiresAt).toLocaleString()})</span>
-                </div>
-              ))}
-            </div>
+        {createdTeacherPromoCode && (
+          <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-sm text-green-900">
+            New promo code: <span className="font-sans font-bold">{createdTeacherPromoCode.code}</span>
+            {createdTeacherPromoCode.expiresAt ? ` (expires ${new Date(createdTeacherPromoCode.expiresAt).toLocaleString()})` : ''}
           </div>
         )}
+
+        <div className="space-y-2 max-h-56 overflow-auto">
+          {teacherPromoCodes.map((code) => (
+            <div key={code.id} className="border border-stone-200 rounded-xl p-3 text-xs text-stone-600 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div>ID: {code.id}</div>
+                <div>Created: {new Date(code.createdAt).toLocaleString()}</div>
+                <div>Created by: {code.createdByAdminId}</div>
+                <div>
+                  Expires: {code.expiresAt ? new Date(code.expiresAt).toLocaleString() : 'Never'}
+                  {code.isExpired ? ' (expired)' : ''}
+                </div>
+                <div>Status: {code.active && !code.isExpired ? 'Active' : 'Inactive'}</div>
+              </div>
+              {code.active && !code.isExpired ? (
+                <button
+                  className="w-full rounded-md border border-red-300 px-3 py-1 text-sm text-red-600 sm:w-auto"
+                  onClick={() => revokeTeacherPromoCode(code.id)}
+                >
+                  Revoke
+                </button>
+              ) : null}
+            </div>
+          ))}
+          {teacherPromoCodes.length === 0 && <div className="text-sm text-stone-500">No teacher promo codes found.</div>}
+        </div>
       </section>
 
       <section className="border border-stone-200 rounded-2xl p-4">
         <h2 className="font-bold text-stone-900 mb-3">Verified Staff Users</h2>
         <div className="space-y-2 max-h-64 overflow-auto">
           {users.map((user) => (
-            <div key={user.id} className="border border-stone-200 rounded-xl p-3 flex justify-between items-center gap-3">
+            <div key={user.id} className="flex flex-col gap-3 rounded-xl border border-stone-200 p-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="font-semibold text-stone-900">{user.name}</div>
                 <div className="text-xs text-stone-500">{user.email}</div>
@@ -180,7 +258,7 @@ export default function AdminStaffCompsPage() {
                 </div>
               </div>
               <button
-                className="text-sm px-3 py-1 rounded-md border border-red-300 text-red-600"
+                className="w-full rounded-md border border-red-300 px-3 py-1 text-sm text-red-600 sm:w-auto"
                 onClick={() => revokeUser(user.id)}
               >
                 Revoke

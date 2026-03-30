@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "StudentTicketCreditTransaction_studentTicketCreditId_createdAt_" RENAME TO "StudentTicketCreditTransaction_studentTicketCreditId_create_idx";

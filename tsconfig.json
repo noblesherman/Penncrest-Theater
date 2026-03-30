@@ -35,5 +35,6 @@
     "dist",
     "apps",
     "backend"
-  ]
+  ],
+  "extends": "expo/tsconfig.base"
 }

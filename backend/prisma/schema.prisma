@@ -24,6 +24,7 @@ enum HoldStatus {
 enum OrderStatus {
   PENDING
   PAID
+  FINALIZATION_FAILED
   REFUNDED
   CANCELED
 }
@@ -35,6 +36,22 @@ enum OrderSource {
   STAFF_FREE
   STAFF_COMP
   FAMILY_FREE
+  STUDENT_COMP
+}
+
+enum InPersonPaymentMethod {
+  STRIPE
+  CASH
+}
+
+enum TerminalDispatchStatus {
+  PENDING
+  DELIVERED
+  PROCESSING
+  FAILED
+  SUCCEEDED
+  EXPIRED
+  CANCELED
 }
 
 enum AuthProvider {
@@ -52,12 +69,54 @@ enum StaffVerifyMethod {
 enum TicketType {
   PAID
   STAFF_COMP
+  STUDENT_COMP
 }
 
 enum TicketStatus {
   RESERVED
   ISSUED
   CANCELLED
+}
+
+enum AdmissionDecision {
+  FORCE_ADMIT
+  DENY
+}
+
+enum StudentCreditTransactionType {
+  REDEEM
+  ADJUSTMENT_ADD
+  ADJUSTMENT_REMOVE
+  MANUAL_REDEEM
+  REFUND_RESTORE
+}
+
+enum StudentCreditVerificationMethod {
+  CODE
+  SCHOOL_LOGIN
+  ADMIN
+}
+
+enum AdminRole {
+  BOX_OFFICE
+  ADMIN
+  SUPER_ADMIN
+}
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  name         String
+  passwordHash String
+  role         AdminRole @default(BOX_OFFICE)
+  isActive     Boolean   @default(true)
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecretEncrypted String?
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([role, isActive, twoFactorEnabled])
 }
 
 model User {
@@ -92,6 +151,19 @@ model StaffRedeemCode {
   @@index([createdByAdminId, createdAt])
 }
 
+model TeacherCompPromoCode {
+  id              String   @id @default(cuid())
+  codeHash        String   @unique
+  createdByAdminId String
+  active          Boolean  @default(true)
+  expiresAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([active, expiresAt, createdAt])
+  @@index([createdByAdminId, createdAt])
+}
+
 model Show {
   id          String        @id @default(cuid())
   title       String
@@ -103,6 +175,22 @@ model Show {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   performances Performance[]
+  castMembers CastMember[]
+  studentTicketCredits StudentTicketCredit[]
+}
+
+model CastMember {
+  id        String   @id @default(cuid())
+  showId    String
+  show      Show     @relation(fields: [showId], references: [id], onDelete: Cascade)
+  name      String
+  role      String
+  photoUrl  String?
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([showId, position])
 }
 
 model Performance {
@@ -112,10 +200,14 @@ model Performance {
   title         String?
   startsAt      DateTime
   salesCutoffAt DateTime?
+  isArchived    Boolean       @default(false)
+  isFundraiser  Boolean       @default(false)
+  archivedAt    DateTime?
   staffTicketLimit Int       @default(2)
   staffCompsEnabled Boolean  @default(true)
   staffCompLimitPerUser Int  @default(1)
   familyFreeTicketEnabled Boolean @default(false)
+  seatSelectionEnabled Boolean @default(true)
   venue         String
   notes         String?
   createdAt     DateTime      @default(now())
@@ -125,10 +217,14 @@ model Performance {
   holdSessions  HoldSession[]
   orders        Order[]
   tickets       Ticket[]
+  scannerSessions ScannerSession[]
   staffCompRedemptions StaffCompRedemption[]
+  studentTicketCreditTransactions StudentTicketCreditTransaction[]
+  terminalPaymentDispatches TerminalPaymentDispatch[]
 
   @@index([showId])
   @@index([startsAt])
+  @@index([isArchived, startsAt])
 }
 
 model PricingTier {
@@ -213,29 +309,101 @@ model Order {
   stripePaymentIntentId String?     @unique
   email                 String
   customerName          String
+  customerPhone         String?
   attendeeNamesJson     Json?
   amountTotal           Int
   currency              String      @default("usd")
   status                OrderStatus @default(PENDING)
   source                OrderSource @default(ONLINE)
+  inPersonPaymentMethod InPersonPaymentMethod?
   holdToken             String?
+  studentTicketCreditId String?
+  studentTicketCredit   StudentTicketCredit? @relation(fields: [studentTicketCreditId], references: [id], onDelete: SetNull)
+  studentCreditPendingQuantity Int @default(0)
+  studentCreditRedeemedQuantity Int @default(0)
+  studentCreditRestoredQuantity Int @default(0)
+  studentCreditVerificationMethod StudentCreditVerificationMethod?
+  accessToken           String      @unique
+  finalizationAttemptCount Int      @default(0)
+  finalizationFailedAt  DateTime?
+  lastFinalizationError String?
+  stripeRefundId        String?     @unique
+  stripeRefundStatus    String?
+  refundAmountCents     Int         @default(0)
+  refundRequestedAt     DateTime?
+  refundedAt            DateTime?
+  lastRefundError       String?
+  releaseSeatsOnRefund  Boolean     @default(false)
   createdAt             DateTime    @default(now())
   updatedAt             DateTime    @updatedAt
   orderSeats            OrderSeat[]
   tickets               Ticket[]
+  studentTicketCreditTransactions StudentTicketCreditTransaction[]
+  terminalDispatchFinalizations TerminalPaymentDispatch[] @relation("TerminalDispatchFinalOrder")
 
   @@index([performanceId])
   @@index([userId])
   @@index([email])
   @@index([status])
+  @@index([source, inPersonPaymentMethod, createdAt])
+  @@index([studentTicketCreditId])
+  @@index([accessToken])
+}
+
+model TerminalDeviceSession {
+  id                String   @id @default(cuid())
+  deviceId          String   @unique
+  displayName       String
+  isOnline          Boolean  @default(true)
+  registeredByAdminId String?
+  lastHeartbeatAt   DateTime @default(now())
+  lastDispatchPollAt DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  dispatches        TerminalPaymentDispatch[] @relation("TerminalDeviceDispatches")
+
+  @@index([isOnline, lastHeartbeatAt])
+  @@index([displayName])
+}
+
+model TerminalPaymentDispatch {
+  id                              String                @id @default(cuid())
+  status                          TerminalDispatchStatus @default(PENDING)
+  performanceId                   String
+  performance                     Performance           @relation(fields: [performanceId], references: [id], onDelete: Restrict)
+  targetDeviceSessionId           String
+  targetDeviceSession             TerminalDeviceSession @relation("TerminalDeviceDispatches", fields: [targetDeviceSessionId], references: [id], onDelete: Restrict)
+  targetDeviceId                  String
+  holdToken                       String
+  holdExpiresAt                   DateTime
+  expectedAmountCents             Int
+  currency                        String                @default("usd")
+  stripePaymentIntentId           String?               @unique
+  stripePaymentIntentClientSecret String?
+  saleSnapshot                    Json
+  attemptCount                    Int                   @default(1)
+  failureReason                   String?
+  deliveredAt                     DateTime?
+  processingStartedAt             DateTime?
+  completedAt                     DateTime?
+  canceledAt                      DateTime?
+  finalOrderId                    String?               @unique
+  finalOrder                      Order?                @relation("TerminalDispatchFinalOrder", fields: [finalOrderId], references: [id], onDelete: SetNull)
+  createdByAdminId                String?
+  createdAt                       DateTime              @default(now())
+  updatedAt                       DateTime              @updatedAt
+
+  @@index([targetDeviceId, status, createdAt])
+  @@index([status, holdExpiresAt])
+  @@index([performanceId, createdAt])
 }
 
 model OrderSeat {
   id           String   @id @default(cuid())
   orderId      String
   order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  seatId       String
-  seat         Seat     @relation(fields: [seatId], references: [id], onDelete: Restrict)
+  seatId       String?
+  seat         Seat?    @relation(fields: [seatId], references: [id], onDelete: SetNull)
   ticketType   String?
   isComplimentary Boolean @default(false)
   price        Int
@@ -255,14 +423,21 @@ model Ticket {
   performance Performance          @relation(fields: [performanceId], references: [id], onDelete: Restrict)
   userId      String?
   user        User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
-  seatId      String
-  seat        Seat                 @relation(fields: [seatId], references: [id], onDelete: Restrict)
+  seatId      String?
+  seat        Seat?                @relation(fields: [seatId], references: [id], onDelete: SetNull)
   type        TicketType           @default(PAID)
   priceCents  Int                  @default(0)
   status      TicketStatus         @default(ISSUED)
   publicId    String               @unique
   qrSecret    String
   qrPayload   String
+  checkedInAt DateTime?
+  checkedInBy String?
+  checkInGate String?
+  admissionDecision AdmissionDecision?
+  admissionReason String?
+  admissionDecidedAt DateTime?
+  admissionDecidedBy String?
   createdAt   DateTime             @default(now())
   staffCompRedemption StaffCompRedemption?
 
@@ -271,6 +446,28 @@ model Ticket {
   @@index([userId])
   @@index([type, status])
   @@index([seatId])
+  @@index([performanceId, checkedInAt])
+  @@index([performanceId, admissionDecision])
+}
+
+model ScannerSession {
+  id            String      @id @default(cuid())
+  performanceId String
+  performance   Performance @relation(fields: [performanceId], references: [id], onDelete: Cascade)
+  accessToken   String      @unique
+  staffName     String
+  gate          String
+  deviceLabel   String?
+  active        Boolean     @default(true)
+  createdBy     String?
+  lastSeenAt    DateTime    @default(now())
+  endedAt       DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([performanceId, active])
+  @@index([performanceId, gate, active])
+  @@index([lastSeenAt])
 }
 
 model StaffCompRedemption {
@@ -286,6 +483,48 @@ model StaffCompRedemption {
   @@unique([performanceId, userId])
   @@index([performanceId, redeemedAt])
   @@index([userId, redeemedAt])
+}
+
+model StudentTicketCredit {
+  id               String   @id @default(cuid())
+  showId           String
+  show             Show     @relation(fields: [showId], references: [id], onDelete: Cascade)
+  studentId        String?
+  studentName      String
+  studentEmail     String?
+  roleName         String?
+  verificationCode String?  @unique
+  allocatedTickets Int      @default(2)
+  usedTickets      Int      @default(0)
+  pendingTickets   Int      @default(0)
+  isActive         Boolean  @default(true)
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  transactions     StudentTicketCreditTransaction[]
+  orders           Order[]
+
+  @@index([showId, isActive])
+}
+
+model StudentTicketCreditTransaction {
+  id                    String                          @id @default(cuid())
+  studentTicketCreditId String
+  studentTicketCredit   StudentTicketCredit            @relation(fields: [studentTicketCreditId], references: [id], onDelete: Cascade)
+  orderId               String?
+  order                 Order?                         @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  performanceId         String?
+  performance           Performance?                   @relation(fields: [performanceId], references: [id], onDelete: SetNull)
+  quantity              Int
+  type                  StudentCreditTransactionType
+  verificationMethod    StudentCreditVerificationMethod?
+  redeemedBy            String?
+  notes                 String?
+  createdAt             DateTime                       @default(now())
+
+  @@index([studentTicketCreditId, createdAt])
+  @@index([orderId])
+  @@index([performanceId])
 }
 
 model AuditLog {
@@ -304,4 +543,19 @@ model AuditLog {
   @@index([actorAdminId, createdAt])
   @@index([entityType, entityId])
   @@index([createdAt])
+}
+
+model ContentPage {
+  id              String   @id @default(cuid())
+  scope           String
+  slug            String
+  title           String
+  content         Json
+  updatedByAdminId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([scope, slug])
+  @@index([scope])
+  @@index([updatedByAdminId])
 }

@@ -1,10 +1,25 @@
-import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState, useRef, useCallback, type FormEvent } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { TransformWrapper, TransformComponent, ReactZoomPanPinchContentRef } from 'react-zoom-pan-pinch';
-import { ChevronLeft, ShoppingCart, X, Minus, Plus, RefreshCw, Search, Users } from 'lucide-react';
+import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
+import { loadStripe, type StripeElementsOptions } from '@stripe/stripe-js';
+import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronLeft,
+  CreditCard,
+  Mail,
+  Phone,
+  Search,
+  Ticket,
+  User,
+  Users,
+  X
+} from 'lucide-react';
+import { SeatMapViewport } from '../components/SeatMapViewport';
 import { apiFetch } from '../lib/api';
 import { getClientToken } from '../lib/clientToken';
+import { buildConfirmationPath, rememberOrderAccessToken } from '../lib/orderAccess';
 
 interface Seat {
   id: string;
@@ -26,12 +41,138 @@ interface HoldResponse {
   heldSeatIds: string[];
 }
 
+type PricingTier = {
+  id: string;
+  name: string;
+  priceCents: number;
+};
+
+type PerformanceDetails = {
+  id: string;
+  title: string;
+  pricingTiers: PricingTier[];
+  studentCompTicketsEnabled?: boolean;
+  seatSelectionEnabled?: boolean;
+};
+
+type CheckoutStep = 1 | 2 | 3;
+
+type TicketOption = {
+  id: string;
+  label: string;
+  priceCents: number;
+  tierId?: string;
+};
+
+type SelectedSeatPricing = {
+  seat: Seat;
+  optionId: string | null;
+  optionLabel: string;
+  basePrice: number;
+  unitPrice: number;
+  isTeacherTicket: boolean;
+  isStudentInShowTicket: boolean;
+  isTeacherComplimentary: boolean;
+  isStudentComplimentary: boolean;
+};
+
+type CheckoutResponse = {
+  url?: string;
+  orderId?: string;
+  orderAccessToken?: string;
+  clientSecret?: string;
+  publishableKey?: string;
+};
+
+type PendingStripePayment = {
+  clientSecret: string;
+  publishableKey: string;
+  orderId: string;
+  orderAccessToken?: string;
+};
+
+const CHECKOUT_STEPS: Array<{ id: CheckoutStep; label: string }> = [
+  { id: 1, label: 'Pick Seats' },
+  { id: 2, label: 'Ticket Types' },
+  { id: 3, label: 'Checkout' }
+];
+
+const TEACHER_TICKET_OPTION_ID = 'teacher-comp';
+const STUDENT_SHOW_TICKET_OPTION_ID = 'student-show-comp';
+const MAX_TEACHER_COMP_TICKETS = 2;
+const MAX_STUDENT_COMP_TICKETS = 2;
 const naturalSort = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 const SEAT_X_STEP = 40;
 const MAX_ADJACENT_X_GAP = SEAT_X_STEP * 1.5;
-const MAP_PADDING_X = 120;
-const MAP_PADDING_TOP = 180;
-const MAP_PADDING_BOTTOM = 140;
+const FALLBACK_STRIPE_PUBLISHABLE_KEY = (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '').trim();
+
+function stringArrayEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function InlineStripePaymentForm({
+  disabled,
+  onError,
+  onSuccess
+}: {
+  disabled: boolean;
+  onError: (message: string) => void;
+  onSuccess: () => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [confirming, setConfirming] = useState(false);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onError('');
+
+    if (!stripe || !elements) {
+      onError('Payment form is still loading. Please try again.');
+      return;
+    }
+
+    setConfirming(true);
+    const result = await stripe.confirmPayment({
+      elements,
+      redirect: 'if_required'
+    });
+    setConfirming(false);
+
+    if (result.error) {
+      onError(result.error.message || 'Payment could not be completed.');
+      return;
+    }
+
+    const status = result.paymentIntent?.status;
+    if (status === 'succeeded' || status === 'processing' || status === 'requires_capture') {
+      onSuccess();
+      return;
+    }
+
+    onError(`Payment did not complete. Current status: ${status || 'unknown'}.`);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+      <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+        <PaymentElement />
+      </div>
+      <button
+        type="submit"
+        disabled={disabled || confirming || !stripe || !elements}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-red-800 transition-colors"
+      >
+        <CreditCard className="w-4 h-4" />
+        {confirming ? 'Processing payment...' : 'Pay now'}
+      </button>
+    </form>
+  );
+}
 
 const buildSeatGrid = (seats: Seat[]) => {
   const grid: Record<string, Record<string, Seat[]>> = {};
@@ -54,12 +195,36 @@ const buildSeatGrid = (seats: Seat[]) => {
   return grid;
 };
 
+function pickComplimentarySeatIds(items: Array<{ seat: Seat; basePrice: number }>, quantity: number): Set<string> {
+  if (quantity <= 0) return new Set();
+
+  const rankedSeats = [...items]
+    .sort((a, b) => {
+      if (a.basePrice !== b.basePrice) return b.basePrice - a.basePrice;
+      if (a.seat.sectionName !== b.seat.sectionName) return a.seat.sectionName.localeCompare(b.seat.sectionName);
+      if (a.seat.row !== b.seat.row) return naturalSort(a.seat.row, b.seat.row);
+      return a.seat.number - b.seat.number;
+    });
+
+  return new Set(rankedSeats.slice(0, quantity).map((item) => item.seat.id));
+}
+
+function isTeacherTicketLabel(label: string): boolean {
+  const normalized = label.trim().toLowerCase();
+  return normalized.includes('teacher') || (normalized.includes('rtmsd') && normalized.includes('staff'));
+}
+
 export default function Booking() {
   const { performanceId } = useParams();
   const navigate = useNavigate();
-  const transformComponentRef = useRef<ReactZoomPanPinchContentRef>(null);
   const clientTokenRef = useRef<string>(getClientToken());
   const holdTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [performanceTitle, setPerformanceTitle] = useState('Ticket Checkout');
+  const [pricingTiers, setPricingTiers] = useState<PricingTier[]>([]);
+  const [studentCompTicketsEnabled, setStudentCompTicketsEnabled] = useState(false);
+  const [seatSelectionEnabled, setSeatSelectionEnabled] = useState(true);
+  const [ticketOptionBySeatId, setTicketOptionBySeatId] = useState<Record<string, string>>({});
 
   const [seats, setSeats] = useState<Seat[]>([]);
   const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
@@ -68,11 +233,17 @@ export default function Booking() {
   const [processing, setProcessing] = useState(false);
   const [activeSection, setActiveSection] = useState<string>('All');
   const [adjacentCount, setAdjacentCount] = useState(2);
-  const [lastRefreshed, setLastRefreshed] = useState(Date.now());
   const [holdToken, setHoldToken] = useState('');
   const [holdError, setHoldError] = useState<string | null>(null);
+  const [stepError, setStepError] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [studentCode, setStudentCode] = useState('');
+  const [autoSeatCount, setAutoSeatCount] = useState(2);
+  const [currentStep, setCurrentStep] = useState<CheckoutStep>(1);
+  const [teacherPromoCode, setTeacherPromoCode] = useState('');
+  const [pendingStripePayment, setPendingStripePayment] = useState<PendingStripePayment | null>(null);
 
   const fetchSeats = useCallback(async () => {
     if (!performanceId) return;
@@ -81,11 +252,27 @@ export default function Booking() {
       const data = await apiFetch<Seat[] | { seats: Seat[] }>(`/api/performances/${performanceId}/seats`);
       const seatList = Array.isArray(data) ? data : data.seats;
       setSeats(seatList);
-      setLastRefreshed(Date.now());
     } catch (err) {
       console.error('Failed to fetch seats', err);
     } finally {
       setLoading(false);
+    }
+  }, [performanceId]);
+
+  const fetchPerformanceDetails = useCallback(async () => {
+    if (!performanceId) return;
+
+    try {
+      const details = await apiFetch<PerformanceDetails>(`/api/performances/${performanceId}`);
+      setPerformanceTitle(details.title || 'Ticket Checkout');
+      setPricingTiers(details.pricingTiers || []);
+      setStudentCompTicketsEnabled(Boolean(details.studentCompTicketsEnabled));
+      setSeatSelectionEnabled(details.seatSelectionEnabled !== false);
+    } catch (err) {
+      console.error('Failed to fetch performance details', err);
+      setPricingTiers([]);
+      setStudentCompTicketsEnabled(false);
+      setSeatSelectionEnabled(true);
     }
   }, [performanceId]);
 
@@ -124,9 +311,10 @@ export default function Booking() {
 
   useEffect(() => {
     void fetchSeats();
+    void fetchPerformanceDetails();
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && Date.now() - lastRefreshed > 10000) {
+      if (document.visibilityState === 'visible') {
         void fetchSeats();
       }
     };
@@ -138,7 +326,7 @@ export default function Booking() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(interval);
     };
-  }, [fetchSeats, lastRefreshed]);
+  }, [fetchPerformanceDetails, fetchSeats]);
 
   useEffect(() => {
     if (selectedSeatIds.length === 0 && !holdToken) return;
@@ -167,7 +355,84 @@ export default function Booking() {
     };
   }, [performanceId]);
 
+  const ticketOptions = useMemo<TicketOption[]>(() => {
+    if (pricingTiers.length === 0) return [];
+    const tierOptions: TicketOption[] = pricingTiers.map((tier) => ({
+      id: tier.id,
+      label: tier.name,
+      priceCents: tier.priceCents,
+      tierId: tier.id
+    }));
+
+    const hasTeacherOption = tierOptions.some((option) => option.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketLabel(option.label));
+    if (!hasTeacherOption) {
+      tierOptions.push({
+        id: TEACHER_TICKET_OPTION_ID,
+        label: 'RTMSD STAFF',
+        priceCents: 0
+      });
+    }
+
+    const hasStudentInShowOption = tierOptions.some((option) => option.id === STUDENT_SHOW_TICKET_OPTION_ID);
+    if (studentCompTicketsEnabled && !hasStudentInShowOption) {
+      tierOptions.push({
+        id: STUDENT_SHOW_TICKET_OPTION_ID,
+        label: 'Student in Show',
+        priceCents: 0
+      });
+    }
+
+    return tierOptions;
+  }, [pricingTiers, studentCompTicketsEnabled]);
+
+  useEffect(() => {
+    if (selectedSeatIds.length === 0) {
+      setTicketOptionBySeatId({});
+      return;
+    }
+
+    if (ticketOptions.length === 0) return;
+
+    const validOptionIds = new Set(ticketOptions.map((option) => option.id));
+    const defaultOptionId = ticketOptions[0]?.id;
+
+    setTicketOptionBySeatId((prev) => {
+      const next: Record<string, string> = {};
+      selectedSeatIds.forEach((seatId) => {
+        const prevOptionId = prev[seatId];
+        if (prevOptionId && validOptionIds.has(prevOptionId)) {
+          next[seatId] = prevOptionId;
+          return;
+        }
+        if (defaultOptionId) {
+          next[seatId] = defaultOptionId;
+        }
+      });
+      return next;
+    });
+  }, [selectedSeatIds, ticketOptions]);
+
+  useEffect(() => {
+    if (selectedSeatIds.length > 0) return;
+    if (currentStep === 1) return;
+    setCurrentStep(1);
+  }, [currentStep, selectedSeatIds.length]);
+
+  useEffect(() => {
+    if (currentStep === 3) return;
+    if (!pendingStripePayment) return;
+    setPendingStripePayment(null);
+  }, [currentStep, pendingStripePayment]);
+
   const handleSeatClick = (seat: Seat) => {
+    if (!seatSelectionEnabled) {
+      return;
+    }
+
+    if (pendingStripePayment) {
+      setPendingStripePayment(null);
+    }
+
     const isSelected = selectedSeatIds.includes(seat.id);
     const heldByMe = heldByMeSeatIds.includes(seat.id);
     if (!isSelected && seat.status !== 'available' && !heldByMe) return;
@@ -191,52 +456,230 @@ export default function Booking() {
     });
   };
 
-  const handleCheckout = async () => {
-    if (!performanceId) return;
-    if (selectedSeatIds.length === 0) {
-      alert('Select at least one seat.');
+  const handleSeatOptionChange = (seatId: string, optionId: string) => {
+    if (pendingStripePayment) {
+      setPendingStripePayment(null);
+    }
+
+    setTicketOptionBySeatId((prev) => ({
+      ...prev,
+      [seatId]: optionId
+    }));
+  };
+
+  const resetPendingPayment = useCallback(() => {
+    setPendingStripePayment(null);
+  }, []);
+
+  const stripePromise = useMemo(() => {
+    if (!pendingStripePayment?.publishableKey) return null;
+    return loadStripe(pendingStripePayment.publishableKey);
+  }, [pendingStripePayment?.publishableKey]);
+
+  const stripeElementsOptions = useMemo<StripeElementsOptions | null>(() => {
+    if (!pendingStripePayment) return null;
+    return {
+      clientSecret: pendingStripePayment.clientSecret,
+      appearance: {
+        theme: 'stripe'
+      }
+    };
+  }, [pendingStripePayment]);
+
+  const finalizeEmbeddedPayment = useCallback(() => {
+    if (!pendingStripePayment?.orderId) {
+      setStepError('Missing order details for confirmation.');
       return;
     }
 
-    if (!customerName.trim() || !customerEmail.trim()) {
-      alert('Enter your name and email before checkout.');
+    rememberOrderAccessToken(pendingStripePayment.orderId, pendingStripePayment.orderAccessToken);
+    navigate(buildConfirmationPath(pendingStripePayment.orderId, pendingStripePayment.orderAccessToken));
+  }, [navigate, pendingStripePayment]);
+
+  const handleCheckout = async () => {
+    if (!performanceId) return;
+    if (selectedSeatIds.length === 0) {
+      setStepError(`Select at least one ${checkoutUnitLabel} before checkout.`);
+      setCurrentStep(1);
+      return;
+    }
+
+    if (ticketOptions.length > 0 && selectedSeatIds.some((seatId) => !ticketOptionBySeatId[seatId])) {
+      setStepError(`Select a ticket type for every ${checkoutUnitLabel} before checkout.`);
+      setCurrentStep(2);
+      return;
+    }
+
+    const tierCountMap = new Map<string, number>();
+    const ticketSelectionBySeatId: Record<string, string> = {};
+    selectedSeatIds.forEach((seatId) => {
+      const optionId = ticketOptionBySeatId[seatId];
+      if (!optionId) return;
+      const option = ticketOptions.find((item) => item.id === optionId);
+      const selectionId = option?.tierId || optionId;
+      ticketSelectionBySeatId[seatId] = selectionId;
+      tierCountMap.set(selectionId, (tierCountMap.get(selectionId) || 0) + 1);
+    });
+
+    const ticketSelections = [...tierCountMap.entries()].map(([tierId, count]) => ({ tierId, count }));
+
+    if (hasMixedCompSelection) {
+      setStepError('Teacher and Student in Show complimentary tickets cannot be mixed in one checkout.');
+      setCurrentStep(2);
       return;
     }
 
     setProcessing(true);
+    setStepError(null);
+    setPendingStripePayment(null);
+
     try {
       const holdResult = await syncHolds(selectedSeatIds);
       if (!holdResult || holdResult.heldSeatIds.length !== selectedSeatIds.length) {
         throw new Error('Unable to lock selected seats. Please try again.');
       }
 
-      const checkout = await apiFetch<{ url?: string; orderId?: string }>('/api/checkout', {
-        method: 'POST',
-        body: JSON.stringify({
-          performanceId,
-          checkoutMode: 'PAID',
-          seatIds: holdResult.heldSeatIds,
-          holdToken: holdResult.holdToken,
-          clientToken: clientTokenRef.current,
-          customerEmail: customerEmail.trim(),
-          customerName: customerName.trim()
-        })
-      });
+      let checkout: CheckoutResponse;
 
-      if (checkout.url) {
-        window.location.href = checkout.url;
+      if (isTeacherCheckout) {
+        const effectiveCustomerName = customerName.trim();
+        const effectiveCustomerEmail = customerEmail.trim().toLowerCase();
+        const effectiveCustomerPhone = customerPhone.trim();
+        if (!effectiveCustomerName || !effectiveCustomerEmail) {
+          setStepError('Enter your name and personal email before checkout.');
+          setCurrentStep(3);
+          return;
+        }
+        if (!effectiveCustomerPhone) {
+          setStepError('Enter a phone number before checkout.');
+          setCurrentStep(3);
+          return;
+        }
+        if (effectiveCustomerEmail.endsWith('@rtmsd.org')) {
+          setStepError('Use a personal email for ticket delivery (not @rtmsd.org).');
+          setCurrentStep(3);
+          return;
+        }
+        const normalizedTeacherPromoCode = teacherPromoCode.trim();
+        if (!normalizedTeacherPromoCode) {
+          setStepError('Enter the teacher promo code before checkout.');
+          setCurrentStep(3);
+          return;
+        }
+
+        checkout = await apiFetch<CheckoutResponse>('/api/checkout', {
+          method: 'POST',
+          body: JSON.stringify({
+            performanceId,
+            checkoutMode: 'TEACHER_COMP',
+            seatIds: holdResult.heldSeatIds,
+            ticketSelections: ticketSelections.length > 0 ? ticketSelections : undefined,
+            ticketSelectionBySeatId,
+            holdToken: holdResult.holdToken,
+            clientToken: clientTokenRef.current,
+            customerEmail: effectiveCustomerEmail,
+            customerName: effectiveCustomerName,
+            customerPhone: effectiveCustomerPhone,
+            teacherPromoCode: normalizedTeacherPromoCode
+          })
+        });
+      } else if (isStudentInShowCheckout) {
+        const effectiveCustomerName = customerName.trim();
+        const effectiveCustomerEmail = customerEmail.trim().toLowerCase();
+        const effectiveCustomerPhone = customerPhone.trim();
+        const normalizedStudentCode = studentCode.trim().toLowerCase().replace(/\s+/g, '');
+
+        if (!effectiveCustomerName || !effectiveCustomerEmail) {
+          setStepError('Enter your name and personal email before checkout.');
+          setCurrentStep(3);
+          return;
+        }
+        if (!effectiveCustomerPhone) {
+          setStepError('Enter a phone number before checkout.');
+          setCurrentStep(3);
+          return;
+        }
+        if (!normalizedStudentCode) {
+          setStepError('Enter your student code for verification before checkout.');
+          setCurrentStep(3);
+          return;
+        }
+
+        checkout = await apiFetch<CheckoutResponse>('/api/checkout', {
+          method: 'POST',
+          body: JSON.stringify({
+            performanceId,
+            checkoutMode: 'STUDENT_COMP',
+            seatIds: holdResult.heldSeatIds,
+            ticketSelections: ticketSelections.length > 0 ? ticketSelections : undefined,
+            ticketSelectionBySeatId,
+            holdToken: holdResult.holdToken,
+            clientToken: clientTokenRef.current,
+            customerEmail: effectiveCustomerEmail,
+            customerName: effectiveCustomerName,
+            customerPhone: effectiveCustomerPhone,
+            studentCode: normalizedStudentCode
+          })
+        });
+      } else {
+        const effectiveCustomerName = customerName.trim();
+        const effectiveCustomerEmail = customerEmail.trim().toLowerCase();
+        const effectiveCustomerPhone = customerPhone.trim();
+
+        if (!effectiveCustomerName || !effectiveCustomerEmail) {
+          setStepError('Enter your name and email before checkout.');
+          setCurrentStep(3);
+          return;
+        }
+        if (!effectiveCustomerPhone) {
+          setStepError('Enter a phone number before checkout.');
+          setCurrentStep(3);
+          return;
+        }
+
+        checkout = await apiFetch<CheckoutResponse>('/api/checkout', {
+          method: 'POST',
+          body: JSON.stringify({
+            performanceId,
+            checkoutMode: 'PAID',
+            seatIds: holdResult.heldSeatIds,
+            ticketSelections: ticketSelections.length > 0 ? ticketSelections : undefined,
+            ticketSelectionBySeatId,
+            holdToken: holdResult.holdToken,
+            clientToken: clientTokenRef.current,
+            customerEmail: effectiveCustomerEmail,
+            customerName: effectiveCustomerName,
+            customerPhone: effectiveCustomerPhone
+          })
+        });
+      }
+
+      if (checkout.clientSecret && checkout.orderId) {
+        const publishableKey = (checkout.publishableKey || FALLBACK_STRIPE_PUBLISHABLE_KEY || '').trim();
+        if (!publishableKey) {
+          throw new Error('Stripe publishable key is not configured.');
+        }
+
+        rememberOrderAccessToken(checkout.orderId, checkout.orderAccessToken);
+        setPendingStripePayment({
+          clientSecret: checkout.clientSecret,
+          publishableKey,
+          orderId: checkout.orderId,
+          orderAccessToken: checkout.orderAccessToken
+        });
         return;
       }
 
       if (checkout.orderId) {
-        navigate(`/confirmation?orderId=${checkout.orderId}`);
+        rememberOrderAccessToken(checkout.orderId, checkout.orderAccessToken);
+        navigate(buildConfirmationPath(checkout.orderId, checkout.orderAccessToken));
         return;
       }
 
-      throw new Error('Checkout response missing redirect URL.');
+      throw new Error('Checkout response missing payment details.');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Checkout failed';
-      alert(message);
+      setStepError(message);
       await fetchSeats();
     } finally {
       setProcessing(false);
@@ -297,355 +740,1064 @@ export default function Booking() {
 
   const seatGrid = useMemo(() => buildSeatGrid(seats), [seats]);
   const sections = useMemo(() => Object.keys(seatGrid), [seatGrid]);
-  const selectedSeats = useMemo(() => seats.filter((seat) => selectedSeatIds.includes(seat.id)), [seats, selectedSeatIds]);
-  const totalAmount = useMemo(() => selectedSeats.reduce((sum, seat) => sum + seat.price, 0), [selectedSeats]);
+  const autoAssignableSeatIds = useMemo(
+    () =>
+      seats
+        .filter((seat) => {
+          if (seat.isCompanion) return false;
+          if (selectedSeatIds.includes(seat.id)) return seat.status !== 'sold' && seat.status !== 'blocked';
+          if (heldByMeSeatIds.includes(seat.id)) return true;
+          return seat.status === 'available';
+        })
+        .sort((a, b) => {
+          if (a.sectionName !== b.sectionName) return a.sectionName.localeCompare(b.sectionName);
+          if (a.row !== b.row) return naturalSort(a.row, b.row);
+          return a.number - b.number;
+        })
+        .map((seat) => seat.id),
+    [heldByMeSeatIds, seats, selectedSeatIds]
+  );
+
+  useEffect(() => {
+    if (seatSelectionEnabled) return;
+
+    const maxSelectable = autoAssignableSeatIds.length;
+    const nextCount = Math.max(0, Math.min(autoSeatCount, maxSelectable));
+    if (nextCount !== autoSeatCount) {
+      setAutoSeatCount(nextCount);
+      return;
+    }
+
+    const desiredSeatIds = autoAssignableSeatIds.slice(0, nextCount);
+    setSelectedSeatIds((prev) => (stringArrayEqual(prev, desiredSeatIds) ? prev : desiredSeatIds));
+  }, [autoAssignableSeatIds, autoSeatCount, seatSelectionEnabled]);
+
+  const selectedSeats = useMemo(
+    () =>
+      seats
+        .filter((seat) => selectedSeatIds.includes(seat.id))
+        .sort((a, b) => {
+          if (a.sectionName !== b.sectionName) return a.sectionName.localeCompare(b.sectionName);
+          if (a.row !== b.row) return naturalSort(a.row, b.row);
+          return a.number - b.number;
+        }),
+    [seats, selectedSeatIds]
+  );
+
   const visibleSeats = useMemo(
     () => seats.filter((seat) => activeSection === 'All' || seat.sectionName === activeSection),
     [seats, activeSection]
   );
+
   const seatById = useMemo(() => new Map(seats.map((seat) => [seat.id, seat])), [seats]);
   const hasAccessibleSelection = useMemo(
     () => selectedSeatIds.some((seatId) => seatById.get(seatId)?.isAccessible),
     [selectedSeatIds, seatById]
   );
-  const mapBounds = useMemo(() => {
-    if (seats.length === 0) {
+
+  const ticketOptionById = useMemo(() => new Map(ticketOptions.map((option) => [option.id, option])), [ticketOptions]);
+  const teacherOptionIds = useMemo(
+    () => new Set(ticketOptions.filter((option) => option.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketLabel(option.label)).map((option) => option.id)),
+    [ticketOptions]
+  );
+  const studentInShowOptionIds = useMemo(
+    () => new Set(studentCompTicketsEnabled ? [STUDENT_SHOW_TICKET_OPTION_ID] : []),
+    [studentCompTicketsEnabled]
+  );
+
+  const selectedSeatsWithBasePricing = useMemo(() => {
+    return selectedSeats.map((seat) => {
+      const selectedOptionId = ticketOptionBySeatId[seat.id] || null;
+      const option = selectedOptionId ? ticketOptionById.get(selectedOptionId) : undefined;
+      const isTeacherTicket = selectedOptionId ? teacherOptionIds.has(selectedOptionId) : false;
+      const isStudentInShowTicket = selectedOptionId ? studentInShowOptionIds.has(selectedOptionId) : false;
+      const basePrice =
+        selectedOptionId === TEACHER_TICKET_OPTION_ID || selectedOptionId === STUDENT_SHOW_TICKET_OPTION_ID
+          ? seat.price
+          : option?.priceCents ?? seat.price;
+
       return {
-        minX: 0,
-        maxX: 1000,
-        minY: 0,
-        maxY: 1000,
-        width: 1200,
-        height: 1320
+        seat,
+        optionId: selectedOptionId,
+        optionLabel: option?.label || 'Standard',
+        basePrice,
+        isTeacherTicket,
+        isStudentInShowTicket
       };
+    });
+  }, [selectedSeats, ticketOptionBySeatId, ticketOptionById, teacherOptionIds, studentInShowOptionIds]);
+
+  const teacherSelectedSeatIds = useMemo(
+    () => selectedSeatIds.filter((seatId) => teacherOptionIds.has(ticketOptionBySeatId[seatId] || '')),
+    [selectedSeatIds, teacherOptionIds, ticketOptionBySeatId]
+  );
+  const studentInShowSelectedSeatIds = useMemo(
+    () => selectedSeatIds.filter((seatId) => studentInShowOptionIds.has(ticketOptionBySeatId[seatId] || '')),
+    [selectedSeatIds, studentInShowOptionIds, ticketOptionBySeatId]
+  );
+
+  const hasTeacherCompSelection = teacherSelectedSeatIds.length > 0;
+  const hasStudentInShowCompSelection = studentInShowSelectedSeatIds.length > 0;
+  const hasMixedCompSelection = hasTeacherCompSelection && hasStudentInShowCompSelection;
+  const isTeacherCheckout = hasTeacherCompSelection;
+  const isStudentInShowCheckout = hasStudentInShowCompSelection;
+
+  const teacherCompCandidates = useMemo(() => {
+    if (!isTeacherCheckout) return [];
+    if (hasTeacherCompSelection) {
+      return selectedSeatsWithBasePricing.filter((item) => item.isTeacherTicket);
+    }
+    return selectedSeatsWithBasePricing;
+  }, [isTeacherCheckout, hasTeacherCompSelection, selectedSeatsWithBasePricing]);
+
+  const complimentaryTeacherSeatIds = useMemo(
+    () =>
+      pickComplimentarySeatIds(
+        teacherCompCandidates,
+        Math.min(MAX_TEACHER_COMP_TICKETS, teacherCompCandidates.length)
+      ),
+    [teacherCompCandidates]
+  );
+
+  const studentCompCandidates = useMemo(() => {
+    if (!isStudentInShowCheckout) return [];
+    return selectedSeatsWithBasePricing.filter((item) => item.isStudentInShowTicket);
+  }, [isStudentInShowCheckout, selectedSeatsWithBasePricing]);
+
+  const complimentaryStudentSeatIds = useMemo(
+    () =>
+      pickComplimentarySeatIds(
+        studentCompCandidates,
+        Math.min(MAX_STUDENT_COMP_TICKETS, studentCompCandidates.length)
+      ),
+    [studentCompCandidates]
+  );
+
+  const selectedSeatsWithPricing = useMemo<SelectedSeatPricing[]>(
+    () =>
+      selectedSeatsWithBasePricing.map((item) => {
+        const isTeacherComplimentary = complimentaryTeacherSeatIds.has(item.seat.id);
+        const isStudentComplimentary = complimentaryStudentSeatIds.has(item.seat.id);
+        return {
+          ...item,
+          isTeacherComplimentary,
+          isStudentComplimentary,
+          unitPrice: isTeacherComplimentary || isStudentComplimentary ? 0 : item.basePrice
+        };
+      }),
+    [complimentaryStudentSeatIds, complimentaryTeacherSeatIds, selectedSeatsWithBasePricing]
+  );
+
+  const totalAmount = useMemo(
+    () => selectedSeatsWithPricing.reduce((sum, item) => sum + item.unitPrice, 0),
+    [selectedSeatsWithPricing]
+  );
+
+  const missingTicketTypeCount = useMemo(() => {
+    if (ticketOptions.length === 0) return 0;
+    return selectedSeatIds.filter((seatId) => {
+      const selectedOptionId = ticketOptionBySeatId[seatId];
+      return !selectedOptionId || !ticketOptionById.has(selectedOptionId);
+    }).length;
+  }, [ticketOptionById, ticketOptionBySeatId, ticketOptions.length, selectedSeatIds]);
+
+  const teacherCompAppliedCount = complimentaryTeacherSeatIds.size;
+  const studentCompAppliedCount = complimentaryStudentSeatIds.size;
+  const checkoutUnitLabel = seatSelectionEnabled ? 'seat' : 'ticket';
+
+  const canContinueToTypes = selectedSeats.length > 0;
+  const canContinueToCheckout = selectedSeats.length > 0 && missingTicketTypeCount === 0;
+
+  const goToStepTwo = () => {
+    if (!canContinueToTypes) {
+      setStepError(`Pick at least one ${checkoutUnitLabel} before moving to ticket types.`);
+      return;
+    }
+    setStepError(null);
+    setCurrentStep(2);
+  };
+
+  const goToStepThree = () => {
+    if (!canContinueToCheckout) {
+      setStepError(`Choose a ticket type for each selected ${checkoutUnitLabel} before continuing.`);
+      return;
+    }
+    if (hasMixedCompSelection) {
+      setStepError('Teacher and Student in Show complimentary tickets cannot be mixed in one checkout.');
+      return;
     }
 
-    const minX = Math.min(...seats.map((seat) => seat.x));
-    const maxX = Math.max(...seats.map((seat) => seat.x));
-    const minY = Math.min(...seats.map((seat) => seat.y));
-    const maxY = Math.max(...seats.map((seat) => seat.y));
-    const width = maxX - minX + MAP_PADDING_X * 2;
-    const height = maxY - minY + MAP_PADDING_TOP + MAP_PADDING_BOTTOM;
+    setStepError(null);
+    resetPendingPayment();
+    setCurrentStep(3);
+  };
 
-    return { minX, maxX, minY, maxY, width, height };
-  }, [seats]);
-  const rowAnchors = useMemo(() => {
-    const rows = new Map<string, { minX: number; maxX: number; y: number }>();
-
-    visibleSeats.forEach((seat) => {
-      const existing = rows.get(seat.row);
-      if (!existing) {
-        rows.set(seat.row, { minX: seat.x, maxX: seat.x, y: seat.y });
-        return;
-      }
-      existing.minX = Math.min(existing.minX, seat.x);
-      existing.maxX = Math.max(existing.maxX, seat.x);
-      existing.y = Math.min(existing.y, seat.y);
-    });
-
-    return [...rows.entries()]
-      .sort(([a], [b]) => naturalSort(a, b))
-      .map(([row, value]) => ({ row, ...value }));
-  }, [visibleSeats]);
-  const stageWidth = useMemo(() => Math.min(960, Math.max(560, Math.round(mapBounds.width * 0.6))), [mapBounds.width]);
+  const checkoutSteps = useMemo(
+    () =>
+      CHECKOUT_STEPS.map((step) =>
+        step.id === 1
+          ? { ...step, label: seatSelectionEnabled ? 'Pick Seats' : 'Ticket Quantity' }
+          : step
+      ),
+    [seatSelectionEnabled]
+  );
+  const progressPercent = ((currentStep - 1) / (checkoutSteps.length - 1)) * 100;
 
   return (
-    <div className="h-screen flex flex-col bg-stone-50 overflow-hidden font-sans">
-      <div className="bg-white border-b border-stone-200 px-4 py-3 flex justify-between items-center z-20 shadow-sm shrink-0">
-        <div className="flex items-center gap-4">
-          <button onClick={() => navigate(-1)} className="flex items-center text-stone-600 hover:text-stone-900 font-bold transition-colors">
-            <ChevronLeft className="w-5 h-5 mr-1" /> Back
+    <div className="h-[100dvh] min-h-[100dvh] bg-stone-50 overflow-hidden flex flex-col" style={{ fontFamily: 'system-ui, sans-serif' }}>
+      <div className="shrink-0 border-b border-stone-100 bg-white relative">
+        <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-red-700 via-red-600 to-amber-400" />
+        <div className="px-4 md:px-6 py-3 flex items-center justify-between gap-4">
+          <button
+            onClick={() => navigate(-1)}
+            className="inline-flex items-center gap-1 text-sm md:text-base font-semibold text-stone-600 hover:text-red-700 transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4" /> Back
           </button>
-          <div className="h-6 w-px bg-stone-200 hidden md:block" />
-          <h1 className="font-bold text-stone-900 hidden md:block">Select Seats</h1>
+          <div className="text-xs md:text-sm font-semibold text-stone-700 truncate">{performanceTitle}</div>
         </div>
 
-        <div className="flex gap-4 text-xs md:text-sm font-medium overflow-x-auto no-scrollbar">
-          <div className="flex items-center gap-2 whitespace-nowrap"><div className="w-3 h-3 md:w-4 md:h-4 rounded-full bg-white border-2 border-stone-300" /> Available</div>
-          <div className="flex items-center gap-2 whitespace-nowrap"><div className="w-3 h-3 md:w-4 md:h-4 rounded-full bg-blue-500" /> Accessible</div>
-          <div className="flex items-center gap-2 whitespace-nowrap"><div className="w-3 h-3 md:w-4 md:h-4 rounded-full bg-cyan-400" /> Companion</div>
-          <div className="flex items-center gap-2 whitespace-nowrap"><div className="w-3 h-3 md:w-4 md:h-4 rounded-full bg-green-500 shadow-sm" /> Selected</div>
-          <div className="flex items-center gap-2 whitespace-nowrap"><div className="w-3 h-3 md:w-4 md:h-4 rounded-full bg-orange-300" /> Held</div>
-          <div className="flex items-center gap-2 whitespace-nowrap"><div className="w-3 h-3 md:w-4 md:h-4 rounded-full bg-stone-300" /> Sold/Blocked</div>
+        <div className="h-1 bg-stone-200">
+          <motion.div
+            className="h-1 bg-red-600"
+            initial={false}
+            animate={{ width: `${progressPercent}%` }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
+          />
+        </div>
+
+        <div className="px-4 md:px-6 py-2 flex items-center gap-4 overflow-x-auto no-scrollbar text-[11px] md:text-xs font-bold uppercase tracking-wider">
+          {checkoutSteps.map((step) => {
+            const isCurrent = step.id === currentStep;
+            const isComplete = step.id < currentStep;
+            return (
+              <div
+                key={step.id}
+                className={`inline-flex items-center gap-2 whitespace-nowrap ${
+                  isCurrent ? 'text-stone-900' : isComplete ? 'text-red-700' : 'text-stone-400'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    isCurrent ? 'bg-stone-900' : isComplete ? 'bg-red-600' : 'bg-stone-300'
+                  }`}
+                />
+                <span>{step.label}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden relative">
-        <div className="hidden lg:flex flex-col w-80 bg-white border-r border-stone-200 z-10 shrink-0">
-          <div className="p-6 border-b border-stone-200">
-            <h2 className="font-bold text-lg mb-4">Find Seats</h2>
-            <div className="flex gap-2 mb-4">
-              <div className="flex items-center border border-stone-300 rounded-lg px-3 py-2 flex-1">
-                <Users className="w-4 h-4 text-stone-400 mr-2" />
-                <input
-                  type="number"
-                  min="1"
-                  max="10"
-                  value={adjacentCount}
-                  onChange={(event) => setAdjacentCount(Math.max(1, Number(event.target.value) || 1))}
-                  className="w-full outline-none text-sm font-bold"
-                />
-              </div>
-              <button
-                onClick={findAdjacentSeats}
-                className="bg-stone-900 text-white p-2 rounded-lg hover:bg-stone-800 transition-colors"
-                title="Find adjacent seats"
-              >
-                <Search className="w-5 h-5" />
-              </button>
-            </div>
+      {stepError && (
+        <div className="shrink-0 mx-4 md:mx-6 mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {stepError}
+        </div>
+      )}
+      {holdError && (
+        <div className="shrink-0 mx-4 md:mx-6 mt-3 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700">
+          {holdError}
+        </div>
+      )}
 
-            <div className="space-y-2">
-              <div className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-2">Sections</div>
-              <button
-                onClick={() => setActiveSection('All')}
-                className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeSection === 'All' ? 'bg-yellow-100 text-yellow-900' : 'hover:bg-stone-50 text-stone-600'}`}
-              >
-                All Sections
-              </button>
-              {sections.map((section) => (
-                <button
-                  key={section}
-                  onClick={() => setActiveSection(section)}
-                  className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeSection === section ? 'bg-yellow-100 text-yellow-900' : 'hover:bg-stone-50 text-stone-600'}`}
-                >
-                  {section}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-6 space-y-4">
-            <div>
-              <div className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-4">Selected Seats</div>
-              {selectedSeats.length === 0 ? (
-                <div className="text-stone-400 text-sm italic text-center py-8">No seats selected</div>
-              ) : (
-                <div className="space-y-3">
-                  {selectedSeats.map((seat) => (
-                    <div key={seat.id} className="flex justify-between items-center bg-stone-50 p-3 rounded-xl border border-stone-100">
-                      <div>
-                        <div className="font-bold text-sm text-stone-900">{seat.sectionName}</div>
-                        <div className="text-xs text-stone-500">Row {seat.row} • Seat {seat.number}</div>
-                        {seat.isAccessible && <div className="text-[11px] text-blue-700">Accessible</div>}
-                        {seat.isCompanion && <div className="text-[11px] text-cyan-700">Companion</div>}
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="font-bold text-sm">${(seat.price / 100).toFixed(2)}</div>
-                        <button onClick={() => handleSeatClick(seat)} className="text-stone-400 hover:text-red-500 transition-colors">
-                          <X className="w-4 h-4" />
+      <div className="flex-1 min-h-0 mt-3">
+        <AnimatePresence mode="wait">
+          {currentStep === 1 && (
+            <motion.section
+              key="seat-map-step"
+              initial={{ opacity: 0, x: 30 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -30 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="h-full"
+            >
+              <div className="h-full min-h-0 flex flex-col xl:flex-row overflow-hidden">
+                <aside className="hidden xl:flex w-[360px] shrink-0 border-r border-stone-100 bg-white flex-col min-h-0">
+                  <div className="p-5 border-b border-stone-100">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-600 mb-1">
+                      {seatSelectionEnabled ? 'Seat Picker' : 'Ticket Quantity'}
+                    </p>
+                    <h2 className="font-bold text-stone-900 mb-4" style={{ fontFamily: 'Georgia, serif', fontSize: '1.35rem' }}>
+                      {seatSelectionEnabled ? 'Find Nearby Seats' : 'General Admission'}
+                    </h2>
+                    {seatSelectionEnabled ? (
+                      <div className="flex gap-2">
+                        <div className="flex items-center border border-stone-300 rounded-lg px-3 py-2 flex-1">
+                          <Users className="w-4 h-4 text-stone-400 mr-2" />
+                          <input
+                            type="number"
+                            min="1"
+                            max="10"
+                            value={adjacentCount}
+                            onChange={(event) => setAdjacentCount(Math.max(1, Number(event.target.value) || 1))}
+                            className="w-full outline-none text-sm font-bold"
+                          />
+                        </div>
+                        <button
+                          onClick={findAdjacentSeats}
+                          className="bg-red-700 text-white p-2 rounded-lg hover:bg-red-800 transition-colors"
+                          title="Find adjacent seats"
+                        >
+                          <Search className="w-5 h-5" />
                         </button>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                    ) : (
+                      <div className="rounded-xl border border-stone-300 bg-white p-3">
+                        <label className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Tickets</label>
+                        <div className="mt-2 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setAutoSeatCount((count) => Math.max(0, count - 1))}
+                            className="h-9 w-9 rounded-lg border border-stone-300 text-lg font-bold text-stone-700 hover:bg-stone-50"
+                          >
+                            -
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            max={autoAssignableSeatIds.length}
+                            value={autoSeatCount}
+                            onChange={(event) => {
+                              const next = Math.max(0, Number(event.target.value) || 0);
+                              setAutoSeatCount(Math.min(next, autoAssignableSeatIds.length));
+                            }}
+                            className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm font-bold outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setAutoSeatCount((count) => Math.min(autoAssignableSeatIds.length, count + 1))}
+                            className="h-9 w-9 rounded-lg border border-stone-300 text-lg font-bold text-stone-700 hover:bg-stone-50"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <p className="mt-2 text-xs text-stone-500">
+                          General admission capacity: {autoAssignableSeatIds.length}
+                        </p>
+                      </div>
+                    )}
 
-            <div className="bg-stone-50 p-4 rounded-xl border border-stone-200">
-              <div className="text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">Contact</div>
-              <input
-                value={customerName}
-                onChange={(event) => setCustomerName(event.target.value)}
-                placeholder="Full name"
-                className="w-full rounded-lg border border-stone-300 px-3 py-2 mb-2 text-sm"
-              />
-              <input
-                type="email"
-                value={customerEmail}
-                onChange={(event) => setCustomerEmail(event.target.value)}
-                placeholder="Email"
-                className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm"
-              />
-            </div>
-
-            {holdError && <div className="text-sm text-red-600">{holdError}</div>}
-          </div>
-
-          <div className="p-6 border-t border-stone-200 bg-stone-50">
-            <div className="flex justify-between items-end mb-4">
-              <div className="text-stone-500 text-sm">Total</div>
-              <div className="text-3xl font-black text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
-            </div>
-            <button
-              onClick={handleCheckout}
-              disabled={selectedSeats.length === 0 || processing}
-              className="w-full bg-stone-900 text-white py-4 rounded-xl font-bold text-lg hover:bg-yellow-400 hover:text-stone-900 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {processing ? 'Processing...' : <>Checkout <ShoppingCart className="w-5 h-5" /></>}
-            </button>
-          </div>
-        </div>
-
-        <div className="flex-1 relative bg-stone-100 overflow-hidden">
-          {loading && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/80 backdrop-blur-sm">
-              <div className="flex flex-col items-center gap-4">
-                <RefreshCw className="w-8 h-8 animate-spin text-yellow-500" />
-                <div className="font-bold text-stone-600">Loading seating chart...</div>
-              </div>
-            </div>
-          )}
-
-          <div className="lg:hidden absolute top-4 left-4 right-4 z-30 flex gap-2 overflow-x-auto no-scrollbar pb-2">
-            <button
-              onClick={() => setActiveSection('All')}
-              className={`px-4 py-2 rounded-full text-xs font-bold shadow-md whitespace-nowrap ${activeSection === 'All' ? 'bg-stone-900 text-white' : 'bg-white text-stone-600'}`}
-            >
-              All
-            </button>
-            {sections.map((section) => (
-              <button
-                key={section}
-                onClick={() => setActiveSection(section)}
-                className={`px-4 py-2 rounded-full text-xs font-bold shadow-md whitespace-nowrap ${activeSection === section ? 'bg-stone-900 text-white' : 'bg-white text-stone-600'}`}
-              >
-                {section}
-              </button>
-            ))}
-          </div>
-
-          <div className="absolute bottom-24 lg:bottom-8 right-4 lg:right-8 z-30 flex flex-col gap-2">
-            <button onClick={() => transformComponentRef.current?.zoomIn()} className="bg-white p-3 rounded-full shadow-lg text-stone-600 hover:text-stone-900 hover:bg-stone-50 transition-colors">
-              <Plus className="w-5 h-5" />
-            </button>
-            <button onClick={() => transformComponentRef.current?.zoomOut()} className="bg-white p-3 rounded-full shadow-lg text-stone-600 hover:text-stone-900 hover:bg-stone-50 transition-colors">
-              <Minus className="w-5 h-5" />
-            </button>
-            <button onClick={() => transformComponentRef.current?.resetTransform()} className="bg-white p-3 rounded-full shadow-lg text-stone-600 hover:text-stone-900 hover:bg-stone-50 transition-colors" title="Reset View">
-              <RefreshCw className="w-5 h-5" />
-            </button>
-          </div>
-
-          <TransformWrapper ref={transformComponentRef} initialScale={1} minScale={0.5} maxScale={3} centerOnInit wheel={{ step: 0.1 }}>
-            <TransformComponent wrapperClass="!w-full !h-full" contentClass="!w-full !h-full">
-              <div className="min-w-[1000px] min-h-[900px] w-full h-full flex items-center justify-center p-12 md:p-20">
-                <div className="relative" style={{ width: `${mapBounds.width}px`, height: `${mapBounds.height}px` }}>
-                  <div
-                    className="absolute left-1/2 -translate-x-1/2 top-8 h-16 bg-stone-200 rounded-b-[120px] flex items-center justify-center shadow-inner border border-stone-300"
-                    style={{ width: `${stageWidth}px` }}
-                  >
-                    <span className="text-stone-500 font-black uppercase tracking-[0.35em] text-sm">Stage</span>
+                    {seatSelectionEnabled && (
+                      <div className="mt-4 space-y-2">
+                        <div className="text-xs font-bold text-stone-400 uppercase tracking-wider">Sections</div>
+                        <button
+                          onClick={() => setActiveSection('All')}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${
+                            activeSection === 'All' ? 'bg-red-50 text-red-700 border border-red-100' : 'hover:bg-stone-50 text-stone-600'
+                          }`}
+                        >
+                          All Sections
+                        </button>
+                        {sections.map((section) => (
+                          <button
+                            key={section}
+                            onClick={() => setActiveSection(section)}
+                            className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${
+                              activeSection === section ? 'bg-red-50 text-red-700 border border-red-100' : 'hover:bg-stone-50 text-stone-600'
+                            }`}
+                          >
+                            {section}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
-                  {rowAnchors.map((anchor) => {
-                    const y = anchor.y - mapBounds.minY + MAP_PADDING_TOP + 12;
-                    const left = anchor.minX - mapBounds.minX + MAP_PADDING_X - 28;
-                    const right = anchor.maxX - mapBounds.minX + MAP_PADDING_X + 44;
-
-                    return (
-                      <div key={anchor.row}>
-                        <div className="absolute text-xs font-bold text-stone-400" style={{ left: `${left}px`, top: `${y}px` }}>
-                          {anchor.row}
-                        </div>
-                        <div className="absolute text-xs font-bold text-stone-400" style={{ left: `${right}px`, top: `${y}px` }}>
-                          {anchor.row}
-                        </div>
+                  <div className="flex-1 overflow-y-auto p-5 space-y-3">
+                    <div className="text-xs font-bold text-stone-400 uppercase tracking-wider">
+                      {seatSelectionEnabled ? 'Selected Seats' : 'Selected Tickets'}
+                    </div>
+                    {selectedSeatsWithPricing.length === 0 ? (
+                      <div className="text-sm text-stone-400 italic">
+                        {seatSelectionEnabled ? 'No seats selected yet.' : 'No tickets selected yet.'}
                       </div>
-                    );
-                  })}
+                    ) : (
+                      selectedSeatsWithPricing.map((item, index) => (
+                        <div key={item.seat.id} className="rounded-xl border border-stone-100 bg-white p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="font-bold text-sm text-stone-900">
+                                {seatSelectionEnabled ? item.seat.sectionName : `General Admission Ticket ${index + 1}`}
+                              </div>
+                              <div className="text-xs text-stone-500">
+                                {seatSelectionEnabled ? `Row ${item.seat.row} Seat ${item.seat.number}` : 'No seat assignment'}
+                              </div>
+                            </div>
+                            {seatSelectionEnabled && (
+                              <button
+                                onClick={() => handleSeatClick(item.seat)}
+                                className="text-stone-400 hover:text-red-500"
+                                title="Remove seat"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
 
-                  {visibleSeats.map((seat) => {
-                    const isSelected = selectedSeatIds.includes(seat.id);
-                    const heldByMe = heldByMeSeatIds.includes(seat.id);
-                    const isAvailable = seat.status === 'available' || heldByMe;
-                    const isHeld = seat.status === 'held' && !heldByMe;
-                    const isSoldOrBlocked = seat.status === 'sold' || seat.status === 'blocked';
-                    const companionRequirementMet =
-                      !seat.isCompanion ||
-                      isSelected ||
-                      (seat.companionForSeatId ? selectedSeatIds.includes(seat.companionForSeatId) : hasAccessibleSelection);
-                    const selectable = isAvailable && companionRequirementMet;
-                    const x = seat.x - mapBounds.minX + MAP_PADDING_X;
-                    const y = seat.y - mapBounds.minY + MAP_PADDING_TOP;
+                          <div className="mt-2 text-xs font-bold text-stone-700">
+                            {item.optionLabel} - ${(item.unitPrice / 100).toFixed(2)}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
 
-                    return (
+                  <div className="p-5 border-t border-stone-100 bg-white">
+                    <div className="flex items-end justify-between">
+                      <div className="text-sm text-stone-600">Total</div>
+                      <div className="text-2xl font-bold text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
+                    </div>
+                    <button
+                      onClick={goToStepTwo}
+                      disabled={!canContinueToTypes}
+                      className="mt-4 w-full bg-red-700 text-white rounded-xl py-3 font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-800 inline-flex items-center justify-center gap-2 transition-colors"
+                    >
+                      Continue <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </aside>
+
+                <div className="flex-1 relative bg-stone-100 overflow-hidden">
+                  <SeatMapViewport
+                    seats={seats}
+                    visibleSeats={seatSelectionEnabled ? visibleSeats : []}
+                    loading={loading}
+                    emptyText={
+                      seatSelectionEnabled
+                        ? 'No seats are currently available in this section.'
+                        : 'This performance uses general admission ticketing.'
+                    }
+                    emptyState={
+                      !seatSelectionEnabled ? (
+                        <div className="w-full max-w-2xl rounded-3xl border border-red-100 bg-white/95 p-6 text-center shadow-[0_20px_60px_rgba(120,53,15,0.12)] backdrop-blur-sm sm:p-8">
+                          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-700">
+                            <Ticket className="h-7 w-7" />
+                          </div>
+                          <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-red-700">General Admission</p>
+                          <h3 className="mt-2 text-2xl font-black text-stone-900">No seat map for this event</h3>
+                          <p className="mt-2 text-sm text-stone-600">
+                            Pick your ticket quantity to continue. Seats are assigned at admission.
+                          </p>
+                          <div className="mt-5 grid grid-cols-2 gap-3 text-left">
+                            <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">Available</p>
+                              <p className="mt-1 text-2xl font-black text-stone-900">{autoAssignableSeatIds.length}</p>
+                            </div>
+                            <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">Selected</p>
+                              <p className="mt-1 text-2xl font-black text-stone-900">{selectedSeats.length}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ) : undefined
+                    }
+                    resetKey={performanceId || 'booking-seat-map'}
+                    containerClassName="h-full"
+                    controlsClassName="absolute bottom-36 right-4 z-30 flex flex-col gap-2 sm:bottom-28 xl:bottom-8 xl:right-8"
+                    overlay={
+                      seatSelectionEnabled ? (
+                        <>
+                          <div className="absolute top-4 left-4 right-4 z-30 flex gap-2 overflow-x-auto no-scrollbar pb-2 xl:hidden">
+                            <button
+                              onClick={() => setActiveSection('All')}
+                              className={`px-4 py-2 rounded-full text-xs font-bold shadow-md whitespace-nowrap ${
+                                activeSection === 'All' ? 'bg-red-700 text-white' : 'bg-white text-stone-600'
+                              }`}
+                            >
+                              All
+                            </button>
+                            {sections.map((section) => (
+                              <button
+                                key={section}
+                                onClick={() => setActiveSection(section)}
+                                className={`px-4 py-2 rounded-full text-xs font-bold shadow-md whitespace-nowrap ${
+                                  activeSection === section ? 'bg-red-700 text-white' : 'bg-white text-stone-600'
+                                }`}
+                              >
+                                {section}
+                              </button>
+                            ))}
+                          </div>
+
+                          <div className="absolute left-4 right-4 top-[4.5rem] z-30 rounded-xl border border-stone-200 bg-white/95 p-2 shadow-sm backdrop-blur xl:hidden">
+                            <div className="flex items-center gap-2">
+                              <div className="flex min-w-0 flex-1 items-center rounded-lg border border-stone-300 bg-white px-2 py-1.5">
+                                <Users className="mr-2 h-4 w-4 shrink-0 text-stone-400" />
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="10"
+                                  value={adjacentCount}
+                                  onChange={(event) => setAdjacentCount(Math.max(1, Number(event.target.value) || 1))}
+                                  className="w-full min-w-0 bg-transparent text-sm font-bold outline-none"
+                                />
+                              </div>
+                              <button
+                                onClick={findAdjacentSeats}
+                                className="inline-flex items-center gap-1 rounded-lg bg-red-700 px-3 py-2 text-xs font-bold text-white hover:bg-red-800 transition-colors"
+                                title="Find adjacent seats"
+                              >
+                                <Search className="h-4 w-4" />
+                                Find
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="absolute left-4 right-4 top-4 z-30 rounded-xl border border-stone-200 bg-white/95 p-3 shadow-sm backdrop-blur xl:hidden">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">Ticket Quantity</p>
+                          <div className="mt-2 flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setAutoSeatCount((count) => Math.max(0, count - 1))}
+                              className="h-9 w-9 rounded-lg border border-stone-300 text-lg font-bold text-stone-700"
+                            >
+                              -
+                            </button>
+                            <input
+                              type="number"
+                              min="0"
+                              max={autoAssignableSeatIds.length}
+                              value={autoSeatCount}
+                              onChange={(event) => {
+                                const next = Math.max(0, Number(event.target.value) || 0);
+                                setAutoSeatCount(Math.min(next, autoAssignableSeatIds.length));
+                              }}
+                              className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm font-bold outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setAutoSeatCount((count) => Math.min(autoAssignableSeatIds.length, count + 1))}
+                              className="h-9 w-9 rounded-lg border border-stone-300 text-lg font-bold text-stone-700"
+                            >
+                              +
+                            </button>
+                          </div>
+                          <p className="mt-2 text-xs text-stone-500">Available: {autoAssignableSeatIds.length}</p>
+                        </div>
+                      )
+                    }
+                    renderSeat={({ seat, x, y }) => {
+                      const isSelected = selectedSeatIds.includes(seat.id);
+                      const heldByMe = heldByMeSeatIds.includes(seat.id);
+                      const isAvailable = seat.status === 'available' || heldByMe;
+                      const isHeld = seat.status === 'held' && !heldByMe;
+                      const isSoldOrBlocked = seat.status === 'sold' || seat.status === 'blocked';
+                      const companionRequirementMet =
+                        !seat.isCompanion ||
+                        isSelected ||
+                        (seat.companionForSeatId ? selectedSeatIds.includes(seat.companionForSeatId) : hasAccessibleSelection);
+                      const selectable = seatSelectionEnabled && isAvailable && companionRequirementMet;
+
+                      return (
+                        <button
+                          key={seat.id}
+                          onClick={() => handleSeatClick(seat)}
+                          disabled={!selectable && !isSelected}
+                          style={{ left: `${x}px`, top: `${y}px` }}
+                          className={[
+                            'seat-button absolute w-8 h-8 md:w-10 md:h-10 rounded-t-lg rounded-b-md flex items-center justify-center text-[10px] font-bold transition-all duration-200 group',
+                            isSelected
+                              ? 'bg-green-500 text-white shadow-lg scale-110 z-10 ring-2 ring-green-300'
+                              : isSoldOrBlocked
+                                ? 'bg-stone-200 text-stone-400 cursor-not-allowed'
+                                : isHeld
+                                  ? 'bg-orange-200 text-orange-400 cursor-not-allowed'
+                                  : !seatSelectionEnabled
+                                    ? 'bg-white border-2 border-stone-200 text-stone-600'
+                                  : seat.isCompanion
+                                    ? 'bg-cyan-100 border-2 border-cyan-400 text-cyan-700 hover:border-cyan-500 hover:bg-cyan-50 hover:shadow-md hover:-translate-y-1'
+                                    : seat.isAccessible
+                                      ? 'bg-blue-100 border-2 border-blue-400 text-blue-700 hover:border-blue-500 hover:bg-blue-50 hover:shadow-md hover:-translate-y-1'
+                                      : 'bg-white border-2 border-stone-200 text-stone-600 hover:border-red-400 hover:shadow-md hover:-translate-y-1'
+                          ].join(' ')}
+                        >
+                          <div
+                            className={`absolute -left-1 bottom-1 w-1 h-4 rounded-full ${
+                              isSelected ? 'bg-green-600' : seat.isCompanion ? 'bg-cyan-500' : seat.isAccessible ? 'bg-blue-500' : 'bg-stone-300'
+                            } opacity-50`}
+                          />
+                          <div
+                            className={`absolute -right-1 bottom-1 w-1 h-4 rounded-full ${
+                              isSelected ? 'bg-green-600' : seat.isCompanion ? 'bg-cyan-500' : seat.isAccessible ? 'bg-blue-500' : 'bg-stone-300'
+                            } opacity-50`}
+                          />
+                          {seat.number}
+                        </button>
+                      );
+                    }}
+                  />
+
+                  <div className="xl:hidden absolute left-0 right-0 bottom-0 z-40 border-t border-stone-200 bg-white px-4 pt-3 pb-3 pb-safe">
+                    {selectedSeatsWithPricing.length > 0 ? (
+                      <div className="mb-3 flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                        {selectedSeatsWithPricing.map((item, index) => (
+                          <button
+                            key={item.seat.id}
+                            type="button"
+                            onClick={() => handleSeatClick(item.seat)}
+                            disabled={!seatSelectionEnabled}
+                            className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                              seatSelectionEnabled
+                                ? 'border-red-100 bg-red-50 text-red-700'
+                                : 'border-stone-200 bg-stone-50 text-stone-700'
+                            }`}
+                            title={
+                              seatSelectionEnabled
+                                ? `Remove ${item.seat.sectionName} ${item.seat.row}-${item.seat.number}`
+                                : `Ticket ${index + 1}`
+                            }
+                          >
+                            {seatSelectionEnabled ? `${item.seat.sectionName} ${item.seat.row}-${item.seat.number}` : `Ticket ${index + 1}`}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold uppercase text-stone-500 tracking-wider">
+                          {selectedSeats.length} {seatSelectionEnabled ? 'Seats' : 'Tickets'} Selected
+                        </div>
+                        <div className="truncate text-xl font-bold text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
+                      </div>
                       <button
-                        key={seat.id}
-                        onClick={() => handleSeatClick(seat)}
-                        disabled={!selectable && !isSelected}
-                        style={{ left: `${x}px`, top: `${y}px` }}
-                        className={[
-                          'absolute w-8 h-8 md:w-10 md:h-10 rounded-t-lg rounded-b-md flex items-center justify-center text-[10px] font-bold transition-all duration-200 group',
-                          isSelected
-                            ? 'bg-green-500 text-white shadow-lg scale-110 z-10 ring-2 ring-green-300'
-                            : isSoldOrBlocked
-                              ? 'bg-stone-200 text-stone-400 cursor-not-allowed'
-                            : isHeld
-                              ? 'bg-orange-200 text-orange-400 cursor-not-allowed'
-                              : seat.isCompanion
-                                ? 'bg-cyan-100 border-2 border-cyan-400 text-cyan-700 hover:border-cyan-500 hover:bg-cyan-50 hover:shadow-md hover:-translate-y-1'
-                                : seat.isAccessible
-                                  ? 'bg-blue-100 border-2 border-blue-400 text-blue-700 hover:border-blue-500 hover:bg-blue-50 hover:shadow-md hover:-translate-y-1'
-                                  : 'bg-white border-2 border-stone-200 text-stone-600 hover:border-blue-400 hover:shadow-md hover:-translate-y-1'
-                        ].join(' ')}
+                        onClick={goToStepTwo}
+                        disabled={!canContinueToTypes}
+                        className="inline-flex items-center gap-2 rounded-xl bg-red-700 px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-red-800 transition-colors"
                       >
-                        <div
-                          className={`absolute -left-1 bottom-1 w-1 h-4 rounded-full ${
-                            isSelected ? 'bg-green-600' : seat.isCompanion ? 'bg-cyan-500' : seat.isAccessible ? 'bg-blue-500' : 'bg-stone-300'
-                          } opacity-50`}
-                        />
-                        <div
-                          className={`absolute -right-1 bottom-1 w-1 h-4 rounded-full ${
-                            isSelected ? 'bg-green-600' : seat.isCompanion ? 'bg-cyan-500' : seat.isAccessible ? 'bg-blue-500' : 'bg-stone-300'
-                          } opacity-50`}
-                        />
-                        {seat.number}
+                        Ticket Types <ArrowRight className="w-4 h-4" />
                       </button>
-                    );
-                  })}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </TransformComponent>
-          </TransformWrapper>
-        </div>
-      </div>
+            </motion.section>
+          )}
 
-      <AnimatePresence>
-        {selectedSeats.length > 0 && (
-          <motion.div
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] p-4 z-40 rounded-t-3xl"
-          >
-            {holdError && <div className="text-xs text-red-600 mb-2">{holdError}</div>}
-            <div className="flex justify-between items-center mb-4">
-              <div>
-                <div className="text-xs text-stone-500 font-bold uppercase">Total</div>
-                <div className="text-3xl font-black text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
-              </div>
-              <div className="text-right">
-                <div className="text-xs text-stone-500 font-bold uppercase">{selectedSeats.length} Seats</div>
-                <button onClick={() => setSelectedSeatIds([])} className="text-xs text-red-500 font-bold underline">
-                  Clear
-                </button>
-              </div>
-            </div>
-            <input
-              value={customerName}
-              onChange={(event) => setCustomerName(event.target.value)}
-              placeholder="Full name"
-              className="w-full rounded-lg border border-stone-300 px-3 py-2 mb-2 text-sm"
-            />
-            <input
-              type="email"
-              value={customerEmail}
-              onChange={(event) => setCustomerEmail(event.target.value)}
-              placeholder="Email"
-              className="w-full rounded-lg border border-stone-300 px-3 py-2 mb-3 text-sm"
-            />
-            <button
-              onClick={handleCheckout}
-              disabled={processing}
-              className="w-full bg-stone-900 text-white py-4 rounded-xl font-bold text-lg hover:bg-yellow-400 hover:text-stone-900 transition-all shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
+          {currentStep === 2 && (
+            <motion.section
+              key="ticket-type-step"
+              initial={{ opacity: 0, x: 30 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -30 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="h-full overflow-y-auto px-4 md:px-6 pb-10"
             >
-              {processing ? 'Processing...' : 'Checkout'}
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <div className="max-w-5xl mx-auto">
+                <div className="pt-6 md:pt-8 pb-4 md:pb-6">
+                  <h2 className="text-2xl md:text-3xl font-black text-stone-900">Choose Ticket Types</h2>
+                  <p className="text-sm md:text-base text-stone-600 mt-2">
+                    Assign a ticket category for each selected {seatSelectionEnabled ? 'seat' : 'ticket'}.
+                  </p>
+                  {hasMixedCompSelection && (
+                    <p className="text-xs text-red-600 mt-2">
+                      Teacher and Student in Show complimentary seats cannot be checked out together. Pick one comp type per order.
+                    </p>
+                  )}
+                </div>
+
+                {selectedSeatsWithPricing.length === 0 ? (
+                  <div className="rounded-2xl border border-stone-200 bg-white p-8 text-center text-stone-500">
+                    You have no {seatSelectionEnabled ? 'seats' : 'tickets'} selected yet.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    {selectedSeatsWithPricing.map((item, index) => (
+                      <div key={item.seat.id} className="rounded-2xl border border-stone-200 bg-white p-4">
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <div>
+                            <div className="font-black text-stone-900">
+                              {seatSelectionEnabled ? item.seat.sectionName : `Ticket ${index + 1}`}
+                            </div>
+                            <div className="text-sm text-stone-500">
+                              {seatSelectionEnabled ? `Row ${item.seat.row} Seat ${item.seat.number}` : 'General Admission (no seat assignment)'}
+                            </div>
+                          </div>
+                          {seatSelectionEnabled && (
+                            <button
+                              onClick={() => handleSeatClick(item.seat)}
+                              className="inline-flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-600"
+                            >
+                              <X className="w-3 h-3" /> Remove
+                            </button>
+                          )}
+                        </div>
+
+                        {ticketOptions.length > 0 ? (
+                          <select
+                            value={item.optionId || ''}
+                            onChange={(event) => handleSeatOptionChange(item.seat.id, event.target.value)}
+                            className="w-full rounded-xl border border-stone-300 px-3 py-2 font-medium"
+                          >
+                            {ticketOptions.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.id === TEACHER_TICKET_OPTION_ID
+                                  ? `${option.label} - first ${MAX_TEACHER_COMP_TICKETS} free`
+                                  : option.id === STUDENT_SHOW_TICKET_OPTION_ID
+                                    ? `${option.label} - first ${MAX_STUDENT_COMP_TICKETS} free`
+                                  : `${option.label} - $${(option.priceCents / 100).toFixed(2)}`}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm font-medium text-stone-700">
+                            Standard pricing
+                          </div>
+                        )}
+
+                        <div className="mt-3 text-sm text-stone-600">
+                          Current: <span className="font-bold text-stone-900">{item.optionLabel}</span>
+                          <span className="font-bold text-stone-900"> (${(item.unitPrice / 100).toFixed(2)})</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mt-8 flex flex-col gap-4 rounded-2xl border border-stone-200 bg-white p-5 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <div className="text-xs uppercase tracking-wider font-bold text-stone-500">Order total</div>
+                    <div className="text-3xl font-black text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
+                    {missingTicketTypeCount > 0 && (
+                      <div className="text-sm text-red-600 mt-1">
+                        {missingTicketTypeCount} {seatSelectionEnabled ? 'seat' : 'ticket'}
+                        {missingTicketTypeCount === 1 ? '' : 's'} still need a ticket type.
+                      </div>
+                    )}
+                    {isTeacherCheckout && teacherCompAppliedCount > 0 && (
+                      <div className="text-sm text-green-700 mt-1">
+                        Teacher complimentary tickets applied: {teacherCompAppliedCount}.
+                      </div>
+                    )}
+                    {isStudentInShowCheckout && studentCompAppliedCount > 0 && (
+                      <div className="text-sm text-green-700 mt-1">
+                        Student in Show complimentary tickets applied: {studentCompAppliedCount}.
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <button
+                      onClick={() => {
+                        setStepError(null);
+                        setCurrentStep(1);
+                      }}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 sm:w-auto"
+                    >
+                      <ArrowLeft className="w-4 h-4" /> Back
+                    </button>
+                    <button
+                      onClick={goToStepThree}
+                      disabled={!canContinueToCheckout}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-stone-900 px-5 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-stone-800 sm:w-auto"
+                    >
+                      Continue <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.section>
+          )}
+
+          {currentStep === 3 && (
+            <motion.section
+              key="checkout-step"
+              initial={{ opacity: 0, x: 30 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -30 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="h-full overflow-y-auto px-4 md:px-6 pb-10"
+            >
+              <div className="max-w-6xl mx-auto pt-6 md:pt-8 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6">
+                <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
+                  {isTeacherCheckout ? (
+                    <>
+                      <h2 className="text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>Teacher Verification</h2>
+                      <p className="text-sm md:text-base text-stone-600 mt-2">
+                        Teacher complimentary checkout uses the teacher promo code. Enter your name, personal delivery email, and promo code.
+                      </p>
+
+                      <div className="mt-6 rounded-xl border border-stone-200 bg-stone-50 p-4 text-sm text-stone-700">
+                        Teacher {seatSelectionEnabled ? 'seats' : 'tickets'} selected: <span className="font-bold">{teacherSelectedSeatIds.length}</span>.
+                        Complimentary this order: <span className="font-bold">{teacherCompAppliedCount}</span> of {MAX_TEACHER_COMP_TICKETS}.
+                      </div>
+
+                      <div className="mt-6 space-y-4">
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase tracking-[0.15em] text-red-600">Full Name</span>
+                          <div className="mt-1 relative">
+                            <User className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                            <input
+                              value={customerName}
+                              onChange={(event) => setCustomerName(event.target.value)}
+                              disabled={Boolean(pendingStripePayment)}
+                              placeholder="Jane Doe"
+                              className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3 focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none"
+                            />
+                          </div>
+                        </label>
+
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase tracking-[0.15em] text-red-600">Personal Email</span>
+                          <div className="mt-1 relative">
+                            <Mail className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="email"
+                              value={customerEmail}
+                              onChange={(event) => setCustomerEmail(event.target.value)}
+                              disabled={Boolean(pendingStripePayment)}
+                              placeholder="name@email.com"
+                              className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3 focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none"
+                            />
+                          </div>
+                          <div className="mt-1 text-xs text-stone-500">Do not use your `@rtmsd.org` email for delivery.</div>
+                        </label>
+
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase tracking-[0.15em] text-red-600">Phone Number</span>
+                          <div className="mt-1 relative">
+                            <Phone className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="tel"
+                              value={customerPhone}
+                              onChange={(event) => setCustomerPhone(event.target.value)}
+                              disabled={Boolean(pendingStripePayment)}
+                              placeholder="(555) 555-5555"
+                              className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3 focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none"
+                            />
+                          </div>
+                        </label>
+
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase tracking-[0.15em] text-red-600">Teacher Promo Code</span>
+                          <div className="mt-1 relative">
+                            <Ticket className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                            <input
+                              value={teacherPromoCode}
+                              onChange={(event) => setTeacherPromoCode(event.target.value)}
+                              disabled={Boolean(pendingStripePayment)}
+                              placeholder="Enter code from theater admin"
+                              className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3 focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none"
+                            />
+                          </div>
+                        </label>
+                      </div>
+
+                      <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                        <button
+                          onClick={() => {
+                            setStepError(null);
+                            resetPendingPayment();
+                            setCurrentStep(2);
+                          }}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 sm:w-auto"
+                        >
+                          <ArrowLeft className="w-4 h-4" /> Back
+                        </button>
+                        {!pendingStripePayment && (
+                          <button
+                            onClick={handleCheckout}
+                            disabled={processing || selectedSeats.length === 0}
+                            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-red-800 transition-colors sm:w-auto"
+                          >
+                            <CreditCard className="w-4 h-4" />
+                            {processing ? 'Processing...' : 'Checkout'}
+                          </button>
+                        )}
+                      </div>
+
+                      {pendingStripePayment && stripePromise && stripeElementsOptions && (
+                        <div className="mt-5 rounded-2xl border border-red-100 bg-red-50 p-4">
+                          <p className="text-sm font-semibold text-red-900">
+                            Payment form ready. Complete payment below to finish checkout.
+                          </p>
+                          <Elements stripe={stripePromise} options={stripeElementsOptions}>
+                            <InlineStripePaymentForm
+                              disabled={processing}
+                              onError={(message) => setStepError(message || null)}
+                              onSuccess={finalizeEmbeddedPayment}
+                            />
+                          </Elements>
+                        </div>
+                      )}
+                      {pendingStripePayment && (!stripePromise || !stripeElementsOptions) && (
+                        <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                          Unable to initialize Stripe payment form. Please check Stripe configuration and try again.
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <h2 className="text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
+                        {isStudentInShowCheckout ? 'Student in Show Checkout' : 'Contact Information'}
+                      </h2>
+                      <p className="text-sm md:text-base text-stone-600 mt-2">
+                        {isStudentInShowCheckout
+                          ? 'Use your student code for verification, then a personal email for ticket delivery.'
+                          : 'We will send tickets and confirmation to this email.'}
+                      </p>
+
+                      {isStudentInShowCheckout && (
+                        <div className="mt-6 rounded-xl border border-stone-200 bg-stone-50 p-4 text-sm text-stone-700">
+                          Student in Show {seatSelectionEnabled ? 'seats' : 'tickets'} selected: <span className="font-bold">{studentInShowSelectedSeatIds.length}</span>.
+                          Complimentary this order: <span className="font-bold">{studentCompAppliedCount}</span> of {MAX_STUDENT_COMP_TICKETS}.
+                        </div>
+                      )}
+
+                      <div className="mt-6 space-y-4">
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase tracking-[0.15em] text-red-600">Full Name</span>
+                          <div className="mt-1 relative">
+                            <User className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                            <input
+                              value={customerName}
+                              onChange={(event) => setCustomerName(event.target.value)}
+                              disabled={Boolean(pendingStripePayment)}
+                              placeholder="Jane Doe"
+                              className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3 focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none"
+                            />
+                          </div>
+                        </label>
+
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase tracking-[0.15em] text-red-600">
+                            {isStudentInShowCheckout ? 'Personal Email' : 'Email'}
+                          </span>
+                          <div className="mt-1 relative">
+                            <Mail className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="email"
+                              value={customerEmail}
+                              onChange={(event) => setCustomerEmail(event.target.value)}
+                              disabled={Boolean(pendingStripePayment)}
+                              placeholder={isStudentInShowCheckout ? 'Personal email for ticket delivery' : 'name@email.com'}
+                              className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3 focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none"
+                            />
+                          </div>
+                          {isStudentInShowCheckout ? (
+                            <div className="mt-1 text-xs text-stone-500">
+                              Tickets are sent to your personal email, not your student code.
+                            </div>
+                          ) : null}
+                        </label>
+
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase tracking-[0.15em] text-red-600">Phone Number</span>
+                          <div className="mt-1 relative">
+                            <Phone className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="tel"
+                              value={customerPhone}
+                              onChange={(event) => setCustomerPhone(event.target.value)}
+                              disabled={Boolean(pendingStripePayment)}
+                              placeholder="(555) 555-5555"
+                              className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3 focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none"
+                            />
+                          </div>
+                        </label>
+
+                        {isStudentInShowCheckout && (
+                          <label className="block">
+                            <span className="text-xs font-semibold uppercase tracking-[0.15em] text-red-600">Student Code</span>
+                            <div className="mt-1 relative">
+                              <Ticket className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                              <input
+                                type="text"
+                                value={studentCode}
+                                onChange={(event) => setStudentCode(event.target.value)}
+                                disabled={Boolean(pendingStripePayment)}
+                                placeholder="Student code on file (e.g. jsmith)"
+                                className="w-full rounded-xl border border-stone-300 pl-10 pr-3 py-3 focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none"
+                              />
+                            </div>
+                          </label>
+                        )}
+                      </div>
+
+                      <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <button
+                          onClick={() => {
+                            setStepError(null);
+                            resetPendingPayment();
+                            setCurrentStep(2);
+                          }}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 sm:w-auto"
+                        >
+                          <ArrowLeft className="w-4 h-4" /> Back
+                        </button>
+                        {!pendingStripePayment && (
+                          <button
+                            onClick={handleCheckout}
+                            disabled={processing || selectedSeats.length === 0}
+                            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-red-800 transition-colors sm:w-auto"
+                          >
+                            <CreditCard className="w-4 h-4" />
+                            {processing ? 'Processing...' : 'Checkout'}
+                          </button>
+                        )}
+                      </div>
+
+                      {pendingStripePayment && stripePromise && stripeElementsOptions && (
+                        <div className="mt-5 rounded-2xl border border-red-100 bg-red-50 p-4">
+                          <p className="text-sm font-semibold text-red-900">
+                            Payment form ready. Complete payment below to finish checkout.
+                          </p>
+                          <Elements stripe={stripePromise} options={stripeElementsOptions}>
+                            <InlineStripePaymentForm
+                              disabled={processing}
+                              onError={(message) => setStepError(message || null)}
+                              onSuccess={finalizeEmbeddedPayment}
+                            />
+                          </Elements>
+                        </div>
+                      )}
+                      {pendingStripePayment && (!stripePromise || !stripeElementsOptions) && (
+                        <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                          Unable to initialize Stripe payment form. Please check Stripe configuration and try again.
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="inline-flex items-center gap-2 text-stone-900 font-bold" style={{ fontFamily: 'Georgia, serif' }}>
+                      <Ticket className="w-4 h-4" /> Order Summary
+                    </div>
+                    <div className="text-sm text-stone-500 font-semibold">
+                      {selectedSeats.length} {seatSelectionEnabled ? 'seats' : 'tickets'}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                    {selectedSeatsWithPricing.map((item, index) => (
+                      <div key={item.seat.id} className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="font-bold text-stone-900">
+                              {seatSelectionEnabled
+                                ? `${item.seat.sectionName} Row ${item.seat.row} Seat ${item.seat.number}`
+                                : `General Admission Ticket ${index + 1}`}
+                            </div>
+                            <div className="text-xs text-stone-500">{item.optionLabel}</div>
+                          </div>
+                          <div className="font-bold text-stone-900">${(item.unitPrice / 100).toFixed(2)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-5 border-t border-stone-200 pt-4 flex items-end justify-between">
+                    <div className="text-sm text-stone-500">Total</div>
+                    <div className="text-3xl font-bold text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
+                  </div>
+                </div>
+              </div>
+            </motion.section>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

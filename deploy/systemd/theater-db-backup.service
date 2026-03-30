@@ -1,0 +1,20 @@
+[Unit]
+Description=Penncrest Theater PostgreSQL backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=noblesherman
+WorkingDirectory=/home/noblesherman/Penncrest-Theater
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/bin/bash -lc 'cd /home/noblesherman/Penncrest-Theater && npm run backup:db'
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/home/noblesherman/Penncrest-Theater
+
+[Install]
+WantedBy=multi-user.target

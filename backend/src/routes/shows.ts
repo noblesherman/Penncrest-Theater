@@ -11,6 +11,8 @@ export const showRoutes: FastifyPluginAsync = async (app) => {
         where: {
           performances: {
             some: {
+              isArchived: false,
+              isFundraiser: false,
               OR: [
                 { salesCutoffAt: { gt: now } },
                 {
@@ -37,7 +39,14 @@ export const showRoutes: FastifyPluginAsync = async (app) => {
       const show = await prisma.show.findUnique({
         where: { id: params.id },
         include: {
-        performances: {
+          castMembers: {
+            orderBy: [{ position: 'asc' }, { createdAt: 'asc' }]
+          },
+          performances: {
+            where: {
+              isArchived: false,
+              isFundraiser: false
+            },
             orderBy: { startsAt: 'asc' }
           }
         }
@@ -55,6 +64,12 @@ export const showRoutes: FastifyPluginAsync = async (app) => {
         type: show.type,
         year: show.year,
         accentColor: show.accentColor,
+        castMembers: show.castMembers.map((castMember) => ({
+          id: castMember.id,
+          name: castMember.name,
+          role: castMember.role,
+          photoUrl: castMember.photoUrl
+        })),
         performances: show.performances.map((performance) => ({
           id: performance.id,
           date: performance.startsAt,
