@@ -4,11 +4,11 @@ import { stripe } from '../lib/stripe.js';
 import { env } from '../lib/env.js';
 import { prisma } from '../lib/prisma.js';
 import { handleRouteError } from '../lib/route-error.js';
-import { sendDonationThankYouEmail } from '../lib/email.js';
 import { releaseHoldByToken } from '../services/hold-service.js';
 import { finalizeCheckoutSession, finalizePaymentIntent } from '../services/stripe-checkout-finalization.js';
 import { releasePendingStudentCreditForOrder } from '../services/student-ticket-credit-service.js';
 import { syncRefundFromCharge } from '../services/order-refund-service.js';
+import { reconcileDonationThankYouEmailByPaymentIntentId } from '../services/donation-thank-you-service.js';
 
 export const stripeWebhookRoutes: FastifyPluginAsync = async (app) => {
   app.post(
@@ -50,33 +50,20 @@ export const stripeWebhookRoutes: FastifyPluginAsync = async (app) => {
             const paymentSource = paymentIntent.metadata?.source;
 
             if (paymentSource === 'fundraising_donation') {
-              const refreshedIntent = await stripe.paymentIntents.retrieve(paymentIntent.id);
-              const donorEmail = (refreshedIntent.metadata?.donorEmail || refreshedIntent.receipt_email || '').trim().toLowerCase();
-              const donorName = (refreshedIntent.metadata?.donorName || 'Supporter').trim();
-              const alreadySent = refreshedIntent.metadata?.thankYouEmailSent === 'true';
+              const reconcileResult = await reconcileDonationThankYouEmailByPaymentIntentId(paymentIntent.id);
 
-              if (!alreadySent && donorEmail) {
-                await sendDonationThankYouEmail({
-                  donorName,
-                  donorEmail,
-                  amountCents: refreshedIntent.amount,
-                  currency: refreshedIntent.currency || 'usd',
-                  paymentIntentId: refreshedIntent.id
-                });
-
-                await stripe.paymentIntents.update(refreshedIntent.id, {
-                  metadata: {
-                    ...refreshedIntent.metadata,
-                    thankYouEmailSent: 'true',
-                    thankYouEmailSentAt: new Date().toISOString()
-                  }
-                });
+              if (reconcileResult.outcome === 'missing_email') {
+                app.log.warn(
+                  { stripePaymentIntentId: paymentIntent.id },
+                  'Donation payment intent succeeded without donor email; thank-you email not sent'
+                );
               }
 
-              if (!donorEmail) {
-                app.log.warn(
-                  { stripePaymentIntentId: refreshedIntent.id },
-                  'Donation payment intent succeeded without donor email; thank-you email not sent'
+              if (reconcileResult.outcome === 'failed') {
+                throw new Error(
+                  `Donation thank-you reconciliation failed for ${paymentIntent.id}: ${
+                    reconcileResult.errorMessage || 'unknown error'
+                  }`
                 );
               }
 

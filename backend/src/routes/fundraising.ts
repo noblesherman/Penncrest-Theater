@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma.js';
 import { env } from '../lib/env.js';
 import { handleRouteError } from '../lib/route-error.js';
 import { stripe } from '../lib/stripe.js';
+import { reconcileDonationThankYouEmail } from '../services/donation-thank-you-service.js';
 
 const donationIntentSchema = z.object({
   amountCents: z.coerce.number().int().min(100).max(100000),
@@ -100,9 +101,37 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
     try {
       const requestedLimit = parsed.data.limit;
       const intents = await stripe.paymentIntents.list({ limit: 100 });
-      const donations = intents.data
+      const donationIntents = intents.data
         .filter((intent) => intent.metadata?.source === 'fundraising_donation')
-        .slice(0, requestedLimit)
+        .slice(0, requestedLimit);
+
+      const reconciledIntents = await Promise.all(
+        donationIntents.map(async (intent) => {
+          if (intent.status !== 'succeeded' || intent.metadata?.thankYouEmailSent === 'true') {
+            return intent;
+          }
+
+          const reconcileResult = await reconcileDonationThankYouEmail(intent);
+          if (reconcileResult.outcome === 'missing_email') {
+            app.log.warn(
+              { stripePaymentIntentId: intent.id },
+              'Donation reconciliation skipped because donor email is missing'
+            );
+          } else if (reconcileResult.outcome === 'failed') {
+            app.log.error(
+              {
+                stripePaymentIntentId: intent.id,
+                error: reconcileResult.errorMessage || 'Unknown donation thank-you failure'
+              },
+              'Donation thank-you reconciliation failed during admin listing'
+            );
+          }
+
+          return reconcileResult.paymentIntent;
+        })
+      );
+
+      const donations = reconciledIntents
         .map((intent) => ({
           paymentIntentId: intent.id,
           amountCents: intent.amount,
