@@ -48,6 +48,16 @@ const sendInvoiceSchema = z
     path: ['lineItems']
   });
 
+const financeInvoiceListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(40),
+  status: z.enum(['all', 'draft', 'open', 'paid', 'void', 'uncollectible']).default('all'),
+  q: z.string().trim().max(160).optional()
+});
+
+const financeInvoiceParamsSchema = z.object({
+  invoiceId: z.string().trim().min(1)
+});
+
 const STRIPE_ITEMIZED_BALANCE_PREFIX = 'balance_change_from_activity.itemized.';
 const STRIPE_BALANCE_SUMMARY_PREFIX = 'balance.summary.';
 const BRAND_NAME = 'Penncrest High School Theater';
@@ -127,6 +137,11 @@ function centsToDollars(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function toIsoFromEpochSeconds(value: number | null | undefined): string | null {
+  if (!value || value <= 0) return null;
+  return new Date(value * 1000).toISOString();
+}
+
 function formatDateTime(value: string): string {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
@@ -156,6 +171,45 @@ function csvCell(value: unknown): string {
 
 function csvRow(values: unknown[]): string {
   return values.map((value) => csvCell(value)).join(',');
+}
+
+function mapInvoiceStatusToStage(status: Stripe.Invoice.Status | null): string {
+  switch (status) {
+    case 'paid':
+      return 'paid';
+    case 'open':
+      return 'open';
+    case 'void':
+      return 'void';
+    case 'uncollectible':
+      return 'uncollectible';
+    case 'draft':
+      return 'draft';
+    default:
+      return 'unknown';
+  }
+}
+
+function buildInvoiceProcess(invoice: Stripe.Invoice): {
+  stage: string;
+  createdAt: string;
+  finalizedAt: string | null;
+  sentAt: string | null;
+  paidAt: string | null;
+  voidedAt: string | null;
+  markedUncollectibleAt: string | null;
+} {
+  const createdAt = toIsoFromEpochSeconds(invoice.created) || new Date().toISOString();
+  const finalizedAt = toIsoFromEpochSeconds(invoice.status_transitions.finalized_at);
+  return {
+    stage: mapInvoiceStatusToStage(invoice.status),
+    createdAt,
+    finalizedAt,
+    sentAt: invoice.collection_method === 'send_invoice' ? finalizedAt : null,
+    paidAt: toIsoFromEpochSeconds(invoice.status_transitions.paid_at),
+    voidedAt: toIsoFromEpochSeconds(invoice.status_transitions.voided_at),
+    markedUncollectibleAt: toIsoFromEpochSeconds(invoice.status_transitions.marked_uncollectible_at)
+  };
 }
 
 function loadBrandLogoBuffer(): Buffer | null {
@@ -766,6 +820,29 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
     actorAdminId: request.adminUser?.id || null
   });
 
+  const serializeInvoiceSummary = (invoice: Stripe.Invoice) => ({
+    id: invoice.id,
+    number: invoice.number || null,
+    status: invoice.status,
+    collectionMethod: invoice.collection_method,
+    description: invoice.description || null,
+    customerId:
+      typeof invoice.customer === 'string'
+        ? invoice.customer
+        : invoice.customer?.id || null,
+    customerName: invoice.customer_name || null,
+    customerEmail: invoice.customer_email || null,
+    currency: invoice.currency.toUpperCase(),
+    amountDueCents: invoice.amount_due,
+    amountPaidCents: invoice.amount_paid,
+    amountRemainingCents: invoice.amount_remaining,
+    createdAt: toIsoFromEpochSeconds(invoice.created) || new Date().toISOString(),
+    dueDate: toIsoFromEpochSeconds(invoice.due_date),
+    hostedInvoiceUrl: invoice.hosted_invoice_url || null,
+    invoicePdfUrl: invoice.invoice_pdf || null,
+    process: buildInvoiceProcess(invoice)
+  });
+
   app.get('/api/admin/finance/summary', { preHandler: app.authenticateAdmin }, async (request, reply) => {
     const parsed = financeQuerySchema.safeParse(request.query || {});
     if (!parsed.success) {
@@ -953,6 +1030,80 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(statusCode).send({ error: err.message || 'Stripe reporting error' });
       }
       handleRouteError(reply, err, 'Failed to generate Stripe finance report');
+    }
+  });
+
+  app.get('/api/admin/finance/invoices', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
+    const parsed = financeInvoiceListQuerySchema.safeParse(request.query || {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+
+    try {
+      const statusFilter = parsed.data.status === 'all' ? undefined : parsed.data.status;
+      const invoices = await stripe.invoices.list({
+        limit: parsed.data.limit,
+        ...(statusFilter ? { status: statusFilter as Stripe.InvoiceListParams.Status } : {})
+      });
+
+      const query = parsed.data.q?.trim().toLowerCase();
+      const filtered = query
+        ? invoices.data.filter((invoice) => {
+            const fields = [
+              invoice.number || '',
+              invoice.description || '',
+              invoice.customer_email || '',
+              invoice.customer_name || '',
+              invoice.id
+            ];
+            return fields.some((field) => field.toLowerCase().includes(query));
+          })
+        : invoices.data;
+
+      reply.send({
+        rows: filtered.map((invoice) => serializeInvoiceSummary(invoice)),
+        hasMore: invoices.has_more
+      });
+    } catch (err) {
+      if (err instanceof Stripe.errors.StripeError) {
+        const statusCode = err.type === 'StripeInvalidRequestError' ? 400 : 502;
+        return reply.status(statusCode).send({ error: err.message || 'Stripe invoice lookup failed' });
+      }
+      handleRouteError(reply, err, 'Failed to fetch invoices');
+    }
+  });
+
+  app.get('/api/admin/finance/invoices/:invoiceId', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
+    const parsed = financeInvoiceParamsSchema.safeParse(request.params || {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+
+    try {
+      const invoice = await stripe.invoices.retrieve(parsed.data.invoiceId);
+      const lineItems = await stripe.invoices.listLineItems(parsed.data.invoiceId, { limit: 100 });
+      reply.send({
+        invoice: serializeInvoiceSummary(invoice),
+        customerNote: invoice.footer || null,
+        lineItems: lineItems.data.map((item) => {
+          const quantity = item.quantity && item.quantity > 0 ? item.quantity : 1;
+          const unitAmountCents = Math.round(item.amount / quantity);
+          return {
+            id: item.id,
+            description: item.description || '',
+            quantity,
+            amountCents: item.amount,
+            unitAmountCents,
+            currency: item.currency.toUpperCase()
+          };
+        })
+      });
+    } catch (err) {
+      if (err instanceof Stripe.errors.StripeError) {
+        const statusCode = err.type === 'StripeInvalidRequestError' ? 404 : 502;
+        return reply.status(statusCode).send({ error: err.message || 'Stripe invoice detail lookup failed' });
+      }
+      handleRouteError(reply, err, 'Failed to fetch invoice detail');
     }
   });
 

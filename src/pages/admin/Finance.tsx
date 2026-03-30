@@ -50,6 +50,56 @@ type SendFinanceInvoiceResponse = {
   hostedInvoiceUrl: string | null;
 };
 
+type FinanceInvoiceProcess = {
+  stage: string;
+  createdAt: string;
+  finalizedAt: string | null;
+  sentAt: string | null;
+  paidAt: string | null;
+  voidedAt: string | null;
+  markedUncollectibleAt: string | null;
+};
+
+type FinanceInvoiceSummary = {
+  id: string;
+  number: string | null;
+  status: 'draft' | 'open' | 'paid' | 'void' | 'uncollectible' | null;
+  collectionMethod: string;
+  description: string | null;
+  customerId: string | null;
+  customerName: string | null;
+  customerEmail: string | null;
+  currency: string;
+  amountDueCents: number;
+  amountPaidCents: number;
+  amountRemainingCents: number;
+  createdAt: string;
+  dueDate: string | null;
+  hostedInvoiceUrl: string | null;
+  invoicePdfUrl: string | null;
+  process: FinanceInvoiceProcess;
+};
+
+type FinanceInvoiceListResponse = {
+  rows: FinanceInvoiceSummary[];
+  hasMore: boolean;
+};
+
+type FinanceInvoiceLineItem = {
+  id: string;
+  description: string;
+  quantity: number;
+  amountCents: number;
+  unitAmountCents: number;
+  currency: string;
+};
+
+type FinanceInvoiceDetailResponse = {
+  invoice: FinanceInvoiceSummary;
+  customerNote: string | null;
+  lineItems: FinanceInvoiceLineItem[];
+};
+
 type InvoiceComposerLineItemDraft = {
   id: string;
   description: string;
@@ -122,6 +172,40 @@ function monthToRange(month: string): { startDate: string; endDate: string } {
 
 function cents(value: number): string {
   return `$${(value / 100).toFixed(2)}`;
+}
+
+function invoiceStatusLabel(status: FinanceInvoiceSummary['status']): string {
+  switch (status) {
+    case 'paid':
+      return 'Paid';
+    case 'open':
+      return 'Open';
+    case 'draft':
+      return 'Draft';
+    case 'void':
+      return 'Voided';
+    case 'uncollectible':
+      return 'Uncollectible';
+    default:
+      return 'Unknown';
+  }
+}
+
+function invoiceStatusColor(status: FinanceInvoiceSummary['status']): { bg: string; text: string; border: string } {
+  switch (status) {
+    case 'paid':
+      return { bg: '#ecfdf5', text: '#166534', border: '#bbf7d0' };
+    case 'open':
+      return { bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' };
+    case 'draft':
+      return { bg: '#f8fafc', text: '#475569', border: '#e2e8f0' };
+    case 'void':
+      return { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca' };
+    case 'uncollectible':
+      return { bg: '#fff7ed', text: '#c2410c', border: '#fed7aa' };
+    default:
+      return { bg: '#f8fafc', text: '#334155', border: '#e2e8f0' };
+  }
 }
 
 function buildQuery(params: {
@@ -275,6 +359,7 @@ function BreakdownRow({ row }: { row: FinanceBreakdownRow }) {
 // ─── main page ────────────────────────────────────────────────────────────────
 
 export default function AdminFinancePage() {
+  const [activeFinanceTab, setActiveFinanceTab] = useState<'reporting' | 'invoices'>('reporting');
   const [performances, setPerformances] = useState<PerformanceItem[]>([]);
   const [loadingPerformances, setLoadingPerformances] = useState(false);
   const [rangeMode, setRangeMode] = useState<'month' | 'custom'>('month');
@@ -294,6 +379,14 @@ export default function AdminFinancePage() {
   const [sendingInvoice, setSendingInvoice] = useState(false);
   const [showInvoiceComposer, setShowInvoiceComposer] = useState(false);
   const [lastInvoiceUrl, setLastInvoiceUrl] = useState<string | null>(null);
+  const [invoices, setInvoices] = useState<FinanceInvoiceSummary[]>([]);
+  const [invoiceHasMore, setInvoiceHasMore] = useState(false);
+  const [loadingInvoices, setLoadingInvoices] = useState(false);
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<'all' | 'draft' | 'open' | 'paid' | 'void' | 'uncollectible'>('all');
+  const [invoiceSearch, setInvoiceSearch] = useState('');
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
+  const [selectedInvoiceDetail, setSelectedInvoiceDetail] = useState<FinanceInvoiceDetailResponse | null>(null);
+  const [loadingInvoiceDetail, setLoadingInvoiceDetail] = useState(false);
   const [invoiceDraft, setInvoiceDraft] = useState<InvoiceComposerDraft>(createInvoiceComposerDraft);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -339,6 +432,65 @@ export default function AdminFinancePage() {
   useEffect(() => {
     void refreshSummary();
   }, [startDate, endDate, performanceId, includeCompOrders]);
+
+  const refreshInvoices = async () => {
+    setLoadingInvoices(true);
+    try {
+      const query = new URLSearchParams();
+      query.set('limit', '60');
+      query.set('status', invoiceStatusFilter);
+      const trimmedSearch = invoiceSearch.trim();
+      if (trimmedSearch) {
+        query.set('q', trimmedSearch);
+      }
+      const result = await adminFetch<FinanceInvoiceListResponse>(`/api/admin/finance/invoices?${query.toString()}`);
+      setInvoices(result.rows);
+      setInvoiceHasMore(result.hasMore);
+      if (result.rows.length === 0) {
+        setSelectedInvoiceId(null);
+        setSelectedInvoiceDetail(null);
+        return;
+      }
+      const hasExistingSelection = selectedInvoiceId && result.rows.some((row) => row.id === selectedInvoiceId);
+      if (!hasExistingSelection) {
+        setSelectedInvoiceId(result.rows[0].id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load invoices');
+    } finally {
+      setLoadingInvoices(false);
+    }
+  };
+
+  const refreshSelectedInvoiceDetail = async (invoiceId: string) => {
+    setLoadingInvoiceDetail(true);
+    try {
+      const detail = await adminFetch<FinanceInvoiceDetailResponse>(`/api/admin/finance/invoices/${encodeURIComponent(invoiceId)}`);
+      setSelectedInvoiceDetail(detail);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load invoice details');
+    } finally {
+      setLoadingInvoiceDetail(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeFinanceTab !== 'invoices') return;
+    void refreshInvoices();
+  }, [activeFinanceTab, invoiceStatusFilter]);
+
+  useEffect(() => {
+    if (activeFinanceTab !== 'invoices') return;
+    const handle = window.setTimeout(() => {
+      void refreshInvoices();
+    }, 250);
+    return () => window.clearTimeout(handle);
+  }, [invoiceSearch, activeFinanceTab]);
+
+  useEffect(() => {
+    if (activeFinanceTab !== 'invoices' || !selectedInvoiceId) return;
+    void refreshSelectedInvoiceDetail(selectedInvoiceId);
+  }, [selectedInvoiceId, activeFinanceTab]);
 
   const openStripeReports = () => {
     const url = summary?.stripeReportsUrl || 'https://dashboard.stripe.com/reports';
@@ -577,6 +729,8 @@ export default function AdminFinancePage() {
       );
       setInvoiceDraft(createInvoiceComposerDraft());
       setShowInvoiceComposer(false);
+      setActiveFinanceTab('invoices');
+      void refreshInvoices();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send invoice');
     } finally {
@@ -812,6 +966,32 @@ export default function AdminFinancePage() {
           )}
         </div>
 
+        <div
+          style={{
+            display: 'flex',
+            background: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: 12,
+            padding: 4,
+            gap: 4,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setActiveFinanceTab('reporting')}
+            className={`tab-btn ${activeFinanceTab === 'reporting' ? 'tab-active' : 'tab-inactive'}`}
+          >
+            Reporting
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveFinanceTab('invoices')}
+            className={`tab-btn ${activeFinanceTab === 'invoices' ? 'tab-active' : 'tab-inactive'}`}
+          >
+            Invoices
+          </button>
+        </div>
+
         {/* ── Toasts ── */}
         {error && (
           <div
@@ -852,6 +1032,8 @@ export default function AdminFinancePage() {
           </div>
         )}
 
+        {activeFinanceTab === 'reporting' ? (
+          <>
         {/* ── Filters card ── */}
         <div style={cardStyle}>
           <SectionLabel>Filters</SectionLabel>
@@ -1179,82 +1361,6 @@ export default function AdminFinancePage() {
             </div>
           </div>
 
-          {/* Invoices */}
-          <div
-            style={{
-              ...cardStyle,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 0,
-              position: 'relative',
-              overflow: 'hidden',
-            }}
-          >
-            <div
-              style={{
-                position: 'absolute',
-                top: -30,
-                right: -30,
-                width: 100,
-                height: 100,
-                borderRadius: '50%',
-                background: 'rgba(15,118,110,0.07)',
-              }}
-            />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-              <div
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 10,
-                  background: '#0f766e',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#fff',
-                  fontSize: 15,
-                  flexShrink: 0,
-                }}
-              >
-                $
-              </div>
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  letterSpacing: '0.1em',
-                  textTransform: 'uppercase',
-                  color: '#6b7280',
-                  fontFamily: "var(--font-sans)",
-                }}
-              >
-                Invoices
-              </span>
-            </div>
-            <p style={{ fontSize: 13, color: '#6b7280', margin: 0, lineHeight: 1.5, fontFamily: "var(--font-sans)" }}>
-              Open a full invoice composer with customer details, invoice notes, and optional multi-line items.
-            </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
-              <button
-                type="button"
-                onClick={openInvoiceComposer}
-                className="btn-pill btn-invoice"
-                style={{ alignSelf: 'flex-start' }}
-              >
-                Open Invoice Composer
-              </button>
-              {lastInvoiceUrl && (
-                <button
-                  type="button"
-                  onClick={() => window.open(lastInvoiceUrl, '_blank', 'noopener,noreferrer')}
-                  className="btn-pill btn-ghost"
-                  style={{ alignSelf: 'flex-start' }}
-                >
-                  Open Hosted Invoice
-                </button>
-              )}
-            </div>
-          </div>
         </div>
 
         {/* ── Summary ── */}
@@ -1386,6 +1492,247 @@ export default function AdminFinancePage() {
             </div>
           )}
         </div>
+      </>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={cardStyle}>
+              <SectionLabel>Invoice Workflow</SectionLabel>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 10 }}>
+                <div>
+                  <label style={labelStyle}>Status</label>
+                  <select
+                    value={invoiceStatusFilter}
+                    onChange={(event) => setInvoiceStatusFilter(event.target.value as typeof invoiceStatusFilter)}
+                    className="finance-select"
+                    style={{ ...inputStyle, appearance: 'none' }}
+                  >
+                    <option value="all">All</option>
+                    <option value="open">Open</option>
+                    <option value="paid">Paid</option>
+                    <option value="draft">Draft</option>
+                    <option value="void">Voided</option>
+                    <option value="uncollectible">Uncollectible</option>
+                  </select>
+                </div>
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={labelStyle}>Search</label>
+                  <input
+                    value={invoiceSearch}
+                    onChange={(event) => setInvoiceSearch(event.target.value)}
+                    placeholder="Invoice #, customer, email, description"
+                    className="finance-input"
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button type="button" className="btn-pill btn-invoice" onClick={openInvoiceComposer}>
+                  New Invoice
+                </button>
+                <button type="button" className="btn-pill btn-ghost" onClick={() => void refreshInvoices()} disabled={loadingInvoices}>
+                  {loadingInvoices ? 'Refreshing…' : 'Refresh'}
+                </button>
+                {lastInvoiceUrl && (
+                  <button
+                    type="button"
+                    className="btn-pill btn-ghost"
+                    onClick={() => window.open(lastInvoiceUrl, '_blank', 'noopener,noreferrer')}
+                  >
+                    Open Last Invoice
+                  </button>
+                )}
+                {invoiceHasMore && (
+                  <span
+                    style={{
+                      alignSelf: 'center',
+                      fontSize: 11,
+                      color: '#6b7280',
+                      fontFamily: "var(--font-sans)",
+                    }}
+                  >
+                    Showing first 60 invoices
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+              <div style={{ ...cardStyle, padding: 16 }}>
+                <SectionLabel>Invoices</SectionLabel>
+                {loadingInvoices ? (
+                  <p style={{ margin: 0, fontSize: 13, color: '#94a3b8', fontFamily: "var(--font-sans)" }}>Loading invoices…</p>
+                ) : invoices.length === 0 ? (
+                  <p style={{ margin: 0, fontSize: 13, color: '#94a3b8', fontFamily: "var(--font-sans)" }}>
+                    No invoices found for this filter.
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {invoices.map((row) => {
+                      const statusTone = invoiceStatusColor(row.status);
+                      const steps = [
+                        { label: 'Created', at: row.process.createdAt },
+                        { label: 'Finalized', at: row.process.finalizedAt },
+                        { label: 'Sent', at: row.process.sentAt },
+                        { label: 'Paid', at: row.process.paidAt }
+                      ];
+                      const completedStepCount = steps.filter((step) => Boolean(step.at)).length;
+                      const progressPercent = Math.round((completedStepCount / steps.length) * 100);
+                      const isSelected = selectedInvoiceId === row.id;
+                      return (
+                        <button
+                          key={row.id}
+                          type="button"
+                          onClick={() => setSelectedInvoiceId(row.id)}
+                          style={{
+                            textAlign: 'left',
+                            border: isSelected ? '1px solid #0f766e' : '1px solid #e2e8f0',
+                            background: isSelected ? '#f0fdfa' : '#ffffff',
+                            borderRadius: 12,
+                            padding: 12,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 8,
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#0f172a', fontFamily: "var(--font-sans)" }}>
+                              {row.customerName || 'Unknown customer'}
+                            </p>
+                            <span
+                              style={{
+                                padding: '2px 9px',
+                                borderRadius: 999,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                border: `1px solid ${statusTone.border}`,
+                                background: statusTone.bg,
+                                color: statusTone.text,
+                                fontFamily: "var(--font-sans)",
+                              }}
+                            >
+                              {invoiceStatusLabel(row.status)}
+                            </span>
+                          </div>
+                          <p style={{ margin: 0, fontSize: 12, color: '#64748b', fontFamily: "var(--font-sans)" }}>
+                            {row.number || row.id} · {row.customerEmail || 'no-email'}
+                          </p>
+                          <p style={{ margin: 0, fontSize: 12, color: '#334155', fontFamily: "var(--font-sans)" }}>
+                            {row.description || 'No title'} · Due {cents(row.amountDueCents)} · Paid {cents(row.amountPaidCents)}
+                          </p>
+                          <div style={{ height: 6, background: '#e2e8f0', borderRadius: 999, overflow: 'hidden' }}>
+                            <div style={{ width: `${progressPercent}%`, height: '100%', background: row.status === 'paid' ? '#16a34a' : '#0284c7' }} />
+                          </div>
+                          <p style={{ margin: 0, fontSize: 11, color: '#64748b', fontFamily: "var(--font-sans)" }}>
+                            Progress: {completedStepCount}/{steps.length} steps
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ ...cardStyle, padding: 16 }}>
+                <SectionLabel>Process Detail</SectionLabel>
+                {!selectedInvoiceId ? (
+                  <p style={{ margin: 0, fontSize: 13, color: '#94a3b8', fontFamily: "var(--font-sans)" }}>
+                    Select an invoice to view full process and line items.
+                  </p>
+                ) : loadingInvoiceDetail ? (
+                  <p style={{ margin: 0, fontSize: 13, color: '#94a3b8', fontFamily: "var(--font-sans)" }}>Loading invoice detail…</p>
+                ) : !selectedInvoiceDetail ? (
+                  <p style={{ margin: 0, fontSize: 13, color: '#94a3b8', fontFamily: "var(--font-sans)" }}>Invoice detail unavailable.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#0f172a', fontFamily: "var(--font-sans)" }}>
+                          {selectedInvoiceDetail.invoice.description || 'Untitled invoice'}
+                        </p>
+                        <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b', fontFamily: "var(--font-sans)" }}>
+                          {selectedInvoiceDetail.invoice.number || selectedInvoiceDetail.invoice.id}
+                        </p>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {selectedInvoiceDetail.invoice.hostedInvoiceUrl && (
+                          <button
+                            type="button"
+                            className="btn-pill btn-ghost"
+                            style={{ padding: '6px 12px', fontSize: 12 }}
+                            onClick={() => window.open(selectedInvoiceDetail.invoice.hostedInvoiceUrl!, '_blank', 'noopener,noreferrer')}
+                          >
+                            Hosted Link
+                          </button>
+                        )}
+                        {selectedInvoiceDetail.invoice.invoicePdfUrl && (
+                          <button
+                            type="button"
+                            className="btn-pill btn-ghost"
+                            style={{ padding: '6px 12px', fontSize: 12 }}
+                            onClick={() => window.open(selectedInvoiceDetail.invoice.invoicePdfUrl!, '_blank', 'noopener,noreferrer')}
+                          >
+                            PDF
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 10, background: '#f8fafc' }}>
+                      {[
+                        { label: 'Created', value: selectedInvoiceDetail.invoice.process.createdAt },
+                        { label: 'Finalized', value: selectedInvoiceDetail.invoice.process.finalizedAt },
+                        { label: 'Sent', value: selectedInvoiceDetail.invoice.process.sentAt },
+                        { label: 'Paid', value: selectedInvoiceDetail.invoice.process.paidAt },
+                        { label: 'Voided', value: selectedInvoiceDetail.invoice.process.voidedAt },
+                        { label: 'Uncollectible', value: selectedInvoiceDetail.invoice.process.markedUncollectibleAt },
+                      ].map((step) => (
+                        <div key={step.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '4px 0', fontSize: 12 }}>
+                          <span style={{ color: '#475569', fontFamily: "var(--font-sans)" }}>{step.label}</span>
+                          <span style={{ color: step.value ? '#0f172a' : '#94a3b8', fontWeight: 600, fontFamily: "var(--font-sans)" }}>
+                            {step.value ? new Date(step.value).toLocaleString() : '—'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {selectedInvoiceDetail.customerNote && (
+                      <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, background: '#ffffff' }}>
+                        <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#64748b', fontFamily: "var(--font-sans)" }}>
+                          Customer Note
+                        </p>
+                        <p style={{ margin: '6px 0 0', fontSize: 12, color: '#0f172a', fontFamily: "var(--font-sans)" }}>
+                          {selectedInvoiceDetail.customerNote}
+                        </p>
+                      </div>
+                    )}
+
+                    <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
+                      <div style={{ background: '#f8fafc', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: '#475569', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: "var(--font-sans)" }}>
+                        Line Items
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        {selectedInvoiceDetail.lineItems.map((item) => (
+                          <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '9px 10px', borderTop: '1px solid #f1f5f9' }}>
+                            <div>
+                              <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#0f172a', fontFamily: "var(--font-sans)" }}>{item.description || 'Item'}</p>
+                              <p style={{ margin: '2px 0 0', fontSize: 11, color: '#64748b', fontFamily: "var(--font-sans)" }}>
+                                Qty {item.quantity} · Unit {cents(item.unitAmountCents)}
+                              </p>
+                            </div>
+                            <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#0f172a', fontFamily: "var(--font-sans)" }}>
+                              {cents(item.amountCents)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {showInvoiceComposer && (

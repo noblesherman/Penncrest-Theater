@@ -731,6 +731,12 @@ Downloads local finance CSV with order-level rows (cash/card/comp split).
 ### `GET /api/admin/finance/stripe-report.csv?startDate=2026-03-01&endDate=2026-03-31`
 Downloads Stripe balance transactions CSV.
 
+### `GET /api/admin/finance/invoices?status=all&limit=60&q=jamie`
+Returns recent Stripe invoices with status/process metadata for admin tracking.
+
+### `GET /api/admin/finance/invoices/:invoiceId`
+Returns one invoice with timeline fields and expanded line items.
+
 ### `POST /api/admin/finance/invoices/send`
 Request:
 ```json
