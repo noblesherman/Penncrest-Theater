@@ -186,7 +186,7 @@ export default function Fundraising() {
         icon: HandCoins,
         title: 'Leave a Donation',
         description:
-          'Every gift helps students create outstanding productions, learn theater craft, and grow in confidence.'
+          'Every gift  helps students create outstanding productions, learn theater craft, and grow in confidence.'
       };
     }
 
