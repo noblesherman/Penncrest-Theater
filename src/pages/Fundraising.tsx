@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
 import { loadStripe, type StripeElementsOptions } from '@stripe/stripe-js';
-import { motion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   CalendarDays,
   CheckCircle2,
   CreditCard,
   HandCoins,
+  Heart,
   HeartHandshake,
   Loader2,
   Mail,
@@ -42,7 +43,7 @@ type LiveFundraisingEvent = {
 type LiveFundraisingSponsor = {
   id: string;
   name: string;
-  tier: 'Gold' | 'Silver' | 'Bronze';
+  tier: 'Balcony' | 'Mezzanine' | 'Orchestra' | 'Center Stage';
   logoUrl: string;
   imageUrl: string;
   spotlight: string;
@@ -79,6 +80,18 @@ type ActiveDonationIntent = {
 
 const DONATION_PRESET_AMOUNTS_CENTS = [500, 1000, 2000, 3000];
 const FALLBACK_STRIPE_PUBLISHABLE_KEY = (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '').trim();
+const DONATION_HEART_PARTICLES = [
+  { left: '8%', sizeRem: 1.2, delay: '0s', duration: '4.9s' },
+  { left: '16%', sizeRem: 1.8, delay: '0.35s', duration: '5.8s' },
+  { left: '24%', sizeRem: 1.4, delay: '0.8s', duration: '5.2s' },
+  { left: '34%', sizeRem: 2.2, delay: '1.1s', duration: '6.1s' },
+  { left: '45%', sizeRem: 1.3, delay: '0.2s', duration: '5.3s' },
+  { left: '55%', sizeRem: 1.9, delay: '1.4s', duration: '5.9s' },
+  { left: '64%', sizeRem: 1.5, delay: '0.6s', duration: '5.1s' },
+  { left: '73%', sizeRem: 2.1, delay: '1.2s', duration: '6.2s' },
+  { left: '83%', sizeRem: 1.4, delay: '0.9s', duration: '5.5s' },
+  { left: '92%', sizeRem: 1.7, delay: '0.45s', duration: '5.7s' }
+] as const;
 
 function formatUsd(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -161,6 +174,8 @@ export default function Fundraising() {
   const [donationIntentLoading, setDonationIntentLoading] = useState(false);
   const [donationError, setDonationError] = useState<string | null>(null);
   const [donationSuccessMessage, setDonationSuccessMessage] = useState<string | null>(null);
+  const [showDonationCelebration, setShowDonationCelebration] = useState(false);
+  const [lastDonationAmountCents, setLastDonationAmountCents] = useState<number | null>(null);
   const customAmountInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -174,6 +189,12 @@ export default function Fundraising() {
       .then((items) => { if (Array.isArray(items)) { setLiveSponsors(items); setSponsorLoadFailed(false); } })
       .catch(() => { setLiveSponsors([]); setSponsorLoadFailed(true); });
   }, []);
+
+  useEffect(() => {
+    if (!showDonationCelebration) return;
+    const timeout = window.setTimeout(() => setShowDonationCelebration(false), 6200);
+    return () => window.clearTimeout(timeout);
+  }, [showDonationCelebration]);
 
   const liveDisplayEvents = useMemo<DisplayEvent[]>(
     () => liveEvents.map((event) => {
@@ -287,9 +308,10 @@ export default function Fundraising() {
           mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
         }
 
-        .tier-badge-gold { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #78350f; }
-        .tier-badge-silver { background: linear-gradient(135deg, #e5e7eb, #d1d5db); color: #374151; }
-        .tier-badge-bronze { background: linear-gradient(135deg, #fb923c, #ea580c); color: #fff7ed; }
+        .tier-badge-balcony { background: linear-gradient(135deg, #fdba74, #fb923c); color: #7c2d12; }
+        .tier-badge-mezzanine { background: linear-gradient(135deg, #e5e7eb, #d1d5db); color: #374151; }
+        .tier-badge-orchestra { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #78350f; }
+        .tier-badge-center-stage { background: linear-gradient(135deg, #dc2626, #991b1b); color: #fee2e2; }
 
         .input-field {
           width: 100%;
@@ -340,9 +362,103 @@ export default function Fundraising() {
           transition: opacity 0.2s;
         }
         .donation-level-card:hover::before { opacity: 1; }
+
+        .donation-celebration-backdrop {
+          background: radial-gradient(circle at 20% 20%, rgba(185, 28, 28, 0.35) 0%, rgba(127, 29, 29, 0.24) 30%, rgba(12, 10, 9, 0.82) 100%);
+          backdrop-filter: blur(4px);
+        }
+        .donation-celebration-heart {
+          position: absolute;
+          bottom: -56px;
+          color: rgba(254, 226, 226, 0.94);
+          text-shadow: 0 10px 24px rgba(153, 27, 27, 0.45);
+          animation: donation-heart-rise linear infinite;
+          user-select: none;
+        }
+        .donation-celebration-heart.alt {
+          color: rgba(254, 202, 202, 0.9);
+          animation-name: donation-heart-rise-alt;
+        }
+        .donation-heart-icon {
+          animation: donation-heart-beat 1.2s ease-in-out infinite;
+        }
+        @keyframes donation-heart-rise {
+          0% { transform: translate3d(0, 0, 0) scale(0.65) rotate(0deg); opacity: 0; }
+          12% { opacity: 0.95; }
+          100% { transform: translate3d(0, -86vh, 0) scale(1.2) rotate(10deg); opacity: 0; }
+        }
+        @keyframes donation-heart-rise-alt {
+          0% { transform: translate3d(0, 0, 0) scale(0.7) rotate(-8deg); opacity: 0; }
+          15% { opacity: 0.95; }
+          100% { transform: translate3d(0, -82vh, 0) scale(1.25) rotate(-18deg); opacity: 0; }
+        }
+        @keyframes donation-heart-beat {
+          0%, 100% { transform: scale(1); }
+          35% { transform: scale(1.12); }
+          65% { transform: scale(0.96); }
+        }
       `}</style>
 
       <div className="fund-root bg-white text-zinc-900">
+        <AnimatePresence>
+          {showDonationCelebration && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[130] flex items-center justify-center p-4"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Donation thank you"
+            >
+              <div className="donation-celebration-backdrop absolute inset-0" />
+
+              <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                {DONATION_HEART_PARTICLES.map((heart, index) => (
+                  <span
+                    key={`${heart.left}-${heart.delay}`}
+                    className={`donation-celebration-heart ${index % 2 === 0 ? 'alt' : ''}`}
+                    style={{
+                      left: heart.left,
+                      fontSize: `${heart.sizeRem}rem`,
+                      animationDelay: heart.delay,
+                      animationDuration: heart.duration
+                    }}
+                    aria-hidden="true"
+                  >
+                    ♥
+                  </span>
+                ))}
+              </div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 12, scale: 0.97 }}
+                transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                className="relative w-full max-w-md rounded-3xl border border-red-100 bg-white/95 p-7 text-center shadow-2xl"
+              >
+                <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-red-700">
+                  <Heart className="donation-heart-icon h-7 w-7 fill-current" />
+                </div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-red-700">Donation Received</p>
+                <h3 className="serif mt-1 text-3xl font-bold text-zinc-900">Thank You!</h3>
+                <p className="mt-3 text-sm leading-relaxed text-zinc-600">
+                  {lastDonationAmountCents
+                    ? `Your ${formatUsd(lastDonationAmountCents)} gift helps Penncrest Theater students shine on stage.`
+                    : 'Your gift helps Penncrest Theater students shine on stage.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowDonationCelebration(false)}
+                  className="donate-btn mt-5 inline-flex items-center justify-center rounded-2xl px-6 py-2.5 text-sm font-semibold text-white transition-all"
+                >
+                  Continue
+                </button>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* ── HERO ── */}
         <section className="hero-accent border-b border-zinc-100 pb-16 pt-14 sm:pt-20">
@@ -640,6 +756,8 @@ export default function Fundraising() {
                             donorName={donorName.trim()}
                             donorEmail={donorEmail.trim().toLowerCase()}
                             onSuccess={() => {
+                              setLastDonationAmountCents(activeDonationIntent.amountCents);
+                              setShowDonationCelebration(true);
                               setDonationSuccessMessage(`Thank you! Your ${formatUsd(activeDonationIntent.amountCents)} donation was received.`);
                               setActiveDonationIntent(null);
                               setDonationError(null);
@@ -726,9 +844,10 @@ export default function Fundraising() {
                           <div className="relative">
                             <img src={sponsor.imageUrl} alt={`${sponsor.name} spotlight`} className="h-44 w-full object-cover" />
                             <div className={`absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.1em] ${
-                              sponsor.tier === 'Gold' ? 'tier-badge-gold'
-                              : sponsor.tier === 'Silver' ? 'tier-badge-silver'
-                              : 'tier-badge-bronze'
+                              sponsor.tier === 'Center Stage' ? 'tier-badge-center-stage'
+                              : sponsor.tier === 'Orchestra' ? 'tier-badge-orchestra'
+                              : sponsor.tier === 'Mezzanine' ? 'tier-badge-mezzanine'
+                              : 'tier-badge-balcony'
                             }`}>
                               {sponsor.tier}
                             </div>

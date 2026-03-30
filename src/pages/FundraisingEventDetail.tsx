@@ -8,7 +8,7 @@ import { apiFetch } from '../lib/api';
 type LiveFundraisingSponsor = {
   id: string;
   name: string;
-  tier: 'Gold' | 'Silver' | 'Bronze';
+  tier: 'Balcony' | 'Mezzanine' | 'Orchestra' | 'Center Stage';
   logoUrl: string;
   imageUrl: string;
   spotlight: string;
@@ -183,9 +183,10 @@ export default function FundraisingEventDetail() {
       transition: border-color 0.15s, box-shadow 0.15s;
     }
     .detail-pill:hover { border-color: #e5e7eb; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-    .tier-gold { background: linear-gradient(135deg,#fbbf24,#f59e0b); color: #78350f; }
-    .tier-silver { background: linear-gradient(135deg,#e5e7eb,#d1d5db); color: #374151; }
-    .tier-bronze { background: linear-gradient(135deg,#fb923c,#ea580c); color: #fff7ed; }
+    .tier-balcony { background: linear-gradient(135deg,#fdba74,#fb923c); color: #7c2d12; }
+    .tier-mezzanine { background: linear-gradient(135deg,#e5e7eb,#d1d5db); color: #374151; }
+    .tier-orchestra { background: linear-gradient(135deg,#fbbf24,#f59e0b); color: #78350f; }
+    .tier-center-stage { background: linear-gradient(135deg,#dc2626,#991b1b); color: #fee2e2; }
     .related-card img { transition: transform 0.5s ease; }
     .related-card:hover img { transform: scale(1.04); }
   `;
@@ -398,9 +399,10 @@ export default function FundraisingEventDetail() {
                       >
                         <img src={sponsor.logoUrl} alt={sponsor.name} className="h-8 w-auto object-contain opacity-80" />
                         <span className={`ml-auto rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                          sponsor.tier === 'Gold' ? 'tier-gold'
-                          : sponsor.tier === 'Silver' ? 'tier-silver'
-                          : 'tier-bronze'
+                          sponsor.tier === 'Center Stage' ? 'tier-center-stage'
+                          : sponsor.tier === 'Orchestra' ? 'tier-orchestra'
+                          : sponsor.tier === 'Mezzanine' ? 'tier-mezzanine'
+                          : 'tier-balcony'
                         }`}>
                           {sponsor.tier}
                         </span>

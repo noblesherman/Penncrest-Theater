@@ -10,7 +10,26 @@ import { logAudit } from '../lib/audit-log.js';
 const SPONSOR_SCOPE = 'fundraising';
 const SPONSOR_SLUG = 'sponsors';
 
-const sponsorTierSchema = z.enum(['Gold', 'Silver', 'Bronze']);
+const sponsorTierCurrentSchema = z.enum(['Balcony', 'Mezzanine', 'Orchestra', 'Center Stage']);
+const sponsorTierLegacySchema = z.enum(['Gold', 'Silver', 'Bronze']);
+type SponsorTier = z.infer<typeof sponsorTierCurrentSchema>;
+
+function normalizeSponsorTier(tier: z.infer<typeof sponsorTierCurrentSchema> | z.infer<typeof sponsorTierLegacySchema>): SponsorTier {
+  switch (tier) {
+    case 'Gold':
+      return 'Center Stage';
+    case 'Silver':
+      return 'Orchestra';
+    case 'Bronze':
+      return 'Mezzanine';
+    default:
+      return tier;
+  }
+}
+
+const sponsorTierSchema = z.union([sponsorTierCurrentSchema, sponsorTierLegacySchema]).transform(
+  (tier): SponsorTier => normalizeSponsorTier(tier)
+);
 const sponsorSchema = z.object({
   id: z.string().min(1),
   name: z.string().trim().min(1).max(140),
@@ -32,7 +51,7 @@ const defaultFundraisingSponsors: z.infer<typeof sponsorSchema>[] = [
   {
     id: 'sponsor-main-street-bank',
     name: 'Main Street Bank',
-    tier: 'Gold',
+    tier: 'Center Stage',
     logoUrl: 'https://dummyimage.com/320x120/ffffff/991b1b.png&text=Main+Street+Bank',
     imageUrl: 'https://picsum.photos/id/1025/900/600',
     spotlight: 'Supporting production sound upgrades and student leadership scholarships.',
@@ -41,7 +60,7 @@ const defaultFundraisingSponsors: z.infer<typeof sponsorSchema>[] = [
   {
     id: 'sponsor-media-arts-council',
     name: 'Media Arts Council',
-    tier: 'Gold',
+    tier: 'Orchestra',
     logoUrl: 'https://dummyimage.com/320x120/ffffff/7f1d1d.png&text=Media+Arts+Council',
     imageUrl: 'https://picsum.photos/id/1038/900/600',
     spotlight: 'Funding scenic art materials and seasonal community arts collaborations.',
@@ -50,7 +69,7 @@ const defaultFundraisingSponsors: z.infer<typeof sponsorSchema>[] = [
   {
     id: 'sponsor-rose-tree-dental',
     name: 'Rose Tree Dental',
-    tier: 'Silver',
+    tier: 'Mezzanine',
     logoUrl: 'https://dummyimage.com/320x120/ffffff/b45309.png&text=Rose+Tree+Dental',
     imageUrl: 'https://picsum.photos/id/1067/900/600',
     spotlight: 'Helping cover student costume and wardrobe costs.',
@@ -59,7 +78,7 @@ const defaultFundraisingSponsors: z.infer<typeof sponsorSchema>[] = [
   {
     id: 'sponsor-miller-family-foundation',
     name: 'Miller Family Foundation',
-    tier: 'Silver',
+    tier: 'Orchestra',
     logoUrl: 'https://dummyimage.com/320x120/ffffff/78350f.png&text=Miller+Family+Foundation',
     imageUrl: 'https://picsum.photos/id/1011/900/600',
     spotlight: 'Providing annual support for student theater training opportunities.',
@@ -68,7 +87,7 @@ const defaultFundraisingSponsors: z.infer<typeof sponsorSchema>[] = [
   {
     id: 'sponsor-cedar-realty-group',
     name: 'Cedar Realty Group',
-    tier: 'Bronze',
+    tier: 'Mezzanine',
     logoUrl: 'https://dummyimage.com/320x120/ffffff/92400e.png&text=Cedar+Realty+Group',
     imageUrl: 'https://picsum.photos/id/1041/900/600',
     spotlight: 'Backing front-of-house improvements and audience accessibility support.',
@@ -77,7 +96,7 @@ const defaultFundraisingSponsors: z.infer<typeof sponsorSchema>[] = [
   {
     id: 'sponsor-brightline-fitness',
     name: 'Brightline Fitness',
-    tier: 'Bronze',
+    tier: 'Balcony',
     logoUrl: 'https://dummyimage.com/320x120/ffffff/1f2937.png&text=Brightline+Fitness',
     imageUrl: 'https://picsum.photos/id/1050/900/600',
     spotlight: 'Contributing to rehearsal wellness supplies and cast support kits.',
@@ -304,4 +323,3 @@ export const fundraisingSponsorRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 };
-

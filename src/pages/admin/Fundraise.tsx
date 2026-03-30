@@ -63,7 +63,7 @@ type EventForm = {
 type FundraisingSponsor = {
   id: string;
   name: string;
-  tier: 'Gold' | 'Silver' | 'Bronze';
+  tier: 'Balcony' | 'Mezzanine' | 'Orchestra' | 'Center Stage';
   logoUrl: string;
   imageUrl: string;
   spotlight: string;
@@ -72,7 +72,7 @@ type FundraisingSponsor = {
 
 type SponsorForm = {
   name: string;
-  tier: 'Gold' | 'Silver' | 'Bronze';
+  tier: 'Balcony' | 'Mezzanine' | 'Orchestra' | 'Center Stage';
   logoUrl: string;
   imageUrl: string;
   spotlight: string;
@@ -153,7 +153,7 @@ function createInitialForm(): EventForm {
 function createInitialSponsorForm(): SponsorForm {
   return {
     name: '',
-    tier: 'Gold',
+    tier: 'Balcony',
     logoUrl: '',
     imageUrl: '',
     spotlight: '',
@@ -993,15 +993,16 @@ export default function AdminFundraisePage() {
         />
       </div>
       <div>
-        <label className={labelClass}>Sponsorship Tier</label>
+        <label className={labelClass}>Sponsorship Level</label>
         <select
           value={sponsorForm.tier}
           onChange={(event) => setSponsorForm((prev) => ({ ...prev, tier: event.target.value as SponsorForm['tier'] }))}
           className={inputClass}
         >
-          <option value="Gold">Gold</option>
-          <option value="Silver">Silver</option>
-          <option value="Bronze">Bronze</option>
+          <option value="Balcony">Balcony</option>
+          <option value="Mezzanine">Mezzanine</option>
+          <option value="Orchestra">Orchestra</option>
+          <option value="Center Stage">Center Stage</option>
         </select>
       </div>
       <div>

@@ -27,7 +27,7 @@ export type DonationLevel = {
 export type FundraisingSponsor = {
   id: string;
   name: string;
-  tier: 'Gold' | 'Silver' | 'Bronze';
+  tier: 'Balcony' | 'Mezzanine' | 'Orchestra' | 'Center Stage';
   logoUrl: string;
   imageUrl: string;
   spotlight: string;
@@ -98,7 +98,7 @@ export const fundraisingSponsors: FundraisingSponsor[] = [
   {
     id: 'sponsor-main-street-bank',
     name: 'Main Street Bank',
-    tier: 'Gold',
+    tier: 'Center Stage',
     logoUrl: 'https://dummyimage.com/320x120/ffffff/991b1b.png&text=Main+Street+Bank',
     imageUrl: 'https://picsum.photos/id/1025/900/600',
     spotlight: 'Supporting production sound upgrades and student leadership scholarships.',
@@ -107,7 +107,7 @@ export const fundraisingSponsors: FundraisingSponsor[] = [
   {
     id: 'sponsor-media-arts-council',
     name: 'Media Arts Council',
-    tier: 'Gold',
+    tier: 'Orchestra',
     logoUrl: 'https://dummyimage.com/320x120/ffffff/7f1d1d.png&text=Media+Arts+Council',
     imageUrl: 'https://picsum.photos/id/1038/900/600',
     spotlight: 'Funding scenic art materials and seasonal community arts collaborations.',
@@ -116,7 +116,7 @@ export const fundraisingSponsors: FundraisingSponsor[] = [
   {
     id: 'sponsor-rose-tree-dental',
     name: 'Rose Tree Dental',
-    tier: 'Silver',
+    tier: 'Mezzanine',
     logoUrl: 'https://dummyimage.com/320x120/ffffff/b45309.png&text=Rose+Tree+Dental',
     imageUrl: 'https://picsum.photos/id/1067/900/600',
     spotlight: 'Helping cover student costume and wardrobe costs.',
@@ -125,7 +125,7 @@ export const fundraisingSponsors: FundraisingSponsor[] = [
   {
     id: 'sponsor-miller-family-foundation',
     name: 'Miller Family Foundation',
-    tier: 'Silver',
+    tier: 'Orchestra',
     logoUrl: 'https://dummyimage.com/320x120/ffffff/78350f.png&text=Miller+Family+Foundation',
     imageUrl: 'https://picsum.photos/id/1011/900/600',
     spotlight: 'Providing annual support for student theater training opportunities.',
@@ -134,7 +134,7 @@ export const fundraisingSponsors: FundraisingSponsor[] = [
   {
     id: 'sponsor-cedar-realty-group',
     name: 'Cedar Realty Group',
-    tier: 'Bronze',
+    tier: 'Mezzanine',
     logoUrl: 'https://dummyimage.com/320x120/ffffff/92400e.png&text=Cedar+Realty+Group',
     imageUrl: 'https://picsum.photos/id/1041/900/600',
     spotlight: 'Backing front-of-house improvements and audience accessibility support.',
@@ -143,7 +143,7 @@ export const fundraisingSponsors: FundraisingSponsor[] = [
   {
     id: 'sponsor-brightline-fitness',
     name: 'Brightline Fitness',
-    tier: 'Bronze',
+    tier: 'Balcony',
     logoUrl: 'https://dummyimage.com/320x120/ffffff/1f2937.png&text=Brightline+Fitness',
     imageUrl: 'https://picsum.photos/id/1050/900/600',
     spotlight: 'Contributing to rehearsal wellness supplies and cast support kits.',
