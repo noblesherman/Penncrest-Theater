@@ -694,8 +694,8 @@ export default function Fundraising() {
 
                 {/* Tiers */}
                 <div>
-                  <p className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">Sponsorship Tiers</p>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <p className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">Sponsorship Levels</p>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                     {sponsorshipTiers.map((card, i) => (
                       <motion.article
                         key={card.level}
@@ -711,6 +711,9 @@ export default function Fundraising() {
                       </motion.article>
                     ))}
                   </div>
+                  <p className="mt-4 text-sm text-zinc-500">
+                    All donations of $250 and above are tax-deductible, and documentation is provided.
+                  </p>
                 </div>
 
                 {/* Current Sponsors */}

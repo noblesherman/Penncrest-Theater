@@ -1,5 +1,7 @@
-import { ChangeEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { ReactNode } from 'react';
+import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
+import { loadStripe, type StripeElementsOptions } from '@stripe/stripe-js';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   Calendar,
@@ -7,23 +9,29 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  CreditCard,
   DollarSign,
   Edit2,
   Globe,
   ImageIcon,
   Landmark,
+  Loader2,
+  Mail,
   MapPin,
   Plus,
+  RefreshCcw,
   Save,
   Settings,
   Trash2,
+  UserRound,
   Upload,
   X
 } from 'lucide-react';
 import { adminFetch } from '../../lib/adminAuth';
+import { apiFetch } from '../../lib/api';
 import { uploadAdminImage } from '../../lib/adminUploads';
 
-type AdminFundraiseTab = 'events' | 'sponsors';
+type AdminFundraiseTab = 'events' | 'sponsors' | 'donations';
 
 type FundraiseEvent = {
   id: string;
@@ -71,9 +79,49 @@ type SponsorForm = {
   websiteUrl: string;
 };
 
+type DonationIntentResponse = {
+  paymentIntentId: string;
+  clientSecret: string;
+  publishableKey?: string;
+  amountCents: number;
+  currency: string;
+};
+
+type ActiveDonationIntent = {
+  paymentIntentId: string;
+  clientSecret: string;
+  publishableKey: string;
+  amountCents: number;
+};
+
+type AdminFundraisingDonation = {
+  paymentIntentId: string;
+  amountCents: number;
+  currency: string;
+  status: string;
+  donorName: string;
+  donorEmail: string;
+  receiptEmail: string | null;
+  createdAt: string;
+  thankYouEmailSent: boolean;
+};
+
+type AdminFundraisingDonationSummary = {
+  count: number;
+  succeededCount: number;
+  grossSucceededCents: number;
+};
+
+type AdminFundraisingDonationFeed = {
+  donations: AdminFundraisingDonation[];
+  summary?: AdminFundraisingDonationSummary;
+};
+
 const inputClass =
   'w-full rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 placeholder:text-stone-300 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100 transition';
 const labelClass = 'block text-xs font-bold uppercase tracking-widest text-stone-400 mb-2';
+const DONATION_PRESET_AMOUNTS_CENTS = [500, 1000, 2000, 3000];
+const FALLBACK_STRIPE_PUBLISHABLE_KEY = (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '').trim();
 
 const STEPS = [
   { id: 'event', label: 'The Event', icon: Calendar },
@@ -125,6 +173,115 @@ function parseTiers(text: string): Array<{ name: string; priceCents: number }> {
     .filter((tier) => tier.name && Number.isFinite(tier.priceCents) && tier.priceCents > 0);
 }
 
+function formatUsd(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function formatMoney(cents: number, currency: string): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: currency.toUpperCase()
+  }).format(cents / 100);
+}
+
+function parseDonationInputToCents(value: string): number | null {
+  const normalized = value.replace(/[^\d.]/g, '').trim();
+  if (!normalized) return null;
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const cents = Math.round(amount * 100);
+  return cents >= 100 ? cents : null;
+}
+
+function formatDonationStatus(status: string): string {
+  switch (status) {
+    case 'succeeded':
+      return 'Succeeded';
+    case 'processing':
+      return 'Processing';
+    case 'requires_payment_method':
+      return 'Needs Payment Method';
+    case 'requires_action':
+      return 'Action Required';
+    case 'canceled':
+      return 'Canceled';
+    default:
+      return status.replace(/_/g, ' ');
+  }
+}
+
+function AdminDonationPaymentForm({
+  amountCents,
+  donorName,
+  donorEmail,
+  onSuccess,
+  onError
+}: {
+  amountCents: number;
+  donorName: string;
+  donorEmail: string;
+  onSuccess: () => void;
+  onError: (message: string | null) => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onError(null);
+
+    if (!stripe || !elements) {
+      onError('Card form is still loading. Please try again.');
+      return;
+    }
+
+    setSubmitting(true);
+    const result = await stripe.confirmPayment({
+      elements,
+      confirmParams: {
+        payment_method_data: {
+          billing_details: {
+            name: donorName,
+            email: donorEmail
+          }
+        }
+      },
+      redirect: 'if_required'
+    });
+    setSubmitting(false);
+
+    if (result.error) {
+      onError(result.error.message || 'Payment could not be completed.');
+      return;
+    }
+
+    const status = result.paymentIntent?.status;
+    if (status === 'succeeded' || status === 'processing' || status === 'requires_capture') {
+      onSuccess();
+      return;
+    }
+
+    onError(`Payment did not complete. Current status: ${status || 'unknown'}.`);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <div className="rounded-xl border border-stone-200 bg-white p-3 sm:p-4">
+        <PaymentElement />
+      </div>
+      <button
+        type="submit"
+        disabled={submitting || !stripe || !elements}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+        Charge {formatUsd(amountCents)}
+      </button>
+    </form>
+  );
+}
+
 export default function AdminFundraisePage() {
   const [tab, setTab] = useState<AdminFundraiseTab>('events');
   const [events, setEvents] = useState<FundraiseEvent[]>([]);
@@ -151,9 +308,35 @@ export default function AdminFundraisePage() {
   const [isSponsorLogoUploading, setIsSponsorLogoUploading] = useState(false);
   const [isSponsorImageUploading, setIsSponsorImageUploading] = useState(false);
   const [deletingSponsorId, setDeletingSponsorId] = useState<string | null>(null);
+  const [donations, setDonations] = useState<AdminFundraisingDonation[]>([]);
+  const [donationSummary, setDonationSummary] = useState<AdminFundraisingDonationSummary | null>(null);
+  const [donationsLoading, setDonationsLoading] = useState(true);
+  const [donationsError, setDonationsError] = useState<string | null>(null);
+  const [selectedDonationAmountCents, setSelectedDonationAmountCents] = useState<number | null>(DONATION_PRESET_AMOUNTS_CENTS[0]);
+  const [customDonationAmount, setCustomDonationAmount] = useState('');
+  const [donorName, setDonorName] = useState('');
+  const [donorEmail, setDonorEmail] = useState('');
+  const [activeDonationIntent, setActiveDonationIntent] = useState<ActiveDonationIntent | null>(null);
+  const [donationIntentLoading, setDonationIntentLoading] = useState(false);
+  const [donationError, setDonationError] = useState<string | null>(null);
+  const [donationSuccessMessage, setDonationSuccessMessage] = useState<string | null>(null);
+  const customAmountInputRef = useRef<HTMLInputElement | null>(null);
 
   const tiers = useMemo(() => parseTiers(form.tiersText), [form.tiersText]);
   const selectedEvent = useMemo(() => events.find((event) => event.id === selectedEventId) ?? null, [events, selectedEventId]);
+  const donationStripePromise = useMemo(() => {
+    if (!activeDonationIntent?.publishableKey) return null;
+    return loadStripe(activeDonationIntent.publishableKey);
+  }, [activeDonationIntent?.publishableKey]);
+  const donationStripeOptions = useMemo<StripeElementsOptions | null>(() => {
+    if (!activeDonationIntent?.clientSecret) return null;
+    return {
+      clientSecret: activeDonationIntent.clientSecret,
+      appearance: { theme: 'stripe' }
+    };
+  }, [activeDonationIntent?.clientSecret]);
+  const isOtherDonationSelected =
+    selectedDonationAmountCents === null || !DONATION_PRESET_AMOUNTS_CENTS.includes(selectedDonationAmountCents);
 
   async function loadEvents() {
     setLoading(true);
@@ -187,9 +370,24 @@ export default function AdminFundraisePage() {
     }
   }
 
+  async function loadDonations() {
+    setDonationsLoading(true);
+    setDonationsError(null);
+    try {
+      const data = await adminFetch<AdminFundraisingDonationFeed>('/api/admin/fundraising/donations?limit=60');
+      setDonations(Array.isArray(data.donations) ? data.donations : []);
+      setDonationSummary(data.summary || null);
+    } catch (err) {
+      setDonationsError(err instanceof Error ? err.message : 'Failed to load donations');
+    } finally {
+      setDonationsLoading(false);
+    }
+  }
+
   useEffect(() => {
     void loadEvents();
     void loadSponsors();
+    void loadDonations();
   }, []);
 
   const goTo = (next: number) => {
@@ -508,6 +706,72 @@ export default function AdminFundraisePage() {
       setDeletingSponsorId(null);
     }
   }
+
+  async function requestDonationIntent(amountCents: number) {
+    const normalizedDonorName = donorName.trim();
+    const normalizedDonorEmail = donorEmail.trim().toLowerCase();
+    if (!normalizedDonorName) {
+      setDonationError('Please enter the donor name before charging.');
+      return;
+    }
+    if (!normalizedDonorEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedDonorEmail)) {
+      setDonationError('Please enter a valid donor email for Stripe receipt + thank-you email.');
+      return;
+    }
+
+    setDonationIntentLoading(true);
+    setDonationError(null);
+    setDonationSuccessMessage(null);
+    setSelectedDonationAmountCents(amountCents);
+
+    try {
+      const response = await apiFetch<DonationIntentResponse>('/api/fundraising/donations/intent', {
+        method: 'POST',
+        body: JSON.stringify({
+          amountCents,
+          donorName: normalizedDonorName,
+          donorEmail: normalizedDonorEmail
+        })
+      });
+
+      const publishableKey = (response.publishableKey || FALLBACK_STRIPE_PUBLISHABLE_KEY || '').trim();
+      if (!publishableKey) {
+        throw new Error('Stripe publishable key is missing.');
+      }
+
+      setActiveDonationIntent({
+        paymentIntentId: response.paymentIntentId,
+        clientSecret: response.clientSecret,
+        publishableKey,
+        amountCents: response.amountCents
+      });
+    } catch (err) {
+      setActiveDonationIntent(null);
+      setDonationError(err instanceof Error ? err.message : 'Unable to start card checkout.');
+    } finally {
+      setDonationIntentLoading(false);
+    }
+  }
+
+  function handleOtherDonationSelect() {
+    setSelectedDonationAmountCents(null);
+    setActiveDonationIntent(null);
+    setDonationError(null);
+    setDonationSuccessMessage(null);
+    requestAnimationFrame(() => customAmountInputRef.current?.focus());
+  }
+
+  function applyCustomDonationAmount() {
+    const amountCents = parseDonationInputToCents(customDonationAmount);
+    if (!amountCents) {
+      setDonationError('Enter a valid donation amount of at least $1.00.');
+      return;
+    }
+    void requestDonationIntent(amountCents);
+  }
+
+  const primaryActionLabel =
+    tab === 'events' ? 'New Fundraising Event' : tab === 'sponsors' ? 'New Sponsor' : 'Refresh Donations';
 
   const stepContent: ReactNode[] = [
     <div key="event" className="space-y-5">
@@ -873,11 +1137,21 @@ export default function AdminFundraisePage() {
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
           type="button"
-          onClick={tab === 'events' ? startNewEvent : startNewSponsor}
+          onClick={() => {
+            if (tab === 'events') {
+              startNewEvent();
+              return;
+            }
+            if (tab === 'sponsors') {
+              startNewSponsor();
+              return;
+            }
+            void loadDonations();
+          }}
           className="flex w-full items-center justify-center gap-2 rounded-full bg-red-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-red-100 transition hover:bg-red-800 sm:w-auto"
         >
-          <Plus className="h-4 w-4" />
-          {tab === 'events' ? 'New Fundraising Event' : 'New Sponsor'}
+          {tab === 'donations' ? <RefreshCcw className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+          {primaryActionLabel}
         </motion.button>
       </div>
 
@@ -889,6 +1163,9 @@ export default function AdminFundraisePage() {
       ) : null}
       {sponsorError ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{sponsorError}</div>
+      ) : null}
+      {donationsError ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{donationsError}</div>
       ) : null}
 
       <div className="inline-flex rounded-xl border border-stone-200 bg-white p-1">
@@ -909,6 +1186,15 @@ export default function AdminFundraisePage() {
           }`}
         >
           Sponsors
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('donations')}
+          className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+            tab === 'donations' ? 'bg-rose-700 text-white' : 'text-stone-600 hover:text-stone-900'
+          }`}
+        >
+          Donations
         </button>
       </div>
 
@@ -1010,7 +1296,7 @@ export default function AdminFundraisePage() {
             })
           )}
         </div>
-      ) : (
+      ) : tab === 'sponsors' ? (
         <div className="rounded-2xl border border-stone-200 bg-white p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -1084,6 +1370,227 @@ export default function AdminFundraisePage() {
               ))}
             </div>
           )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-5">
+          <section className="xl:col-span-3 rounded-2xl border border-stone-200 bg-white p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-stone-900">Process Donation</h2>
+                <p className="mt-1 text-sm text-stone-600">
+                  Enter donor details, pick an amount, then run the card directly in this tab.
+                </p>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-red-700">
+                <CreditCard className="h-3.5 w-3.5" />
+                Secure Card Form
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-5">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Donor Name</span>
+                  <div className="relative">
+                    <UserRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+                    <input
+                      type="text"
+                      value={donorName}
+                      onChange={(event) => setDonorName(event.target.value)}
+                      placeholder="Full name"
+                      className="w-full rounded-xl border border-stone-300 bg-white py-2.5 pl-10 pr-3 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                    />
+                  </div>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Donor Email</span>
+                  <div className="relative">
+                    <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+                    <input
+                      type="email"
+                      value={donorEmail}
+                      onChange={(event) => setDonorEmail(event.target.value)}
+                      placeholder="name@email.com"
+                      className="w-full rounded-xl border border-stone-300 bg-white py-2.5 pl-10 pr-3 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                    />
+                  </div>
+                </label>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Donation Amount</p>
+                <div className="flex flex-wrap gap-2">
+                  {DONATION_PRESET_AMOUNTS_CENTS.map((amountCents) => {
+                    const isSelected = selectedDonationAmountCents === amountCents;
+                    return (
+                      <button
+                        key={amountCents}
+                        type="button"
+                        onClick={() => void requestDonationIntent(amountCents)}
+                        className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                          isSelected
+                            ? 'border-red-700 bg-red-700 text-white'
+                            : 'border-stone-300 bg-white text-stone-700 hover:border-red-500 hover:text-red-700'
+                        }`}
+                      >
+                        {formatUsd(amountCents)}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={handleOtherDonationSelect}
+                    className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                      isOtherDonationSelected
+                        ? 'border-red-700 bg-red-700 text-white'
+                        : 'border-stone-300 bg-white text-stone-700 hover:border-red-500 hover:text-red-700'
+                    }`}
+                  >
+                    Other
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <div className="relative flex-1">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-stone-500">$</span>
+                    <input
+                      ref={customAmountInputRef}
+                      type="text"
+                      inputMode="decimal"
+                      value={customDonationAmount}
+                      onChange={(event) => setCustomDonationAmount(event.target.value)}
+                      placeholder="Custom amount"
+                      className="w-full rounded-xl border border-stone-300 bg-white py-2.5 pl-8 pr-3 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={applyCustomDonationAmount}
+                    className="rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:border-red-500 hover:text-red-700"
+                  >
+                    Use Amount
+                  </button>
+                </div>
+              </div>
+
+              {donationIntentLoading ? (
+                <div className="inline-flex items-center gap-2 text-sm text-stone-600">
+                  <Loader2 className="h-4 w-4 animate-spin text-red-700" />
+                  Loading secure card form...
+                </div>
+              ) : null}
+
+              {donationSuccessMessage ? (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                  {donationSuccessMessage}
+                </div>
+              ) : null}
+
+              {donationError ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{donationError}</div>
+              ) : null}
+
+              {activeDonationIntent && donationStripePromise && donationStripeOptions && !donationIntentLoading ? (
+                <div className="rounded-2xl border border-stone-200 bg-stone-50 p-3 sm:p-4">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">
+                    Charge {formatUsd(activeDonationIntent.amountCents)}
+                  </p>
+                  <Elements stripe={donationStripePromise} options={donationStripeOptions} key={activeDonationIntent.paymentIntentId}>
+                    <AdminDonationPaymentForm
+                      amountCents={activeDonationIntent.amountCents}
+                      donorName={donorName.trim()}
+                      donorEmail={donorEmail.trim().toLowerCase()}
+                      onSuccess={() => {
+                        setDonationSuccessMessage(`Donation of ${formatUsd(activeDonationIntent.amountCents)} was processed.`);
+                        setActiveDonationIntent(null);
+                        setDonationError(null);
+                        void loadDonations();
+                      }}
+                      onError={setDonationError}
+                    />
+                  </Elements>
+                </div>
+              ) : null}
+            </div>
+          </section>
+
+          <aside className="xl:col-span-2 rounded-2xl border border-stone-200 bg-white p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-stone-900">Recent Donations</h2>
+                <p className="mt-1 text-sm text-stone-600">Latest Stripe donation payments tagged from fundraising checkout.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void loadDonations()}
+                className="inline-flex items-center gap-1 rounded-lg border border-stone-300 px-2.5 py-1 text-xs font-semibold text-stone-700 transition hover:bg-stone-50"
+              >
+                <RefreshCcw className={`h-3.5 w-3.5 ${donationsLoading ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3 xl:grid-cols-1">
+              <div className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Donations</p>
+                <p className="mt-1 text-lg font-bold text-stone-900">{donationSummary?.count ?? donations.length}</p>
+              </div>
+              <div className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Succeeded</p>
+                <p className="mt-1 text-lg font-bold text-stone-900">
+                  {donationSummary?.succeededCount ?? donations.filter((item) => item.status === 'succeeded').length}
+                </p>
+              </div>
+              <div className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Gross</p>
+                <p className="mt-1 text-lg font-bold text-stone-900">{formatUsd(donationSummary?.grossSucceededCents ?? 0)}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {donationsLoading ? (
+                <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-8 text-center text-sm text-stone-500">
+                  Loading donations...
+                </div>
+              ) : donations.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-stone-200 px-4 py-8 text-center text-sm text-stone-500">
+                  No donations found yet.
+                </div>
+              ) : (
+                <div className="max-h-[520px] space-y-2 overflow-y-auto pr-1">
+                  {donations.map((donation) => {
+                    const statusTone =
+                      donation.status === 'succeeded'
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : donation.status === 'processing'
+                          ? 'border-amber-200 bg-amber-50 text-amber-700'
+                          : 'border-stone-200 bg-stone-100 text-stone-700';
+
+                    return (
+                      <article key={donation.paymentIntentId} className="rounded-xl border border-stone-200 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold text-stone-900">{donation.donorName || 'Supporter'}</p>
+                            <p className="text-xs text-stone-500">{donation.donorEmail || donation.receiptEmail || 'No email'}</p>
+                          </div>
+                          <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusTone}`}>
+                            {formatDonationStatus(donation.status)}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-2 text-sm">
+                          <span className="font-semibold text-stone-900">{formatMoney(donation.amountCents, donation.currency)}</span>
+                          <span className="text-xs text-stone-500">{new Date(donation.createdAt).toLocaleString()}</span>
+                        </div>
+                        <p className="mt-2 text-[11px] text-stone-500">
+                          {donation.thankYouEmailSent ? 'Thank-you email sent' : 'Thank-you email pending'} · {donation.paymentIntentId}
+                        </p>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </aside>
         </div>
       )}
 

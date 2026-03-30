@@ -12,6 +12,10 @@ const donationIntentSchema = z.object({
   donorEmail: z.string().trim().email().max(320)
 });
 
+const adminDonationListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50)
+});
+
 function isSeatEffectivelyAvailable(seat: {
   status: string;
   holdSession?: {
@@ -86,6 +90,51 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
       }
     }
   );
+
+  app.get('/api/admin/fundraising/donations', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+    const parsed = adminDonationListQuerySchema.safeParse(request.query || {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+
+    try {
+      const requestedLimit = parsed.data.limit;
+      const intents = await stripe.paymentIntents.list({ limit: 100 });
+      const donations = intents.data
+        .filter((intent) => intent.metadata?.source === 'fundraising_donation')
+        .slice(0, requestedLimit)
+        .map((intent) => ({
+          paymentIntentId: intent.id,
+          amountCents: intent.amount,
+          currency: intent.currency || 'usd',
+          status: intent.status,
+          donorName: intent.metadata?.donorName || 'Supporter',
+          donorEmail: intent.metadata?.donorEmail || intent.receipt_email || '',
+          receiptEmail: intent.receipt_email || null,
+          createdAt: new Date(intent.created * 1000).toISOString(),
+          thankYouEmailSent: intent.metadata?.thankYouEmailSent === 'true'
+        }));
+
+      const succeeded = donations.filter((donation) => donation.status === 'succeeded');
+      const grossSucceededCents = succeeded.reduce((sum, donation) => sum + donation.amountCents, 0);
+
+      return reply.send({
+        donations,
+        summary: {
+          count: donations.length,
+          succeededCount: succeeded.length,
+          grossSucceededCents
+        }
+      });
+    } catch (err) {
+      if (err instanceof Stripe.errors.StripeError) {
+        const statusCode = err.type === 'StripeInvalidRequestError' ? 400 : 502;
+        return reply.status(statusCode).send({ error: err.message || 'Payment provider error' });
+      }
+
+      handleRouteError(reply, err, 'Failed to fetch donation admin data');
+    }
+  });
 
   app.get('/api/fundraising/events', async (_request, reply) => {
     try {

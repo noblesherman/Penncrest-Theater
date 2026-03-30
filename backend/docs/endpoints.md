@@ -411,6 +411,32 @@ Response:
 ### `GET /api/admin/performances`
 Returns performance rows with tiers and seat counts.
 
+### `GET /api/admin/fundraising/donations?limit=60`
+Returns recent Stripe fundraising donations (`metadata.source = fundraising_donation`) for the admin fundraising donations tab.
+Response:
+```json
+{
+  "donations": [
+    {
+      "paymentIntentId": "pi_123",
+      "amountCents": 2000,
+      "currency": "usd",
+      "status": "succeeded",
+      "donorName": "Jamie Rivera",
+      "donorEmail": "jamie@example.com",
+      "receiptEmail": "jamie@example.com",
+      "createdAt": "2026-03-30T20:18:44.000Z",
+      "thankYouEmailSent": true
+    }
+  ],
+  "summary": {
+    "count": 1,
+    "succeededCount": 1,
+    "grossSucceededCents": 2000
+  }
+}
+```
+
 ### `POST /api/admin/check-in/session/start`
 Starts a scanner staff session for one performance/gate.
 Request:

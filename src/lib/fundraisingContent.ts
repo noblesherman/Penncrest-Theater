@@ -171,19 +171,24 @@ export const donationLevels: DonationLevel[] = [
 
 export const sponsorshipTiers: SponsorshipTier[] = [
   {
-    level: 'Bronze Sponsor',
-    amount: '$250',
-    benefit: 'Program listing and website recognition.'
+    level: 'Balcony',
+    amount: '$50 - $249',
+    benefit: 'Quarter-page ad in our programs for all four productions next school year, plus listing on the sponsor page.'
   },
   {
-    level: 'Silver Sponsor',
-    amount: '$500',
-    benefit: 'Event signage logo placement plus all Bronze benefits.'
+    level: 'Mezzanine',
+    amount: '$250 - $499',
+    benefit: 'Everything in Balcony, plus tax-deductible donation documentation and a half-page program ad.'
   },
   {
-    level: 'Gold Sponsor',
+    level: 'Orchestra',
+    amount: '$500 - $999',
+    benefit: 'Everything in Mezzanine, plus listing on donor posters displayed during performances and a full-page program ad.'
+  },
+  {
+    level: 'Center Stage',
     amount: '$1,000+',
-    benefit: 'Featured logos, stage announcement, and social media spotlights.'
+    benefit: 'Everything in Orchestra, plus sponsor listing on all advertising and press releases.'
   }
 ];
 
