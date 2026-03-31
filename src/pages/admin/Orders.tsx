@@ -361,7 +361,7 @@ export default function AdminOrdersPage() {
       });
       setAssignForm(prev => ({ ...prev, customerName: '', customerEmail: '', seatIdsInput: '', ticketType: '' }));
       setNotice(`Assigned ${seatIds.length} seat${seatIds.length === 1 ? '' : 's'} successfully.`);
-      closeWizard();
+      startCashierLoop(assignForm.performanceId);
       void load();
       void loadSeatsForPerformance(assignForm.performanceId, { showLoading: false, syncSelection: false });
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to assign seats'); }
@@ -483,7 +483,8 @@ export default function AdminOrdersPage() {
       setNotice(
         `${paymentMethod === 'CASH' ? 'Cash' : 'Stripe'} sale completed — ${seatIds.length} seat${seatIds.length === 1 ? '' : 's'} · $${(result.expectedAmountCents / 100).toFixed(2)}`
       );
-      closeWizard(); void load();
+      startCashierLoop(assignForm.performanceId);
+      void load();
     } catch (e) {
       setInPersonFlowError(e instanceof Error ? e.message : 'Failed to finalize in-person sale');
     } finally { setInPersonSubmitting(false); }
@@ -502,7 +503,7 @@ export default function AdminOrdersPage() {
       `Stripe sale completed — ${dispatch.seatCount} seat${dispatch.seatCount === 1 ? '' : 's'} · $${(dispatch.expectedAmountCents / 100).toFixed(2)}`
     );
     setTerminalDispatch(null);
-    closeWizard();
+    startCashierLoop(assignForm.performanceId);
     void load();
     void loadSeatsForPerformance(assignForm.performanceId, { showLoading: false, syncSelection: false });
   };
@@ -572,6 +573,35 @@ export default function AdminOrdersPage() {
     setTicketSelectionBySeatId({}); resetInPersonFlow();
   }
 
+  function startCashierLoop(performanceId: string) {
+    if (!performanceId) {
+      setError('No active performances available for cashier checkout.');
+      return;
+    }
+
+    writeCashierDefaultPerformanceId(performanceId);
+    didAutoOpenSeatPickerRef.current = false;
+    setAssignForm((prev) => ({
+      ...prev,
+      performanceId,
+      customerName: '',
+      customerEmail: '',
+      seatIdsInput: '',
+      ticketType: '',
+      sendEmail: false
+    }));
+    setTicketSelectionBySeatId({});
+    resetInPersonFlow();
+    setShowCashierPerformancePicker(false);
+    setSeatPickerError(null);
+    setSeatPickerOpen(false);
+    setShowWizard(true);
+    setDir(1);
+    setStep(1);
+    setError(null);
+    void loadSeatsForPerformance(performanceId, { showLoading: false, syncSelection: false });
+  }
+
   const openCashierFlow = () => {
     if (performances.length === 0) {
       setError('No active performances available for cashier checkout.');
@@ -585,6 +615,10 @@ export default function AdminOrdersPage() {
           ? readCashierDefaultPerformanceId()
           : fallbackPerformanceId;
     setCashierPerformanceDraftId(nextDraftId);
+    if (nextDraftId) {
+      startCashierLoop(nextDraftId);
+      return;
+    }
     setShowCashierPerformancePicker(true);
     setError(null);
   };
@@ -600,12 +634,7 @@ export default function AdminOrdersPage() {
       return;
     }
 
-    writeCashierDefaultPerformanceId(chosenPerformanceId);
-    setAssignForm((prev) => ({ ...prev, performanceId: chosenPerformanceId }));
-    setShowCashierPerformancePicker(false);
-    setShowWizard(true);
-    setStep(0);
-    setError(null);
+    startCashierLoop(chosenPerformanceId);
   };
 
   useEffect(() => {
