@@ -597,7 +597,7 @@ export default function AdminOrdersPage() {
     setSeatPickerOpen(false);
     setShowWizard(true);
     setDir(1);
-    setStep(1);
+    setStep(0);
     setError(null);
     void loadSeatsForPerformance(performanceId, { showLoading: false, syncSelection: false });
   }
