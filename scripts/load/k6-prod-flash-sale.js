@@ -77,14 +77,31 @@ export function setup() {
   if (!PERFORMANCE_ID) fail('PERFORMANCE_ID is required');
   if (TARGET_BUYERS <= 0) fail('TARGET_BUYERS must be > 0');
 
-  const seatsRes = http.get(`${BASE_URL}/api/performances/${encodeURIComponent(PERFORMANCE_ID)}/seats`);
+  const url = `${BASE_URL}/api/performances/${PERFORMANCE_ID}/seats`;
+  console.log(`setup url=${url}`);
+
+  const seatsRes = http.get(url);
+  console.log(`status=${seatsRes.status}`);
+  if (seatsRes.status !== 200) {
+    fail(`Failed to fetch seats in setup. status=${seatsRes.status} body=${seatsRes.body}`);
+  }
   check(seatsRes, { 'setup seats request succeeded': (r) => r.status === 200 }) || fail('Failed to fetch seats in setup');
 
-  const allSeats = seatsRes.json();
-  if (!Array.isArray(allSeats)) fail('Unexpected seats payload in setup');
+  const seats = seatsRes.json();
+  if (!Array.isArray(seats) || seats.length === 0) {
+    fail(`Unexpected or empty seats payload in setup. status=${seatsRes.status} body=${seatsRes.body}`);
+  }
 
-  const availableSeatIds = allSeats
-    .filter((seat) => seat && seat.status === 'available' && typeof seat.id === 'string')
+  const availableSeats = seats.filter((s) => s && s.status === 'available');
+  console.log(`total seats=${seats.length}`);
+  console.log(`available seats=${availableSeats.length}`);
+
+  if (availableSeats.length === 0) {
+    fail('No available seats found in setup');
+  }
+
+  const availableSeatIds = availableSeats
+    .filter((seat) => typeof seat.id === 'string')
     .map((seat) => seat.id);
 
   if (availableSeatIds.length < TARGET_BUYERS) {
@@ -92,6 +109,7 @@ export function setup() {
   }
 
   return {
+    seats: availableSeats,
     baseUrl: BASE_URL,
     performanceId: PERFORMANCE_ID,
     seatIds: availableSeatIds,

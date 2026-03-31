@@ -243,6 +243,7 @@ export default function AdminOrdersPage() {
   const [step,         setStep]         = useState(0);
   const [dir,          setDir]          = useState<1 | -1>(1);
   const didAutoOpenSeatPickerRef = useRef(false);
+  const selectedSeatIdsRef = useRef<string[]>([]);
   const [seatPickerOpen,  setSeatPickerOpen]  = useState(false);
   const [seats,           setSeats]           = useState<Seat[]>([]);
   const [loadingSeats,    setLoadingSeats]    = useState(false);
@@ -360,7 +361,9 @@ export default function AdminOrdersPage() {
       });
       setAssignForm(prev => ({ ...prev, customerName: '', customerEmail: '', seatIdsInput: '', ticketType: '' }));
       setNotice(`Assigned ${seatIds.length} seat${seatIds.length === 1 ? '' : 's'} successfully.`);
-      closeWizard(); void load();
+      closeWizard();
+      void load();
+      void loadSeatsForPerformance(assignForm.performanceId, { showLoading: false, syncSelection: false });
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to assign seats'); }
     finally { setSubmitting(false); }
   };
@@ -486,7 +489,7 @@ export default function AdminOrdersPage() {
     } finally { setInPersonSubmitting(false); }
   };
 
-  const finalizeSuccessfulTerminalDispatch = useCallback((dispatch: TerminalDispatch) => {
+  const finalizeSuccessfulTerminalDispatch = (dispatch: TerminalDispatch) => {
     setSaleRecap({
       expectedAmountCents: dispatch.expectedAmountCents,
       paymentMethod: 'STRIPE',
@@ -499,8 +502,10 @@ export default function AdminOrdersPage() {
       `Stripe sale completed — ${dispatch.seatCount} seat${dispatch.seatCount === 1 ? '' : 's'} · $${(dispatch.expectedAmountCents / 100).toFixed(2)}`
     );
     setTerminalDispatch(null);
-    closeWizard(); void load();
-  }, [closeWizard, load]);
+    closeWizard();
+    void load();
+    void loadSeatsForPerformance(assignForm.performanceId, { showLoading: false, syncSelection: false });
+  };
 
   const applyTerminalDispatchStatus = useCallback((dispatch: TerminalDispatch) => {
     setTerminalDispatch(dispatch);
@@ -641,27 +646,73 @@ export default function AdminOrdersPage() {
 
   // ── seat loading ───────────────────────────────────────────────────────────
 
-  const loadSeatsForPerformance = useCallback(async (performanceId: string) => {
+  const loadSeatsForPerformance = useCallback(async (
+    performanceId: string,
+    options?: { showLoading?: boolean; syncSelection?: boolean }
+  ) => {
     if (!performanceId) return;
-    setLoadingSeats(true);
+    const showLoading = options?.showLoading ?? true;
+    const syncSelection = options?.syncSelection ?? true;
+    if (showLoading) setLoadingSeats(true);
     try {
+      let nextSeats: Seat[] = [];
       try {
         const adminSeats = await adminFetch<any[]>(`/api/admin/performances/${performanceId}/seats`);
-        setSeats(adminSeats.map(normalizeSeat)); setSeatPickerError(null); return;
+        nextSeats = adminSeats.map(normalizeSeat);
       } catch (e) {
         if (!(e instanceof Error && e.message.toLowerCase().includes('not found'))) throw e;
+        const publicSeats = await apiFetch<any[] | { seats: any[] }>(`/api/performances/${performanceId}/seats`);
+        const seatList = Array.isArray(publicSeats) ? publicSeats : publicSeats.seats;
+        nextSeats = seatList.map(normalizeSeat);
       }
-      const publicSeats = await apiFetch<any[] | { seats: any[] }>(`/api/performances/${performanceId}/seats`);
-      const seatList = Array.isArray(publicSeats) ? publicSeats : publicSeats.seats;
-      setSeats(seatList.map(normalizeSeat)); setSeatPickerError(null);
+
+      setSeats(nextSeats);
+      setSeatPickerError(null);
+
+      const currentSeatIds = selectedSeatIdsRef.current;
+      if (syncSelection && currentSeatIds.length > 0) {
+        const unavailableSeatIds = new Set(
+          nextSeats
+            .filter((seat) => seat.status !== 'available')
+            .map((seat) => seat.id)
+        );
+        const removedSeatIds = currentSeatIds.filter((seatId) => unavailableSeatIds.has(seatId));
+
+        if (removedSeatIds.length > 0) {
+          setAssignForm((prev) => ({
+            ...prev,
+            seatIdsInput: parseSeatIds(prev.seatIdsInput)
+              .filter((seatId) => !unavailableSeatIds.has(seatId))
+              .join(', ')
+          }));
+          setTicketSelectionBySeatId((prev) => {
+            const next = { ...prev };
+            removedSeatIds.forEach((seatId) => {
+              delete next[seatId];
+            });
+            return next;
+          });
+          setError(
+            removedSeatIds.length === 1
+              ? 'A selected seat is no longer available. The seating chart was refreshed.'
+              : `${removedSeatIds.length} selected seats are no longer available. The seating chart was refreshed.`
+          );
+        }
+      }
     } catch (e) {
       setSeatPickerError(e instanceof Error ? e.message : 'Failed to load seats');
-    } finally { setLoadingSeats(false); }
+    } finally {
+      if (showLoading) setLoadingSeats(false);
+    }
   }, []);
 
   // ── derived state ──────────────────────────────────────────────────────────
 
   const seatIds = useMemo(() => parseSeatIds(assignForm.seatIdsInput), [assignForm.seatIdsInput]);
+
+  useEffect(() => {
+    selectedSeatIdsRef.current = seatIds;
+  }, [seatIds]);
 
   useEffect(() => { if (!showWizard || step !== 1) setSeatPickerOpen(false); }, [showWizard, step]);
 
@@ -697,6 +748,21 @@ export default function AdminOrdersPage() {
 
     return () => window.clearInterval(timerId);
   }, [refreshTerminalDispatchStatus, terminalDispatch]);
+
+  useEffect(() => {
+    if (!showWizard || step === 0 || terminalDispatch || !assignForm.performanceId) {
+      return;
+    }
+
+    const timerId = window.setInterval(() => {
+      void loadSeatsForPerformance(assignForm.performanceId, {
+        showLoading: false,
+        syncSelection: true
+      }).catch(() => undefined);
+    }, 5000);
+
+    return () => window.clearInterval(timerId);
+  }, [assignForm.performanceId, loadSeatsForPerformance, showWizard, step, terminalDispatch]);
 
   const selectedSeatIdSet = useMemo(() => new Set(seatIds), [seatIds]);
 
@@ -1858,7 +1924,7 @@ export default function AdminOrdersPage() {
                     controlsClassName="absolute bottom-4 right-4 z-30 flex flex-col gap-2"
                     renderSeat={({ seat, x, y }) => {
                       const isSelected = selectedSeatIdSet.has(seat.id);
-                      const isUnavailable = seat.status === 'sold' || seat.status === 'blocked';
+                      const isUnavailable = seat.status === 'held' || seat.status === 'sold' || seat.status === 'blocked';
                       const companionOk =
                         !seat.isCompanion || isSelected ||
                         (seat.companionForSeatId ? selectedSeatIdSet.has(seat.companionForSeatId) : hasAccessibleSelection);

@@ -355,7 +355,9 @@ async function buildInPersonSaleQuote(params: {
 
   validateCompanionSelection(performance.seats as InPersonSaleSeat[]);
 
-  const unavailableSeat = performance.seats.find((seat) => seat.status === 'SOLD' || seat.status === 'BLOCKED');
+  const unavailableSeat = performance.seats.find(
+    (seat) => seat.status === 'HELD' || seat.status === 'SOLD' || seat.status === 'BLOCKED'
+  );
   if (unavailableSeat) {
     throw new HttpError(409, 'One or more selected seats are no longer available');
   }
@@ -730,7 +732,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
         ticketTypeBySeatId: parsed.data.ticketTypeBySeatId,
         priceBySeatId: parsed.data.priceBySeatId,
         source: parsed.data.source,
-        allowHeldSeats: true,
+        allowHeldSeats: false,
         enforceSalesCutoff: false,
         sendEmail: parsed.data.sendEmail ?? false
       });
@@ -1289,7 +1291,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
         ticketTypeBySeatId,
         priceBySeatId,
         source: 'DOOR',
-        allowHeldSeats: true,
+        allowHeldSeats: false,
         enforceSalesCutoff: false,
         sendEmail,
         inPersonPaymentMethod: parsed.data.paymentMethod
