@@ -1,11 +1,25 @@
 import { Link, useLocation } from 'react-router-dom';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Ticket, Menu, X } from 'lucide-react';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isAddressMapOpen, setIsAddressMapOpen] = useState(false);
   const location = useLocation();
+
+  useEffect(() => {
+    if (!isAddressMapOpen) return undefined;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsAddressMapOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isAddressMapOpen]);
 
   const navLinks = [
     { name: 'Home',       path: '/'      },
@@ -134,6 +148,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <p className="text-sm leading-relaxed max-w-xs text-stone-500">
                 Bringing stories to life in Media, PA. A theater program dedicated to creativity, community, and excellence in the arts.
               </p>
+              <div className="mt-5 flex flex-col gap-2 text-sm">
+                <Link to="/privacy-policy" className="hover:text-amber-400 transition-colors">Privacy Policy</Link>
+                <Link to="/terms-of-service" className="hover:text-amber-400 transition-colors">Terms of Service</Link>
+                <Link to="/refund-policy" className="hover:text-amber-400 transition-colors">Refund Policy</Link>
+              </div>
             </div>
 
             {/* Explore */}
@@ -143,9 +162,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 <li><Link to="/shows" className="hover:text-amber-400 transition-colors">Our Season</Link></li>
                 <li><Link to="/fundraising" className="hover:text-amber-400 transition-colors">Fundraising</Link></li>
                 <li><Link to="/about" className="hover:text-amber-400 transition-colors">Our History</Link></li>
-                <li><Link to="/privacy-policy" className="hover:text-amber-400 transition-colors">Privacy Policy</Link></li>
-                <li><Link to="/terms-of-service" className="hover:text-amber-400 transition-colors">Terms of Service</Link></li>
-                <li><Link to="/refund-policy" className="hover:text-amber-400 transition-colors">Refund Policy</Link></li>
               </ul>
             </div>
 
@@ -153,16 +169,31 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <div>
               <h4 className="text-white font-semibold text-xs uppercase tracking-[0.15em] mb-5">Connect</h4>
               <ul className="space-y-3 text-sm">
-                <li>134 Barren Rd, Media, PA 19063</li>
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddressMapOpen(true)}
+                    className="text-left underline decoration-stone-700 underline-offset-4 transition-colors hover:text-amber-400 hover:decoration-amber-400"
+                  >
+                    134 Barren Rd, Media, PA 19063
+                  </button>
+                </li>
                 <li>
                   <a href="mailto:jsmith3@rtmsd.org" className="hover:text-amber-400 transition-colors">
                     jsmith3@rtmsd.org
                   </a>
                 </li>
                 <li className="flex gap-3 pt-1">
-                  <motion.div whileHover={{ y: -2 }} className="w-8 h-8 bg-stone-800 hover:bg-red-700 text-stone-400 hover:text-white rounded-full flex items-center justify-center cursor-pointer transition-colors text-xs font-bold">
+                  <motion.a
+                    whileHover={{ y: -2 }}
+                    href="https://www.instagram.com/penncrest.theater/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Penncrest Theater Instagram"
+                    className="w-8 h-8 bg-stone-800 hover:bg-red-700 text-stone-400 hover:text-white rounded-full flex items-center justify-center cursor-pointer transition-colors text-xs font-bold"
+                  >
                     IG
-                  </motion.div>
+                  </motion.a>
                   <motion.div whileHover={{ y: -2 }} className="w-8 h-8 bg-stone-800 hover:bg-red-700 text-stone-400 hover:text-white rounded-full flex items-center justify-center cursor-pointer transition-colors text-xs font-bold">
                     FB
                   </motion.div>
@@ -178,6 +209,63 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </footer>
+
+      <AnimatePresence>
+        {isAddressMapOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="fixed inset-0 z-[140] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Penncrest Theater arrival map"
+            onClick={() => setIsAddressMapOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.98 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              className="relative w-full max-w-3xl overflow-hidden rounded-[28px] border border-white/10 bg-stone-950 shadow-2xl shadow-black/40"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setIsAddressMapOpen(false)}
+                className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-stone-900/85 text-stone-200 transition-colors hover:bg-red-700 hover:text-white"
+                aria-label="Close arrival map"
+              >
+                <X className="h-5 w-5" />
+              </button>
+
+              <div className="border-b border-stone-800 bg-gradient-to-r from-stone-950 via-stone-900 to-stone-950 px-5 py-5 sm:px-7">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-400">
+                  Penncrest Theater
+                </p>
+                <h3
+                  className="mt-2 text-2xl font-bold text-white sm:text-3xl"
+                  style={{ fontFamily: 'Georgia, serif' }}
+                >
+                  Lion Entrance Map
+                </h3>
+                <p className="mt-2 max-w-xl text-sm leading-relaxed text-stone-400">
+                  134 Barren Rd, Media, PA 19063
+                </p>
+              </div>
+
+              <div className="bg-stone-900 p-3 sm:p-4">
+                <img
+                  src="/footer-address-map.png"
+                  alt="Map showing Penncrest High School and the Lion Entrance parking area."
+                  className="max-h-[75vh] w-full rounded-2xl border border-stone-800 bg-white object-contain"
+                />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

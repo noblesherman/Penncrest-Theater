@@ -64,7 +64,7 @@ const STRIPE_BALANCE_SUMMARY_PREFIX = 'balance.summary.';
 const BRAND_NAME = 'Penncrest High School Theater';
 const BRAND_ADDRESS_LINE = '134 Barren Rd, Media, PA 19063';
 const BRAND_EMAIL = 'jsmith3@rtmsd.org';
-const BRAND_WEB = 'www.penncresttheater.org';
+const BRAND_WEB = 'www.penncresttheater.com';
 
 let cachedLogoBuffer: Buffer | null | undefined;
 
