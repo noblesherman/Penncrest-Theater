@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getStartupPreflight } from '../api/mobile';
 import { API_BASE_URL, TERMINAL_MOCK_MODE } from '../config';
 import { useTerminal } from '../terminal/terminal';
+import { TAP_TO_PAY_BUILD_HINT, TAP_TO_PAY_DISPLAY_NAME, TAP_TO_PAY_LIVE_SETUP_HINT } from '../terminal/tapToPay';
 
 type StartupPreflightScreenProps = {
   onReady: () => void;
@@ -152,13 +153,13 @@ export function StartupPreflightScreen({ onReady }: StartupPreflightScreenProps)
       } else if (terminal.isAvailable) {
         setTerminalCheck({
           status: 'ok',
-          detail: 'Stripe Terminal native module is available in this build.'
+          detail: `Stripe Terminal native module is available in this build. ${TAP_TO_PAY_LIVE_SETUP_HINT}`
         });
       } else {
         setTerminalCheck({
           status: 'failed',
-          detail: 'Stripe Terminal native module is unavailable.',
-          fix: 'Install a production-distributed build with Stripe Terminal enabled, then run checks again.'
+          detail: `${TAP_TO_PAY_DISPLAY_NAME} is unavailable because the Stripe Terminal native module is missing from this build.`,
+          fix: TAP_TO_PAY_BUILD_HINT
         });
       }
     } finally {

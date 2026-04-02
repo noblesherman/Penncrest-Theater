@@ -11,6 +11,7 @@ import { TERMINAL_MOCK_MODE } from '../config';
 import type { RootStackParamList } from '../navigation/types';
 import { clearPendingSale, savePendingSale } from '../payments/paymentRecovery';
 import { useTerminal } from '../terminal/terminal';
+import { TAP_TO_PAY_BUILD_HINT, TAP_TO_PAY_DEVICE_LABEL, TAP_TO_PAY_DISPLAY_NAME } from '../terminal/tapToPay';
 import { screenStyles } from './styles';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'TapToPay'>;
@@ -61,21 +62,29 @@ export function TapToPayScreen({ navigation, route }: Props) {
     }
   };
 
+  const ensurePlatformPermissions = async () => {
+    const result = await terminal.requestRequiredPermissions();
+    if (result.error) {
+      throw new Error(result.error.message || 'Required Tap to Pay permissions were denied');
+    }
+  };
+
   useEffect(() => {
     if (didInitialize) return;
     setDidInitialize(true);
 
     const initializeTerminal = async () => {
       if (isTerminalMockMode) {
-        setStatusMessage('Terminal mock mode enabled. Payments finalize without Apple Tap to Pay.');
+        setStatusMessage(`Terminal mock mode enabled. Payments finalize without ${TAP_TO_PAY_DISPLAY_NAME}.`);
         return;
       }
 
       if (!terminal.isAvailable) {
-        setStatusMessage('Stripe Terminal is unavailable in this app build. Tap to Pay cannot start.');
+        setStatusMessage(`Stripe Terminal is unavailable in this app build. ${TAP_TO_PAY_DISPLAY_NAME} cannot start.`);
         return;
       }
 
+      await ensurePlatformPermissions();
       await ensureTerminalInitialized();
       setStatusMessage('Terminal initialized');
     };
@@ -95,6 +104,7 @@ export function TapToPayScreen({ navigation, route }: Props) {
     setError(null);
     setBusy(true);
     try {
+      await ensurePlatformPermissions();
       setStatusMessage('Discovering Tap to Pay reader...');
       const result = await terminal.discoverReaders({
         discoveryMethod: 'tapToPay',
@@ -180,6 +190,7 @@ export function TapToPayScreen({ navigation, route }: Props) {
       throw new Error('Stripe Terminal is unavailable in this app build.');
     }
 
+    await ensurePlatformPermissions();
     await ensureTerminalInitialized();
     if (terminal.connectedReader) {
       return;
@@ -243,7 +254,7 @@ export function TapToPayScreen({ navigation, route }: Props) {
 
     const runMockTapToPayAnimation = async () => {
       const steps = [
-        'Tap to Pay demo: Hold card near the top of this iPhone...',
+        `Tap to Pay demo: Hold card near ${TAP_TO_PAY_DEVICE_LABEL}...`,
         'Tap to Pay demo: Reading card...',
         'Tap to Pay demo: Verifying card...',
         'Tap to Pay demo: Authorizing...',
@@ -330,8 +341,8 @@ export function TapToPayScreen({ navigation, route }: Props) {
         {!terminal.isAvailable ? (
           <View style={screenStyles.card}>
             <Text style={screenStyles.label}>Requirements</Text>
-            <Text style={screenStyles.value}>Tap to Pay is not available in this build.</Text>
-            <Text style={screenStyles.value}>Use the App Store or production-distributed build with Stripe Terminal enabled.</Text>
+            <Text style={screenStyles.value}>{TAP_TO_PAY_DISPLAY_NAME} is not available in this build.</Text>
+            <Text style={screenStyles.value}>{TAP_TO_PAY_BUILD_HINT}</Text>
           </View>
         ) : null}
         {isTerminalMockMode ? (

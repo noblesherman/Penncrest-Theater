@@ -16,6 +16,10 @@
       "supportsTablet": false,
       "infoPlist": {
         "NSCameraUsageDescription": "Penncrest Theater uses the camera to scan ticket QR codes at venue entry.",
+        "NSLocationWhenInUseUsageDescription": "Penncrest Theater uses your location so Stripe Terminal can connect to supported in-person payment readers.",
+        "NSBluetoothPeripheralUsageDescription": "Penncrest Theater uses Bluetooth to connect to supported Stripe Terminal readers when needed.",
+        "NSBluetoothAlwaysUsageDescription": "Penncrest Theater uses Bluetooth to connect to supported Stripe Terminal readers when needed.",
+        "NSLocalNetworkUsageDescription": "Penncrest Theater uses the local network to connect to supported Stripe Terminal readers when needed.",
         "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "com.anonymous.theatermobile"
@@ -29,7 +33,10 @@
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH_SCAN"
       ],
       "package": "com.anonymous.theatermobile"
     },
@@ -47,6 +54,17 @@
         {
           "merchantIdentifier": "merchant.com.anonymous.theatermobile",
           "enableGooglePay": false
+        }
+      ],
+      [
+        "@stripe/stripe-terminal-react-native",
+        {
+          "appDelegate": true,
+          "tapToPayCheck": true,
+          "locationWhenInUsePermission": "Penncrest Theater uses your location so Stripe Terminal can connect to supported in-person payment readers.",
+          "bluetoothPeripheralPermission": "Penncrest Theater uses Bluetooth to connect to supported Stripe Terminal readers when needed.",
+          "bluetoothAlwaysUsagePermission": "Penncrest Theater uses Bluetooth to connect to supported Stripe Terminal readers when needed.",
+          "localNetworkUsagePermission": "Penncrest Theater uses the local network to connect to supported Stripe Terminal readers when needed."
         }
       ]
     ],

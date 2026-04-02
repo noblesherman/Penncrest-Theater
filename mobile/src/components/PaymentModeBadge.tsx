@@ -11,7 +11,9 @@ export function PaymentModeBadge({ compact = false }: PaymentModeBadgeProps) {
   return (
     <View style={[styles.badge, isDemo ? styles.badgeDemo : styles.badgeLive, compact && styles.badgeCompact]}>
       <Text style={[styles.badgeText, compact && styles.badgeTextCompact]}>{isDemo ? 'DEMO' : 'LIVE'}</Text>
-      <Text style={[styles.badgeMeta, compact && styles.badgeMetaCompact]}>{isDemo ? 'No real Tap to Pay charge' : 'Real card charges enabled'}</Text>
+      <Text style={[styles.badgeMeta, compact && styles.badgeMetaCompact]}>
+        {isDemo ? 'No real Tap to Pay charge' : 'Real Tap to Pay charges enabled'}
+      </Text>
     </View>
   );
 }

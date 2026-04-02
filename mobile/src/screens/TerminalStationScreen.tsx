@@ -27,6 +27,7 @@ import {
 } from '../payments/paymentRecovery';
 import { stripePaymentSheet } from '../payments/stripePaymentSheet';
 import { useTerminal } from '../terminal/terminal';
+import { TAP_TO_PAY_DEVICE_LABEL, TAP_TO_PAY_DISPLAY_NAME, TAP_TO_PAY_PERMISSION_HINT } from '../terminal/tapToPay';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'TerminalStation'>;
 
@@ -299,11 +300,19 @@ export function TerminalStationScreen(_props: Props) {
     }
   }, [terminal]);
 
+  const ensurePlatformPermissions = useCallback(async () => {
+    const result = await terminal.requestRequiredPermissions();
+    if (result.error) {
+      throw new Error(result.error.message || 'Required Tap to Pay permissions were denied');
+    }
+  }, [terminal]);
+
   const ensureConnectedReader = useCallback(async () => {
     if (!terminal.isAvailable) {
       throw new Error('Stripe Terminal is unavailable in this app build.');
     }
 
+    await ensurePlatformPermissions();
     await ensureTerminalInitialized();
 
     if (terminal.connectedReader) {
@@ -370,7 +379,7 @@ export function TerminalStationScreen(_props: Props) {
       throw new Error(connectResult.error.message || 'Unable to connect Tap to Pay');
     }
     readerConnectedRef.current = true;
-  }, [ensureTerminalInitialized, terminal]);
+  }, [ensurePlatformPermissions, ensureTerminalInitialized, terminal]);
 
   const collectManualPaymentWithPaymentSheet = useCallback(
     async (dispatch: TerminalIncomingDispatch): Promise<string | null> => {
@@ -416,7 +425,7 @@ export function TerminalStationScreen(_props: Props) {
 
   const runMockTapToPayAnimation = useCallback(async () => {
     const steps = [
-      'Tap to Pay demo: Hold card near the top of this iPhone...',
+      `Tap to Pay demo: Hold card near ${TAP_TO_PAY_DEVICE_LABEL}...`,
       'Tap to Pay demo: Reading card...',
       'Tap to Pay demo: Verifying card...',
       'Tap to Pay demo: Authorizing...',
@@ -948,7 +957,7 @@ export function TerminalStationScreen(_props: Props) {
         <View style={styles.header}>
           <Text style={styles.brandTag}>Penncrest Theater</Text>
           <Text style={styles.title}>Terminal{`\n`}<Text style={styles.titleAccent}>Station</Text></Text>
-          <Text style={styles.subtitle}>This device waits for dispatches and defaults to Tap to Pay after 5 seconds.</Text>
+          <Text style={styles.subtitle}>This device waits for dispatches and defaults to {TAP_TO_PAY_DISPLAY_NAME} after 5 seconds.</Text>
           <PaymentModeBadge />
           <View style={styles.divider} />
         </View>
@@ -968,7 +977,7 @@ export function TerminalStationScreen(_props: Props) {
             style={styles.input}
             value={terminalName}
             onChangeText={setTerminalName}
-            placeholder="Front Desk iPhone"
+            placeholder="Front Desk Terminal"
             placeholderTextColor="rgba(245,240,232,0.25)"
           />
 
@@ -984,6 +993,7 @@ export function TerminalStationScreen(_props: Props) {
         <View style={styles.card}>
           <Text style={styles.label}>Status</Text>
           <Text style={styles.value}>{statusMessage}</Text>
+          {TAP_TO_PAY_PERMISSION_HINT ? <Text style={styles.recoveryText}>{TAP_TO_PAY_PERMISSION_HINT}</Text> : null}
           {recoveryMessage ? <Text style={styles.recoveryText}>{recoveryMessage}</Text> : null}
           {processing ? <ActivityIndicator size="small" color="#c9a84c" style={{ marginTop: 10 }} /> : null}
           {activeDispatch ? (

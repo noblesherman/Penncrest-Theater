@@ -27,6 +27,7 @@
       <dict>
         <key>CFBundleURLSchemes</key>
         <array>
+          <string>theatermobile</string>
           <string>com.anonymous.react-example</string>
         </array>
       </dict>
@@ -44,6 +45,14 @@
       <key>NSAllowsLocalNetworking</key>
       <true/>
     </dict>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Penncrest Theater uses Bluetooth to connect to supported Stripe Terminal readers when needed.</string>
+    <key>NSBluetoothPeripheralUsageDescription</key>
+    <string>Penncrest Theater uses Bluetooth to connect to supported Stripe Terminal readers when needed.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Penncrest Theater uses the local network to connect to supported Stripe Terminal readers when needed.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Penncrest Theater uses your location so Stripe Terminal can connect to supported in-person payment readers.</string>
     <key>UILaunchStoryboardName</key>
     <string>SplashScreen</string>
     <key>UIRequiredDeviceCapabilities</key>
