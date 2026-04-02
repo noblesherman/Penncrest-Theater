@@ -110,29 +110,6 @@ export default defineConfig(({mode}) => {
         '@': path.resolve(__dirname, '.'),
       },
     },
-    build: {
-      rollupOptions: {
-        output: {
-          manualChunks(id) {
-            if (id.includes('node_modules/qr-scanner')) {
-              return 'scanner-vendor';
-            }
-
-            if (id.includes('node_modules/react') || id.includes('node_modules/react-router')) {
-              return 'react-vendor';
-            }
-
-            if (id.includes('node_modules/lucide-react')) {
-              return 'icons-vendor';
-            }
-
-            if (id.includes('node_modules/motion') || id.includes('node_modules/canvas-confetti')) {
-              return 'motion-vendor';
-            }
-          }
-        }
-      }
-    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify; file watching is disabled to prevent flickering during agent edits.

@@ -1,7 +1,6 @@
-import { motion, useScroll, useTransform, useSpring } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Star, Ticket } from 'lucide-react';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { apiUrl } from '../lib/api';
 
 interface Show {
@@ -27,47 +26,16 @@ function getEnrollmentSeasonLabel(date = new Date()) {
   return `${season} ${year}`;
 }
 
-function AnimatedWord({ word, className, delay = 0 }: { word: string; className?: string; delay?: number }) {
-  return (
-    <span className={className} style={{ display: 'inline-block', overflow: 'hidden' }}>
-      {word.split('').map((char, i) => (
-        <motion.span
-          key={i}
-          initial={{ y: '110%', opacity: 0 }}
-          animate={{ y: '0%', opacity: 1 }}
-          transition={{ duration: 0.6, delay: delay + i * 0.04, ease: [0.22, 1, 0.36, 1] }}
-          style={{ display: 'inline-block' }}
-        >
-          {char}
-        </motion.span>
-      ))}
-    </span>
-  );
-}
-
 function ShowCard({ show, index }: { show: Show; index: number }) {
-  const ref = useRef(null);
-  const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'end start'] });
-  const y = useTransform(scrollYProgress, [0, 1], [50, -50]);
-
   return (
-    <motion.div
-      ref={ref}
-      initial={{ opacity: 0, y: 40 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: '-60px' }}
-      transition={{ duration: 0.65, delay: index * 0.1, ease: [0.22, 1, 0.36, 1] }}
-      whileHover={{ y: -8, transition: { duration: 0.28 } }}
+    <div
+      className="transition-transform duration-300 hover:-translate-y-1.5"
+      style={{ animationDelay: `${index * 60}ms` }}
     >
       <Link to={`/shows/${show.id}`} className="group block">
         <div className="bg-white rounded-2xl overflow-hidden border border-stone-100 shadow-sm hover:shadow-xl transition-shadow duration-500">
           <div className="aspect-[4/3] overflow-hidden relative">
-            <motion.img
-              style={{ y }}
-              src={show.posterUrl}
-              alt={show.title}
-              className="object-cover w-full h-[115%] -mt-[7.5%]"
-            />
+            <img src={show.posterUrl} alt={show.title} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-[1.03]" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-5">
               <span className="text-white font-semibold bg-red-700 px-4 py-1.5 rounded-full text-sm">
                 Get Tickets
@@ -88,26 +56,17 @@ function ShowCard({ show, index }: { show: Show; index: number }) {
             >
               {show.title}
             </h3>
-            <p className="text-stone-400 line-clamp-2 text-sm leading-relaxed">{show.description}</p>
+            <p className="line-clamp-2 text-sm leading-relaxed text-stone-600">{show.description}</p>
           </div>
         </div>
       </Link>
-    </motion.div>
+    </div>
   );
 }
 
 export default function Home() {
   const [shows, setShows] = useState<Show[]>([]);
-  const heroRef = useRef(null);
-  const { scrollYProgress: heroScroll } = useScroll({ target: heroRef, offset: ['start start', 'end start'] });
   const enrollmentSeasonLabel = getEnrollmentSeasonLabel();
-
-  const blobY1     = useTransform(heroScroll, [0, 1], [0, -100]);
-  const blobY2     = useTransform(heroScroll, [0, 1], [0, -60]);
-  const textY      = useTransform(heroScroll, [0, 1], [0, 55]);
-  const cardY      = useTransform(heroScroll, [0, 1], [0, -35]);
-  const rawRot     = useTransform(heroScroll, [0, 1], [-4, 4]);
-  const cardRotate = useSpring(rawRot, { stiffness: 60, damping: 20 });
 
   useEffect(() => {
     fetch(apiUrl('/api/shows'))
@@ -125,56 +84,36 @@ export default function Home() {
     <div className="overflow-hidden">
 
       {/* ── HERO ── */}
-      <section ref={heroRef} className="relative overflow-hidden bg-stone-50 pb-20 pt-14 sm:pt-20 sm:pb-32">
-        <motion.div style={{ y: blobY1 }}
-          className="absolute right-[-6rem] top-[-3rem] h-[22rem] w-[22rem] rounded-full bg-red-100 opacity-50 mix-blend-multiply blur-3xl filter pointer-events-none sm:right-0 sm:top-0 sm:h-[36rem] sm:w-[36rem]" />
-        <motion.div style={{ y: blobY2 }}
-          className="absolute bottom-[-10rem] left-[-4rem] h-72 w-72 rounded-full bg-amber-100 opacity-60 mix-blend-multiply blur-3xl filter pointer-events-none sm:-bottom-40 sm:left-0 sm:h-96 sm:w-96" />
+      <section className="relative overflow-hidden bg-stone-50 pb-20 pt-14 sm:pb-32 sm:pt-20">
+        <div className="pointer-events-none absolute right-[-6rem] top-[-3rem] h-[22rem] w-[22rem] rounded-full bg-red-100 opacity-50 blur-3xl sm:right-0 sm:top-0 sm:h-[36rem] sm:w-[36rem]" />
+        <div className="pointer-events-none absolute bottom-[-10rem] left-[-4rem] h-72 w-72 rounded-full bg-amber-100 opacity-60 blur-3xl sm:-bottom-40 sm:left-0 sm:h-96 sm:w-96" />
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
 
             {/* Left */}
-            <motion.div style={{ y: textY }}>
-              <motion.div
-                initial={{ opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6 }}
+            <div>
+              <div
                 className="inline-flex items-center gap-2 bg-red-700 text-white text-xs font-semibold px-4 py-1.5 rounded-full uppercase tracking-widest mb-7"
                 style={{ fontFamily: 'system-ui, sans-serif' }}
               >
                 <Star className="w-3 h-3 fill-amber-300 text-amber-300" />
                 Now Enrolling for {enrollmentSeasonLabel}
-              </motion.div>
+              </div>
 
-              {/* Serif headline matching About's style */}
               <h1 className="mb-6 leading-none tracking-tight text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
-                <div style={{ overflow: 'hidden' }}>
-                  <AnimatedWord word="Penncrest" delay={0.1}
-                    className="block font-bold text-5xl sm:text-6xl md:text-7xl" />
-                </div>
-                <div style={{ overflow: 'hidden' }}>
-                  <AnimatedWord word="Theater" delay={0.48}
-                    className="block font-bold italic text-5xl sm:text-6xl md:text-7xl text-red-700" />
-                </div>
+                <span className="block text-5xl font-bold sm:text-6xl md:text-7xl">Penncrest</span>
+                <span className="block text-5xl font-bold italic text-red-700 sm:text-6xl md:text-7xl">Theater</span>
               </h1>
 
-              <motion.p
-                initial={{ opacity: 0, y: 18 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.7, delay: 0.95 }}
-                className="mb-8 max-w-lg text-base leading-relaxed text-stone-500 sm:text-lg md:mb-10"
+              <p
+                className="mb-8 max-w-lg text-base leading-relaxed text-stone-700 sm:text-lg md:mb-10"
                 style={{ fontFamily: 'system-ui, sans-serif' }}
               >
                 Bringing stories to life in Media, PA. Join us for a season of creativity, community, and unforgettable performances.
-              </motion.p>
+              </p>
 
-              <motion.div
-                initial={{ opacity: 0, y: 18 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.7, delay: 1.1 }}
-                className="flex flex-wrap gap-3"
-              >
+              <div className="flex flex-wrap gap-3">
                 <Link to="/shows"
                   className="group flex w-full items-center justify-center gap-2 rounded-full bg-red-700 px-8 py-3.5 text-base font-semibold text-white shadow-md shadow-red-200 transition-all hover:scale-105 hover:bg-red-800 sm:w-auto"
                   style={{ fontFamily: 'system-ui, sans-serif' }}
@@ -189,15 +128,10 @@ export default function Home() {
                 >
                   Join the Cast
                 </Link>
-              </motion.div>
+              </div>
 
               {featuredShow && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.7, delay: 1.2 }}
-                  className="mt-8 lg:hidden"
-                >
+                <div className="mt-8 lg:hidden">
                   <Link to={`/shows/${featuredShow.id}`} className="block rounded-2xl border border-stone-200 bg-white p-3 shadow-lg shadow-stone-200/70">
                     <div className="flex items-center gap-3">
                       <div className="h-24 w-18 shrink-0 overflow-hidden rounded-xl bg-stone-200">
@@ -210,27 +144,19 @@ export default function Home() {
                         <p className="line-clamp-2 text-lg font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
                           {featuredShow.title}
                         </p>
-                        <p className="mt-1 text-sm text-stone-500">
+                        <p className="mt-1 text-sm text-stone-600">
                           {featuredShow.type} · {featuredShow.year}
                         </p>
                       </div>
                     </div>
                   </Link>
-                </motion.div>
+                </div>
               )}
-            </motion.div>
+            </div>
 
-            {/* Right: poster card — unchanged */}
             <div className="relative h-[580px] hidden lg:block">
               {featuredShow && (
-                <motion.div
-                  style={{ y: cardY, rotate: cardRotate }}
-                  initial={{ y: 100, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ duration: 0.9, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
-                  whileHover={{ rotate: 0, scale: 1.03, transition: { duration: 0.35 } }}
-                  className="absolute top-10 right-20 w-72 bg-white p-3.5 rounded-2xl shadow-2xl z-20 cursor-pointer"
-                >
+                <div className="absolute top-10 right-20 z-20 w-72 cursor-pointer rounded-2xl bg-white p-3.5 shadow-2xl transition-transform duration-300 hover:scale-[1.02]">
                   <div className="aspect-[2/3] bg-stone-200 rounded-xl overflow-hidden mb-3 relative">
                     <img src={featuredShow.posterUrl} alt={featuredShow.title} className="object-cover w-full h-full" />
                     <div className="absolute top-3 right-3 bg-amber-400 text-stone-900 font-semibold px-3 py-1 rounded-full text-xs uppercase tracking-wide shadow">
@@ -238,18 +164,13 @@ export default function Home() {
                     </div>
                   </div>
                   <h3 className="font-bold text-lg mb-0.5 text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>{featuredShow.title}</h3>
-                  <p className="text-stone-400 text-sm" style={{ fontFamily: 'system-ui, sans-serif' }}>{featuredShow.type} · {featuredShow.year}</p>
-                </motion.div>
+                  <p className="text-sm text-stone-600" style={{ fontFamily: 'system-ui, sans-serif' }}>{featuredShow.type} · {featuredShow.year}</p>
+                </div>
               )}
 
-              <motion.div
-                initial={{ rotate: 5, x: 50, opacity: 0 }}
-                animate={{ rotate: 5, x: 0, opacity: 1 }}
-                transition={{ duration: 0.8, delay: 0.5 }}
-                className="absolute top-32 right-0 w-64 bg-red-700/20 p-4 rounded-2xl z-10"
-              >
+              <div className="absolute right-0 top-32 z-10 w-64 rounded-2xl bg-red-700/20 p-4 rotate-[5deg]">
                 <div className="aspect-[2/3] bg-red-700/20 rounded-xl" />
-              </motion.div>
+              </div>
 
             </div>
 
@@ -262,40 +183,19 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="mb-12 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <motion.p
-                initial={{ opacity: 0, x: -14 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5 }}
-                className="text-xs font-semibold uppercase tracking-widest text-red-600 mb-1.5"
-                style={{ fontFamily: 'system-ui, sans-serif' }}
-              >
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-widest text-red-600" style={{ fontFamily: 'system-ui, sans-serif' }}>
                 This Season
-              </motion.p>
-              <motion.h2
-                initial={{ opacity: 0, x: -14 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: 0.07 }}
-                className="font-bold text-stone-900"
-                style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(1.8rem, 4vw, 2.8rem)' }}
-              >
+              </p>
+              <h2 className="font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(1.8rem, 4vw, 2.8rem)' }}>
                 On Stage
-              </motion.h2>
+              </h2>
             </div>
-            <motion.div
-              initial={{ opacity: 0 }}
-              whileInView={{ opacity: 1 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: 0.15 }}
-            >
-              <Link to="/shows" className="hidden md:flex items-center gap-2 font-semibold text-stone-400 hover:text-red-700 transition-colors text-sm group" style={{ fontFamily: 'system-ui, sans-serif' }}>
+            <div>
+              <Link to="/shows" className="group hidden items-center gap-2 text-sm font-semibold text-stone-500 transition-colors hover:text-red-700 md:flex" style={{ fontFamily: 'system-ui, sans-serif' }}>
                 View Our Season
-                <motion.span animate={{ x: [0, 4, 0] }} transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}>
-                  <ArrowRight className="w-4 h-4" />
-                </motion.span>
+                <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
               </Link>
-            </motion.div>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -310,50 +210,29 @@ export default function Home() {
 
       {/* ── COMMUNITY ── */}
       <section className="relative overflow-hidden bg-stone-900 py-16 text-white sm:py-24">
-        <div className="absolute inset-0 opacity-[0.03] bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]" />
-        <motion.div
-          animate={{ x: [0, 28, 0], y: [0, -18, 0] }}
-          transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut' }}
-          className="absolute top-0 left-1/3 w-96 h-96 bg-red-900/40 rounded-full blur-3xl pointer-events-none"
+        <div
+          className="absolute inset-0 opacity-[0.08]"
+          style={{
+            backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.2) 1px, transparent 0)',
+            backgroundSize: '24px 24px'
+          }}
         />
-        <motion.div
-          animate={{ x: [0, -22, 0], y: [0, 22, 0] }}
-          transition={{ duration: 11, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
-          className="absolute bottom-0 right-1/3 w-80 h-80 bg-amber-900/30 rounded-full blur-3xl pointer-events-none"
-        />
+        <div className="pointer-events-none absolute left-1/3 top-0 h-96 w-96 rounded-full bg-red-900/40 blur-3xl" />
+        <div className="pointer-events-none absolute bottom-0 right-1/3 h-80 w-80 rounded-full bg-amber-900/30 blur-3xl" />
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
-          <motion.div
-            initial={{ scale: 0, rotate: -180 }}
-            whileInView={{ scale: 1, rotate: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-          >
+          <div>
             <Star className="w-10 h-10 text-amber-400 mx-auto mb-6 fill-amber-400/30" />
-          </motion.div>
+          </div>
 
-          <motion.h2
-            initial={{ opacity: 0, y: 26 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.65, delay: 0.1 }}
-            className="mb-5 font-bold tracking-tight sm:mb-6"
-            style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(1.8rem, 5vw, 3.2rem)' }}
-          >
+          <h2 className="mb-5 font-bold tracking-tight sm:mb-6" style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(1.8rem, 5vw, 3.2rem)' }}>
             More Than Just a Stage
-          </motion.h2>
+          </h2>
 
-          <motion.p
-            initial={{ opacity: 0, y: 18 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            className="mx-auto mb-10 max-w-xl text-base leading-relaxed text-stone-400 sm:mb-12 sm:text-lg"
-            style={{ fontFamily: 'system-ui, sans-serif' }}
-          >
+          <p className="mx-auto mb-10 max-w-xl text-base leading-relaxed text-stone-300 sm:mb-12 sm:text-lg" style={{ fontFamily: 'system-ui, sans-serif' }}>
             We are a community of actors, designers, technicians, and dreamers.
             Every ticket you buy supports arts education at Penncrest High School.
-          </motion.p>
+          </p>
 
           <div className="mx-auto grid max-w-3xl grid-cols-1 gap-4 justify-items-center sm:grid-cols-3 sm:gap-5">
             {[
@@ -361,27 +240,15 @@ export default function Home() {
               { label: 'Students',    value: '50+'  },
               { label: 'Years',       value: '25+'  },
             ].map((stat, i) => (
-              <motion.div
+              <div
                 key={stat.label}
-                initial={{ opacity: 0, y: 28, scale: 0.92 }}
-                whileInView={{ opacity: 1, y: 0, scale: 1 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.55, delay: 0.3 + i * 0.11, ease: [0.22, 1, 0.36, 1] }}
-                whileHover={{ scale: 1.04, transition: { duration: 0.2 } }}
-                className="p-6 border border-stone-700/50 rounded-2xl bg-stone-800/40 text-center w-full cursor-default"
+                className="w-full cursor-default rounded-2xl border border-stone-700/50 bg-stone-800/40 p-6 text-center transition-transform duration-200 hover:scale-[1.02]"
               >
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.5 }}
-                  whileInView={{ opacity: 1, scale: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.5, delay: 0.5 + i * 0.11, type: 'spring', bounce: 0.45 }}
-                  className="text-4xl font-black text-amber-400 mb-1"
-                  style={{ fontFamily: 'Georgia, serif' }}
-                >
+                <div className="mb-1 text-4xl font-black text-amber-400" style={{ fontFamily: 'Georgia, serif' }}>
                   {stat.value}
-                </motion.div>
-                <div className="text-stone-400 text-xs uppercase tracking-widest font-semibold" style={{ fontFamily: 'system-ui, sans-serif' }}>{stat.label}</div>
-              </motion.div>
+                </div>
+                <div className="text-xs font-semibold uppercase tracking-widest text-stone-300" style={{ fontFamily: 'system-ui, sans-serif' }}>{stat.label}</div>
+              </div>
             ))}
           </div>
         </div>

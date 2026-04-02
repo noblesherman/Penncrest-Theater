@@ -648,7 +648,9 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
       status: z.string().optional(),
       source: z.string().optional(),
       performanceId: z.string().optional(),
-      scope: z.enum(['active', 'archived', 'all']).default('active')
+      scope: z.enum(['active', 'archived', 'all']).default('active'),
+      page: z.coerce.number().int().min(1).optional(),
+      pageSize: z.coerce.number().int().min(1).max(200).optional()
     });
     const parsedQuery = querySchema.safeParse(request.query || {});
     if (!parsedQuery.success) {
@@ -674,18 +676,64 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
         ];
       }
 
-      const orders = await prisma.order.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          performance: { include: { show: true } },
-          orderSeats: { include: { seat: true }, orderBy: { createdAt: 'asc' } },
-          tickets: { orderBy: { createdAt: 'asc' } }
-        }
-      });
+      const shouldPaginate = typeof query.page === 'number' || typeof query.pageSize === 'number';
+      const page = query.page ?? 1;
+      const pageSize = query.pageSize ?? 100;
 
-      reply.send(
-        orders.map((order) => ({
+      const [orders, total] = await Promise.all([
+        prisma.order.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          ...(shouldPaginate
+            ? {
+                skip: (page - 1) * pageSize,
+                take: pageSize
+              }
+            : {}),
+          select: {
+            id: true,
+            status: true,
+            source: true,
+            inPersonPaymentMethod: true,
+            email: true,
+            customerName: true,
+            amountTotal: true,
+            createdAt: true,
+            performanceId: true,
+            performance: {
+              select: {
+                title: true,
+                seatSelectionEnabled: true,
+                show: {
+                  select: {
+                    title: true
+                  }
+                }
+              }
+            },
+            orderSeats: {
+              orderBy: { createdAt: 'asc' },
+              select: {
+                seat: {
+                  select: {
+                    sectionName: true,
+                    row: true,
+                    number: true
+                  }
+                }
+              }
+            },
+            _count: {
+              select: {
+                tickets: true
+              }
+            }
+          }
+        }),
+        shouldPaginate ? prisma.order.count({ where }) : Promise.resolve(0)
+      ]);
+
+      const rows = orders.map((order) => ({
           id: order.id,
           status: order.status,
           source: order.source,
@@ -701,9 +749,19 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
               ? `General Admission ${index + 1}`
               : `${seat.seat?.sectionName || 'Unassigned'} ${seat.seat?.row || ''}-${seat.seat?.number || index + 1}`
           ),
-          ticketCount: order.tickets.length
-        }))
-      );
+          ticketCount: order._count.tickets
+        }));
+
+      if (shouldPaginate) {
+        return reply.send({
+          page,
+          pageSize,
+          total,
+          rows
+        });
+      }
+
+      reply.send(rows);
     } catch (err) {
       handleRouteError(reply, err, 'Failed to fetch orders');
     }

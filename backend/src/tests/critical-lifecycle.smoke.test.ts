@@ -156,6 +156,7 @@ let createServer: typeof import('../server.js').createServer;
 let app: Awaited<ReturnType<typeof import('../server.js').createServer>>;
 let adminToken: string;
 let adminUserId: string;
+let expireStalePendingCheckoutAttempts: typeof import('../services/checkout-attempt-service.js').expireStalePendingCheckoutAttempts;
 
 async function createPerformance(title: string, emailSeed: string) {
   const show = await prisma.show.create({
@@ -204,6 +205,7 @@ describe.sequential('critical lifecycle smoke', () => {
 
     ({ prisma } = await import('../lib/prisma.js'));
     ({ createServer } = await import('../server.js'));
+    ({ expireStalePendingCheckoutAttempts } = await import('../services/checkout-attempt-service.js'));
     app = await createServer();
 
     const adminUser = await prisma.adminUser.create({
@@ -282,6 +284,8 @@ describe.sequential('critical lifecycle smoke', () => {
     });
 
     expect(order.status).toBe('PENDING');
+    expect(order.checkoutAttemptState).toBe('AWAITING_PAYMENT');
+    expect(order.checkoutAttemptExpiresAt).toBeTruthy();
     expect(order.accessToken).toBeTruthy();
 
     stripeState.nextWebhookEvent = {
@@ -306,6 +310,41 @@ describe.sequential('critical lifecycle smoke', () => {
     });
 
     expect(webhookResponse.statusCode).toBe(200);
+
+    const duplicateWebhookResponse = await app.inject({
+      method: 'POST',
+      url: '/api/webhooks/stripe',
+      headers: {
+        'stripe-signature': 'sig_smoke_duplicate',
+        'content-type': 'application/json'
+      },
+      payload: JSON.stringify({ ok: true })
+    });
+
+    expect(duplicateWebhookResponse.statusCode).toBe(200);
+
+    const webhookLedgerRows = await prisma.$queryRaw<Array<{ status: string; processedAt: Date | null }>>`
+      SELECT "status", "processedAt"
+      FROM "StripeWebhookEvent"
+      WHERE "eventId" = ${'evt_smoke_checkout_completed'}
+      LIMIT 1
+    `;
+    const webhookLedgerEvent = webhookLedgerRows[0];
+
+    expect(webhookLedgerEvent).toBeTruthy();
+    if (!webhookLedgerEvent) {
+      throw new Error('Expected Stripe webhook ledger row to exist');
+    }
+
+    expect(webhookLedgerEvent.status).toBe('PROCESSED');
+    expect(webhookLedgerEvent.processedAt).not.toBeNull();
+
+    const dedupedOrder = await prisma.order.findUniqueOrThrow({
+      where: { id: order.id }
+    });
+
+    expect(dedupedOrder.finalizationAttemptCount).toBe(1);
+    expect(await prisma.ticket.count({ where: { orderId: order.id } })).toBe(1);
 
     const confirmationResponse = await app.inject({
       method: 'GET',
@@ -369,6 +408,34 @@ describe.sequential('critical lifecycle smoke', () => {
     expect(duplicateScanResponse.statusCode).toBe(200);
     expect(duplicateScanResponse.json().outcome).toBe('ALREADY_CHECKED_IN');
 
+    const analyticsResponse = await app.inject({
+      method: 'GET',
+      url: `/api/admin/check-in/analytics?performanceId=${encodeURIComponent(performance.id)}`,
+      headers: {
+        authorization: `Bearer ${adminToken}`
+      }
+    });
+
+    expect(analyticsResponse.statusCode).toBe(200);
+    const analyticsBody = analyticsResponse.json();
+    expect(analyticsBody.performance.id).toBe(performance.id);
+    expect(analyticsBody.totals.totalAdmittable).toBe(1);
+    expect(analyticsBody.totals.totalCheckedIn).toBe(1);
+    expect(analyticsBody.totals.noShowEstimate).toBe(0);
+    expect(analyticsBody.attempts.duplicateAttempts).toBe(1);
+    expect(analyticsBody.attempts.invalidQrAttempts).toBe(0);
+    expect(analyticsBody.attempts.notFoundAttempts).toBe(0);
+    expect(analyticsBody.attempts.wrongPerformanceAttempts).toBe(0);
+    expect(analyticsBody.attempts.notAdmittedAttempts).toBe(0);
+    expect(analyticsBody.attempts.fraudAttemptEstimate).toBe(0);
+    expect(analyticsBody.supervisorDecisions.forceAdmitCount).toBe(0);
+    expect(analyticsBody.supervisorDecisions.denyCount).toBe(0);
+    expect(analyticsBody.peakPerMinute).toBe(1);
+    expect(analyticsBody.byGate).toEqual([{ gate: 'Main Entrance', count: 1 }]);
+    expect(analyticsBody.timeline).toHaveLength(1);
+    expect(analyticsBody.timeline[0]?.count).toBe(1);
+    expect(analyticsBody.timeline[0]?.minute).toBeTruthy();
+
     const refundResponse = await app.inject({
       method: 'POST',
       url: `/api/admin/orders/${order.id}/refund`,
@@ -399,6 +466,65 @@ describe.sequential('critical lifecycle smoke', () => {
     expect(refundedOrder.stripeRefundStatus).toBe('succeeded');
     expect(refundedOrder.refundAmountCents).toBe(refundedOrder.amountTotal);
     expect(refundedSeat.status).toBe('AVAILABLE');
+  });
+
+  it('expires stale pending checkout attempts and releases the hold', async () => {
+    const buyerEmail = `stale_${Date.now()}@example.com`;
+    const clientToken = `client_${Date.now()}_stale`;
+    const { performance, seat } = await createPerformance('Stale Checkout', buyerEmail);
+
+    const holdResponse = await app.inject({
+      method: 'POST',
+      url: '/api/hold',
+      payload: {
+        performanceId: performance.id,
+        seatIds: [seat.id],
+        clientToken
+      }
+    });
+
+    expect(holdResponse.statusCode).toBe(200);
+    const holdBody = holdResponse.json();
+
+    const checkoutResponse = await app.inject({
+      method: 'POST',
+      url: '/api/checkout',
+      payload: {
+        performanceId: performance.id,
+        checkoutMode: 'PAID',
+        seatIds: [seat.id],
+        holdToken: holdBody.holdToken,
+        clientToken,
+        customerEmail: buyerEmail,
+        customerName: 'Stale Buyer'
+      }
+    });
+
+    expect(checkoutResponse.statusCode).toBe(200);
+    const checkoutBody = checkoutResponse.json();
+
+    await prisma.order.update({
+      where: { id: checkoutBody.orderId },
+      data: {
+        checkoutAttemptExpiresAt: new Date(Date.now() - 60_000)
+      }
+    });
+
+    const expired = await expireStalePendingCheckoutAttempts();
+    expect(expired).toBe(1);
+
+    const order = await prisma.order.findUniqueOrThrow({
+      where: { id: checkoutBody.orderId }
+    });
+    expect(order.status).toBe('CANCELED');
+    expect(order.checkoutAttemptState).toBe('EXPIRED');
+    expect(order.checkoutAttemptExpiresAt).toBeNull();
+
+    const refreshedSeat = await prisma.seat.findUniqueOrThrow({
+      where: { id: seat.id }
+    });
+    expect(refreshedSeat.status).toBe('AVAILABLE');
+    expect(refreshedSeat.holdSessionId).toBeNull();
   });
 
   it('marks a paid checkout for recovery and requests a refund when finalization cannot safely complete', async () => {

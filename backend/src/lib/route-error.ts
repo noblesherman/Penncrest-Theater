@@ -8,15 +8,28 @@ export function handleRouteError(reply: FastifyReply, err: unknown, fallbackMess
     return;
   }
 
-  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2022') {
+  if (err instanceof Prisma.PrismaClientKnownRequestError && (err.code === 'P2021' || err.code === 'P2022')) {
     const column =
+      err.code === 'P2022' &&
       typeof err.meta === 'object' &&
       err.meta !== null &&
       'column' in err.meta &&
       typeof err.meta.column === 'string'
         ? err.meta.column
         : null;
-    const details = column ? ` Missing column: ${column}.` : '';
+    const table =
+      err.code === 'P2021' &&
+      typeof err.meta === 'object' &&
+      err.meta !== null &&
+      'table' in err.meta &&
+      typeof err.meta.table === 'string'
+        ? err.meta.table
+        : null;
+    const details = table
+      ? ` Missing table: ${table}.`
+      : column
+        ? ` Missing column: ${column}.`
+        : '';
     reply.status(503).send({
       error: `Database schema is out of date.${details} Run backend migrations (prisma migrate deploy).`
     });

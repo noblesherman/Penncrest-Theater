@@ -29,6 +29,14 @@ enum OrderStatus {
   CANCELED
 }
 
+enum CheckoutAttemptState {
+  NONE
+  CREATING_PAYMENT_INTENT
+  AWAITING_PAYMENT
+  FAILED
+  EXPIRED
+}
+
 enum OrderSource {
   ONLINE
   DOOR
@@ -52,6 +60,12 @@ enum TerminalDispatchStatus {
   SUCCEEDED
   EXPIRED
   CANCELED
+}
+
+enum StripeWebhookEventStatus {
+  PROCESSING
+  PROCESSED
+  FAILED
 }
 
 enum AuthProvider {
@@ -81,6 +95,14 @@ enum TicketStatus {
 enum AdmissionDecision {
   FORCE_ADMIT
   DENY
+}
+
+enum CheckInScanAttemptAction {
+  SCAN_INVALID_QR
+  SCAN_NOT_FOUND
+  SCAN_WRONG_PERFORMANCE
+  SCAN_NOT_ADMITTED
+  SCAN_ALREADY_CHECKED_IN
 }
 
 enum StudentCreditTransactionType {
@@ -218,6 +240,7 @@ model Performance {
   orders        Order[]
   tickets       Ticket[]
   scannerSessions ScannerSession[]
+  checkInScanAttempts CheckInScanAttempt[]
   staffCompRedemptions StaffCompRedemption[]
   studentTicketCreditTransactions StudentTicketCreditTransaction[]
   terminalPaymentDispatches TerminalPaymentDispatch[]
@@ -314,6 +337,8 @@ model Order {
   amountTotal           Int
   currency              String      @default("usd")
   status                OrderStatus @default(PENDING)
+  checkoutAttemptState  CheckoutAttemptState @default(NONE)
+  checkoutAttemptExpiresAt DateTime?
   source                OrderSource @default(ONLINE)
   inPersonPaymentMethod InPersonPaymentMethod?
   holdToken             String?
@@ -345,6 +370,7 @@ model Order {
   @@index([userId])
   @@index([email])
   @@index([status])
+  @@index([status, checkoutAttemptState, checkoutAttemptExpiresAt])
   @@index([source, inPersonPaymentMethod, createdAt])
   @@index([studentTicketCreditId])
   @@index([accessToken])
@@ -439,6 +465,7 @@ model Ticket {
   admissionDecidedAt DateTime?
   admissionDecidedBy String?
   createdAt   DateTime             @default(now())
+  scanAttempts CheckInScanAttempt[]
   staffCompRedemption StaffCompRedemption?
 
   @@index([orderId])
@@ -464,10 +491,35 @@ model ScannerSession {
   endedAt       DateTime?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
+  scanAttempts  CheckInScanAttempt[]
 
   @@index([performanceId, active])
   @@index([performanceId, gate, active])
   @@index([lastSeenAt])
+}
+
+model CheckInScanAttempt {
+  id               String                   @id @default(cuid())
+  performanceId    String
+  performance      Performance              @relation(fields: [performanceId], references: [id], onDelete: Cascade)
+  scannerSessionId String?
+  scannerSession   ScannerSession?          @relation(fields: [scannerSessionId], references: [id], onDelete: SetNull)
+  ticketId         String?
+  ticket           Ticket?                  @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  publicId         String?
+  action           CheckInScanAttemptAction
+  actor            String
+  gate             String?
+  scannedValue     String?
+  clientScanId     String?
+  offlineQueuedAt  DateTime?
+  details          Json?
+  createdAt        DateTime                 @default(now())
+
+  @@index([performanceId, createdAt])
+  @@index([performanceId, action, createdAt])
+  @@index([scannerSessionId, createdAt])
+  @@index([ticketId, createdAt])
 }
 
 model StaffCompRedemption {
@@ -525,6 +577,20 @@ model StudentTicketCreditTransaction {
   @@index([studentTicketCreditId, createdAt])
   @@index([orderId])
   @@index([performanceId])
+}
+
+model StripeWebhookEvent {
+  id          String                   @id @default(cuid())
+  eventId     String                   @unique
+  eventType   String
+  status      StripeWebhookEventStatus @default(PROCESSING)
+  processedAt DateTime?
+  lastError   String?
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+
+  @@index([status, createdAt])
+  @@index([eventType, createdAt])
 }
 
 model AuditLog {

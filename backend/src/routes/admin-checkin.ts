@@ -15,6 +15,8 @@ const scanAttemptActions = {
   ALREADY_CHECKED_IN: 'SCAN_ALREADY_CHECKED_IN'
 } as const;
 
+type ScanAttemptAction = (typeof scanAttemptActions)[keyof typeof scanAttemptActions];
+
 const supervisorReasonCodeSchema = z.enum([
   'DUPLICATE_SCAN',
   'VIP_OVERRIDE',
@@ -148,6 +150,20 @@ type SseClient = {
   write: (chunk: string) => boolean;
 };
 
+type CountRow = {
+  count: number;
+};
+
+type ActionCountRow = {
+  action: ScanAttemptAction;
+  count: number;
+};
+
+type MinuteCountRow = {
+  minute: Date | string;
+  count: number;
+};
+
 const sseClientsByPerformance = new Map<string, Map<string, SseClient>>();
 
 function constantTimeEqual(a: string, b: string): boolean {
@@ -207,12 +223,6 @@ function makeReasonText(reasonCode: z.infer<typeof supervisorReasonCodeSchema>, 
 
 function buildClientId() {
   return crypto.randomBytes(8).toString('hex');
-}
-
-function toMinuteBucket(date: Date): string {
-  const copy = new Date(date);
-  copy.setSeconds(0, 0);
-  return copy.toISOString();
 }
 
 function registerSseClient(performanceId: string, client: SseClient): () => void {
@@ -339,98 +349,171 @@ function toTicketPayload(ticket: {
 
 async function logScanAttempt(params: {
   actor: string;
-  action: string;
+  action: ScanAttemptAction;
   performanceId: string;
+  scannerSessionId?: string | null;
   ticketId?: string | null;
   publicId?: string | null;
+  gate?: string | null;
+  scannedValue?: string | null;
+  clientScanId?: string | null;
+  offlineQueuedAt?: string | null;
+  scannedAt: Date;
   metadata?: Record<string, unknown>;
 }) {
-  await logAudit({
-    actor: params.actor,
-    action: params.action,
-    entityType: 'Ticket',
-    entityId: params.ticketId || params.publicId || 'unknown',
-    metadata: {
-      performanceId: params.performanceId,
-      ticketId: params.ticketId || null,
-      publicId: params.publicId || null,
-      ...(params.metadata || {})
-    }
+  const auditMetadata = {
+    performanceId: params.performanceId,
+    ticketId: params.ticketId || null,
+    publicId: params.publicId || null,
+    ...(params.metadata || {})
+  };
+  const offlineQueuedAt = params.offlineQueuedAt ? new Date(params.offlineQueuedAt) : null;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`
+      INSERT INTO "CheckInScanAttempt" (
+        "id",
+        "performanceId",
+        "scannerSessionId",
+        "ticketId",
+        "publicId",
+        "action",
+        "actor",
+        "gate",
+        "scannedValue",
+        "clientScanId",
+        "offlineQueuedAt",
+        "details",
+        "createdAt"
+      )
+      VALUES (
+        ${crypto.randomUUID()},
+        ${params.performanceId},
+        ${params.scannerSessionId || null},
+        ${params.ticketId || null},
+        ${params.publicId || null},
+        CAST(${params.action} AS "CheckInScanAttemptAction"),
+        ${params.actor},
+        ${params.gate || null},
+        ${params.scannedValue || null},
+        ${params.clientScanId || null},
+        ${offlineQueuedAt},
+        CAST(${JSON.stringify(auditMetadata)} AS JSONB),
+        ${params.scannedAt}
+      )
+    `;
+
+    await tx.auditLog.create({
+      data: {
+        actor: params.actor,
+        action: params.action,
+        entityType: 'Ticket',
+        entityId: params.ticketId || params.publicId || 'unknown',
+        meta: auditMetadata as any,
+        metadataJson: auditMetadata as any
+      }
+    });
   });
 }
 
 async function computeCheckInAnalytics(performanceId: string) {
-  const [performance, tickets, attemptLogs] = await Promise.all([
-    prisma.performance.findUnique({
-      where: { id: performanceId },
-      include: { show: true }
-    }),
-    prisma.ticket.findMany({
-      where: { performanceId },
-      include: { order: true }
-    }),
-    prisma.auditLog.findMany({
-      where: {
-        action: {
-          in: [
-            scanAttemptActions.INVALID_QR,
-            scanAttemptActions.NOT_FOUND,
-            scanAttemptActions.WRONG_PERFORMANCE,
-            scanAttemptActions.NOT_ADMITTED,
-            scanAttemptActions.ALREADY_CHECKED_IN
-          ]
+  const [
+    performance,
+    totalAdmittable,
+    totalCheckedIn,
+    groupedByGate,
+    timelineRows,
+    attemptCountRows,
+    forceAdmitCount,
+    denyCount
+  ] =
+    await Promise.all([
+      prisma.performance.findUnique({
+        where: { id: performanceId },
+        include: { show: true }
+      }),
+      prisma.ticket.count({
+        where: {
+          performanceId,
+          status: 'ISSUED',
+          order: {
+            status: 'PAID'
+          }
         }
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 5000
-    })
-  ]);
+      }),
+      prisma.ticket.count({
+        where: {
+          performanceId,
+          checkedInAt: { not: null }
+        }
+      }),
+      prisma.ticket.groupBy({
+        by: ['checkInGate'],
+        where: {
+          performanceId,
+          checkedInAt: { not: null }
+        },
+        _count: {
+          _all: true
+        }
+      }),
+      prisma.$queryRaw<MinuteCountRow[]>`
+        SELECT date_trunc('minute', "checkedInAt") AS "minute", COUNT(*)::int AS "count"
+        FROM "Ticket"
+        WHERE "performanceId" = ${performanceId}
+          AND "checkedInAt" IS NOT NULL
+        GROUP BY 1
+        ORDER BY 1 ASC
+      `,
+      prisma.$queryRaw<ActionCountRow[]>`
+        SELECT "action", COUNT(*)::int AS "count"
+        FROM "CheckInScanAttempt"
+        WHERE "performanceId" = ${performanceId}
+        GROUP BY "action"
+      `,
+      prisma.$queryRaw<CountRow[]>`
+        SELECT COUNT(*)::int AS "count"
+        FROM "Ticket"
+        WHERE "performanceId" = ${performanceId}
+          AND "admissionDecision" = CAST(${'FORCE_ADMIT'} AS "AdmissionDecision")
+      `,
+      prisma.$queryRaw<CountRow[]>`
+        SELECT COUNT(*)::int AS "count"
+        FROM "Ticket"
+        WHERE "performanceId" = ${performanceId}
+          AND "admissionDecision" = CAST(${'DENY'} AS "AdmissionDecision")
+      `
+    ]);
 
   if (!performance) {
     throw new HttpError(404, 'Performance not found');
   }
-
-  const relevantAttemptLogs = attemptLogs.filter((row) => {
-    const meta = row.metadataJson as { performanceId?: string } | null;
-    return meta?.performanceId === performanceId;
-  });
-
-  const totalAdmittable = tickets.filter((ticket) => ticket.status === 'ISSUED' && ticket.order.status === 'PAID').length;
-  const checkedInTickets = tickets.filter((ticket) => ticket.checkedInAt);
-  const totalCheckedIn = checkedInTickets.length;
   const noShowEstimate = Math.max(0, totalAdmittable - totalCheckedIn);
 
   const gateMap = new Map<string, number>();
-  const minuteMap = new Map<string, number>();
-  const gateMinuteMap = new Map<string, number>();
-  checkedInTickets.forEach((ticket) => {
-    const gate = ticket.checkInGate || 'Unspecified';
-    gateMap.set(gate, (gateMap.get(gate) || 0) + 1);
-
-    const minute = toMinuteBucket(ticket.checkedInAt!);
-    minuteMap.set(minute, (minuteMap.get(minute) || 0) + 1);
-    gateMinuteMap.set(`${minute}|${gate}`, (gateMinuteMap.get(`${minute}|${gate}`) || 0) + 1);
+  groupedByGate.forEach((row) => {
+    const gate = row.checkInGate || 'Unspecified';
+    gateMap.set(gate, row._count._all);
   });
 
-  const timeline = [...minuteMap.entries()]
-    .map(([minute, count]) => ({
-      minute,
-      count
-    }))
-    .sort((a, b) => a.minute.localeCompare(b.minute));
+  const timeline = timelineRows.map((row) => ({
+    minute: new Date(row.minute).toISOString(),
+    count: row.count
+  }));
 
   const byGate = [...gateMap.entries()]
     .map(([gate, count]) => ({ gate, count }))
     .sort((a, b) => b.count - a.count || a.gate.localeCompare(b.gate));
 
   const peakPerMinute = timeline.reduce((max, row) => Math.max(max, row.count), 0);
+  const attemptCountByAction = new Map(attemptCountRows.map((row) => [row.action, row.count]));
 
   const attemptCounts = {
-    duplicateAttempts: relevantAttemptLogs.filter((row) => row.action === scanAttemptActions.ALREADY_CHECKED_IN).length,
-    invalidQrAttempts: relevantAttemptLogs.filter((row) => row.action === scanAttemptActions.INVALID_QR).length,
-    notFoundAttempts: relevantAttemptLogs.filter((row) => row.action === scanAttemptActions.NOT_FOUND).length,
-    wrongPerformanceAttempts: relevantAttemptLogs.filter((row) => row.action === scanAttemptActions.WRONG_PERFORMANCE).length,
-    notAdmittedAttempts: relevantAttemptLogs.filter((row) => row.action === scanAttemptActions.NOT_ADMITTED).length
+    duplicateAttempts: attemptCountByAction.get(scanAttemptActions.ALREADY_CHECKED_IN) || 0,
+    invalidQrAttempts: attemptCountByAction.get(scanAttemptActions.INVALID_QR) || 0,
+    notFoundAttempts: attemptCountByAction.get(scanAttemptActions.NOT_FOUND) || 0,
+    wrongPerformanceAttempts: attemptCountByAction.get(scanAttemptActions.WRONG_PERFORMANCE) || 0,
+    notAdmittedAttempts: attemptCountByAction.get(scanAttemptActions.NOT_ADMITTED) || 0
   };
   const fraudAttemptEstimate = attemptCounts.invalidQrAttempts + attemptCounts.notFoundAttempts;
 
@@ -452,8 +535,8 @@ async function computeCheckInAnalytics(performanceId: string) {
       fraudAttemptEstimate
     },
     supervisorDecisions: {
-      forceAdmitCount: tickets.filter((ticket) => ticket.admissionDecision === 'FORCE_ADMIT').length,
-      denyCount: tickets.filter((ticket) => ticket.admissionDecision === 'DENY').length
+      forceAdmitCount: forceAdmitCount[0]?.count || 0,
+      denyCount: denyCount[0]?.count || 0
     },
     peakPerMinute,
     byGate,
@@ -684,6 +767,12 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
           actor,
           action: scanAttemptActions.INVALID_QR,
           performanceId: parsed.data.performanceId,
+          scannerSessionId: scannerSession.id,
+          gate: scannerSession.gate,
+          scannedValue: parsed.data.scannedValue,
+          clientScanId: parsed.data.clientScanId || null,
+          offlineQueuedAt: parsed.data.offlineQueuedAt || null,
+          scannedAt,
           metadata: {
             scannedValue: parsed.data.scannedValue,
             sessionId: scannerSession.id,
@@ -705,6 +794,12 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
           actor,
           action: scanAttemptActions.NOT_FOUND,
           performanceId: parsed.data.performanceId,
+          scannerSessionId: scannerSession.id,
+          gate: scannerSession.gate,
+          scannedValue: parsed.data.scannedValue,
+          clientScanId: parsed.data.clientScanId || null,
+          offlineQueuedAt: parsed.data.offlineQueuedAt || null,
+          scannedAt,
           metadata: {
             scannedValue: parsed.data.scannedValue,
             sessionId: scannerSession.id,
@@ -727,8 +822,14 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
             actor,
             action: scanAttemptActions.INVALID_QR,
             performanceId: parsed.data.performanceId,
+            scannerSessionId: scannerSession.id,
             ticketId: ticket.id,
             publicId: ticket.publicId,
+            gate: scannerSession.gate,
+            scannedValue: parsed.data.scannedValue,
+            clientScanId: parsed.data.clientScanId || null,
+            offlineQueuedAt: parsed.data.offlineQueuedAt || null,
+            scannedAt,
             metadata: {
               reason: 'bad_signature',
               sessionId: scannerSession.id,
@@ -751,8 +852,14 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
           actor,
           action: scanAttemptActions.WRONG_PERFORMANCE,
           performanceId: parsed.data.performanceId,
+          scannerSessionId: scannerSession.id,
           ticketId: ticket.id,
           publicId: ticket.publicId,
+          gate: scannerSession.gate,
+          scannedValue: parsed.data.scannedValue,
+          clientScanId: parsed.data.clientScanId || null,
+          offlineQueuedAt: parsed.data.offlineQueuedAt || null,
+          scannedAt,
           metadata: {
             ticketPerformanceId: ticket.performanceId,
             sessionId: scannerSession.id
@@ -772,8 +879,14 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
           actor,
           action: scanAttemptActions.NOT_ADMITTED,
           performanceId: parsed.data.performanceId,
+          scannerSessionId: scannerSession.id,
           ticketId: ticket.id,
           publicId: ticket.publicId,
+          gate: scannerSession.gate,
+          scannedValue: parsed.data.scannedValue,
+          clientScanId: parsed.data.clientScanId || null,
+          offlineQueuedAt: parsed.data.offlineQueuedAt || null,
+          scannedAt,
           metadata: {
             reason: ticket.admissionReason || 'Supervisor denied',
             sessionId: scannerSession.id
@@ -793,8 +906,14 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
           actor,
           action: scanAttemptActions.NOT_ADMITTED,
           performanceId: parsed.data.performanceId,
+          scannerSessionId: scannerSession.id,
           ticketId: ticket.id,
           publicId: ticket.publicId,
+          gate: scannerSession.gate,
+          scannedValue: parsed.data.scannedValue,
+          clientScanId: parsed.data.clientScanId || null,
+          offlineQueuedAt: parsed.data.offlineQueuedAt || null,
+          scannedAt,
           metadata: {
             orderStatus: ticket.order.status,
             ticketStatus: ticket.status,
@@ -815,8 +934,14 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
           actor,
           action: scanAttemptActions.ALREADY_CHECKED_IN,
           performanceId: parsed.data.performanceId,
+          scannerSessionId: scannerSession.id,
           ticketId: ticket.id,
           publicId: ticket.publicId,
+          gate: scannerSession.gate,
+          scannedValue: parsed.data.scannedValue,
+          clientScanId: parsed.data.clientScanId || null,
+          offlineQueuedAt: parsed.data.offlineQueuedAt || null,
+          scannedAt,
           metadata: {
             checkedInAt: ticket.checkedInAt.toISOString(),
             sessionId: scannerSession.id
@@ -857,8 +982,14 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
           actor,
           action: scanAttemptActions.ALREADY_CHECKED_IN,
           performanceId: parsed.data.performanceId,
+          scannerSessionId: scannerSession.id,
           ticketId: ticket.id,
           publicId: ticket.publicId,
+          gate: scannerSession.gate,
+          scannedValue: parsed.data.scannedValue,
+          clientScanId: parsed.data.clientScanId || null,
+          offlineQueuedAt: parsed.data.offlineQueuedAt || null,
+          scannedAt,
           metadata: {
             reason: 'race_condition',
             sessionId: scannerSession.id

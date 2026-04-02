@@ -803,140 +803,173 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.post('/api/checkout/student-credits/validate', async (request, reply) => {
-    const parsed = validateStudentCreditSchema.safeParse(request.body || {});
-    if (!parsed.success) {
-      return reply.status(400).send({ error: parsed.error.flatten() });
-    }
-
-    try {
-      const studentCode = extractStudentVerificationCode(parsed.data.verification);
-      const eligibility = await getStudentCreditEligibilityByStudentCode({
-        performanceId: parsed.data.performanceId,
-        studentCode,
-        requestedSeatCount: parsed.data.seatIds.length
-      });
-
-      reply.send(eligibility);
-    } catch (err) {
-      handleRouteError(reply, err, 'Student credit validation failed');
-    }
-  });
-
-  app.post('/api/checkout/student-credits/quote', async (request, reply) => {
-    const parsed = quoteStudentCreditSchema.safeParse(request.body || {});
-    if (!parsed.success) {
-      return reply.status(400).send({ error: parsed.error.flatten() });
-    }
-
-    try {
-      const { assignments } = await buildSeatAssignmentsForQuote({
-        performanceId: parsed.data.performanceId,
-        seatIds: parsed.data.seatIds,
-        ticketSelections: parsed.data.ticketSelections
-      });
-
-      const studentCode = extractStudentVerificationCode(parsed.data.verification);
-      const eligibility = await getStudentCreditEligibilityByStudentCode({
-        performanceId: parsed.data.performanceId,
-        studentCode,
-        requestedSeatCount: assignments.length
-      });
-
-      const complimentaryQuantity = Math.min(assignments.length, eligibility.maxUsableOnCheckout);
-      const complimentarySeatIds = pickComplimentarySeatIds(assignments, complimentaryQuantity);
-
-      const seatBreakdown = assignments.map((assignment) => {
-        const complimentary = complimentarySeatIds.has(assignment.seatId);
-        return {
-          seatId: assignment.seatId,
-          sectionName: assignment.sectionName,
-          row: assignment.row,
-          number: assignment.number,
-          ticketType: assignment.ticketType,
-          basePriceCents: assignment.priceCents,
-          finalPriceCents: complimentary ? 0 : assignment.priceCents,
-          complimentary
-        };
-      });
-
-      const baseSubtotalCents = assignments.reduce((sum, assignment) => sum + assignment.priceCents, 0);
-      const complimentaryDiscountCents = seatBreakdown
-        .filter((seat) => seat.complimentary)
-        .reduce((sum, seat) => sum + seat.basePriceCents, 0);
-
-      reply.send({
-        ...eligibility,
-        baseSubtotalCents,
-        complimentaryDiscountCents,
-        totalDueCents: baseSubtotalCents - complimentaryDiscountCents,
-        complimentaryQuantityApplied: complimentaryQuantity,
-        fullPriceQuantity: assignments.length - complimentaryQuantity,
-        seatBreakdown
-      });
-    } catch (err) {
-      handleRouteError(reply, err, 'Student credit quote failed');
-    }
-  });
-
-  app.post('/api/checkout/student-credits/finalize', async (request, reply) => {
-    const parsed = finalizeStudentCreditSchema.safeParse(request.body || {});
-    if (!parsed.success) {
-      return reply.status(400).send({ error: parsed.error.flatten() });
-    }
-
-    try {
-      const order = await prisma.order.findFirst({
-        where: {
-          id: parsed.data.orderId,
-          email: parsed.data.email.trim().toLowerCase()
-        },
-        select: {
-          id: true,
-          performanceId: true,
-          source: true,
-          status: true,
-          studentTicketCreditId: true,
-          studentCreditPendingQuantity: true,
-          studentCreditVerificationMethod: true
+  app.post(
+    '/api/checkout/student-credits/validate',
+    {
+      config: {
+        rateLimit: {
+          max: 20,
+          timeWindow: '1 minute'
         }
-      });
-
-      if (!order) {
-        throw new HttpError(404, 'Order not found');
+      }
+    },
+    async (request, reply) => {
+      const parsed = validateStudentCreditSchema.safeParse(request.body || {});
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
       }
 
-      if (order.status !== 'PAID') {
-        throw new HttpError(400, 'Order must be paid before finalizing student credit redemption');
+      try {
+        const studentCode = extractStudentVerificationCode(parsed.data.verification);
+        const eligibility = await getStudentCreditEligibilityByStudentCode({
+          performanceId: parsed.data.performanceId,
+          studentCode,
+          requestedSeatCount: parsed.data.seatIds.length
+        });
+
+        reply.send(eligibility);
+      } catch (err) {
+        handleRouteError(reply, err, 'Student credit validation failed');
+      }
+    }
+  );
+
+  app.post(
+    '/api/checkout/student-credits/quote',
+    {
+      config: {
+        rateLimit: {
+          max: 20,
+          timeWindow: '1 minute'
+        }
+      }
+    },
+    async (request, reply) => {
+      const parsed = quoteStudentCreditSchema.safeParse(request.body || {});
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
       }
 
-      const finalizedQuantity = await prisma.$transaction(async (tx) => {
-        const freshOrder = await tx.order.findUnique({
-          where: { id: order.id },
+      try {
+        const { assignments } = await buildSeatAssignmentsForQuote({
+          performanceId: parsed.data.performanceId,
+          seatIds: parsed.data.seatIds,
+          ticketSelections: parsed.data.ticketSelections
+        });
+
+        const studentCode = extractStudentVerificationCode(parsed.data.verification);
+        const eligibility = await getStudentCreditEligibilityByStudentCode({
+          performanceId: parsed.data.performanceId,
+          studentCode,
+          requestedSeatCount: assignments.length
+        });
+
+        const complimentaryQuantity = Math.min(assignments.length, eligibility.maxUsableOnCheckout);
+        const complimentarySeatIds = pickComplimentarySeatIds(assignments, complimentaryQuantity);
+
+        const seatBreakdown = assignments.map((assignment) => {
+          const complimentary = complimentarySeatIds.has(assignment.seatId);
+          return {
+            seatId: assignment.seatId,
+            sectionName: assignment.sectionName,
+            row: assignment.row,
+            number: assignment.number,
+            ticketType: assignment.ticketType,
+            basePriceCents: assignment.priceCents,
+            finalPriceCents: complimentary ? 0 : assignment.priceCents,
+            complimentary
+          };
+        });
+
+        const baseSubtotalCents = assignments.reduce((sum, assignment) => sum + assignment.priceCents, 0);
+        const complimentaryDiscountCents = seatBreakdown
+          .filter((seat) => seat.complimentary)
+          .reduce((sum, seat) => sum + seat.basePriceCents, 0);
+
+        reply.send({
+          ...eligibility,
+          baseSubtotalCents,
+          complimentaryDiscountCents,
+          totalDueCents: baseSubtotalCents - complimentaryDiscountCents,
+          complimentaryQuantityApplied: complimentaryQuantity,
+          fullPriceQuantity: assignments.length - complimentaryQuantity,
+          seatBreakdown
+        });
+      } catch (err) {
+        handleRouteError(reply, err, 'Student credit quote failed');
+      }
+    }
+  );
+
+  app.post(
+    '/api/checkout/student-credits/finalize',
+    {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: '5 minutes'
+        }
+      }
+    },
+    async (request, reply) => {
+      const parsed = finalizeStudentCreditSchema.safeParse(request.body || {});
+      if (!parsed.success) {
+        return reply.status(400).send({ error: parsed.error.flatten() });
+      }
+
+      try {
+        const order = await prisma.order.findFirst({
+          where: {
+            id: parsed.data.orderId,
+            email: parsed.data.email.trim().toLowerCase()
+          },
           select: {
             id: true,
             performanceId: true,
             source: true,
+            status: true,
             studentTicketCreditId: true,
             studentCreditPendingQuantity: true,
             studentCreditVerificationMethod: true
           }
         });
 
-        if (!freshOrder) {
+        if (!order) {
           throw new HttpError(404, 'Order not found');
         }
 
-        return finalizeStudentCreditForOrderTx(tx, freshOrder);
-      });
+        if (order.status !== 'PAID') {
+          throw new HttpError(400, 'Order must be paid before finalizing student credit redemption');
+        }
 
-      reply.send({
-        orderId: order.id,
-        finalizedQuantity,
-        finalized: finalizedQuantity > 0
-      });
-    } catch (err) {
-      handleRouteError(reply, err, 'Failed to finalize student credit redemption');
+        const finalizedQuantity = await prisma.$transaction(async (tx) => {
+          const freshOrder = await tx.order.findUnique({
+            where: { id: order.id },
+            select: {
+              id: true,
+              performanceId: true,
+              source: true,
+              studentTicketCreditId: true,
+              studentCreditPendingQuantity: true,
+              studentCreditVerificationMethod: true
+            }
+          });
+
+          if (!freshOrder) {
+            throw new HttpError(404, 'Order not found');
+          }
+
+          return finalizeStudentCreditForOrderTx(tx, freshOrder);
+        });
+
+        reply.send({
+          orderId: order.id,
+          finalizedQuantity,
+          finalized: finalizedQuantity > 0
+        });
+      } catch (err) {
+        handleRouteError(reply, err, 'Failed to finalize student credit redemption');
+      }
     }
-  });
+  );
 };

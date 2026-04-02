@@ -2,6 +2,35 @@ import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { handleRouteError } from '../lib/route-error.js';
 import { HttpError } from '../lib/http-error.js';
+import { env } from '../lib/env.js';
+
+type CacheEntry<T> = {
+  value: T;
+  expiresAt: number;
+};
+
+const performanceCacheTtlMs = env.NODE_ENV === 'test' ? 0 : env.PERFORMANCE_CACHE_TTL_SECONDS * 1000;
+let performanceListCache: CacheEntry<unknown> | null = null;
+const performanceDetailCache = new Map<string, CacheEntry<unknown>>();
+
+function readCache<T>(entry: CacheEntry<T> | null | undefined): T | null {
+  if (!entry || performanceCacheTtlMs <= 0) {
+    return null;
+  }
+
+  if (Date.now() >= entry.expiresAt) {
+    return null;
+  }
+
+  return entry.value;
+}
+
+function writeCache<T>(value: T): CacheEntry<T> {
+  return {
+    value,
+    expiresAt: Date.now() + performanceCacheTtlMs
+  };
+}
 
 function toSeatStatus(status: string): 'available' | 'held' | 'sold' | 'blocked' {
   return status.toLowerCase() as 'available' | 'held' | 'sold' | 'blocked';
@@ -42,31 +71,93 @@ function getReadableSeatStatus(seat: {
 export const performanceRoutes: FastifyPluginAsync = async (app) => {
   app.get('/api/performances', async (_request, reply) => {
     try {
+      const cached = readCache(performanceListCache);
+      if (cached) {
+        return reply.send(cached);
+      }
+
       const performances = await prisma.performance.findMany({
         where: { isArchived: false, isFundraiser: false },
         orderBy: { startsAt: 'asc' },
-        include: {
-          show: true,
-          seats: {
+        select: {
+          id: true,
+          title: true,
+          startsAt: true,
+          salesCutoffAt: true,
+          staffCompsEnabled: true,
+          staffCompLimitPerUser: true,
+          staffTicketLimit: true,
+          familyFreeTicketEnabled: true,
+          seatSelectionEnabled: true,
+          venue: true,
+          notes: true,
+          show: {
             select: {
-              price: true,
-              status: true,
-              holdSession: {
-                select: {
-                  status: true,
-                  expiresAt: true
-                }
-              }
+              id: true,
+              title: true,
+              description: true,
+              posterUrl: true,
+              type: true,
+              year: true,
+              accentColor: true
             }
           }
         }
       });
 
+      const performanceIds = performances.map((performance) => performance.id);
+      const now = new Date();
+
+      const [priceStats, availableStats] = performanceIds.length
+        ? await Promise.all([
+            prisma.seat.groupBy({
+              by: ['performanceId'],
+              where: {
+                performanceId: {
+                  in: performanceIds
+                }
+              },
+              _min: { price: true },
+              _max: { price: true }
+            }),
+            prisma.seat.groupBy({
+              by: ['performanceId'],
+              where: {
+                performanceId: {
+                  in: performanceIds
+                },
+                OR: [
+                  { status: 'AVAILABLE' },
+                  {
+                    status: 'HELD',
+                    OR: [
+                      { holdSessionId: null },
+                      { holdSession: { status: { not: 'ACTIVE' } } },
+                      { holdSession: { expiresAt: { lt: now } } }
+                    ]
+                  }
+                ]
+              },
+              _count: { _all: true }
+            })
+          ])
+        : [[], []];
+
+      const priceStatsByPerformanceId = new Map(
+        priceStats.map((stat) => [
+          stat.performanceId,
+          { minPrice: stat._min.price ?? 0, maxPrice: stat._max.price ?? 0 }
+        ])
+      );
+      const availableStatsByPerformanceId = new Map(
+        availableStats.map((stat) => [stat.performanceId, stat._count._all])
+      );
+
       const payload = performances.map((performance) => {
-        const prices = performance.seats.map((s) => s.price);
-        const availableSeats = performance.seats.filter((seat) => isSeatEffectivelyAvailable(seat)).length;
         const cutoff = performance.salesCutoffAt || performance.startsAt;
-        const salesOpen = cutoff > new Date();
+        const salesOpen = cutoff > now;
+        const priceStatsForPerformance = priceStatsByPerformanceId.get(performance.id);
+        const availableSeats = availableStatsByPerformanceId.get(performance.id) ?? 0;
         return {
           id: performance.id,
           title: performance.title || performance.show.title,
@@ -89,12 +180,13 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
             year: performance.show.year,
             accentColor: performance.show.accentColor
           },
-          minPrice: prices.length ? Math.min(...prices) : 0,
-          maxPrice: prices.length ? Math.max(...prices) : 0,
+          minPrice: priceStatsForPerformance?.minPrice ?? 0,
+          maxPrice: priceStatsForPerformance?.maxPrice ?? 0,
           availableSeats
         };
       });
 
+      performanceListCache = writeCache(payload);
       reply.send(payload);
     } catch (err) {
       handleRouteError(reply, err, 'Failed to fetch performances');
@@ -105,6 +197,11 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
     const params = request.params as { id: string };
 
     try {
+      const cached = readCache(performanceDetailCache.get(params.id));
+      if (cached) {
+        return reply.send(cached);
+      }
+
       const performance = await prisma.performance.findFirst({
         where: { id: params.id, isArchived: false },
         include: {
@@ -154,7 +251,7 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
         existing.maxPrice = Math.max(existing.maxPrice, seat.price);
       });
 
-      reply.send({
+      const payload = {
         id: performance.id,
         title: performance.title || performance.show.title,
         startsAt: performance.startsAt.toISOString(),
@@ -182,7 +279,10 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
           priceCents: tier.priceCents
         })),
         seatingSections: [...sectionsMap.values()]
-      });
+      };
+
+      performanceDetailCache.set(params.id, writeCache(payload));
+      reply.send(payload);
     } catch (err) {
       handleRouteError(reply, err, 'Failed to fetch performance');
     }

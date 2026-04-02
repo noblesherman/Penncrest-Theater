@@ -1,4 +1,3 @@
-import { motion } from 'motion/react';
 import { Calendar, MapPin, Clock, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -7,20 +6,22 @@ export default function InterestMeeting() {
     <div className="bg-stone-50 min-h-screen font-sans text-stone-900">
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-yellow-400 py-14 sm:py-20">
-        <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
+        <div
+          className="absolute inset-0 opacity-20"
+          style={{
+            backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(120, 53, 15, 0.3) 1px, transparent 0)',
+            backgroundSize: '22px 22px'
+          }}
+        />
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-          >
+          <div>
             <h1 className="mb-5 text-3xl font-black uppercase tracking-tight font-display sm:text-4xl md:mb-6 md:text-6xl">
               Interest Meeting
             </h1>
             <p className="mx-auto max-w-3xl text-base font-bold leading-relaxed text-stone-800 sm:text-xl">
               Join us to learn about the upcoming season!
             </p>
-          </motion.div>
+          </div>
         </div>
       </section>
 

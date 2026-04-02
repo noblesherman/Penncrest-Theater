@@ -1,6 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
 import React, { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
 import { Ticket, Menu, X } from 'lucide-react';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -41,13 +40,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
             {/* Logo */}
             <Link to="/" className="group flex items-center gap-2.5 min-w-0">
-              <motion.div
-                whileHover={{ rotate: 6 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 15 }}
-                className="w-8 h-8 bg-red-700 text-white rounded-lg flex items-center justify-center shadow-sm shadow-red-200 flex-shrink-0"
-              >
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-red-700 text-white shadow-sm shadow-red-200 transition-transform duration-200 group-hover:-rotate-6">
                 <Ticket className="w-4 h-4" />
-              </motion.div>
+              </div>
               <span className="font-bold text-stone-900 truncate" style={{ fontFamily: 'Georgia, serif', fontSize: '1.1rem' }}>
                 Penncrest <em className="text-red-700 not-italic">Theater</em>
               </span>
@@ -64,10 +59,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 >
                   {link.name}
                   {location.pathname === link.path && (
-                    <motion.div
-                      layoutId="underline"
-                      className="absolute -bottom-1 left-0 right-0 h-0.5 bg-red-700 rounded-full"
-                    />
+                    <span className="absolute -bottom-1 left-0 right-0 h-0.5 rounded-full bg-red-700" />
                   )}
                 </Link>
               ))}
@@ -84,6 +76,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <button
               className="md:hidden p-2 text-stone-500 hover:text-stone-900 transition-colors"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
+              aria-label={isMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+              aria-expanded={isMenuOpen}
+              aria-controls="mobile-navigation"
             >
               {isMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
@@ -91,38 +86,30 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Mobile menu */}
-        <AnimatePresence>
-          {isMenuOpen && (
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-              className="md:hidden bg-white border-t border-stone-100 absolute w-full shadow-lg"
-            >
-              <div className="px-4 py-4 space-y-1">
-                {navLinks.map((link) => (
-                  <Link
-                    key={link.name}
-                    to={link.path}
-                    className="block px-4 py-3 rounded-xl text-stone-700 font-medium hover:bg-stone-50 hover:text-red-700 transition-colors"
-                    style={{ color: location.pathname === link.path ? '#b91c1c' : undefined }}
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    {link.name}
-                  </Link>
-                ))}
+        {isMenuOpen && (
+          <div id="mobile-navigation" className="absolute w-full border-t border-stone-100 bg-white shadow-lg md:hidden">
+            <div className="space-y-1 px-4 py-4">
+              {navLinks.map((link) => (
                 <Link
-                  to="/shows"
-                  className="flex items-center justify-center gap-2 mt-2 px-4 py-3 rounded-xl bg-red-700 text-white font-semibold hover:bg-red-800 transition-colors"
+                  key={link.name}
+                  to={link.path}
+                  className="block rounded-xl px-4 py-3 font-medium text-stone-700 transition-colors hover:bg-stone-50 hover:text-red-700"
+                  style={{ color: location.pathname === link.path ? '#b91c1c' : undefined }}
                   onClick={() => setIsMenuOpen(false)}
                 >
-                  <Ticket className="w-4 h-4" /> Buy Tickets
+                  {link.name}
                 </Link>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              ))}
+              <Link
+                to="/shows"
+                className="mt-2 flex items-center justify-center gap-2 rounded-xl bg-red-700 px-4 py-3 font-semibold text-white transition-colors hover:bg-red-800"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                <Ticket className="w-4 h-4" /> Buy Tickets
+              </Link>
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* ── MAIN ── */}
@@ -131,7 +118,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </main>
 
       {/* ── FOOTER ── */}
-      <footer className="bg-stone-950 text-stone-400 pt-14 pb-8">
+      <footer className="bg-stone-950 pt-14 pb-8 text-stone-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-10 mb-12">
 
@@ -145,7 +132,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   Penncrest <em className="text-red-500 not-italic">Theater</em>
                 </span>
               </div>
-              <p className="text-sm leading-relaxed max-w-xs text-stone-500">
+              <p className="max-w-xs text-sm leading-relaxed text-stone-300">
                 Bringing stories to life in Media, PA. A theater program dedicated to creativity, community, and excellence in the arts.
               </p>
               <div className="mt-5 flex flex-col gap-2 text-sm">
@@ -157,7 +144,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
             {/* Explore */}
             <div>
-              <h4 className="text-white font-semibold text-xs uppercase tracking-[0.15em] mb-5">Explore</h4>
+              <p className="mb-5 text-xs font-semibold uppercase tracking-[0.15em] text-white">Explore</p>
               <ul className="space-y-3 text-sm">
                 <li><Link to="/shows" className="hover:text-amber-400 transition-colors">Our Season</Link></li>
                 <li><Link to="/fundraising" className="hover:text-amber-400 transition-colors">Fundraising</Link></li>
@@ -167,7 +154,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
             {/* Connect */}
             <div>
-              <h4 className="text-white font-semibold text-xs uppercase tracking-[0.15em] mb-5">Connect</h4>
+              <p className="mb-5 text-xs font-semibold uppercase tracking-[0.15em] text-white">Connect</p>
               <ul className="space-y-3 text-sm">
                 <li>
                   <button
@@ -184,19 +171,18 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   </a>
                 </li>
                 <li className="flex gap-3 pt-1">
-                  <motion.a
-                    whileHover={{ y: -2 }}
+                  <a
                     href="https://www.instagram.com/penncrest.theater/"
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label="Penncrest Theater Instagram"
-                    className="w-8 h-8 bg-stone-800 hover:bg-red-700 text-stone-400 hover:text-white rounded-full flex items-center justify-center cursor-pointer transition-colors text-xs font-bold"
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-stone-800 text-xs font-bold text-stone-300 transition-all hover:-translate-y-0.5 hover:bg-red-700 hover:text-white"
                   >
                     IG
-                  </motion.a>
-                  <motion.div whileHover={{ y: -2 }} className="w-8 h-8 bg-stone-800 hover:bg-red-700 text-stone-400 hover:text-white rounded-full flex items-center justify-center cursor-pointer transition-colors text-xs font-bold">
+                  </a>
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-stone-800 text-xs font-bold text-stone-300 transition-all hover:-translate-y-0.5 hover:bg-red-700 hover:text-white">
                     FB
-                  </motion.div>
+                  </span>
                 </li>
               </ul>
             </div>
@@ -204,33 +190,24 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
 
           {/* Bottom rule */}
-          <div className="border-t border-stone-800 pt-6 text-xs text-stone-600 text-center">
+          <div className="border-t border-stone-800 pt-6 text-center text-xs text-stone-400">
             &copy; {new Date().getFullYear()} Penncrest High School Theater. All rights reserved.
           </div>
         </div>
       </footer>
 
-      <AnimatePresence>
-        {isAddressMapOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            className="fixed inset-0 z-[140] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Penncrest Theater arrival map"
-            onClick={() => setIsAddressMapOpen(false)}
+      {isAddressMapOpen && (
+        <div
+          className="fixed inset-0 z-[140] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Penncrest Theater arrival map"
+          onClick={() => setIsAddressMapOpen(false)}
+        >
+          <div
+            className="relative w-full max-w-3xl overflow-hidden rounded-[28px] border border-white/10 bg-stone-950 shadow-2xl shadow-black/40"
+            onClick={(event) => event.stopPropagation()}
           >
-            <motion.div
-              initial={{ opacity: 0, y: 20, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 20, scale: 0.98 }}
-              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="relative w-full max-w-3xl overflow-hidden rounded-[28px] border border-white/10 bg-stone-950 shadow-2xl shadow-black/40"
-              onClick={(event) => event.stopPropagation()}
-            >
               <button
                 type="button"
                 onClick={() => setIsAddressMapOpen(false)}
@@ -262,10 +239,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   className="max-h-[75vh] w-full rounded-2xl border border-stone-800 bg-white object-contain"
                 />
               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+        </div>
+      )}
 
     </div>
   );

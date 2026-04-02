@@ -12,9 +12,20 @@ export function isDevDynamicOrigin(origin: string): boolean {
 
   try {
     const parsed = new URL(origin);
-    const isLocalHost = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
-    const isTryCloudflare = parsed.hostname.endsWith('.trycloudflare.com');
-    return isLocalHost || isTryCloudflare;
+    return parsed.hostname.endsWith('.trycloudflare.com');
+  } catch {
+    return false;
+  }
+}
+
+function isLocalOrigin(origin: string): boolean {
+  if (!origin) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(origin);
+    return parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
   } catch {
     return false;
   }
@@ -29,7 +40,15 @@ export function isAllowedOrigin(origin: string, allowedOrigins: string[]): boole
     return true;
   }
 
-  return env.NODE_ENV !== 'production' && isDevDynamicOrigin(origin);
+  if (env.NODE_ENV === 'production') {
+    return false;
+  }
+
+  if (isLocalOrigin(origin)) {
+    return true;
+  }
+
+  return env.CORS_ALLOW_DEV_TUNNEL_ORIGINS && isDevDynamicOrigin(origin);
 }
 
 export const corsPlugin = fp(async (app) => {

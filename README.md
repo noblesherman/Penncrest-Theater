@@ -9,6 +9,10 @@ Production-ready school theater ticketing platform with reserved seating, Stripe
 - Payments: Stripe Checkout + Stripe webhooks
 - Email: SMTP (Nodemailer)
 
+## Canonical API
+
+`/backend` is the only maintained API service. The root `server.ts` entrypoint and `/apps/api` have been intentionally disabled so hotfixes and deploys land on a single backend implementation.
+
 ## Key Features
 
 - Performance browsing and seat map availability

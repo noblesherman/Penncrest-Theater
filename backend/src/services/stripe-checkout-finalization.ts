@@ -403,6 +403,8 @@ async function finalizePaidOrderTx(
     where: { id: order.id },
     data: {
       status: 'PAID',
+      checkoutAttemptState: 'NONE',
+      checkoutAttemptExpiresAt: null,
       amountTotal,
       stripeSessionId: context.stripeSessionId,
       stripePaymentIntentId: context.stripePaymentIntentId,
@@ -507,6 +509,8 @@ async function recordFinalizationFailure(
     },
     data: {
       status: 'FINALIZATION_FAILED',
+      checkoutAttemptState: 'NONE',
+      checkoutAttemptExpiresAt: null,
       stripeSessionId: context.stripeSessionId,
       stripePaymentIntentId: paymentIntentId,
       finalizationAttemptCount: {
@@ -609,6 +613,10 @@ async function finalizeByMetadata(
 
       if (order.status === 'REFUNDED') {
         return 'finalization_failed' as const;
+      }
+
+      if (order.status === 'CANCELED') {
+        throw new HttpError(409, 'Checkout attempt is no longer active');
       }
 
       const refundStatus = order.stripeRefundStatus?.toLowerCase();

@@ -6,6 +6,7 @@ const EnvSchema = z.object({
   DATABASE_URL: z.string().min(1),
   APP_BASE_URL: z.string().url(),
   FRONTEND_ORIGIN: z.string().min(1).default('http://localhost:5173'),
+  CORS_ALLOW_DEV_TUNNEL_ORIGINS: z.coerce.boolean().default(false),
 
   STRIPE_SECRET_KEY: z.string().min(1).transform((value) => value.trim()),
   STRIPE_WEBHOOK_SECRET: z.string().min(1).transform((value) => value.trim()),
@@ -17,6 +18,8 @@ const EnvSchema = z.object({
   STAFF_ALLOWED_DOMAIN: z.string().min(1).default('rtmsd.org'),
 
   HOLD_TTL_MINUTES: z.coerce.number().int().min(1).max(60).default(10),
+  CHECKOUT_ATTEMPT_TTL_MINUTES: z.coerce.number().int().min(1).max(120).default(20),
+  PERFORMANCE_CACHE_TTL_SECONDS: z.coerce.number().int().min(0).max(60).default(10),
   TERMINAL_DISPATCH_HOLD_TTL_MINUTES: z.coerce.number().int().min(1).max(30).default(5),
   TERMINAL_DISPATCH_ALLOW_MOCK_PAYMENTS: z.coerce.boolean().default(false),
   HOLD_CLEANUP_INTERVAL_SECONDS: z.coerce.number().int().min(10).max(3600).default(60),

@@ -10,11 +10,15 @@ import { createAssignedOrder } from '../services/order-assignment.js';
 import { env } from '../lib/env.js';
 import { generateOrderAccessToken } from '../lib/order-access.js';
 import {
+  getCheckoutAttemptExpiresAt,
+  markCheckoutAttemptAwaitingPayment,
+  markCheckoutAttemptFailed
+} from '../services/checkout-attempt-service.js';
+import {
   getStudentCreditEligibilityByStudentCode,
   normalizeStudentVerificationCode,
   redeemStudentCreditImmediatelyForPaidOrder,
-  releasePendingStudentCreditForOrder,
-  reserveStudentCreditForOrder
+  reserveStudentCreditForOrderTx
 } from '../services/student-ticket-credit-service.js';
 import { validateTeacherCompPromoCode } from '../services/teacher-comp-promo-code-service.js';
 
@@ -129,7 +133,7 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
       const isStudentCompCheckout = checkoutMode === 'STUDENT_COMP';
 
       let createdOrderId: string | null = null;
-      let reservedStudentCredits = false;
+      let createdPaymentIntentId: string | null = null;
 
       try {
         const [performance, holdSession] = await Promise.all([
@@ -421,43 +425,49 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
         }
 
         const source = isStudentCompCheckout ? 'STUDENT_COMP' : isTeacherCompCheckout ? 'STAFF_COMP' : 'ONLINE';
-        const order = await prisma.order.create({
-          data: {
-            performanceId,
-            email: effectiveCustomerEmail,
-            customerName: effectiveCustomerName,
-            customerPhone: normalizedCustomerPhone,
-            attendeeNamesJson: attendeeNames ?? undefined,
-            amountTotal,
-            currency: 'usd',
-            status: 'PENDING',
-            source,
-            holdToken,
-            accessToken: generateOrderAccessToken()
+        const checkoutAttemptExpiresAt = getCheckoutAttemptExpiresAt();
+        const order = await prisma.$transaction(async (tx) => {
+          const createdOrder = await tx.order.create({
+            data: {
+              performanceId,
+              email: effectiveCustomerEmail,
+              customerName: effectiveCustomerName,
+              customerPhone: normalizedCustomerPhone,
+              attendeeNamesJson: attendeeNames ?? undefined,
+              amountTotal,
+              currency: 'usd',
+              status: 'PENDING',
+              checkoutAttemptState: 'CREATING_PAYMENT_INTENT',
+              checkoutAttemptExpiresAt,
+              source,
+              holdToken,
+              accessToken: generateOrderAccessToken()
+            }
+          });
+
+          await tx.orderSeat.createMany({
+            data: seatAssignments.map((assignment) => ({
+              orderId: createdOrder.id,
+              seatId: isGeneralAdmissionNoSeatLinks ? null : assignment.seat.id,
+              price: assignment.finalPrice,
+              ticketType: assignment.ticketType,
+              attendeeName: attendeeNames?.[assignment.seat.id],
+              isComplimentary: assignment.finalPrice === 0
+            }))
+          });
+
+          if (isStudentCompCheckout && studentTicketCreditId && studentComplimentaryQuantity > 0) {
+            await reserveStudentCreditForOrderTx(tx, {
+              orderId: createdOrder.id,
+              studentTicketCreditId,
+              quantity: studentComplimentaryQuantity,
+              verificationMethod: StudentCreditVerificationMethod.CODE
+            });
           }
+
+          return createdOrder;
         });
         createdOrderId = order.id;
-
-        await prisma.orderSeat.createMany({
-          data: seatAssignments.map((assignment) => ({
-            orderId: order.id,
-            seatId: isGeneralAdmissionNoSeatLinks ? null : assignment.seat.id,
-            price: assignment.finalPrice,
-            ticketType: assignment.ticketType,
-            attendeeName: attendeeNames?.[assignment.seat.id],
-            isComplimentary: assignment.finalPrice === 0
-          }))
-        });
-
-        if (isStudentCompCheckout && studentTicketCreditId && studentComplimentaryQuantity > 0) {
-          await reserveStudentCreditForOrder({
-            orderId: order.id,
-            studentTicketCreditId,
-            quantity: studentComplimentaryQuantity,
-            verificationMethod: StudentCreditVerificationMethod.CODE
-          });
-          reservedStudentCredits = true;
-        }
 
         const paymentIntent = await stripe.paymentIntents.create({
           amount: amountTotal,
@@ -476,16 +486,15 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
             studentCreditQuantity: String(studentComplimentaryQuantity)
           }
         });
+        createdPaymentIntentId = paymentIntent.id;
 
         if (!paymentIntent.client_secret) {
           throw new HttpError(500, 'Stripe payment intent missing client secret');
         }
 
-        await prisma.order.update({
-          where: { id: order.id },
-          data: {
-            stripePaymentIntentId: paymentIntent.id
-          }
+        await markCheckoutAttemptAwaitingPayment({
+          orderId: order.id,
+          stripePaymentIntentId: paymentIntent.id
         });
 
         reply.send({
@@ -496,27 +505,14 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
           mode: checkoutMode
         });
       } catch (err) {
-        if (createdOrderId && reservedStudentCredits) {
-          try {
-            await releasePendingStudentCreditForOrder(createdOrderId);
-          } catch (releaseErr) {
-            request.log?.error?.(releaseErr);
-          }
-        }
-
         if (createdOrderId) {
           try {
-            await prisma.order.updateMany({
-              where: {
-                id: createdOrderId,
-                status: 'PENDING'
-              },
-              data: {
-                status: 'CANCELED'
-              }
+            await markCheckoutAttemptFailed({
+              orderId: createdOrderId,
+              stripePaymentIntentId: createdPaymentIntentId
             });
-          } catch (cancelErr) {
-            request.log?.error?.(cancelErr);
+          } catch (markErr) {
+            request.log?.error?.(markErr);
           }
         }
 

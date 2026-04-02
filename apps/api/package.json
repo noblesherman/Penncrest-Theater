@@ -4,12 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx src/server.ts",
-    "build": "tsc --noEmit",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:seed": "prisma db seed",
-    "cron:release-holds": "tsx src/jobs/release-expired-holds.ts"
+    "decommissioned": "node -e \"console.error('apps/api is decommissioned. Use npm --prefix backend run dev or npm run dev:backend for the canonical backend service.'); process.exit(1)\"",
+    "dev": "npm run decommissioned",
+    "build": "npm run decommissioned",
+    "prisma:generate": "npm run decommissioned",
+    "prisma:migrate": "npm run decommissioned",
+    "prisma:seed": "npm run decommissioned",
+    "cron:release-holds": "npm run decommissioned"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
