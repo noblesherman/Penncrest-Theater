@@ -15,6 +15,7 @@ const TERMINAL_DISPATCH_EXPIRABLE_STATUSES: TerminalDispatchStatus[] = ['PENDING
 const terminalDispatchSnapshotSchema = z.object({
   performanceId: z.string().min(1),
   performanceTitle: z.string().min(1),
+  isGeneralAdmission: z.boolean(),
   seatIds: z.array(z.string().min(1)).min(1),
   seatLabelsBySeatId: z.record(z.string().min(1), z.string().min(1)),
   seatSummaryBySeatId: z.record(
@@ -153,8 +154,12 @@ export async function createTerminalDispatchHold(params: {
   seatIds: string[];
 }): Promise<{ holdToken: string; holdExpiresAt: Date }> {
   const normalizedSeatIds = dedupeSeatIds(params.seatIds);
+  const holdExpiresAt = new Date(Date.now() + env.TERMINAL_DISPATCH_HOLD_TTL_MINUTES * 60_000);
   if (normalizedSeatIds.length === 0) {
-    throw new HttpError(400, 'Select at least one seat');
+    return {
+      holdToken: `ga_terminal_dispatch:${crypto.randomBytes(8).toString('hex')}`,
+      holdExpiresAt
+    };
   }
 
   const clientToken = `terminal_dispatch:${crypto.randomBytes(8).toString('hex')}`;
@@ -164,7 +169,6 @@ export async function createTerminalDispatchHold(params: {
     clientToken
   });
 
-  const holdExpiresAt = new Date(Date.now() + env.TERMINAL_DISPATCH_HOLD_TTL_MINUTES * 60_000);
   await prisma.holdSession.update({
     where: { holdToken: hold.holdToken },
     data: {

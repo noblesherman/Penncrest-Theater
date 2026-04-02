@@ -157,55 +157,72 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
       }
     }
 
-    if (performance.seats.length !== seatIds.length) {
-      throw new HttpError(400, 'One or more selected seats are invalid for this performance');
-    }
-
-    validateCompanionSelection(performance.seats);
-
-    const disallowed = performance.seats.find((seat) => {
-      if (seat.status === 'SOLD' || seat.status === 'BLOCKED') return true;
-      if (!allowHeldSeats && seat.status === 'HELD') return true;
-      return false;
-    });
-
-    if (disallowed) {
-      throw new HttpError(409, 'One or more selected seats are no longer available');
-    }
-
-    const heldStatuses: Array<'AVAILABLE' | 'HELD'> = allowHeldSeats ? ['AVAILABLE', 'HELD'] : ['AVAILABLE'];
-    const updated = await tx.seat.updateMany({
-      where: {
-        id: { in: seatIds },
-        performanceId: params.performanceId,
-        status: { in: heldStatuses }
-      },
-      data: {
-        status: 'SOLD',
-        holdSessionId: null
-      }
-    });
-
-    if (updated.count !== seatIds.length) {
-      throw new HttpError(409, 'One or more selected seats are no longer available');
-    }
-
-    await tx.seatHold.deleteMany({
-      where: {
-        seatId: { in: seatIds }
-      }
-    });
-
-    const holdIds = performance.seats
-      .map((seat) => seat.holdSessionId)
-      .filter((value): value is string => Boolean(value));
-    await closeEmptyHolds(tx, holdIds);
-
     const complimentarySources = new Set<OrderSource>(['COMP', 'STAFF_FREE', 'STAFF_COMP', 'FAMILY_FREE', 'STUDENT_COMP']);
     const isSourceComplimentary = complimentarySources.has(params.source);
     const isGeneralAdmissionNoSeatLinks = performance.seatSelectionEnabled === false;
 
-    const sortedSeats = sortSeats(performance.seats);
+    if (!isGeneralAdmissionNoSeatLinks) {
+      if (performance.seats.length !== seatIds.length) {
+        throw new HttpError(400, 'One or more selected seats are invalid for this performance');
+      }
+
+      validateCompanionSelection(performance.seats);
+
+      const disallowed = performance.seats.find((seat) => {
+        if (seat.status === 'SOLD' || seat.status === 'BLOCKED') return true;
+        if (!allowHeldSeats && seat.status === 'HELD') return true;
+        return false;
+      });
+
+      if (disallowed) {
+        throw new HttpError(409, 'One or more selected seats are no longer available');
+      }
+
+      const heldStatuses: Array<'AVAILABLE' | 'HELD'> = allowHeldSeats ? ['AVAILABLE', 'HELD'] : ['AVAILABLE'];
+      const updated = await tx.seat.updateMany({
+        where: {
+          id: { in: seatIds },
+          performanceId: params.performanceId,
+          status: { in: heldStatuses }
+        },
+        data: {
+          status: 'SOLD',
+          holdSessionId: null
+        }
+      });
+
+      if (updated.count !== seatIds.length) {
+        throw new HttpError(409, 'One or more selected seats are no longer available');
+      }
+
+      await tx.seatHold.deleteMany({
+        where: {
+          seatId: { in: seatIds }
+        }
+      });
+
+      const holdIds = performance.seats
+        .map((seat) => seat.holdSessionId)
+        .filter((value): value is string => Boolean(value));
+      await closeEmptyHolds(tx, holdIds);
+    }
+
+    const sortedSeats = isGeneralAdmissionNoSeatLinks
+      ? [...seatIds]
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+          .map((seatId, index) => ({
+            id: seatId,
+            sectionName: 'General Admission',
+            row: 'GA',
+            number: index + 1,
+            price: 0,
+            status: 'AVAILABLE' as const,
+            holdSessionId: null,
+            isAccessible: false,
+            isCompanion: false,
+            companionForSeatId: null
+          }))
+      : sortSeats(performance.seats);
     const seatAssignments = sortedSeats.map((seat) => {
       const requestedPrice = params.priceBySeatId?.[seat.id];
       const normalizedPrice = typeof requestedPrice === 'number' && Number.isFinite(requestedPrice) ? Math.max(0, Math.round(requestedPrice)) : seat.price;

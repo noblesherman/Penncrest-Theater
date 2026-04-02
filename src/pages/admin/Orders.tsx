@@ -32,6 +32,7 @@ type Performance = {
   pricingTiers: PricingTier[];
   staffCompsEnabled?: boolean;
   studentCompTicketsEnabled?: boolean;
+  seatSelectionEnabled?: boolean;
 };
 type Seat = {
   id: string; sectionName: string; row: string; number: number;
@@ -42,7 +43,15 @@ type Seat = {
 type AssignForm = {
   performanceId: string; source: 'DOOR' | 'COMP';
   customerName: string; customerEmail: string;
-  seatIdsInput: string; ticketType: string; sendEmail: boolean;
+  seatIdsInput: string; gaQuantityInput: string; ticketType: string; sendEmail: boolean;
+};
+type CashierSelectionLine = {
+  id: string;
+  label: string;
+  sectionName: string;
+  row: string;
+  number: number;
+  seatPriceCents: number;
 };
 type InPersonCashTonightSummary = {
   totalCashCents: number; saleCount: number;
@@ -98,6 +107,9 @@ const naturalSort = (a: string, b: string) =>
 
 const parseSeatIds = (input: string) =>
   [...new Set(input.split(',').map(v => v.trim()).filter((v): v is string => Boolean(v)))];
+
+const buildGeneralAdmissionLineIds = (quantity: number) =>
+  Array.from({ length: Math.max(0, Math.min(quantity, 50)) }, (_value, index) => `ga-${index + 1}`);
 
 function readCashierDefaultPerformanceId(): string {
   if (typeof window === 'undefined') return '';
@@ -269,7 +281,7 @@ export default function AdminOrdersPage() {
   const [assignForm, setAssignForm] = useState<AssignForm>({
     performanceId: '', source: 'DOOR',
     customerName: '', customerEmail: '',
-    seatIdsInput: '', ticketType: '', sendEmail: false,
+    seatIdsInput: '', gaQuantityInput: '1', ticketType: '', sendEmail: false,
   });
 
   // ── data loading ───────────────────────────────────────────────────────────
@@ -298,6 +310,7 @@ export default function AdminOrdersPage() {
         pricingTiers?: PricingTier[];
         staffCompsEnabled?: boolean;
         studentCompTicketsEnabled?: boolean;
+        seatSelectionEnabled?: boolean;
       }>>('/api/admin/performances?scope=active&kind=all');
       const mapped = items.filter(i => !i.isArchived)
         .map(i => ({
@@ -308,6 +321,7 @@ export default function AdminOrdersPage() {
           pricingTiers: i.pricingTiers || [],
           staffCompsEnabled: Boolean(i.staffCompsEnabled),
           studentCompTicketsEnabled: Boolean(i.studentCompTicketsEnabled),
+          seatSelectionEnabled: i.seatSelectionEnabled !== false,
         }));
       setPerformances(mapped);
       if (mapped.length > 0) {
@@ -333,9 +347,9 @@ export default function AdminOrdersPage() {
 
   const assignOrder = async () => {
     setError(null); setNotice(null);
-    const seatIds = parseSeatIds(assignForm.seatIdsInput);
-    if (!assignForm.performanceId || seatIds.length === 0) {
-      setError('Choose a performance and provide at least one seat ID.'); return;
+    if (!assignForm.performanceId || selectionIds.length === 0) {
+      setError(seatSelectionEnabled ? 'Choose a performance and provide at least one seat ID.' : 'Choose a performance and enter at least one GA ticket.');
+      return;
     }
     if (assignForm.source !== 'COMP') {
       setError('Door sales must use the in-person finalize flow.'); return;
@@ -343,8 +357,13 @@ export default function AdminOrdersPage() {
     if (assignForm.sendEmail && !assignForm.customerEmail.trim()) {
       setError('Enter an email address to send comp tickets.'); return;
     }
-    const ticketTypeBySeatId = Object.fromEntries(seatIds.map(id => [id, assignForm.ticketType || 'Comp']));
-    const priceBySeatId = Object.fromEntries(seatIds.map(id => [id, 0]));
+    if (missingTicketTypeCount > 0) {
+      setError(`Choose a ticket type for every selected ${seatSelectionEnabled ? 'seat' : 'ticket'} before assigning checkout.`); return;
+    }
+    const ticketTypeBySeatId = Object.fromEntries(
+      selectionIds.map((id) => [id, ticketSelectionBySeatId[id] || 'Comp'])
+    );
+    const priceBySeatId = Object.fromEntries(selectionIds.map(id => [id, 0]));
     const fallbackName = assignForm.customerName.trim() || 'Comp Guest';
     const fallbackEmail = assignForm.customerEmail.trim().toLowerCase() || `comp+${Date.now()}@boxoffice.local`;
     setSubmitting(true);
@@ -352,15 +371,16 @@ export default function AdminOrdersPage() {
       await adminFetch('/api/admin/orders/assign', {
         method: 'POST',
         body: JSON.stringify({
-          performanceId: assignForm.performanceId, seatIds,
+          performanceId: assignForm.performanceId,
+          seatIds: selectionIds,
           customerName: fallbackName, customerEmail: fallbackEmail,
           ticketTypeBySeatId, priceBySeatId,
           source: assignForm.source,
           sendEmail: Boolean(assignForm.sendEmail && assignForm.customerEmail.trim())
         }),
       });
-      setAssignForm(prev => ({ ...prev, customerName: '', customerEmail: '', seatIdsInput: '', ticketType: '' }));
-      setNotice(`Assigned ${seatIds.length} seat${seatIds.length === 1 ? '' : 's'} successfully.`);
+      setAssignForm(prev => ({ ...prev, customerName: '', customerEmail: '', seatIdsInput: '', gaQuantityInput: '1', ticketType: '' }));
+      setNotice(`Assigned ${selectionIds.length} ${seatSelectionEnabled ? 'seat' : 'ticket'}${selectionIds.length === 1 ? '' : 's'} successfully.`);
       startCashierLoop(assignForm.performanceId);
       void load();
       void loadSeatsForPerformance(assignForm.performanceId, { showLoading: false, syncSelection: false });
@@ -399,15 +419,15 @@ export default function AdminOrdersPage() {
 
   const finalizeInPersonSale = async () => {
     setError(null); setNotice(null); setInPersonFlowError(null);
-    const seatIds = parseSeatIds(assignForm.seatIdsInput);
-    if (!assignForm.performanceId || seatIds.length === 0) {
-      setError('Choose a performance and provide at least one seat ID.'); return;
+    if (!assignForm.performanceId || selectionIds.length === 0) {
+      setError(seatSelectionEnabled ? 'Choose a performance and provide at least one seat ID.' : 'Choose a performance and enter at least one GA ticket.');
+      return;
     }
     if (selectedTicketOptions.length === 0) {
       setError('No ticket pricing tiers are configured for this performance.'); return;
     }
     if (missingTicketTypeCount > 0) {
-      setError('Choose a ticket type for every selected seat before completing checkout.'); return;
+      setError(`Choose a ticket type for every selected ${seatSelectionEnabled ? 'seat' : 'ticket'} before completing checkout.`); return;
     }
     if (hasMixedCompSelection) {
       setInPersonFlowError('Teacher and Student in Show complimentary tickets cannot be mixed in one order.'); return;
@@ -432,7 +452,7 @@ export default function AdminOrdersPage() {
           method: 'POST',
           body: JSON.stringify({
             performanceId: assignForm.performanceId,
-            seatIds,
+            seatIds: selectionIds,
             ticketSelectionBySeatId,
             receiptEmail: normalizedReceiptEmail || undefined,
             sendReceipt,
@@ -465,7 +485,8 @@ export default function AdminOrdersPage() {
       }>('/api/admin/orders/in-person/finalize', {
         method: 'POST',
         body: JSON.stringify({
-          performanceId: assignForm.performanceId, seatIds,
+          performanceId: assignForm.performanceId,
+          seatIds: selectionIds,
           ticketSelectionBySeatId, paymentMethod,
           receiptEmail: normalizedReceiptEmail || undefined,
           sendReceipt, customerName: assignForm.customerName.trim() || undefined,
@@ -478,10 +499,10 @@ export default function AdminOrdersPage() {
         seats: result.seats,
         expiresAtMs: Date.now() + 10000
       });
-      setAssignForm(prev => ({ ...prev, customerName: '', customerEmail: '', seatIdsInput: '', ticketType: '' }));
+      setAssignForm(prev => ({ ...prev, customerName: '', customerEmail: '', seatIdsInput: '', gaQuantityInput: '1', ticketType: '' }));
       setTicketSelectionBySeatId({});
       setNotice(
-        `${paymentMethod === 'CASH' ? 'Cash' : 'Stripe'} sale completed — ${seatIds.length} seat${seatIds.length === 1 ? '' : 's'} · $${(result.expectedAmountCents / 100).toFixed(2)}`
+        `${paymentMethod === 'CASH' ? 'Cash' : 'Stripe'} sale completed — ${selectionIds.length} ${seatSelectionEnabled ? 'seat' : 'ticket'}${selectionIds.length === 1 ? '' : 's'} · $${(result.expectedAmountCents / 100).toFixed(2)}`
       );
       startCashierLoop(assignForm.performanceId);
       void load();
@@ -491,16 +512,17 @@ export default function AdminOrdersPage() {
   };
 
   const finalizeSuccessfulTerminalDispatch = (dispatch: TerminalDispatch) => {
+    const isGeneralAdmissionDispatch = dispatch.seats.every((seat) => seat.row === 'GA');
     setSaleRecap({
       expectedAmountCents: dispatch.expectedAmountCents,
       paymentMethod: 'STRIPE',
       seats: dispatch.seats,
       expiresAtMs: Date.now() + 10000
     });
-    setAssignForm(prev => ({ ...prev, customerName: '', customerEmail: '', seatIdsInput: '', ticketType: '' }));
+    setAssignForm(prev => ({ ...prev, customerName: '', customerEmail: '', seatIdsInput: '', gaQuantityInput: '1', ticketType: '' }));
     setTicketSelectionBySeatId({});
     setNotice(
-      `Stripe sale completed — ${dispatch.seatCount} seat${dispatch.seatCount === 1 ? '' : 's'} · $${(dispatch.expectedAmountCents / 100).toFixed(2)}`
+      `Stripe sale completed — ${dispatch.seatCount} ${isGeneralAdmissionDispatch ? 'ticket' : 'seat'}${dispatch.seatCount === 1 ? '' : 's'} · $${(dispatch.expectedAmountCents / 100).toFixed(2)}`
     );
     setTerminalDispatch(null);
     startCashierLoop(assignForm.performanceId);
@@ -587,6 +609,7 @@ export default function AdminOrdersPage() {
       customerName: '',
       customerEmail: '',
       seatIdsInput: '',
+      gaQuantityInput: '1',
       ticketType: '',
       sendEmail: false
     }));
@@ -659,7 +682,11 @@ export default function AdminOrdersPage() {
   const handleWizardNext = () => {
     if (step === 0) { goTo(1); return; }
     if (step === 1) {
-      if (seatIds.length === 0) { setError('Select at least one seat to continue.'); setSeatPickerOpen(true); return; }
+      if (selectionIds.length === 0) {
+        setError(seatSelectionEnabled ? 'Select at least one seat to continue.' : 'Enter at least one GA ticket to continue.');
+        if (seatSelectionEnabled) setSeatPickerOpen(true);
+        return;
+      }
       goTo(2); return;
     }
     goTo(step + 1);
@@ -738,22 +765,38 @@ export default function AdminOrdersPage() {
   // ── derived state ──────────────────────────────────────────────────────────
 
   const seatIds = useMemo(() => parseSeatIds(assignForm.seatIdsInput), [assignForm.seatIdsInput]);
+  const gaTicketQuantity = useMemo(() => {
+    const parsed = Number.parseInt(assignForm.gaQuantityInput, 10);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.max(0, Math.min(parsed, 50));
+  }, [assignForm.gaQuantityInput]);
+  const selectedPerformance = performances.find(p => p.id === assignForm.performanceId);
+  const seatSelectionEnabled = selectedPerformance?.seatSelectionEnabled !== false;
+  const selectionIds = useMemo(
+    () => (seatSelectionEnabled ? seatIds : buildGeneralAdmissionLineIds(gaTicketQuantity)),
+    [gaTicketQuantity, seatIds, seatSelectionEnabled]
+  );
 
   useEffect(() => {
     selectedSeatIdsRef.current = seatIds;
   }, [seatIds]);
 
-  useEffect(() => { if (!showWizard || step !== 1) setSeatPickerOpen(false); }, [showWizard, step]);
+  useEffect(() => {
+    if (!showWizard || step !== 1 || !seatSelectionEnabled) setSeatPickerOpen(false);
+  }, [seatSelectionEnabled, showWizard, step]);
 
   useEffect(() => {
-    if (!showWizard || step !== 1) { didAutoOpenSeatPickerRef.current = false; return; }
+    if (!showWizard || step !== 1 || !seatSelectionEnabled) { didAutoOpenSeatPickerRef.current = false; return; }
     if (didAutoOpenSeatPickerRef.current || seatPickerOpen || seatIds.length > 0) return;
     didAutoOpenSeatPickerRef.current = true;
     setSeatPickerOpen(true);
-  }, [seatIds.length, seatPickerOpen, showWizard, step]);
+  }, [seatIds.length, seatPickerOpen, seatSelectionEnabled, showWizard, step]);
 
   useEffect(() => { setActiveSection('All'); setSeatPickerError(null); setSeats([]); }, [assignForm.performanceId]);
-  useEffect(() => { if (!seatPickerOpen || !assignForm.performanceId) return; void loadSeatsForPerformance(assignForm.performanceId); }, [assignForm.performanceId, loadSeatsForPerformance, seatPickerOpen]);
+  useEffect(() => {
+    if (!seatSelectionEnabled || !seatPickerOpen || !assignForm.performanceId) return;
+    void loadSeatsForPerformance(assignForm.performanceId);
+  }, [assignForm.performanceId, loadSeatsForPerformance, seatPickerOpen, seatSelectionEnabled]);
   useEffect(() => {
     if (!showWizard || assignForm.source !== 'DOOR') { setCashTonight(null); setLoadingCashTonight(false); return; }
     void loadCashTonight(assignForm.performanceId);
@@ -779,7 +822,7 @@ export default function AdminOrdersPage() {
   }, [refreshTerminalDispatchStatus, terminalDispatch]);
 
   useEffect(() => {
-    if (!showWizard || step === 0 || terminalDispatch || !assignForm.performanceId) {
+    if (!showWizard || step === 0 || terminalDispatch || !assignForm.performanceId || !seatSelectionEnabled) {
       return;
     }
 
@@ -791,7 +834,7 @@ export default function AdminOrdersPage() {
     }, 5000);
 
     return () => window.clearInterval(timerId);
-  }, [assignForm.performanceId, loadSeatsForPerformance, showWizard, step, terminalDispatch]);
+  }, [assignForm.performanceId, loadSeatsForPerformance, seatSelectionEnabled, showWizard, step, terminalDispatch]);
 
   const selectedSeatIdSet = useMemo(() => new Set(seatIds), [seatIds]);
 
@@ -828,7 +871,6 @@ export default function AdminOrdersPage() {
 
   const selectedUnknownSeatIds = useMemo(() => seatIds.filter(id => !seatById.has(id)), [seatById, seatIds]);
 
-  const selectedPerformance = performances.find(p => p.id === assignForm.performanceId);
   const selectedTerminalDevice = useMemo(
     () => terminalDevices.find((device) => device.deviceId === selectedTerminalDeviceId) || null,
     [selectedTerminalDeviceId, terminalDevices]
@@ -865,13 +907,17 @@ export default function AdminOrdersPage() {
     return options;
   }, [selectedPerformance]);
   const primaryTicketTier = selectedTicketOptions[0] || null;
+  const primaryStandardTicketTier = useMemo(
+    () => selectedTicketOptions.find((option) => !option.isSynthetic) || primaryTicketTier,
+    [primaryTicketTier, selectedTicketOptions]
+  );
 
   useEffect(() => {
-    if (seatIds.length === 0) { setTicketSelectionBySeatId({}); return; }
+    if (selectionIds.length === 0) { setTicketSelectionBySeatId({}); return; }
     const defaultTierId = selectedTicketOptions[0]?.id || '';
     setTicketSelectionBySeatId(prev => {
       const next: Record<string, string> = {};
-      seatIds.forEach(seatId => {
+      selectionIds.forEach(seatId => {
         const cur = prev[seatId];
         const valid = Boolean(cur && selectedTicketOptions.some(t => t.id === cur));
         if (valid) { next[seatId] = cur; return; }
@@ -879,33 +925,54 @@ export default function AdminOrdersPage() {
       });
       return next;
     });
-  }, [seatIds, selectedTicketOptions]);
+  }, [selectionIds, selectedTicketOptions]);
 
   const missingTicketTypeCount = useMemo(
-    () => seatIds.filter(id => !ticketSelectionBySeatId[id]).length,
-    [seatIds, ticketSelectionBySeatId]
+    () => selectionIds.filter(id => !ticketSelectionBySeatId[id]).length,
+    [selectionIds, ticketSelectionBySeatId]
   );
 
+  const selectedLines = useMemo<CashierSelectionLine[]>(() => {
+    if (seatSelectionEnabled) {
+      return selectedMappedSeats.map((seat) => ({
+        id: seat.id,
+        label: `${seat.sectionName} · Row ${seat.row} · #${seat.number}`,
+        sectionName: seat.sectionName,
+        row: seat.row,
+        number: seat.number,
+        seatPriceCents: Math.max(0, seat.price)
+      }));
+    }
+    return selectionIds.map((lineId, index) => ({
+      id: lineId,
+      label: `General Admission Ticket ${index + 1}`,
+      sectionName: 'General Admission',
+      row: 'GA',
+      number: index + 1,
+      seatPriceCents: Math.max(0, primaryStandardTicketTier?.priceCents || 0)
+    }));
+  }, [primaryStandardTicketTier, seatSelectionEnabled, selectedMappedSeats, selectionIds]);
+
   const selectedSeatsWithTier = useMemo(
-    () => selectedMappedSeats.map(seat => ({
-      seat,
-      tier: selectedTicketOptions.find(t => t.id === ticketSelectionBySeatId[seat.id]) || null
+    () => selectedLines.map((line) => ({
+      line,
+      tier: selectedTicketOptions.find(t => t.id === ticketSelectionBySeatId[line.id]) || null
     })),
-    [selectedMappedSeats, selectedTicketOptions, ticketSelectionBySeatId]
+    [selectedLines, selectedTicketOptions, ticketSelectionBySeatId]
   );
 
   const teacherSelectedSeatIds = useMemo(
     () =>
       selectedSeatsWithTier
         .filter((item) => item.tier && (item.tier.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketName(item.tier.name)))
-        .map((item) => item.seat.id),
+        .map((item) => item.line.id),
     [selectedSeatsWithTier]
   );
   const studentInShowSelectedSeatIds = useMemo(
     () =>
       selectedSeatsWithTier
         .filter((item) => item.tier && (item.tier.id === STUDENT_SHOW_TICKET_OPTION_ID || isStudentInShowTicketName(item.tier.name)))
-        .map((item) => item.seat.id),
+        .map((item) => item.line.id),
     [selectedSeatsWithTier]
   );
   const hasTeacherCompSelection = teacherSelectedSeatIds.length > 0;
@@ -917,10 +984,10 @@ export default function AdminOrdersPage() {
       const isTeacherTicket = Boolean(item.tier && (item.tier.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketName(item.tier.name)));
       const isStudentTicket = Boolean(item.tier && (item.tier.id === STUDENT_SHOW_TICKET_OPTION_ID || isStudentInShowTicketName(item.tier.name)));
       const basePriceCents = item.tier
-        ? Math.max(0, item.tier.isSynthetic ? item.seat.price : item.tier.priceCents)
+        ? Math.max(0, item.tier.isSynthetic ? item.line.seatPriceCents : item.tier.priceCents)
         : 0;
       return {
-        seat: item.seat,
+        line: item.line,
         tier: item.tier,
         basePriceCents,
         finalPriceCents: basePriceCents,
@@ -934,16 +1001,16 @@ export default function AdminOrdersPage() {
       const teacherSeats = priced.filter((item) => item.isTeacherTicket);
       const complimentarySeatIds = pickComplimentarySeatIds(
         teacherSeats.map((item) => ({
-          id: item.seat.id,
-          sectionName: item.seat.sectionName,
-          row: item.seat.row,
-          number: item.seat.number,
+          id: item.line.id,
+          sectionName: item.line.sectionName,
+          row: item.line.row,
+          number: item.line.number,
           basePriceCents: item.basePriceCents
         })),
         Math.min(MAX_TEACHER_COMP_TICKETS, teacherSeats.length)
       );
       priced = priced.map((item) =>
-        item.isTeacherTicket && complimentarySeatIds.has(item.seat.id)
+        item.isTeacherTicket && complimentarySeatIds.has(item.line.id)
           ? { ...item, finalPriceCents: 0, lineLabel: 'Teacher Comp' }
           : item
       );
@@ -953,16 +1020,16 @@ export default function AdminOrdersPage() {
       const studentSeats = priced.filter((item) => item.isStudentTicket);
       const complimentarySeatIds = pickComplimentarySeatIds(
         studentSeats.map((item) => ({
-          id: item.seat.id,
-          sectionName: item.seat.sectionName,
-          row: item.seat.row,
-          number: item.seat.number,
+          id: item.line.id,
+          sectionName: item.line.sectionName,
+          row: item.line.row,
+          number: item.line.number,
           basePriceCents: item.basePriceCents
         })),
         Math.min(MAX_STUDENT_COMP_TICKETS, studentSeats.length)
       );
       priced = priced.map((item) =>
-        item.isStudentTicket && complimentarySeatIds.has(item.seat.id)
+        item.isStudentTicket && complimentarySeatIds.has(item.line.id)
           ? { ...item, finalPriceCents: 0, lineLabel: 'Student Comp' }
           : item
       );
@@ -1080,7 +1147,7 @@ export default function AdminOrdersPage() {
     <div key="seats" className="space-y-4">
       <div>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <FieldLabel>Selected seats</FieldLabel>
+          <FieldLabel>{seatSelectionEnabled ? 'Selected seats' : 'Ticket quantity'}</FieldLabel>
           <div className="flex gap-2">
             <button
               type="button"
@@ -1088,11 +1155,12 @@ export default function AdminOrdersPage() {
                 if (!assignForm.performanceId) { setError('Choose a performance first.'); return; }
                 setSeatPickerOpen(true); setSeatPickerError(null);
               }}
+              disabled={!seatSelectionEnabled}
               className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700"
             >
               <MapPin className="h-3.5 w-3.5" /> Open seat map
             </button>
-            {seatIds.length > 0 && (
+            {seatSelectionEnabled && seatIds.length > 0 && (
               <button
                 type="button"
                 onClick={() => setAssignForm({ ...assignForm, seatIdsInput: '' })}
@@ -1103,13 +1171,25 @@ export default function AdminOrdersPage() {
             )}
           </div>
         </div>
-        <input
-          value={assignForm.seatIdsInput}
-          onChange={e => setAssignForm({ ...assignForm, seatIdsInput: e.target.value })}
-          placeholder="Paste seat IDs: A1, A2, B3…"
-          className={baseInput}
-        />
-        {seatIds.length > 0 && (
+        {seatSelectionEnabled ? (
+          <input
+            value={assignForm.seatIdsInput}
+            onChange={e => setAssignForm({ ...assignForm, seatIdsInput: e.target.value })}
+            placeholder="Paste seat IDs: A1, A2, B3…"
+            className={baseInput}
+          />
+        ) : (
+          <input
+            type="number"
+            min={1}
+            max={50}
+            value={assignForm.gaQuantityInput}
+            onChange={e => setAssignForm({ ...assignForm, gaQuantityInput: e.target.value.replace(/[^\d]/g, '') })}
+            placeholder="Enter ticket quantity"
+            className={baseInput}
+          />
+        )}
+        {seatSelectionEnabled && seatIds.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
             {seatIds.map(id => (
               <button
@@ -1130,10 +1210,10 @@ export default function AdminOrdersPage() {
           { label: 'Performance', value: selectedPerformance?.title ?? '—' },
           { label: 'Type', value: assignForm.source === 'DOOR' ? 'Door Sale' : 'Comp' },
           {
-            label: 'Seats selected',
-            value: seatIds.length > 0
-              ? <span className="font-bold text-slate-900">{seatIds.length} seat{seatIds.length !== 1 ? 's' : ''}</span>
-              : <span className="font-semibold text-amber-600">None selected</span>
+            label: seatSelectionEnabled ? 'Seats selected' : 'Tickets selected',
+            value: selectionIds.length > 0
+              ? <span className="font-bold text-slate-900">{selectionIds.length} {seatSelectionEnabled ? 'seat' : 'ticket'}{selectionIds.length !== 1 ? 's' : ''}</span>
+              : <span className="font-semibold text-amber-600">{seatSelectionEnabled ? 'None selected' : 'No tickets entered'}</span>
           },
         ].map(({ label, value }, i, arr) => (
           <div key={label} className={`flex items-center justify-between px-5 py-3.5 text-sm ${i < arr.length - 1 ? 'border-b border-slate-100' : ''}`}>
@@ -1146,10 +1226,10 @@ export default function AdminOrdersPage() {
 
     /* ── STEP 2: Checkout ── */
     <div key="tickets" className="space-y-5">
-      {!seatIds.length ? (
+      {!selectionIds.length ? (
         <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
           <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
-          Go back and select at least one seat.
+          {seatSelectionEnabled ? 'Go back and select at least one seat.' : 'Go back and enter at least one GA ticket.'}
         </div>
       ) : selectedTicketOptions.length === 0 ? (
         <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
@@ -1160,7 +1240,7 @@ export default function AdminOrdersPage() {
         <>
           {/* Quick apply */}
           <div>
-            <FieldLabel>Quick-apply to all seats</FieldLabel>
+            <FieldLabel>Quick-apply to all {seatSelectionEnabled ? 'seats' : 'tickets'}</FieldLabel>
             <div className="flex flex-wrap gap-2">
               {selectedTicketOptions.map(tier => (
                 <button
@@ -1169,7 +1249,7 @@ export default function AdminOrdersPage() {
                   onClick={() => {
                     setTicketSelectionBySeatId(prev => {
                       const next = { ...prev };
-                      seatIds.forEach(id => { next[id] = tier.id; });
+                      selectionIds.forEach(id => { next[id] = tier.id; });
                       return next;
                     });
                   }}
@@ -1187,17 +1267,17 @@ export default function AdminOrdersPage() {
 
           {/* Per-seat type selection */}
           <Card className="divide-y divide-slate-100 overflow-hidden">
-            {selectedMappedSeats.map(seat => (
-              <div key={seat.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            {selectedLines.map(line => (
+              <div key={line.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-slate-800">
-                    {seat.sectionName} · Row {seat.row} · #{seat.number}
+                    {line.label}
                   </p>
-                  <p className="text-xs font-sans text-slate-400">{seat.id}</p>
+                  <p className="text-xs font-sans text-slate-400">{line.id}</p>
                 </div>
                 <select
-                  value={ticketSelectionBySeatId[seat.id] || ''}
-                  onChange={e => setTicketSelectionBySeatId(prev => ({ ...prev, [seat.id]: e.target.value }))}
+                  value={ticketSelectionBySeatId[line.id] || ''}
+                  onChange={e => setTicketSelectionBySeatId(prev => ({ ...prev, [line.id]: e.target.value }))}
                   className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100 sm:w-56"
                 >
                   <option value="">Select type…</option>
@@ -1216,7 +1296,7 @@ export default function AdminOrdersPage() {
             <div className="flex items-center justify-between bg-slate-50 px-5 py-3 border-b border-slate-100">
               <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Order summary</p>
               {missingTicketTypeCount > 0
-                ? <span className="text-xs font-semibold text-amber-600">{missingTicketTypeCount} seat{missingTicketTypeCount !== 1 ? 's' : ''} unassigned</span>
+                ? <span className="text-xs font-semibold text-amber-600">{missingTicketTypeCount} {seatSelectionEnabled ? 'seat' : 'ticket'}{missingTicketTypeCount !== 1 ? 's' : ''} unassigned</span>
                 : <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600"><Check className="h-3 w-3" /> All assigned</span>
               }
             </div>
@@ -1543,7 +1623,7 @@ export default function AdminOrdersPage() {
                 <div>
                   <p className="text-sm font-bold uppercase tracking-widest text-slate-400">Seat write-down</p>
                   <h2 className="mt-1 text-2xl font-black text-slate-900">
-                    {saleRecap.seats.length} seat{saleRecap.seats.length === 1 ? '' : 's'} sold
+                    {saleRecap.seats.length} ticket{saleRecap.seats.length === 1 ? '' : 's'} sold
                   </h2>
                   <p className="mt-1 text-sm text-slate-500">
                     {saleRecap.paymentMethod === 'CASH' ? 'Cash' : 'Card'} • ${(saleRecap.expectedAmountCents / 100).toFixed(2)}
@@ -1563,7 +1643,9 @@ export default function AdminOrdersPage() {
                   {saleRecap.seats.map((seat) => (
                     <div key={seat.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
                       <p className="text-sm font-bold text-slate-900">
-                        {seat.sectionName} · Row {seat.row} · Seat {seat.number}
+                        {seat.row === 'GA'
+                          ? `${seat.sectionName} Ticket ${seat.number}`
+                          : `${seat.sectionName} · Row ${seat.row} · Seat ${seat.number}`}
                       </p>
                       <p className="text-xs text-slate-500">{seat.ticketType}</p>
                     </div>

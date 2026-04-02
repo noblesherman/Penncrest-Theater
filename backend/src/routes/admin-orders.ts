@@ -247,7 +247,9 @@ async function buildInPersonSaleQuote(params: {
 }): Promise<{
   performanceId: string;
   performanceTitle: string;
+  isGeneralAdmission: boolean;
   seatIds: string[];
+  holdSeatIds: string[];
   seatCount: number;
   expectedAmountCents: number;
   currency: 'usd';
@@ -304,7 +306,9 @@ async function buildInPersonSaleQuote(params: {
     throw new HttpError(404, 'Performance not found');
   }
 
-  if (performance.seats.length !== normalizedSeatIds.length) {
+  const isGeneralAdmission = performance.seatSelectionEnabled === false;
+
+  if (!isGeneralAdmission && performance.seats.length !== normalizedSeatIds.length) {
     throw new HttpError(400, 'One or more selected seats are invalid for this performance');
   }
 
@@ -353,20 +357,36 @@ async function buildInPersonSaleQuote(params: {
     });
   }
 
-  validateCompanionSelection(performance.seats as InPersonSaleSeat[]);
+  if (!isGeneralAdmission) {
+    validateCompanionSelection(performance.seats as InPersonSaleSeat[]);
 
-  const unavailableSeat = performance.seats.find(
-    (seat) => seat.status === 'HELD' || seat.status === 'SOLD' || seat.status === 'BLOCKED'
-  );
-  if (unavailableSeat) {
-    throw new HttpError(409, 'One or more selected seats are no longer available');
+    const unavailableSeat = performance.seats.find(
+      (seat) => seat.status === 'HELD' || seat.status === 'SOLD' || seat.status === 'BLOCKED'
+    );
+    if (unavailableSeat) {
+      throw new HttpError(409, 'One or more selected seats are no longer available');
+    }
   }
 
-  const sortedSeats = sortSeats(performance.seats as InPersonSaleSeat[]);
+  const sortedSeats = isGeneralAdmission
+    ? [...normalizedSeatIds]
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+        .map((seatId, index) => ({
+          id: seatId,
+          sectionName: 'General Admission',
+          row: 'GA',
+          number: index + 1,
+          price: Math.max(0, performance.pricingTiers[0]?.priceCents || 0),
+          status: 'AVAILABLE' as const,
+          isAccessible: false,
+          isCompanion: false,
+          companionForSeatId: null
+        }))
+    : sortSeats(performance.seats as InPersonSaleSeat[]);
   let seatPriceSelections = sortedSeats.map((seat) => {
     const ticketTierId = params.ticketSelectionBySeatId[seat.id];
     if (!ticketTierId) {
-      throw new HttpError(400, `Missing ticket selection for seat: ${seat.id}`);
+      throw new HttpError(400, `Missing ticket selection for ${isGeneralAdmission ? 'ticket' : 'seat'}: ${seat.id}`);
     }
 
     if (ticketTierId === TEACHER_TICKET_OPTION_ID && !tierById.has(ticketTierId)) {
@@ -513,7 +533,9 @@ async function buildInPersonSaleQuote(params: {
   return {
     performanceId: performance.id,
     performanceTitle: performance.title || performance.show.title,
+    isGeneralAdmission,
     seatIds: sortedSeats.map((seat) => seat.id),
+    holdSeatIds: isGeneralAdmission ? [] : sortedSeats.map((seat) => seat.id),
     seatCount: sortedSeats.length,
     expectedAmountCents,
     currency: 'usd',
@@ -542,6 +564,7 @@ function buildTerminalDispatchSnapshot(params: {
   return {
     performanceId: params.quote.performanceId,
     performanceTitle: params.quote.performanceTitle,
+    isGeneralAdmission: params.quote.isGeneralAdmission,
     seatIds: params.quote.seatIds,
     seatLabelsBySeatId: Object.fromEntries(params.quote.seats.map((seat) => [seat.id, seat.label])),
     seatSummaryBySeatId: Object.fromEntries(
@@ -930,7 +953,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
 
       const hold = await createTerminalDispatchHold({
         performanceId: quote.performanceId,
-        seatIds: quote.seatIds
+        seatIds: quote.holdSeatIds
       });
 
       const snapshot = buildTerminalDispatchSnapshot({
@@ -962,7 +985,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
           currency: quote.currency,
           payment_method_types: ['card_present'],
           capture_method: 'automatic',
-          description: `${quote.performanceTitle} - ${quote.seatCount} seat${quote.seatCount === 1 ? '' : 's'}`,
+          description: `${quote.performanceTitle} - ${quote.seatCount} ${quote.isGeneralAdmission ? 'ticket' : 'seat'}${quote.seatCount === 1 ? '' : 's'}`,
           metadata: {
             source: 'admin_terminal_dispatch',
             dispatchId: createdDispatch.id,
@@ -1122,7 +1145,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
           currency: current.currency,
           payment_method_types: ['card_present'],
           capture_method: 'automatic',
-          description: `${snapshot.performanceTitle} - ${snapshot.seatIds.length} seat${snapshot.seatIds.length === 1 ? '' : 's'}`,
+          description: `${snapshot.performanceTitle} - ${snapshot.seatIds.length} ${snapshot.isGeneralAdmission ? 'ticket' : 'seat'}${snapshot.seatIds.length === 1 ? '' : 's'}`,
           metadata: {
             source: 'admin_terminal_dispatch_retry',
             dispatchId: current.id,
