@@ -44,9 +44,9 @@ const AdminAboutControlPage = lazy(() => import('./pages/admin/AboutControl'));
 const AdminFundraisePage = lazy(() => import('./pages/admin/Fundraise'));
 
 const SPLASH_SEEN_STORAGE_KEY = 'theater_lion_intro_seen_v1';
-const SPLASH_MIN_DURATION_MS = 950;
-const SPLASH_FADE_DURATION_MS = 450;
-const SPLASH_MAX_WAIT_MS = 2400;
+const SPLASH_MIN_DURATION_MS = 2200;
+const SPLASH_FADE_DURATION_MS = 620;
+const SPLASH_MAX_WAIT_MS = 4200;
 
 function useInitialLionSplash() {
   const [showSplash, setShowSplash] = useState(() => {
