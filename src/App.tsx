@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { BrowserRouter as Router, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import CurtainIntro from './components/CurtainIntro';
 import Layout from './components/Layout';
 import RouteSeo from './components/RouteSeo';
@@ -51,6 +51,16 @@ function PublicLayout() {
   );
 }
 
+function RouteTransitionOutlet() {
+  const location = useLocation();
+
+  return (
+    <div key={location.pathname} className="route-transition">
+      <Outlet />
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <CurtainIntro logoSrc="/favicon.svg">
@@ -62,46 +72,50 @@ export default function App() {
               <Route path="/admin/login" element={<AdminLoginPage />} />
               <Route path="/booking/:performanceId" element={<Booking />} />
               <Route path="/admin" element={<AdminLayout />}>
-                <Route index element={<Navigate to="/admin/dashboard" replace />} />
-                <Route path="dashboard" element={<AdminDashboardPage />} />
-                <Route path="finance" element={<AdminFinancePage />} />
-                <Route path="performances" element={<AdminPerformancesPage />} />
-                <Route path="archive" element={<AdminArchivePage />} />
-                <Route path="seats" element={<AdminSeatsPage />} />
-                <Route path="orders" element={<AdminOrdersPage />} />
-                <Route path="scanner" element={<AdminScannerPage />} />
                 <Route path="scanner/live" element={<AdminScannerLivePage />} />
-                <Route path="orders/:id" element={<AdminOrderDetailPage />} />
-                <Route path="roster" element={<AdminRosterPage />} />
-                <Route path="staff-comps" element={<AdminStaffCompsPage />} />
-                <Route path="student-credits" element={<AdminStudentCreditsPage />} />
-                <Route path="audit" element={<AdminAuditLogPage />} />
-                <Route path="users" element={<AdminUsersPage />} />
-                <Route path="about" element={<AdminAboutControlPage />} />
-                <Route path="fundraise" element={<AdminFundraisePage />} />
+                <Route element={<RouteTransitionOutlet />}>
+                  <Route index element={<Navigate to="/admin/dashboard" replace />} />
+                  <Route path="dashboard" element={<AdminDashboardPage />} />
+                  <Route path="finance" element={<AdminFinancePage />} />
+                  <Route path="performances" element={<AdminPerformancesPage />} />
+                  <Route path="archive" element={<AdminArchivePage />} />
+                  <Route path="seats" element={<AdminSeatsPage />} />
+                  <Route path="orders" element={<AdminOrdersPage />} />
+                  <Route path="scanner" element={<AdminScannerPage />} />
+                  <Route path="orders/:id" element={<AdminOrderDetailPage />} />
+                  <Route path="roster" element={<AdminRosterPage />} />
+                  <Route path="staff-comps" element={<AdminStaffCompsPage />} />
+                  <Route path="student-credits" element={<AdminStudentCreditsPage />} />
+                  <Route path="audit" element={<AdminAuditLogPage />} />
+                  <Route path="users" element={<AdminUsersPage />} />
+                  <Route path="about" element={<AdminAboutControlPage />} />
+                  <Route path="fundraise" element={<AdminFundraisePage />} />
+                </Route>
               </Route>
 
               <Route path="/" element={<PublicLayout />}>
-                <Route index element={<Home />} />
-                <Route path="shows" element={<Shows />} />
-                <Route path="shows/community-events" element={<CommunityEvents />} />
-                <Route path="shows/:id" element={<ShowDetails />} />
-                <Route path="confirmation" element={<Confirmation />} />
-                <Route path="orders/lookup" element={<OrderLookup />} />
-                <Route path="tickets/:publicId" element={<TicketPage />} />
-                <Route path="teacher-tickets" element={<StaffTicketsPage />} />
-                <Route path="staff-tickets" element={<StaffTicketsPage />} />
-                <Route path="about" element={<About />} />
-                <Route path="tech-crew" element={<TechCrew />} />
-                <Route path="set-design" element={<SetDesign />} />
-                <Route path="musical-theater" element={<MusicalTheater />} />
-                <Route path="interest-meeting" element={<InterestMeeting />} />
-                <Route path="fundraising" element={<Fundraising />} />
-                <Route path="fundraising/events/:slug" element={<FundraisingEventDetail />} />
-                <Route path="privacy-policy" element={<PrivacyPolicy />} />
-                <Route path="terms-of-service" element={<TermsOfService />} />
-                <Route path="refund-policy" element={<RefundPolicy />} />
-                <Route path="*" element={<NotFoundPage />} />
+                <Route element={<RouteTransitionOutlet />}>
+                  <Route index element={<Home />} />
+                  <Route path="shows" element={<Shows />} />
+                  <Route path="shows/community-events" element={<CommunityEvents />} />
+                  <Route path="shows/:id" element={<ShowDetails />} />
+                  <Route path="confirmation" element={<Confirmation />} />
+                  <Route path="orders/lookup" element={<OrderLookup />} />
+                  <Route path="tickets/:publicId" element={<TicketPage />} />
+                  <Route path="teacher-tickets" element={<StaffTicketsPage />} />
+                  <Route path="staff-tickets" element={<StaffTicketsPage />} />
+                  <Route path="about" element={<About />} />
+                  <Route path="tech-crew" element={<TechCrew />} />
+                  <Route path="set-design" element={<SetDesign />} />
+                  <Route path="musical-theater" element={<MusicalTheater />} />
+                  <Route path="interest-meeting" element={<InterestMeeting />} />
+                  <Route path="fundraising" element={<Fundraising />} />
+                  <Route path="fundraising/events/:slug" element={<FundraisingEventDetail />} />
+                  <Route path="privacy-policy" element={<PrivacyPolicy />} />
+                  <Route path="terms-of-service" element={<TermsOfService />} />
+                  <Route path="refund-policy" element={<RefundPolicy />} />
+                  <Route path="*" element={<NotFoundPage />} />
+                </Route>
               </Route>
             </Routes>
           </Suspense>
