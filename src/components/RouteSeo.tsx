@@ -47,6 +47,25 @@ const routes: RouteDefinition[] = [
     ]
   },
   {
+    path: '/shows/community-events',
+    title: 'Community Events | Penncrest Theater',
+    description:
+      'Browse Penncrest Theater community fundraising events, dates, and event details that support student performers and productions.',
+    structuredData: [
+      buildWebPageSchema(
+        'Community Events | Penncrest Theater',
+        'Browse Penncrest Theater community fundraising events, dates, and event details that support student performers and productions.',
+        '/shows/community-events',
+        'CollectionPage'
+      ),
+      buildBreadcrumbSchema([
+        { name: 'Home', path: '/' },
+        { name: 'Our Season', path: '/shows' },
+        { name: 'Community Events', path: '/shows/community-events' }
+      ])
+    ]
+  },
+  {
     path: '/about',
     title: 'About the Theater Program | Penncrest Theater',
     description:
@@ -136,11 +155,11 @@ const routes: RouteDefinition[] = [
     path: '/fundraising',
     title: 'Fundraising | Donate or Sponsor Penncrest Theater',
     description:
-      'Support Penncrest Theater through fundraising events, community donations, and local sponsorships that help student performers and crews.',
+      'Support Penncrest Theater through direct donations and local sponsorships that help student performers and crews.',
     structuredData: [
       buildWebPageSchema(
         'Fundraising | Donate or Sponsor Penncrest Theater',
-        'Support Penncrest Theater through fundraising events, community donations, and local sponsorships that help student performers and crews.',
+        'Support Penncrest Theater through direct donations and local sponsorships that help student performers and crews.',
         '/fundraising'
       ),
       buildBreadcrumbSchema([
@@ -263,7 +282,8 @@ const routes: RouteDefinition[] = [
 
 export default function RouteSeo() {
   const location = useLocation();
-  const isShowDetailsRoute = matchPath('/shows/:id', location.pathname);
+  const showDetailsMatch = matchPath('/shows/:id', location.pathname);
+  const isShowDetailsRoute = Boolean(showDetailsMatch && showDetailsMatch.params.id !== 'community-events');
 
   if (isShowDetailsRoute) {
     return null;

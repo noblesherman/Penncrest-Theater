@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import React, { useEffect, useState } from 'react';
-import { Ticket, Menu, X } from 'lucide-react';
+import { ChevronDown, Ticket, Menu, X } from 'lucide-react';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -22,10 +22,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const navLinks = [
     { name: 'Home',       path: '/'      },
-    { name: 'Our Season', path: '/shows' },
+    {
+      name: 'Our Season',
+      path: '/shows',
+      children: [{ name: 'Community Events', path: '/shows/community-events' }]
+    },
     { name: 'Fundraising', path: '/fundraising' },
     { name: 'About',      path: '/about' },
   ];
+
+  const isActivePath = (path: string): boolean => {
+    if (path === '/') return location.pathname === '/';
+    return location.pathname === path || location.pathname.startsWith(`${path}/`);
+  };
 
   return (
     <div className="min-h-screen bg-white text-stone-900 flex flex-col" style={{ fontFamily: 'system-ui, sans-serif' }}>
@@ -51,17 +60,47 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             {/* Desktop nav */}
             <div className="hidden md:flex items-center gap-8">
               {navLinks.map((link) => (
-                <Link
-                  key={link.name}
-                  to={link.path}
-                  className="relative text-sm font-medium transition-colors hover:text-red-700"
-                  style={{ color: location.pathname === link.path ? '#b91c1c' : '#57534e' }}
-                >
-                  {link.name}
-                  {location.pathname === link.path && (
-                    <span className="absolute -bottom-1 left-0 right-0 h-0.5 rounded-full bg-red-700" />
-                  )}
-                </Link>
+                link.children ? (
+                  <div key={link.name} className="group relative">
+                    <Link
+                      to={link.path}
+                      className="relative inline-flex items-center gap-1 text-sm font-medium transition-colors hover:text-red-700"
+                      style={{ color: isActivePath(link.path) ? '#b91c1c' : '#57534e' }}
+                    >
+                      {link.name}
+                      <ChevronDown className="h-3.5 w-3.5" />
+                      {isActivePath(link.path) && (
+                        <span className="absolute -bottom-1 left-0 right-0 h-0.5 rounded-full bg-red-700" />
+                      )}
+                    </Link>
+                    <div className="invisible pointer-events-none absolute left-0 top-full z-20 pt-2 opacity-0 transition-all duration-150 group-hover:visible group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:visible group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+                      <div className="min-w-[220px] rounded-xl border border-stone-200 bg-white p-1.5 shadow-lg shadow-stone-200/60">
+                        {link.children.map((child) => (
+                          <Link
+                            key={child.path}
+                            to={child.path}
+                            className="block rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-stone-50 hover:text-red-700"
+                            style={{ color: isActivePath(child.path) ? '#b91c1c' : '#57534e' }}
+                          >
+                            {child.name}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <Link
+                    key={link.name}
+                    to={link.path}
+                    className="relative text-sm font-medium transition-colors hover:text-red-700"
+                    style={{ color: isActivePath(link.path) ? '#b91c1c' : '#57534e' }}
+                  >
+                    {link.name}
+                    {isActivePath(link.path) && (
+                      <span className="absolute -bottom-1 left-0 right-0 h-0.5 rounded-full bg-red-700" />
+                    )}
+                  </Link>
+                )
               ))}
               <Link
                 to="/shows"
@@ -90,15 +129,27 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div id="mobile-navigation" className="absolute w-full border-t border-stone-100 bg-white shadow-lg md:hidden">
             <div className="space-y-1 px-4 py-4">
               {navLinks.map((link) => (
-                <Link
-                  key={link.name}
-                  to={link.path}
-                  className="block rounded-xl px-4 py-3 font-medium text-stone-700 transition-colors hover:bg-stone-50 hover:text-red-700"
-                  style={{ color: location.pathname === link.path ? '#b91c1c' : undefined }}
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  {link.name}
-                </Link>
+                <div key={link.name}>
+                  <Link
+                    to={link.path}
+                    className="block rounded-xl px-4 py-3 font-medium text-stone-700 transition-colors hover:bg-stone-50 hover:text-red-700"
+                    style={{ color: isActivePath(link.path) ? '#b91c1c' : undefined }}
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    {link.name}
+                  </Link>
+                  {link.children?.map((child) => (
+                    <Link
+                      key={child.path}
+                      to={child.path}
+                      className="mt-1 block rounded-xl px-6 py-2.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-50 hover:text-red-700"
+                      style={{ color: isActivePath(child.path) ? '#b91c1c' : undefined }}
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      {child.name}
+                    </Link>
+                  ))}
+                </div>
               ))}
               <Link
                 to="/shows"
@@ -147,6 +198,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <p className="mb-5 text-xs font-semibold uppercase tracking-[0.15em] text-white">Explore</p>
               <ul className="space-y-3 text-sm">
                 <li><Link to="/shows" className="hover:text-amber-400 transition-colors">Our Season</Link></li>
+                <li><Link to="/shows/community-events" className="hover:text-amber-400 transition-colors">Community Events</Link></li>
                 <li><Link to="/fundraising" className="hover:text-amber-400 transition-colors">Fundraising</Link></li>
                 <li><Link to="/about" className="hover:text-amber-400 transition-colors">Our History</Link></li>
               </ul>

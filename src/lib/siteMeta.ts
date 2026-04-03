@@ -19,6 +19,7 @@ export const SITE_ADDRESS = {
 export const INDEXABLE_STATIC_ROUTES = [
   '/',
   '/shows',
+  '/shows/community-events',
   '/about',
   '/tech-crew',
   '/set-design',

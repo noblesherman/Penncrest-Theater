@@ -5,6 +5,7 @@ import RouteSeo from './components/RouteSeo';
 import Home from './pages/Home';
 
 const Shows = lazy(() => import('./pages/Shows'));
+const CommunityEvents = lazy(() => import('./pages/CommunityEvents'));
 const ShowDetails = lazy(() => import('./pages/ShowDetails'));
 const About = lazy(() => import('./pages/About'));
 const TechCrew = lazy(() => import('./pages/TechCrew'));
@@ -79,6 +80,7 @@ export default function App() {
           <Route path="/" element={<PublicLayout />}>
             <Route index element={<Home />} />
             <Route path="shows" element={<Shows />} />
+            <Route path="shows/community-events" element={<CommunityEvents />} />
             <Route path="shows/:id" element={<ShowDetails />} />
             <Route path="confirmation" element={<Confirmation />} />
             <Route path="orders/lookup" element={<OrderLookup />} />
