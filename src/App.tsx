@@ -1,6 +1,7 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter as Router, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
+import LionSplash from './components/LionSplash';
 import RouteSeo from './components/RouteSeo';
 import Home from './pages/Home';
 
@@ -42,6 +43,96 @@ const AdminUsersPage = lazy(() => import('./pages/admin/Users'));
 const AdminAboutControlPage = lazy(() => import('./pages/admin/AboutControl'));
 const AdminFundraisePage = lazy(() => import('./pages/admin/Fundraise'));
 
+const SPLASH_SEEN_STORAGE_KEY = 'theater_lion_intro_seen_v1';
+const SPLASH_MIN_DURATION_MS = 950;
+const SPLASH_FADE_DURATION_MS = 450;
+const SPLASH_MAX_WAIT_MS = 2400;
+
+function useInitialLionSplash() {
+  const [showSplash, setShowSplash] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+
+    try {
+      return sessionStorage.getItem(SPLASH_SEEN_STORAGE_KEY) !== '1';
+    } catch {
+      return true;
+    }
+  });
+  const [splashIsFading, setSplashIsFading] = useState(false);
+
+  useEffect(() => {
+    if (!showSplash || typeof window === 'undefined') {
+      return;
+    }
+
+    const startedAt = performance.now();
+    let isDisposed = false;
+    let hasCompleted = false;
+    const timerIds: number[] = [];
+
+    const clearTimers = () => {
+      for (const timerId of timerIds) {
+        window.clearTimeout(timerId);
+      }
+      timerIds.length = 0;
+    };
+
+    const completeSplash = () => {
+      if (isDisposed || hasCompleted) {
+        return;
+      }
+      hasCompleted = true;
+
+      const elapsedMs = performance.now() - startedAt;
+      const waitMs = Math.max(0, SPLASH_MIN_DURATION_MS - elapsedMs);
+
+      timerIds.push(
+        window.setTimeout(() => {
+          if (isDisposed) {
+            return;
+          }
+          setSplashIsFading(true);
+
+          timerIds.push(
+            window.setTimeout(() => {
+              if (isDisposed) {
+                return;
+              }
+              setShowSplash(false);
+              setSplashIsFading(false);
+              try {
+                sessionStorage.setItem(SPLASH_SEEN_STORAGE_KEY, '1');
+              } catch {
+                // Ignore storage errors and allow the intro next load.
+              }
+            }, SPLASH_FADE_DURATION_MS)
+          );
+        }, waitMs)
+      );
+    };
+
+    const onWindowLoad = () => completeSplash();
+
+    if (document.readyState === 'complete') {
+      completeSplash();
+    } else {
+      window.addEventListener('load', onWindowLoad, { once: true });
+    }
+
+    timerIds.push(window.setTimeout(completeSplash, SPLASH_MAX_WAIT_MS));
+
+    return () => {
+      isDisposed = true;
+      window.removeEventListener('load', onWindowLoad);
+      clearTimers();
+    };
+  }, [showSplash]);
+
+  return { showSplash, splashIsFading };
+}
+
 function PublicLayout() {
   return (
     <Layout>
@@ -51,57 +142,66 @@ function PublicLayout() {
 }
 
 export default function App() {
-  return (
-    <Router>
-      <RouteSeo />
-      <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-stone-500">Loading...</div>}>
-        <Routes>
-          <Route path="/admin/login" element={<AdminLoginPage />} />
-          <Route path="/booking/:performanceId" element={<Booking />} />
-          <Route path="/admin" element={<AdminLayout />}>
-            <Route index element={<Navigate to="/admin/dashboard" replace />} />
-            <Route path="dashboard" element={<AdminDashboardPage />} />
-            <Route path="finance" element={<AdminFinancePage />} />
-            <Route path="performances" element={<AdminPerformancesPage />} />
-            <Route path="archive" element={<AdminArchivePage />} />
-            <Route path="seats" element={<AdminSeatsPage />} />
-            <Route path="orders" element={<AdminOrdersPage />} />
-            <Route path="scanner" element={<AdminScannerPage />} />
-            <Route path="scanner/live" element={<AdminScannerLivePage />} />
-            <Route path="orders/:id" element={<AdminOrderDetailPage />} />
-            <Route path="roster" element={<AdminRosterPage />} />
-            <Route path="staff-comps" element={<AdminStaffCompsPage />} />
-            <Route path="student-credits" element={<AdminStudentCreditsPage />} />
-            <Route path="audit" element={<AdminAuditLogPage />} />
-            <Route path="users" element={<AdminUsersPage />} />
-            <Route path="about" element={<AdminAboutControlPage />} />
-            <Route path="fundraise" element={<AdminFundraisePage />} />
-          </Route>
+  const { showSplash, splashIsFading } = useInitialLionSplash();
+  const appIsVisible = !showSplash || splashIsFading;
 
-          <Route path="/" element={<PublicLayout />}>
-            <Route index element={<Home />} />
-            <Route path="shows" element={<Shows />} />
-            <Route path="shows/community-events" element={<CommunityEvents />} />
-            <Route path="shows/:id" element={<ShowDetails />} />
-            <Route path="confirmation" element={<Confirmation />} />
-            <Route path="orders/lookup" element={<OrderLookup />} />
-            <Route path="tickets/:publicId" element={<TicketPage />} />
-            <Route path="teacher-tickets" element={<StaffTicketsPage />} />
-            <Route path="staff-tickets" element={<StaffTicketsPage />} />
-            <Route path="about" element={<About />} />
-            <Route path="tech-crew" element={<TechCrew />} />
-            <Route path="set-design" element={<SetDesign />} />
-            <Route path="musical-theater" element={<MusicalTheater />} />
-            <Route path="interest-meeting" element={<InterestMeeting />} />
-            <Route path="fundraising" element={<Fundraising />} />
-            <Route path="fundraising/events/:slug" element={<FundraisingEventDetail />} />
-            <Route path="privacy-policy" element={<PrivacyPolicy />} />
-            <Route path="terms-of-service" element={<TermsOfService />} />
-            <Route path="refund-policy" element={<RefundPolicy />} />
-            <Route path="*" element={<NotFoundPage />} />
-          </Route>
-        </Routes>
-      </Suspense>
-    </Router>
+  return (
+    <>
+      <div className={`app-boot${appIsVisible ? ' app-boot--ready' : ''}`}>
+        <Router>
+          <RouteSeo />
+          <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-stone-500">Loading...</div>}>
+            <Routes>
+              <Route path="/admin/login" element={<AdminLoginPage />} />
+              <Route path="/booking/:performanceId" element={<Booking />} />
+              <Route path="/admin" element={<AdminLayout />}>
+                <Route index element={<Navigate to="/admin/dashboard" replace />} />
+                <Route path="dashboard" element={<AdminDashboardPage />} />
+                <Route path="finance" element={<AdminFinancePage />} />
+                <Route path="performances" element={<AdminPerformancesPage />} />
+                <Route path="archive" element={<AdminArchivePage />} />
+                <Route path="seats" element={<AdminSeatsPage />} />
+                <Route path="orders" element={<AdminOrdersPage />} />
+                <Route path="scanner" element={<AdminScannerPage />} />
+                <Route path="scanner/live" element={<AdminScannerLivePage />} />
+                <Route path="orders/:id" element={<AdminOrderDetailPage />} />
+                <Route path="roster" element={<AdminRosterPage />} />
+                <Route path="staff-comps" element={<AdminStaffCompsPage />} />
+                <Route path="student-credits" element={<AdminStudentCreditsPage />} />
+                <Route path="audit" element={<AdminAuditLogPage />} />
+                <Route path="users" element={<AdminUsersPage />} />
+                <Route path="about" element={<AdminAboutControlPage />} />
+                <Route path="fundraise" element={<AdminFundraisePage />} />
+              </Route>
+
+              <Route path="/" element={<PublicLayout />}>
+                <Route index element={<Home />} />
+                <Route path="shows" element={<Shows />} />
+                <Route path="shows/community-events" element={<CommunityEvents />} />
+                <Route path="shows/:id" element={<ShowDetails />} />
+                <Route path="confirmation" element={<Confirmation />} />
+                <Route path="orders/lookup" element={<OrderLookup />} />
+                <Route path="tickets/:publicId" element={<TicketPage />} />
+                <Route path="teacher-tickets" element={<StaffTicketsPage />} />
+                <Route path="staff-tickets" element={<StaffTicketsPage />} />
+                <Route path="about" element={<About />} />
+                <Route path="tech-crew" element={<TechCrew />} />
+                <Route path="set-design" element={<SetDesign />} />
+                <Route path="musical-theater" element={<MusicalTheater />} />
+                <Route path="interest-meeting" element={<InterestMeeting />} />
+                <Route path="fundraising" element={<Fundraising />} />
+                <Route path="fundraising/events/:slug" element={<FundraisingEventDetail />} />
+                <Route path="privacy-policy" element={<PrivacyPolicy />} />
+                <Route path="terms-of-service" element={<TermsOfService />} />
+                <Route path="refund-policy" element={<RefundPolicy />} />
+                <Route path="*" element={<NotFoundPage />} />
+              </Route>
+            </Routes>
+          </Suspense>
+        </Router>
+      </div>
+
+      {showSplash ? <LionSplash fading={splashIsFading} /> : null}
+    </>
   );
 }

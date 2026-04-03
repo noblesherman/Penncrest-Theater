@@ -44,3 +44,149 @@
     font-size: 16px;
   }
 }
+
+.app-boot {
+  min-height: 100vh;
+  opacity: 0;
+  filter: saturate(0.9);
+  transition: opacity 450ms ease, filter 450ms ease;
+}
+
+.app-boot--ready {
+  opacity: 1;
+  filter: saturate(1);
+}
+
+.lion-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  background: radial-gradient(circle at 50% 34%, #fdf5d6 0%, #f1c76a 27%, #6f4a16 65%, #120f0a 100%);
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 450ms ease, visibility 0s linear 450ms;
+}
+
+.lion-splash--fade {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.lion-splash__mark {
+  position: relative;
+  z-index: 3;
+  width: clamp(130px, 15vw, 210px);
+  height: auto;
+  filter: drop-shadow(0 0 22px rgba(255, 228, 148, 0.5)) drop-shadow(0 0 45px rgba(104, 62, 12, 0.4));
+  animation: lionSplashEntrance 800ms ease-out, lionSplashPulse 1350ms ease-in-out 850ms infinite;
+  transform-origin: center;
+}
+
+.lion-splash__glow {
+  position: absolute;
+  width: clamp(210px, 28vw, 350px);
+  aspect-ratio: 1 / 1;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(255, 226, 143, 0.45) 0%, rgba(255, 199, 87, 0.16) 45%, rgba(0, 0, 0, 0) 72%);
+  filter: blur(1px);
+  animation: lionSplashGlow 1400ms ease-in-out infinite;
+}
+
+.lion-splash__pulse-ring {
+  position: absolute;
+  border-radius: 9999px;
+  border: 2px solid rgba(255, 228, 149, 0.42);
+  transform: scale(0.72);
+  opacity: 0;
+}
+
+.lion-splash__pulse-ring--outer {
+  width: clamp(250px, 32vw, 420px);
+  aspect-ratio: 1 / 1;
+  animation: lionSplashRing 1250ms ease-out infinite;
+}
+
+.lion-splash__pulse-ring--inner {
+  width: clamp(190px, 25vw, 300px);
+  aspect-ratio: 1 / 1;
+  animation: lionSplashRing 1250ms ease-out 240ms infinite;
+}
+
+.lion-splash__label {
+  position: relative;
+  z-index: 3;
+  margin-top: 0.4rem;
+  color: #fff5d6;
+  font-family: var(--font-display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: clamp(0.88rem, 2.6vw, 1.05rem);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.36);
+}
+
+@keyframes lionSplashEntrance {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.88);
+  }
+  65% {
+    opacity: 1;
+    transform: translateY(-4px) scale(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes lionSplashPulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.04);
+  }
+}
+
+@keyframes lionSplashGlow {
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.03);
+  }
+}
+
+@keyframes lionSplashRing {
+  0% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  20% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.07);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-boot,
+  .lion-splash,
+  .lion-splash__mark,
+  .lion-splash__glow,
+  .lion-splash__pulse-ring {
+    transition: none;
+    animation: none;
+  }
+}
