@@ -55,7 +55,7 @@ const defaultFundraisingSponsors: z.infer<typeof sponsorSchema>[] = [
     logoUrl: 'https://dummyimage.com/320x120/ffffff/991b1b.png&text=Main+Street+Bank',
     imageUrl: 'https://picsum.photos/id/1025/900/600',
     spotlight: 'Supporting production sound upgrades and student leadership scholarships.',
-    websiteUrl: 'https://www.penncresttheater.org'
+    websiteUrl: 'https://penncresttheater.com'
   },
   {
     id: 'sponsor-media-arts-council',
@@ -64,7 +64,7 @@ const defaultFundraisingSponsors: z.infer<typeof sponsorSchema>[] = [
     logoUrl: 'https://dummyimage.com/320x120/ffffff/7f1d1d.png&text=Media+Arts+Council',
     imageUrl: 'https://picsum.photos/id/1038/900/600',
     spotlight: 'Funding scenic art materials and seasonal community arts collaborations.',
-    websiteUrl: 'https://www.penncresttheater.org'
+    websiteUrl: 'https://penncresttheater.com'
   },
   {
     id: 'sponsor-rose-tree-dental',
@@ -73,7 +73,7 @@ const defaultFundraisingSponsors: z.infer<typeof sponsorSchema>[] = [
     logoUrl: 'https://dummyimage.com/320x120/ffffff/b45309.png&text=Rose+Tree+Dental',
     imageUrl: 'https://picsum.photos/id/1067/900/600',
     spotlight: 'Helping cover student costume and wardrobe costs.',
-    websiteUrl: 'https://www.penncresttheater.org'
+    websiteUrl: 'https://penncresttheater.com'
   },
   {
     id: 'sponsor-miller-family-foundation',
@@ -82,7 +82,7 @@ const defaultFundraisingSponsors: z.infer<typeof sponsorSchema>[] = [
     logoUrl: 'https://dummyimage.com/320x120/ffffff/78350f.png&text=Miller+Family+Foundation',
     imageUrl: 'https://picsum.photos/id/1011/900/600',
     spotlight: 'Providing annual support for student theater training opportunities.',
-    websiteUrl: 'https://www.penncresttheater.org'
+    websiteUrl: 'https://penncresttheater.com'
   },
   {
     id: 'sponsor-cedar-realty-group',
@@ -91,7 +91,7 @@ const defaultFundraisingSponsors: z.infer<typeof sponsorSchema>[] = [
     logoUrl: 'https://dummyimage.com/320x120/ffffff/92400e.png&text=Cedar+Realty+Group',
     imageUrl: 'https://picsum.photos/id/1041/900/600',
     spotlight: 'Backing front-of-house improvements and audience accessibility support.',
-    websiteUrl: 'https://www.penncresttheater.org'
+    websiteUrl: 'https://penncresttheater.com'
   },
   {
     id: 'sponsor-brightline-fitness',
@@ -100,7 +100,7 @@ const defaultFundraisingSponsors: z.infer<typeof sponsorSchema>[] = [
     logoUrl: 'https://dummyimage.com/320x120/ffffff/1f2937.png&text=Brightline+Fitness',
     imageUrl: 'https://picsum.photos/id/1050/900/600',
     spotlight: 'Contributing to rehearsal wellness supplies and cast support kits.',
-    websiteUrl: 'https://www.penncresttheater.org'
+    websiteUrl: 'https://penncresttheater.com'
   }
 ];
 

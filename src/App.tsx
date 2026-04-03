@@ -22,6 +22,7 @@ const Confirmation = lazy(() => import('./pages/Confirmation'));
 const OrderLookup = lazy(() => import('./pages/OrderLookup'));
 const TicketPage = lazy(() => import('./pages/Ticket'));
 const StaffTicketsPage = lazy(() => import('./pages/StaffTickets'));
+const NotFoundPage = lazy(() => import('./pages/NotFound'));
 const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'));
 const AdminLoginPage = lazy(() => import('./pages/admin/Login'));
 const AdminDashboardPage = lazy(() => import('./pages/admin/Dashboard'));
@@ -97,7 +98,7 @@ export default function App() {
             <Route path="privacy-policy" element={<PrivacyPolicy />} />
             <Route path="terms-of-service" element={<TermsOfService />} />
             <Route path="refund-policy" element={<RefundPolicy />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Routes>
       </Suspense>
