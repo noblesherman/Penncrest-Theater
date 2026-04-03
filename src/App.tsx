@@ -1,5 +1,6 @@
 import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import CurtainIntro from './components/CurtainIntro';
 import Layout from './components/Layout';
 import RouteSeo from './components/RouteSeo';
@@ -65,6 +66,7 @@ export default function App() {
   return (
     <CurtainIntro logoSrc="/favicon.svg">
       <div>
+        <Analytics />
         <Router>
           <RouteSeo />
           <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-stone-500">Loading...</div>}>
