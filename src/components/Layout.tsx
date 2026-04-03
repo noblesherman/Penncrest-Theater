@@ -190,6 +190,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 <Link to="/privacy-policy" className="hover:text-amber-400 transition-colors">Privacy Policy</Link>
                 <Link to="/terms-of-service" className="hover:text-amber-400 transition-colors">Terms of Service</Link>
                 <Link to="/refund-policy" className="hover:text-amber-400 transition-colors">Refund Policy</Link>
+                <Link to="/admin/login" className="hover:text-amber-400 transition-colors">Staff Login</Link>
               </div>
             </div>
 
