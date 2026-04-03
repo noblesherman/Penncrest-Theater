@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 
+const CURTAIN_INTRO_SEEN_KEY = 'theater_curtain_intro_seen_v1';
+
 type CurtainIntroProps = {
   logoSrc?: string;
   curtainDuration?: number;
@@ -15,19 +17,41 @@ export default function CurtainIntro({
   fadeDuration = 600,
   children,
 }: CurtainIntroProps) {
-  const [phase, setPhase] = useState<'curtain' | 'logo' | 'fading' | 'done'>('curtain');
+  const [shouldRunIntro] = useState(() => {
+    if (typeof window === 'undefined') {
+      return true;
+    }
+
+    try {
+      return sessionStorage.getItem(CURTAIN_INTRO_SEEN_KEY) !== '1';
+    } catch {
+      return true;
+    }
+  });
+  const [phase, setPhase] = useState<'curtain' | 'logo' | 'fading' | 'done'>(shouldRunIntro ? 'curtain' : 'done');
 
   useEffect(() => {
+    if (!shouldRunIntro) {
+      return;
+    }
+
     const t1 = window.setTimeout(() => setPhase('logo'), curtainDuration);
     const t2 = window.setTimeout(() => setPhase('fading'), curtainDuration + logoHold);
-    const t3 = window.setTimeout(() => setPhase('done'), curtainDuration + logoHold + fadeDuration);
+    const t3 = window.setTimeout(() => {
+      setPhase('done');
+      try {
+        sessionStorage.setItem(CURTAIN_INTRO_SEEN_KEY, '1');
+      } catch {
+        // Ignore storage issues and allow intro to run again.
+      }
+    }, curtainDuration + logoHold + fadeDuration);
 
     return () => {
       window.clearTimeout(t1);
       window.clearTimeout(t2);
       window.clearTimeout(t3);
     };
-  }, [curtainDuration, logoHold, fadeDuration]);
+  }, [shouldRunIntro, curtainDuration, logoHold, fadeDuration]);
 
   return (
     <>
@@ -71,8 +95,8 @@ export default function CurtainIntro({
                 height: 140,
                 objectFit: 'contain',
                 opacity: phase === 'logo' || phase === 'fading' ? 1 : 0,
-                transform: phase === 'logo' || phase === 'fading' ? 'scale(1)' : 'scale(0.88)',
-                transition: `opacity ${curtainDuration * 0.5}ms ease, transform ${curtainDuration * 0.5}ms ease`,
+                transform: phase === 'logo' || phase === 'fading' ? 'scale(1.03)' : 'scale(0.88)',
+                transition: `opacity ${curtainDuration * 0.5}ms ease, transform ${curtainDuration * 0.8}ms ease-out`,
               }}
             />
           </div>
