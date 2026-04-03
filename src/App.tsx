@@ -1,7 +1,7 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import CurtainIntro from './components/CurtainIntro';
 import Layout from './components/Layout';
-import LionSplash from './components/LionSplash';
 import RouteSeo from './components/RouteSeo';
 import Home from './pages/Home';
 
@@ -43,96 +43,6 @@ const AdminUsersPage = lazy(() => import('./pages/admin/Users'));
 const AdminAboutControlPage = lazy(() => import('./pages/admin/AboutControl'));
 const AdminFundraisePage = lazy(() => import('./pages/admin/Fundraise'));
 
-const SPLASH_SEEN_STORAGE_KEY = 'theater_lion_intro_seen_v1';
-const SPLASH_MIN_DURATION_MS = 2200;
-const SPLASH_FADE_DURATION_MS = 620;
-const SPLASH_MAX_WAIT_MS = 4200;
-
-function useInitialLionSplash() {
-  const [showSplash, setShowSplash] = useState(() => {
-    if (typeof window === 'undefined') {
-      return false;
-    }
-
-    try {
-      return sessionStorage.getItem(SPLASH_SEEN_STORAGE_KEY) !== '1';
-    } catch {
-      return true;
-    }
-  });
-  const [splashIsFading, setSplashIsFading] = useState(false);
-
-  useEffect(() => {
-    if (!showSplash || typeof window === 'undefined') {
-      return;
-    }
-
-    const startedAt = performance.now();
-    let isDisposed = false;
-    let hasCompleted = false;
-    const timerIds: number[] = [];
-
-    const clearTimers = () => {
-      for (const timerId of timerIds) {
-        window.clearTimeout(timerId);
-      }
-      timerIds.length = 0;
-    };
-
-    const completeSplash = () => {
-      if (isDisposed || hasCompleted) {
-        return;
-      }
-      hasCompleted = true;
-
-      const elapsedMs = performance.now() - startedAt;
-      const waitMs = Math.max(0, SPLASH_MIN_DURATION_MS - elapsedMs);
-
-      timerIds.push(
-        window.setTimeout(() => {
-          if (isDisposed) {
-            return;
-          }
-          setSplashIsFading(true);
-
-          timerIds.push(
-            window.setTimeout(() => {
-              if (isDisposed) {
-                return;
-              }
-              setShowSplash(false);
-              setSplashIsFading(false);
-              try {
-                sessionStorage.setItem(SPLASH_SEEN_STORAGE_KEY, '1');
-              } catch {
-                // Ignore storage errors and allow the intro next load.
-              }
-            }, SPLASH_FADE_DURATION_MS)
-          );
-        }, waitMs)
-      );
-    };
-
-    const onWindowLoad = () => completeSplash();
-
-    if (document.readyState === 'complete') {
-      completeSplash();
-    } else {
-      window.addEventListener('load', onWindowLoad, { once: true });
-    }
-
-    timerIds.push(window.setTimeout(completeSplash, SPLASH_MAX_WAIT_MS));
-
-    return () => {
-      isDisposed = true;
-      window.removeEventListener('load', onWindowLoad);
-      clearTimers();
-    };
-  }, [showSplash]);
-
-  return { showSplash, splashIsFading };
-}
-
 function PublicLayout() {
   return (
     <Layout>
@@ -142,12 +52,9 @@ function PublicLayout() {
 }
 
 export default function App() {
-  const { showSplash, splashIsFading } = useInitialLionSplash();
-  const appIsVisible = !showSplash || splashIsFading;
-
   return (
-    <>
-      <div className={`app-boot${appIsVisible ? ' app-boot--ready' : ''}`}>
+    <CurtainIntro logoSrc="/favicon.svg">
+      <div>
         <Router>
           <RouteSeo />
           <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-stone-500">Loading...</div>}>
@@ -200,8 +107,6 @@ export default function App() {
           </Suspense>
         </Router>
       </div>
-
-      {showSplash ? <LionSplash fading={splashIsFading} /> : null}
-    </>
+    </CurtainIntro>
   );
 }
