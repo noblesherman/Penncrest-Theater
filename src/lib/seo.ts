@@ -39,22 +39,34 @@ function coerceAbsoluteSiteUrl(url?: string): string | null {
   }
 }
 
+function isVercelAppHost(url: string): boolean {
+  try {
+    return new URL(url).hostname.endsWith('.vercel.app');
+  } catch {
+    return false;
+  }
+}
+
 export function resolveSiteUrl(explicitSiteUrl?: string): string {
+  const fallbackUrl = normalizeSiteUrl(SITE_FALLBACK_URL);
   const normalizedExplicitSiteUrl = coerceAbsoluteSiteUrl(explicitSiteUrl);
-  if (normalizedExplicitSiteUrl) {
+  if (normalizedExplicitSiteUrl && !isVercelAppHost(normalizedExplicitSiteUrl)) {
     return normalizedExplicitSiteUrl;
   }
 
   const envSiteUrl = coerceAbsoluteSiteUrl(import.meta.env.VITE_SITE_URL);
-  if (envSiteUrl) {
+  if (envSiteUrl && !isVercelAppHost(envSiteUrl)) {
     return envSiteUrl;
   }
 
   if (typeof window !== 'undefined' && window.location.origin) {
-    return normalizeSiteUrl(window.location.origin);
+    const windowSiteUrl = normalizeSiteUrl(window.location.origin);
+    if (windowSiteUrl && !isVercelAppHost(windowSiteUrl)) {
+      return windowSiteUrl;
+    }
   }
 
-  return SITE_FALLBACK_URL;
+  return fallbackUrl;
 }
 
 export function toAbsoluteUrl(pathOrUrl: string, explicitSiteUrl?: string): string {

@@ -348,7 +348,7 @@ export default function Fundraising() {
                 transition={{ duration: 0.45, delay: 0.15 }}
                 className="max-w-sm text-sm leading-relaxed text-stone-500 sm:text-right sm:text-base max-sm:max-w-none"
               >
-                Give directly through donations or sponsorships. For event listings, browse current community events in Our Season.
+                Give directly through donations or sponsorships. For event listings, see Community Events below.
               </motion.p>
             </div>
             <motion.div

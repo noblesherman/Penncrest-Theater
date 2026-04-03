@@ -22,19 +22,30 @@ function parseCsvEnv(value?: string): string[] {
     .filter(Boolean);
 }
 
+function isVercelAppHost(url: string): boolean {
+  try {
+    return new URL(url).hostname.endsWith('.vercel.app');
+  } catch {
+    return false;
+  }
+}
+
 function resolveSiteUrl(siteUrl?: string): string {
+  const fallbackUrl = normalizeUrl(SITE_FALLBACK_URL);
   const trimmed = siteUrl?.trim();
   if (!trimmed) {
-    return SITE_FALLBACK_URL;
+    return fallbackUrl;
   }
 
   try {
-    return normalizeUrl(new URL(trimmed).toString());
+    const normalized = normalizeUrl(new URL(trimmed).toString());
+    return isVercelAppHost(normalized) ? fallbackUrl : normalized;
   } catch {
     try {
-      return normalizeUrl(new URL(`https://${trimmed}`).toString());
+      const normalized = normalizeUrl(new URL(`https://${trimmed}`).toString());
+      return isVercelAppHost(normalized) ? fallbackUrl : normalized;
     } catch {
-      return SITE_FALLBACK_URL;
+      return fallbackUrl;
     }
   }
 }
