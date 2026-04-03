@@ -7,6 +7,7 @@ import {
   CircleDollarSign,
   HandCoins,
   FilePenLine,
+  FileText,
   GraduationCap,
   LayoutDashboard,
   LogOut,
@@ -60,6 +61,7 @@ const navSections: NavSection[] = [
     title: 'People',
     items: [
       { to: '/admin/roster', label: 'Roster', icon: UsersRound, minRole: 'ADMIN' },
+      { to: '/admin/forms', label: 'Forms', icon: FileText, minRole: 'ADMIN' },
       { to: '/admin/staff-comps', label: 'Staff Comps', icon: UserCheck, minRole: 'ADMIN' },
       { to: '/admin/student-credits', label: 'Student Credits', icon: GraduationCap, minRole: 'ADMIN' }
     ]
@@ -82,6 +84,7 @@ const routeAccessRules: Array<{ prefix: string; minRole: AdminRole }> = [
   { prefix: '/admin/seats', minRole: 'ADMIN' },
   { prefix: '/admin/archive', minRole: 'ADMIN' },
   { prefix: '/admin/roster', minRole: 'ADMIN' },
+  { prefix: '/admin/forms', minRole: 'ADMIN' },
   { prefix: '/admin/staff-comps', minRole: 'ADMIN' },
   { prefix: '/admin/student-credits', minRole: 'ADMIN' },
   { prefix: '/admin/fundraise', minRole: 'ADMIN' },

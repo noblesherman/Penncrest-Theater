@@ -15,6 +15,7 @@ const MusicalTheater = lazy(() => import('./pages/MusicalTheater'));
 const InterestMeeting = lazy(() => import('./pages/InterestMeeting'));
 const Fundraising = lazy(() => import('./pages/Fundraising'));
 const FundraisingEventDetail = lazy(() => import('./pages/FundraisingEventDetail'));
+const ProgramBioFormPage = lazy(() => import('./pages/ProgramBioForm'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
 const TermsOfService = lazy(() => import('./pages/TermsOfService'));
 const RefundPolicy = lazy(() => import('./pages/RefundPolicy'));
@@ -36,6 +37,7 @@ const AdminScannerPage = lazy(() => import('./pages/admin/Scanner'));
 const AdminScannerLivePage = lazy(() => import('./pages/admin/ScannerLive'));
 const AdminOrderDetailPage = lazy(() => import('./pages/admin/OrderDetail'));
 const AdminRosterPage = lazy(() => import('./pages/admin/Roster'));
+const AdminFormsPage = lazy(() => import('./pages/admin/Forms'));
 const AdminAuditLogPage = lazy(() => import('./pages/admin/AuditLog'));
 const AdminStaffCompsPage = lazy(() => import('./pages/admin/StaffComps'));
 const AdminStudentCreditsPage = lazy(() => import('./pages/admin/StudentCredits'));
@@ -84,6 +86,7 @@ export default function App() {
                   <Route path="scanner" element={<AdminScannerPage />} />
                   <Route path="orders/:id" element={<AdminOrderDetailPage />} />
                   <Route path="roster" element={<AdminRosterPage />} />
+                  <Route path="forms" element={<AdminFormsPage />} />
                   <Route path="staff-comps" element={<AdminStaffCompsPage />} />
                   <Route path="student-credits" element={<AdminStudentCreditsPage />} />
                   <Route path="audit" element={<AdminAuditLogPage />} />
@@ -111,6 +114,7 @@ export default function App() {
                   <Route path="interest-meeting" element={<InterestMeeting />} />
                   <Route path="fundraising" element={<Fundraising />} />
                   <Route path="fundraising/events/:slug" element={<FundraisingEventDetail />} />
+                  <Route path="forms/:slug" element={<ProgramBioFormPage />} />
                   <Route path="privacy-policy" element={<PrivacyPolicy />} />
                   <Route path="terms-of-service" element={<TermsOfService />} />
                   <Route path="refund-policy" element={<RefundPolicy />} />

@@ -25,6 +25,7 @@ import { adminOrderRoutes } from './routes/admin-orders.js';
 import { adminRosterRoutes } from './routes/admin-roster.js';
 import { adminAuditRoutes } from './routes/admin-audit.js';
 import { showRoutes } from './routes/shows.js';
+import { programBioFormRoutes } from './routes/program-bio-forms.js';
 import { fundraisingRoutes } from './routes/fundraising.js';
 import { fundraisingSponsorRoutes } from './routes/fundraising-sponsors.js';
 import { calendarRoutes } from './routes/calendar.js';
@@ -87,6 +88,7 @@ export async function createServer() {
   await app.register(staffCompRoutes);
   await app.register(aboutContentRoutes);
   await app.register(mobileRoutes);
+  await app.register(programBioFormRoutes);
 
   // Compatibility routes
   await app.register(showRoutes);

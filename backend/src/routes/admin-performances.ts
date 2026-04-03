@@ -32,9 +32,13 @@ const imageSourceSchema = z
 
 const castMemberSchema = z
   .object({
+    id: z.string().min(1).optional(),
     name: z.string().trim().min(1).max(120),
     role: z.string().trim().min(1).max(120),
-    photoUrl: imageSourceSchema.optional()
+    photoUrl: imageSourceSchema.optional(),
+    schoolEmail: z.string().trim().email().max(160).optional(),
+    gradeLevel: z.number().int().min(9).max(12).optional(),
+    bio: z.string().trim().max(2400).optional()
   });
 
 const performanceScheduleSchema = z.object({
@@ -130,6 +134,10 @@ function buildStudentCodeFromName(name: string): string {
   const firstInitial = tokens[0][0] || '';
   const lastName = tokens[tokens.length - 1] || '';
   return normalizeStudentVerificationCode(`${firstInitial}${lastName}`);
+}
+
+function normalizeName(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 async function syncCastMembersToStudentCompsTx(
@@ -315,7 +323,10 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
             id: castMember.id,
             name: castMember.name,
             role: castMember.role,
-            photoUrl: castMember.photoUrl
+            photoUrl: castMember.photoUrl,
+            schoolEmail: castMember.schoolEmail,
+            gradeLevel: castMember.gradeLevel,
+            bio: castMember.bio
           }))
         }))
       );
@@ -364,7 +375,10 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
                       id: true,
                       name: true,
                       role: true,
-                      photoUrl: true
+                      photoUrl: true,
+                      schoolEmail: true,
+                      gradeLevel: true,
+                      bio: true
                     }
                   }
                 }
@@ -419,7 +433,10 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
                 id: castMember.id,
                 name: castMember.name,
                 role: castMember.role,
-                photoUrl: castMember.photoUrl
+                photoUrl: castMember.photoUrl,
+                schoolEmail: castMember.schoolEmail,
+                gradeLevel: castMember.gradeLevel,
+                bio: castMember.bio
               }))
             }))
           );
@@ -511,6 +528,9 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
               name: castMember.name,
               role: castMember.role,
               photoUrl: castMember.photoUrl || null,
+              schoolEmail: castMember.schoolEmail ? castMember.schoolEmail.trim().toLowerCase() : null,
+              gradeLevel: castMember.gradeLevel ?? null,
+              bio: castMember.bio?.trim() || null,
               position
             }))
           });
@@ -604,19 +624,61 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
         });
 
         if (parsed.data.castMembers !== undefined) {
+          const existingCastMembers = await tx.castMember.findMany({
+            where: { showId: existing.showId },
+            orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+            select: {
+              id: true,
+              name: true,
+              schoolEmail: true,
+              gradeLevel: true,
+              bio: true
+            }
+          });
+          const existingById = new Map(existingCastMembers.map((member) => [member.id, member]));
+          const existingByName = new Map<string, (typeof existingCastMembers)[number]>();
+          existingCastMembers.forEach((member) => {
+            const normalized = normalizeName(member.name);
+            if (normalized && !existingByName.has(normalized)) {
+              existingByName.set(normalized, member);
+            }
+          });
+
           await tx.castMember.deleteMany({
             where: { showId: existing.showId }
           });
 
           if (parsed.data.castMembers.length > 0) {
-            await tx.castMember.createMany({
-              data: parsed.data.castMembers.map((castMember, position) => ({
+            const castRows = parsed.data.castMembers.map((castMember, position) => {
+              const existingCastMember =
+                (castMember.id ? existingById.get(castMember.id) : undefined) ||
+                existingByName.get(normalizeName(castMember.name));
+
+              return {
                 showId: existing.showId,
                 name: castMember.name,
                 role: castMember.role,
                 photoUrl: castMember.photoUrl || null,
+                schoolEmail:
+                  castMember.schoolEmail !== undefined
+                    ? castMember.schoolEmail
+                      ? castMember.schoolEmail.trim().toLowerCase()
+                      : null
+                    : existingCastMember?.schoolEmail || null,
+                gradeLevel:
+                  castMember.gradeLevel !== undefined
+                    ? castMember.gradeLevel
+                    : existingCastMember?.gradeLevel ?? null,
+                bio:
+                  castMember.bio !== undefined
+                    ? castMember.bio.trim() || null
+                    : existingCastMember?.bio || null,
                 position
-              }))
+              };
+            });
+
+            await tx.castMember.createMany({
+              data: castRows
             });
           }
         }

@@ -68,7 +68,10 @@ export const showRoutes: FastifyPluginAsync = async (app) => {
           id: castMember.id,
           name: castMember.name,
           role: castMember.role,
-          photoUrl: castMember.photoUrl
+          photoUrl: castMember.photoUrl,
+          schoolEmail: castMember.schoolEmail,
+          gradeLevel: castMember.gradeLevel,
+          bio: castMember.bio
         })),
         performances: show.performances.map((performance) => ({
           id: performance.id,

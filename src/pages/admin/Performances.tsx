@@ -10,7 +10,15 @@ import {
 
 // ── types ────────────────────────────────────────────────────────────────────
 
-type CastMember = { id?: string; name: string; role: string; photoUrl?: string | null };
+type CastMember = {
+  id?: string;
+  name: string;
+  role: string;
+  photoUrl?: string | null;
+  schoolEmail?: string | null;
+  gradeLevel?: number | null;
+  bio?: string | null;
+};
 type Performance = {
   id: string; title: string;
   showDescription?: string | null;
@@ -25,7 +33,15 @@ type Performance = {
   pricingTiers: Array<{ id: string; name: string; priceCents: number }>;
   castMembers: CastMember[];
 };
-type FormCastMember = { name: string; role: string; photoUrl: string };
+type FormCastMember = {
+  id?: string;
+  name: string;
+  role: string;
+  photoUrl: string;
+  schoolEmail?: string;
+  gradeLevel?: number | null;
+  bio?: string;
+};
 type FormSchedule   = { startsAt: string; salesCutoffAt: string };
 type FormState = {
   title: string; type: string; description: string; posterUrl: string;
@@ -39,7 +55,7 @@ type FormState = {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-const emptyCastMember = (): FormCastMember => ({ name: '', role: '', photoUrl: '' });
+const emptyCastMember = (): FormCastMember => ({ name: '', role: '', photoUrl: '', schoolEmail: '', gradeLevel: null, bio: '' });
 const emptySchedule   = (): FormSchedule   => ({ startsAt: '', salesCutoffAt: '' });
 
 function createInitialForm(): FormState {
@@ -235,13 +251,34 @@ export default function AdminPerformancesPage() {
     if (schedules.some(s => !s.startsAt && s.salesCutoffAt)) { setError('Sales cutoff requires a date.'); return; }
     const perfs = schedules.filter(s => s.startsAt);
     if (!perfs.length) { setError('Add at least one performance date.'); return; }
-    const cast = form.castMembers.reduce<Array<{ name: string; role: string; photoUrl?: string }>>((acc, member) => {
+    const cast = form.castMembers.reduce<
+      Array<{
+        id?: string;
+        name: string;
+        role: string;
+        photoUrl?: string;
+        schoolEmail?: string;
+        gradeLevel?: number;
+        bio?: string;
+      }>
+    >((acc, member) => {
       const name = member.name.trim();
       const role = member.role.trim();
       if (!name || !role) return acc;
 
       const photoUrl = normalizeImageSource(member.photoUrl);
-      acc.push(photoUrl ? { name, role, photoUrl } : { name, role });
+      const schoolEmail = member.schoolEmail?.trim().toLowerCase() || '';
+      const gradeLevel = member.gradeLevel ?? undefined;
+      const bio = member.bio?.trim() || '';
+      acc.push({
+        ...(member.id ? { id: member.id } : {}),
+        name,
+        role,
+        ...(photoUrl ? { photoUrl } : {}),
+        ...(schoolEmail ? { schoolEmail } : {}),
+        ...(gradeLevel !== undefined ? { gradeLevel } : {}),
+        ...(bio ? { bio } : {})
+      });
       return acc;
     }, []);
     const payload = {
@@ -290,7 +327,17 @@ export default function AdminPerformancesPage() {
       studentCompTicketsEnabled: Boolean(item.studentCompTicketsEnabled),
       seatSelectionEnabled: item.seatSelectionEnabled !== false,
       pushCastToStudentComps: false,
-      castMembers: item.castMembers.length > 0 ? item.castMembers.map(m => ({ name: m.name, role: m.role, photoUrl: m.photoUrl || '' })) : [emptyCastMember()],
+      castMembers: item.castMembers.length > 0
+        ? item.castMembers.map((m) => ({
+            id: m.id,
+            name: m.name,
+            role: m.role,
+            photoUrl: m.photoUrl || '',
+            schoolEmail: m.schoolEmail || '',
+            gradeLevel: m.gradeLevel ?? null,
+            bio: m.bio || ''
+          }))
+        : [emptyCastMember()],
     });
     setCastImportFileName('');
     setCastImportSummary(null);

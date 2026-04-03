@@ -1,0 +1,279 @@
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { apiFetch } from '../lib/api';
+
+type PublicProgramBioForm = {
+  id: string;
+  publicSlug: string;
+  schemaVersion: string;
+  title: string;
+  instructions: string;
+  deadlineAt: string;
+  isOpen: boolean;
+  acceptingResponses: boolean;
+  closedMessage: string;
+  show: {
+    id: string;
+    title: string;
+  };
+  requiredFields: string[];
+};
+
+type SubmissionResult = {
+  submissionId: string;
+  updatedExisting: boolean;
+  submittedAt: string;
+  updatedAt: string;
+};
+
+type FormState = {
+  fullName: string;
+  schoolEmail: string;
+  gradeLevel: string;
+  roleInShow: string;
+  bio: string;
+};
+
+const MAX_WORDS = 120;
+
+function countWords(value: string): number {
+  return value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
+async function imageFileToDataUrl(file: File, maxWidth: number, maxHeight: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read image.'));
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        reject(new Error('Failed to load image.'));
+        return;
+      }
+
+      const image = new Image();
+      image.onerror = () => reject(new Error('Failed to parse image.'));
+      image.onload = () => {
+        const ratio = Math.min(maxWidth / image.width, maxHeight / image.height, 1);
+        const width = Math.max(1, Math.round(image.width * ratio));
+        const height = Math.max(1, Math.round(image.height * ratio));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const context = canvas.getContext('2d');
+        if (!context) {
+          reject(new Error('Canvas is not available in this browser.'));
+          return;
+        }
+
+        context.drawImage(image, 0, 0, width, height);
+        const mime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        resolve(canvas.toDataURL(mime, mime === 'image/png' ? undefined : 0.86));
+      };
+
+      image.src = reader.result;
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
+
+export default function ProgramBioFormPage() {
+  const { slug = '' } = useParams();
+  const [formMeta, setFormMeta] = useState<PublicProgramBioForm | null>(null);
+  const [formState, setFormState] = useState<FormState>({
+    fullName: '',
+    schoolEmail: '',
+    gradeLevel: '',
+    roleInShow: '',
+    bio: ''
+  });
+  const [headshotFile, setHeadshotFile] = useState<File | null>(null);
+  const [result, setResult] = useState<SubmissionResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!slug) return;
+    setLoading(true);
+    setError(null);
+    void apiFetch<PublicProgramBioForm>(`/api/forms/${slug}`)
+      .then((data) => setFormMeta(data))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load form'))
+      .finally(() => setLoading(false));
+  }, [slug]);
+
+  const bioWordCount = useMemo(() => countWords(formState.bio), [formState.bio]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!formMeta) return;
+
+    if (!headshotFile) {
+      setError('Upload a headshot image.');
+      return;
+    }
+
+    if (bioWordCount > MAX_WORDS) {
+      setError(`Bio must be ${MAX_WORDS} words or fewer.`);
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      const headshotDataUrl = await imageFileToDataUrl(headshotFile, 1400, 1400);
+      const submission = await apiFetch<SubmissionResult>(`/api/forms/${formMeta.publicSlug}/submissions`, {
+        method: 'POST',
+        body: JSON.stringify({
+          fullName: formState.fullName.trim(),
+          schoolEmail: formState.schoolEmail.trim(),
+          gradeLevel: Number(formState.gradeLevel),
+          roleInShow: formState.roleInShow.trim(),
+          bio: formState.bio.trim(),
+          headshotDataUrl
+        })
+      });
+      setResult(submission);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to submit form');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (loading) {
+    return <div className="min-h-[50vh] flex items-center justify-center text-stone-500">Loading form…</div>;
+  }
+
+  if (error && !formMeta) {
+    return <div className="mx-auto max-w-2xl rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>;
+  }
+
+  if (!formMeta) {
+    return <div className="mx-auto max-w-2xl rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-600">Form not found.</div>;
+  }
+
+  if (result) {
+    return (
+      <div className="mx-auto max-w-2xl rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+        <h1 className="text-2xl font-black text-stone-900">Thanks, you&apos;re all set.</h1>
+        <p className="mt-2 text-sm text-stone-700">
+          Your response was saved on {new Date(result.submittedAt).toLocaleString()}.
+        </p>
+        <p className="mt-1 text-sm text-stone-600">
+          Submitting again with the same school email updates your existing response.
+        </p>
+        <div className="mt-4">
+          <Link to="/shows" className="text-sm font-semibold text-red-700 hover:underline">Back to shows</Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-3xl rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+      <h1 className="text-2xl font-black text-stone-900">{formMeta.title}</h1>
+      <p className="mt-1 text-sm text-stone-600">Show: {formMeta.show.title}</p>
+      <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-stone-700">{formMeta.instructions}</p>
+      <p className="mt-2 text-xs text-stone-500">Deadline: {new Date(formMeta.deadlineAt).toLocaleString()}</p>
+
+      {!formMeta.acceptingResponses ? (
+        <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+          This form isn&apos;t accepting responses.
+        </div>
+      ) : (
+        <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+          <label className="block text-sm">
+            <span className="font-semibold text-stone-800">Full name</span>
+            <input
+              required
+              value={formState.fullName}
+              onChange={(event) => setFormState((current) => ({ ...current, fullName: event.target.value }))}
+              className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+            />
+          </label>
+
+          <label className="block text-sm">
+            <span className="font-semibold text-stone-800">School email</span>
+            <input
+              required
+              type="email"
+              value={formState.schoolEmail}
+              onChange={(event) => setFormState((current) => ({ ...current, schoolEmail: event.target.value }))}
+              className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+            />
+          </label>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block text-sm">
+              <span className="font-semibold text-stone-800">Grade</span>
+              <select
+                required
+                value={formState.gradeLevel}
+                onChange={(event) => setFormState((current) => ({ ...current, gradeLevel: event.target.value }))}
+                className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+              >
+                <option value="">Select grade</option>
+                <option value="9">9</option>
+                <option value="10">10</option>
+                <option value="11">11</option>
+                <option value="12">12</option>
+              </select>
+            </label>
+
+            <label className="block text-sm">
+              <span className="font-semibold text-stone-800">Role in show</span>
+              <input
+                required
+                value={formState.roleInShow}
+                onChange={(event) => setFormState((current) => ({ ...current, roleInShow: event.target.value }))}
+                className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+              />
+            </label>
+          </div>
+
+          <label className="block text-sm">
+            <span className="font-semibold text-stone-800">Bio</span>
+            <textarea
+              required
+              rows={6}
+              value={formState.bio}
+              onChange={(event) => setFormState((current) => ({ ...current, bio: event.target.value }))}
+              className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+            />
+            <span className={`mt-1 block text-xs ${bioWordCount > MAX_WORDS ? 'text-red-700' : 'text-stone-500'}`}>
+              {bioWordCount}/{MAX_WORDS} words
+            </span>
+          </label>
+
+          <label className="block text-sm">
+            <span className="font-semibold text-stone-800">Headshot upload</span>
+            <input
+              required
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              onChange={(event) => setHeadshotFile(event.target.files?.[0] || null)}
+              className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+            />
+          </label>
+
+          {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="inline-flex items-center rounded-xl bg-red-700 px-5 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {submitting ? 'Submitting…' : 'Submit'}
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
