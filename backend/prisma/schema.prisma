@@ -200,6 +200,7 @@ model Show {
   castMembers CastMember[]
   studentTicketCredits StudentTicketCredit[]
   programBioForm ProgramBioForm?
+  seniorSendoffForm SeniorSendoffForm?
 }
 
 model CastMember {
@@ -258,6 +259,50 @@ model ProgramBioSubmission {
 
   @@unique([formId, schoolEmail])
   @@index([formId, updatedAt])
+}
+
+model SeniorSendoffForm {
+  id                       String                   @id @default(cuid())
+  showId                   String                   @unique
+  show                     Show                     @relation(fields: [showId], references: [id], onDelete: Cascade)
+  publicSlug               String                   @unique
+  schemaVersion            String                   @default("SENIOR_SENDOFF_V1")
+  title                    String
+  instructions             String
+  deadlineAt               DateTime
+  isOpen                   Boolean                  @default(true)
+  secondSubmissionPriceCents Int                    @default(2500)
+  createdByAdminId         String?
+  updatedByAdminId         String?
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
+  submissions              SeniorSendoffSubmission[]
+
+  @@index([isOpen, deadlineAt])
+}
+
+model SeniorSendoffSubmission {
+  id                String            @id @default(cuid())
+  formId            String
+  form              SeniorSendoffForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  parentName        String
+  parentEmail       String
+  parentPhone       String
+  studentName       String
+  studentKey        String
+  message           String
+  entryNumber       Int
+  isPaid            Boolean           @default(false)
+  paymentIntentId   String?           @unique
+  paymentAmountCents Int?
+  paymentCurrency   String?
+  submittedAt       DateTime          @default(now())
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@unique([formId, parentEmail, studentKey, entryNumber])
+  @@index([formId, updatedAt])
+  @@index([formId, parentEmail, studentKey])
 }
 
 model Performance {

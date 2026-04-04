@@ -268,6 +268,71 @@ describe.sequential('program bio forms integration', () => {
     expect(expiredSubmit.json().error).toContain("isn't accepting responses");
   });
 
+  it('omits hidden custom questions from public forms and does not require responses for them', async () => {
+    const { show } = await createShowWithPerformance(`Hidden Questions Show ${Date.now()}`);
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/forms',
+      headers: authHeaders(),
+      payload: { showId: show.id }
+    });
+    const form = createResponse.json();
+
+    const patchResponse = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/forms/${encodeURIComponent(form.id)}`,
+      headers: authHeaders(),
+      payload: {
+        questions: {
+          customQuestions: [
+            {
+              id: 'favorite-musical',
+              label: 'Favorite musical',
+              type: 'short_text',
+              required: true,
+              hidden: false
+            },
+            {
+              id: 'internal-note',
+              label: 'Internal note',
+              type: 'short_text',
+              required: true,
+              hidden: true
+            }
+          ]
+        }
+      }
+    });
+    expect(patchResponse.statusCode).toBe(200);
+
+    const publicFormResponse = await app.inject({
+      method: 'GET',
+      url: `/api/forms/${encodeURIComponent(form.publicSlug)}`
+    });
+    expect(publicFormResponse.statusCode).toBe(200);
+    const publicQuestions = publicFormResponse.json().questions.customQuestions as Array<{ id: string }>;
+    expect(publicQuestions.some((question) => question.id === 'internal-note')).toBe(false);
+    expect(publicQuestions.some((question) => question.id === 'favorite-musical')).toBe(true);
+
+    const submitResponse = await app.inject({
+      method: 'POST',
+      url: `/api/forms/${encodeURIComponent(form.publicSlug)}/submissions`,
+      payload: {
+        fullName: 'Riley Hidden',
+        schoolEmail: 'rhidden@rtmsd.org',
+        gradeLevel: 11,
+        roleInShow: 'Stage Manager',
+        bio: 'Riley keeps production running smoothly.',
+        customResponses: {
+          'favorite-musical': 'Hadestown'
+        },
+        headshotDataUrl: TEST_HEADSHOT_DATA_URL
+      }
+    });
+    expect(submitResponse.statusCode).toBe(201);
+  });
+
   it('syncs submissions into cast metadata and optional Student Credits records', async () => {
     const { show, performance } = await createShowWithPerformance(`Sync Show ${Date.now()}`);
 

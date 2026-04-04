@@ -32,6 +32,20 @@ type DonationThankYouEmailPayload = {
   paymentIntentId: string;
 };
 
+type SeniorSendoffSubmissionEmailPayload = {
+  parentName: string;
+  parentEmail: string;
+  parentPhone: string;
+  studentName: string;
+  showTitle: string;
+  message: string;
+  entryNumber: number;
+  isPaid: boolean;
+  paidAmountCents: number | null;
+  paidCurrency: string | null;
+  paymentIntentId: string | null;
+};
+
 type EmailLogoAttachment = {
   filename: string;
   content: Buffer;
@@ -432,6 +446,102 @@ export async function sendDonationThankYouEmail(payload: DonationThankYouEmailPa
     from: env.SMTP_FROM,
     to: donorEmail,
     subject: `Thank you for your donation — ${BRAND_NAME}`,
+    text,
+    html
+  });
+}
+
+export async function sendSeniorSendoffSubmissionEmail(payload: SeniorSendoffSubmissionEmailPayload): Promise<void> {
+  if (!transporter || !env.SMTP_FROM) {
+    console.warn('SMTP is not configured; skipping senior send-off confirmation email send.');
+    return;
+  }
+
+  const parentName = payload.parentName.trim() || 'Parent/Guardian';
+  const parentEmail = payload.parentEmail.trim().toLowerCase();
+  const paidAmountLabel =
+    payload.isPaid && payload.paidAmountCents !== null
+      ? formatMoney(payload.paidAmountCents, payload.paidCurrency || 'usd')
+      : null;
+
+  const safeParentName = escapeHtml(parentName);
+  const safeStudentName = escapeHtml(payload.studentName);
+  const safeShowTitle = escapeHtml(payload.showTitle);
+  const safeParentPhone = escapeHtml(payload.parentPhone);
+  const safeParentEmail = escapeHtml(parentEmail);
+  const safeMessage = escapeHtml(payload.message);
+  const safeEntryNumber = escapeHtml(String(payload.entryNumber));
+  const safePaidAmount = paidAmountLabel ? escapeHtml(paidAmountLabel) : null;
+  const safePaymentIntentId = payload.paymentIntentId ? escapeHtml(payload.paymentIntentId) : null;
+
+  const text = [
+    `Hi ${parentName},`,
+    '',
+    `Your Senior Send-Off shout-out was submitted for ${payload.studentName}.`,
+    `Show: ${payload.showTitle}`,
+    `Entry number for this student: ${payload.entryNumber} of 2`,
+    payload.isPaid && paidAmountLabel ? `Payment received: ${paidAmountLabel}` : 'Payment: Not required',
+    payload.isPaid && payload.paymentIntentId ? `Payment ID: ${payload.paymentIntentId}` : null,
+    '',
+    'Submitted details:',
+    `Parent/Guardian: ${parentName}`,
+    `Email: ${parentEmail}`,
+    `Phone: ${payload.parentPhone}`,
+    `Student: ${payload.studentName}`,
+    `Message: ${payload.message}`,
+    '',
+    `Thank you for supporting ${BRAND_NAME}.`
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const html = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:24px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;">
+            <tr>
+              <td style="background:linear-gradient(160deg,#1a0505 0%,#3d0a0a 100%);border-radius:14px 14px 0 0;padding:24px;">
+                <div style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#c9a84c;margin-bottom:8px;">${BRAND_NAME}</div>
+                <div style="font-family:Georgia,'Times New Roman',serif;font-size:28px;font-weight:700;color:#f5f0e8;line-height:1.2;">Senior Send-Off Received</div>
+                <div style="margin-top:8px;font-family:Arial,sans-serif;font-size:14px;color:#f5d98b;line-height:1.5;">Your playbill shout-out has been submitted.</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="height:3px;background:linear-gradient(90deg,#8b1a1a,#c9a84c,#8b1a1a);"></td>
+            </tr>
+            <tr>
+              <td style="background:#fffdf7;border:1px solid #e8dfc8;border-top:none;padding:24px;">
+                <p style="margin:0 0 10px 0;font-family:Georgia,'Times New Roman',serif;font-size:18px;color:#1a0a0a;">Hi ${safeParentName},</p>
+                <p style="margin:0 0 14px 0;font-family:Arial,sans-serif;font-size:14px;line-height:1.7;color:#3d2020;">
+                  We received your Senior Send-Off shout-out for <strong>${safeStudentName}</strong> in <strong>${safeShowTitle}</strong>.
+                </p>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #c9a84c;border-radius:10px;background:#fdf8ee;margin-bottom:14px;">
+                  <tr>
+                    <td style="padding:12px 14px;font-family:Arial,sans-serif;font-size:13px;color:#1a0a0a;line-height:1.8;">
+                      <div><strong style="color:#8b6914;">Entry number:</strong> ${safeEntryNumber} of 2</div>
+                      <div><strong style="color:#8b6914;">Parent email:</strong> ${safeParentEmail}</div>
+                      <div><strong style="color:#8b6914;">Parent phone:</strong> ${safeParentPhone}</div>
+                      <div><strong style="color:#8b6914;">Student:</strong> ${safeStudentName}</div>
+                      <div><strong style="color:#8b6914;">Payment:</strong> ${safePaidAmount || 'Not required'}</div>
+                      ${safePaymentIntentId ? `<div><strong style="color:#8b6914;">Payment ID:</strong> ${safePaymentIntentId}</div>` : ''}
+                    </td>
+                  </tr>
+                </table>
+                <div style="font-family:Arial,sans-serif;font-size:12px;font-weight:700;color:#8b6914;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.8px;">Message</div>
+                <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.7;color:#3d2020;border:1px solid #e8dfc8;border-radius:10px;background:#fff;padding:12px 14px;white-space:pre-wrap;">${safeMessage}</div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  `;
+
+  await transporter.sendMail({
+    from: env.SMTP_FROM,
+    to: parentEmail,
+    subject: `Senior Send-Off submitted - ${payload.studentName} (${payload.showTitle})`,
     text,
     html
   });

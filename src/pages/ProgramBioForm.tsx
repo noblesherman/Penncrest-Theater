@@ -39,6 +39,7 @@ type ProgramBioCustomQuestion = {
   label: string;
   type: ProgramBioCustomQuestionType;
   required: boolean;
+  hidden: boolean;
   options: string[];
 };
 
@@ -59,6 +60,7 @@ type FormState = {
 };
 
 const MAX_WORDS = 120;
+const REQUIRED_SCHOOL_EMAIL_DOMAIN = 'rtmsd.org';
 
 const DEFAULT_PROGRAM_BIO_QUESTIONS: ProgramBioQuestions = {
   fullNameLabel: 'Full name',
@@ -77,6 +79,10 @@ function countWords(value: string): number {
     .filter(Boolean).length;
 }
 
+function hasRequiredSchoolEmailDomain(email: string): boolean {
+  return email.trim().toLowerCase().endsWith(`@${REQUIRED_SCHOOL_EMAIL_DOMAIN}`);
+}
+
 function normalizeCustomQuestions(value: ProgramBioCustomQuestion[] | undefined): ProgramBioCustomQuestion[] {
   if (!Array.isArray(value)) return [];
 
@@ -91,6 +97,7 @@ function normalizeCustomQuestions(value: ProgramBioCustomQuestion[] | undefined)
         label: (question?.label || '').trim(),
         type,
         required: Boolean(question?.required),
+        hidden: Boolean(question?.hidden),
         options: type === 'multiple_choice'
           ? Array.from(new Set((Array.isArray(question?.options) ? question.options : []).map((option) => option.trim()).filter(Boolean)))
           : []
@@ -166,21 +173,33 @@ export default function ProgramBioFormPage() {
   }, [slug]);
 
   const bioWordCount = useMemo(() => countWords(formState.bio), [formState.bio]);
+  const customQuestions = useMemo(
+    () => normalizeCustomQuestions(formMeta?.questions?.customQuestions),
+    [formMeta]
+  );
+  const visibleCustomQuestions = useMemo(
+    () => customQuestions.filter((question) => !question.hidden),
+    [customQuestions]
+  );
 
   useEffect(() => {
     if (!formMeta) return;
-    const customQuestions = normalizeCustomQuestions(formMeta.questions?.customQuestions);
     setFormState((current) => ({
       ...current,
       customResponses: Object.fromEntries(
-        customQuestions.map((question) => [question.id, current.customResponses[question.id] || ''])
+        visibleCustomQuestions.map((question) => [question.id, current.customResponses[question.id] || ''])
       )
     }));
-  }, [formMeta]);
+  }, [formMeta, visibleCustomQuestions]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!formMeta) return;
+
+    if (!hasRequiredSchoolEmailDomain(formState.schoolEmail)) {
+      setError(`Use your school email ending in @${REQUIRED_SCHOOL_EMAIL_DOMAIN}.`);
+      return;
+    }
 
     if (!headshotFile) {
       setError('Upload a headshot image.');
@@ -196,6 +215,7 @@ export default function ProgramBioFormPage() {
     setError(null);
     try {
       const headshotDataUrl = await imageFileToDataUrl(headshotFile, 1400, 1400);
+      const visibleQuestionIds = new Set(visibleCustomQuestions.map((question) => question.id));
       const submission = await apiFetch<SubmissionResult>(`/api/forms/${formMeta.publicSlug}/submissions`, {
         method: 'POST',
         body: JSON.stringify({
@@ -206,6 +226,7 @@ export default function ProgramBioFormPage() {
           bio: formState.bio.trim(),
           customResponses: Object.fromEntries(
             Object.entries(formState.customResponses)
+              .filter(([key]) => visibleQuestionIds.has(key))
               .map(([key, value]) => [key, value.trim()])
               .filter(([, value]) => value)
           ),
@@ -252,7 +273,7 @@ export default function ProgramBioFormPage() {
   const questionLabels: ProgramBioQuestions = {
     ...DEFAULT_PROGRAM_BIO_QUESTIONS,
     ...(formMeta.questions || {}),
-    customQuestions: normalizeCustomQuestions(formMeta.questions?.customQuestions)
+    customQuestions
   };
 
   return (
@@ -286,7 +307,11 @@ export default function ProgramBioFormPage() {
               value={formState.schoolEmail}
               onChange={(event) => setFormState((current) => ({ ...current, schoolEmail: event.target.value }))}
               className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+              placeholder={`name@${REQUIRED_SCHOOL_EMAIL_DOMAIN}`}
             />
+            <span className="mt-1 block text-xs text-stone-500">
+              Must end in @{REQUIRED_SCHOOL_EMAIL_DOMAIN}
+            </span>
           </label>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -331,7 +356,7 @@ export default function ProgramBioFormPage() {
             </span>
           </label>
 
-          {questionLabels.customQuestions.map((question) => (
+          {visibleCustomQuestions.map((question) => (
             <label key={question.id} className="block text-sm">
               <span className="font-semibold text-stone-800">{question.label}</span>
               {question.type === 'long_text' ? (

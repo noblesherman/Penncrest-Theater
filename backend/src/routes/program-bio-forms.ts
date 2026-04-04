@@ -36,6 +36,7 @@ const programBioCustomQuestionSchema = z
     label: z.string().trim().max(160),
     type: programBioCustomQuestionTypeSchema,
     required: z.boolean().optional(),
+    hidden: z.boolean().optional(),
     options: z.array(z.string().trim().min(1).max(160)).max(25).optional()
   })
   .strict();
@@ -59,6 +60,7 @@ type ProgramBioCustomQuestion = {
   label: string;
   type: ProgramBioCustomQuestionType;
   required: boolean;
+  hidden: boolean;
   options: string[];
 };
 
@@ -249,6 +251,7 @@ function normalizeCustomQuestions(value: ProgramBioQuestionsPatch['customQuestio
       label,
       type: question.type,
       required: Boolean(question.required),
+      hidden: Boolean(question.hidden),
       options
     });
     seenIds.add(id);
@@ -296,12 +299,13 @@ function normalizeSubmissionCustomResponses(
   value: Record<string, string> | undefined,
   customQuestions: ProgramBioCustomQuestion[]
 ): Record<string, string> {
-  if (customQuestions.length === 0) return {};
+  const visibleCustomQuestions = customQuestions.filter((question) => !question.hidden);
+  if (visibleCustomQuestions.length === 0) return {};
 
   const source = value || {};
   const normalized: Record<string, string> = {};
 
-  for (const question of customQuestions) {
+  for (const question of visibleCustomQuestions) {
     const raw = source[question.id];
     const trimmed = typeof raw === 'string' ? raw.trim() : '';
 
@@ -986,13 +990,17 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const now = new Date();
+      const questions = normalizeProgramBioQuestions(form.questionConfig);
       reply.send({
         id: form.id,
         publicSlug: form.publicSlug,
         schemaVersion: form.schemaVersion,
         title: form.title,
         instructions: form.instructions,
-        questions: normalizeProgramBioQuestions(form.questionConfig),
+        questions: {
+          ...questions,
+          customQuestions: questions.customQuestions.filter((question) => !question.hidden)
+        },
         deadlineAt: form.deadlineAt,
         isOpen: form.isOpen,
         acceptingResponses: isAcceptingResponses(form, now),

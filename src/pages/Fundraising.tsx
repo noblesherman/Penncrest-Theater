@@ -20,7 +20,7 @@ import {
   sponsorshipTiers
 } from '../lib/fundraisingContent';
 import { apiFetch } from '../lib/api';
-
+ 
 type FundraisingTab = 'donation' | 'sponsor';
 
 type LiveFundraisingSponsor = {
