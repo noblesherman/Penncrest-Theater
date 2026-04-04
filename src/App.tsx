@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Navigate, Outlet, Route, Routes, useLocation, useOutletContext } from 'react-router-dom';
 import CurtainIntro from './components/CurtainIntro';
 import Layout from './components/Layout';
 import RouteSeo from './components/RouteSeo';
@@ -58,10 +58,11 @@ function PublicLayout() {
 
 function RouteTransitionOutlet() {
   const location = useLocation();
+  const outletContext = useOutletContext();
 
   return (
     <div key={location.pathname} className="route-transition">
-      <Outlet />
+      <Outlet context={outletContext} />
     </div>
   );
 }
