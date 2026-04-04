@@ -29,6 +29,30 @@ Please include:
 - Student name
 - Your shout-out message`;
 
+const seniorSendoffCustomQuestionTypeSchema = z.enum(['short_text', 'long_text', 'multiple_choice']);
+
+const seniorSendoffCustomQuestionSchema = z
+  .object({
+    id: z.string().trim().min(1).max(100),
+    label: z.string().trim().max(160),
+    type: seniorSendoffCustomQuestionTypeSchema,
+    required: z.boolean().optional(),
+    hidden: z.boolean().optional(),
+    options: z.array(z.string().trim().min(1).max(160)).max(25).optional()
+  })
+  .strict();
+
+const seniorSendoffQuestionsPatchSchema = z
+  .object({
+    parentNameLabel: z.string().trim().min(1).max(120).optional(),
+    parentEmailLabel: z.string().trim().min(1).max(120).optional(),
+    parentPhoneLabel: z.string().trim().min(1).max(120).optional(),
+    studentNameLabel: z.string().trim().min(1).max(120).optional(),
+    messageLabel: z.string().trim().min(1).max(120).optional(),
+    customQuestions: z.array(seniorSendoffCustomQuestionSchema).max(40).optional()
+  })
+  .strict();
+
 const createSeniorSendoffFormSchema = z.object({
   showId: z.string().trim().min(1),
   deadlineAt: z.string().datetime().optional(),
@@ -41,7 +65,8 @@ const updateSeniorSendoffFormSchema = z
     instructions: z.string().trim().min(1).max(12_000).optional(),
     deadlineAt: z.string().datetime().optional(),
     isOpen: z.boolean().optional(),
-    secondSubmissionPriceCents: z.coerce.number().int().min(0).max(100_000).optional()
+    secondSubmissionPriceCents: z.coerce.number().int().min(0).max(100_000).optional(),
+    questions: seniorSendoffQuestionsPatchSchema.optional()
   })
   .refine((value) => Object.values(value).some((field) => field !== undefined), {
     message: 'Provide at least one field to update'
@@ -64,8 +89,40 @@ const publicSubmissionSchema = z.object({
   parentPhone: z.string().trim().min(7).max(40),
   studentName: z.string().trim().min(1).max(120),
   message: z.string().trim().min(1).max(SENIOR_SENDOFF_MAX_MESSAGE_LENGTH),
+  customResponses: z.record(z.string().max(4_000)).optional(),
   paymentIntentId: z.string().trim().min(1).max(255).optional()
 });
+
+type SeniorSendoffCustomQuestionType = z.infer<typeof seniorSendoffCustomQuestionTypeSchema>;
+
+type SeniorSendoffCustomQuestion = {
+  id: string;
+  label: string;
+  type: SeniorSendoffCustomQuestionType;
+  required: boolean;
+  hidden: boolean;
+  options: string[];
+};
+
+type SeniorSendoffQuestionsPatch = z.infer<typeof seniorSendoffQuestionsPatchSchema>;
+
+type SeniorSendoffQuestions = {
+  parentNameLabel: string;
+  parentEmailLabel: string;
+  parentPhoneLabel: string;
+  studentNameLabel: string;
+  messageLabel: string;
+  customQuestions: SeniorSendoffCustomQuestion[];
+};
+
+const SENIOR_SENDOFF_DEFAULT_QUESTIONS: SeniorSendoffQuestions = {
+  parentNameLabel: 'Parent/Guardian Name',
+  parentEmailLabel: 'Parent Email',
+  parentPhoneLabel: 'Parent Phone',
+  studentNameLabel: 'Student Name',
+  messageLabel: 'Shout-Out Message',
+  customQuestions: []
+};
 
 type AdminRequestLike = {
   user?: {
@@ -135,6 +192,115 @@ function acceptanceMessage(form: { isOpen: boolean; deadlineAt: Date }, now: Dat
   return '';
 }
 
+function normalizeCustomQuestionOptions(options: string[] | undefined): string[] {
+  if (!options) return [];
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const option of options) {
+    const trimmed = option.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    normalized.push(trimmed);
+  }
+  return normalized;
+}
+
+function normalizeCustomQuestions(value: SeniorSendoffQuestionsPatch['customQuestions']): SeniorSendoffCustomQuestion[] {
+  if (!Array.isArray(value)) return [];
+
+  const seenIds = new Set<string>();
+  const normalized: SeniorSendoffCustomQuestion[] = [];
+
+  for (const question of value) {
+    const id = question.id.trim();
+    if (!id || seenIds.has(id)) continue;
+
+    const label = question.label.trim();
+    if (!label) continue;
+
+    const options = question.type === 'multiple_choice' ? normalizeCustomQuestionOptions(question.options) : [];
+    if (question.type === 'multiple_choice' && options.length < 2) continue;
+
+    normalized.push({
+      id,
+      label,
+      type: question.type,
+      required: Boolean(question.required),
+      hidden: Boolean(question.hidden),
+      options
+    });
+    seenIds.add(id);
+  }
+
+  return normalized;
+}
+
+function normalizeSeniorSendoffQuestions(value: Prisma.JsonValue | null | undefined): SeniorSendoffQuestions {
+  const parsed = seniorSendoffQuestionsPatchSchema.safeParse(value ?? {});
+  if (!parsed.success) {
+    return { ...SENIOR_SENDOFF_DEFAULT_QUESTIONS };
+  }
+
+  const { customQuestions, ...labelPatch } = parsed.data;
+  const normalizedLabels = Object.fromEntries(
+    Object.entries(labelPatch).filter(([, fieldValue]) => fieldValue !== undefined)
+  ) as Omit<SeniorSendoffQuestions, 'customQuestions'>;
+
+  return {
+    ...SENIOR_SENDOFF_DEFAULT_QUESTIONS,
+    ...normalizedLabels,
+    customQuestions: normalizeCustomQuestions(customQuestions)
+  };
+}
+
+function mergeSeniorSendoffQuestions(
+  current: Prisma.JsonValue | null | undefined,
+  patch: SeniorSendoffQuestionsPatch
+): SeniorSendoffQuestions {
+  const base = normalizeSeniorSendoffQuestions(current);
+  const { customQuestions, ...labelPatch } = patch;
+  const normalizedLabels = Object.fromEntries(
+    Object.entries(labelPatch).filter(([, fieldValue]) => fieldValue !== undefined)
+  ) as Partial<Omit<SeniorSendoffQuestions, 'customQuestions'>>;
+
+  return normalizeSeniorSendoffQuestions({
+    ...base,
+    ...normalizedLabels,
+    customQuestions: customQuestions ?? base.customQuestions
+  } as Prisma.JsonObject);
+}
+
+function normalizeSubmissionCustomResponses(
+  value: Record<string, string> | undefined,
+  customQuestions: SeniorSendoffCustomQuestion[]
+): Record<string, string> {
+  const visibleCustomQuestions = customQuestions.filter((question) => !question.hidden);
+  if (visibleCustomQuestions.length === 0) return {};
+
+  const source = value || {};
+  const normalized: Record<string, string> = {};
+
+  for (const question of visibleCustomQuestions) {
+    const raw = source[question.id];
+    const trimmed = typeof raw === 'string' ? raw.trim() : '';
+
+    if (!trimmed) {
+      if (question.required) {
+        throw new HttpError(400, `${question.label} is required.`);
+      }
+      continue;
+    }
+
+    if (question.type === 'multiple_choice' && !question.options.includes(trimmed)) {
+      throw new HttpError(400, `Invalid response for "${question.label}".`);
+    }
+
+    normalized[question.id] = trimmed;
+  }
+
+  return normalized;
+}
+
 function serializeFormSummary(
   form: {
     id: string;
@@ -143,6 +309,7 @@ function serializeFormSummary(
     schemaVersion: string;
     title: string;
     instructions: string;
+    questionConfig: Prisma.JsonValue | null;
     deadlineAt: Date;
     isOpen: boolean;
     secondSubmissionPriceCents: number;
@@ -170,6 +337,7 @@ function serializeFormSummary(
     schemaVersion: form.schemaVersion,
     title: form.title,
     instructions: form.instructions,
+    questions: normalizeSeniorSendoffQuestions(form.questionConfig),
     deadlineAt: form.deadlineAt,
     isOpen: form.isOpen,
     secondSubmissionPriceCents: form.secondSubmissionPriceCents,
@@ -315,6 +483,7 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
             schemaVersion: SENIOR_SENDOFF_SCHEMA_VERSION,
             title: SENIOR_SENDOFF_DEFAULT_TITLE,
             instructions: SENIOR_SENDOFF_DEFAULT_INSTRUCTIONS,
+            questionConfig: SENIOR_SENDOFF_DEFAULT_QUESTIONS,
             deadlineAt,
             isOpen: true,
             secondSubmissionPriceCents,
@@ -429,11 +598,16 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
         throw new HttpError(404, 'Form not found');
       }
 
+      const nextQuestions = parsed.data.questions
+        ? mergeSeniorSendoffQuestions(existing.questionConfig, parsed.data.questions)
+        : undefined;
+
       const updated = await prisma.seniorSendoffForm.update({
         where: { id: params.id },
         data: {
           title: parsed.data.title,
           instructions: parsed.data.instructions,
+          questionConfig: nextQuestions,
           deadlineAt: parsed.data.deadlineAt ? new Date(parsed.data.deadlineAt) : undefined,
           isOpen: parsed.data.isOpen,
           secondSubmissionPriceCents: parsed.data.secondSubmissionPriceCents,
@@ -509,6 +683,7 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
           parentPhone: submission.parentPhone,
           studentName: submission.studentName,
           message: submission.message,
+          extraResponses: submission.extraResponses ?? {},
           entryNumber: submission.entryNumber,
           isPaid: submission.isPaid,
           paymentIntentId: submission.paymentIntentId,
@@ -545,12 +720,17 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const now = new Date();
+      const questions = normalizeSeniorSendoffQuestions(form.questionConfig);
       reply.send({
         id: form.id,
         publicSlug: form.publicSlug,
         schemaVersion: form.schemaVersion,
         title: form.title,
         instructions: form.instructions,
+        questions: {
+          ...questions,
+          customQuestions: questions.customQuestions.filter((question) => !question.hidden)
+        },
         deadlineAt: form.deadlineAt,
         isOpen: form.isOpen,
         secondSubmissionPriceCents: form.secondSubmissionPriceCents,
@@ -756,6 +936,11 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
       const studentName = parsed.data.studentName.trim();
       const studentKey = normalizeStudentKey(studentName);
       const message = parsed.data.message.trim();
+      const questionConfig = normalizeSeniorSendoffQuestions(form.questionConfig);
+      const normalizedCustomResponses = normalizeSubmissionCustomResponses(
+        parsed.data.customResponses,
+        questionConfig.customQuestions
+      );
 
       const existingCount = await prisma.seniorSendoffSubmission.count({
         where: {
@@ -816,6 +1001,7 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
             studentName,
             studentKey,
             message,
+            extraResponses: normalizedCustomResponses,
             entryNumber,
             isPaid: requiresPayment,
             paymentIntentId: requiresPayment ? paymentIntentId : null,

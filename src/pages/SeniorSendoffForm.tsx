@@ -10,6 +10,9 @@ type PublicSeniorSendoffForm = {
   schemaVersion: string;
   title: string;
   instructions: string;
+  questions?: Partial<SeniorSendoffQuestions> & {
+    customQuestions?: SeniorSendoffCustomQuestion[];
+  };
   deadlineAt: string;
   isOpen: boolean;
   secondSubmissionPriceCents: number;
@@ -24,6 +27,26 @@ type PublicSeniorSendoffForm = {
     firstIsFree: boolean;
     secondRequiresPayment: boolean;
   };
+};
+
+type SeniorSendoffQuestions = {
+  parentNameLabel: string;
+  parentEmailLabel: string;
+  parentPhoneLabel: string;
+  studentNameLabel: string;
+  messageLabel: string;
+  customQuestions: SeniorSendoffCustomQuestion[];
+};
+
+type SeniorSendoffCustomQuestionType = 'short_text' | 'long_text' | 'multiple_choice';
+
+type SeniorSendoffCustomQuestion = {
+  id: string;
+  label: string;
+  type: SeniorSendoffCustomQuestionType;
+  required: boolean;
+  hidden: boolean;
+  options: string[];
 };
 
 type SubmissionEligibility = {
@@ -66,6 +89,7 @@ type ShoutoutFormState = {
   parentPhone: string;
   studentName: string;
   message: string;
+  customResponses: Record<string, string>;
 };
 
 const FALLBACK_STRIPE_PUBLISHABLE_KEY = (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '').trim();
@@ -74,6 +98,15 @@ const PAYMENT_BUTTON_CLASS =
 const INPUT_CLASS =
   'w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-900 placeholder:text-stone-400 focus:border-red-700 focus:outline-none focus:ring-2 focus:ring-red-100';
 
+const DEFAULT_SENIOR_SENDOFF_QUESTIONS: SeniorSendoffQuestions = {
+  parentNameLabel: 'Parent/Guardian Name',
+  parentEmailLabel: 'Parent Email',
+  parentPhoneLabel: 'Parent Phone',
+  studentNameLabel: 'Student Name',
+  messageLabel: 'Shout-Out Message',
+  customQuestions: []
+};
+
 function formatUsd(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
@@ -81,6 +114,30 @@ function formatUsd(cents: number): string {
 function isValidEmail(value: string): boolean {
   const normalized = value.trim();
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
+}
+
+function normalizeCustomQuestions(value: SeniorSendoffCustomQuestion[] | undefined): SeniorSendoffCustomQuestion[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((question) => {
+      const type: SeniorSendoffCustomQuestionType =
+        question?.type === 'long_text' || question?.type === 'multiple_choice'
+          ? question.type
+          : 'short_text';
+      return {
+        id: (question?.id || '').trim(),
+        label: (question?.label || '').trim(),
+        type,
+        required: Boolean(question?.required),
+        hidden: Boolean(question?.hidden),
+        options:
+          type === 'multiple_choice'
+            ? Array.from(new Set((Array.isArray(question?.options) ? question.options : []).map((option) => option.trim()).filter(Boolean)))
+            : []
+      };
+    })
+    .filter((question) => question.id && question.label && (question.type !== 'multiple_choice' || question.options.length >= 2));
 }
 
 function PaymentConfirmForm({
@@ -163,7 +220,8 @@ export default function SeniorSendoffFormPage() {
     parentEmail: '',
     parentPhone: '',
     studentName: '',
-    message: ''
+    message: '',
+    customResponses: {}
   });
   const [eligibility, setEligibility] = useState<SubmissionEligibility | null>(null);
   const [eligibilityLoading, setEligibilityLoading] = useState(false);
@@ -174,6 +232,19 @@ export default function SeniorSendoffFormPage() {
   const [error, setError] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [result, setResult] = useState<SeniorSendoffSubmissionResponse | null>(null);
+  const questions = useMemo<SeniorSendoffQuestions>(() => {
+    if (!formMeta?.questions) return DEFAULT_SENIOR_SENDOFF_QUESTIONS;
+    const customQuestions = normalizeCustomQuestions(formMeta.questions.customQuestions);
+    return {
+      ...DEFAULT_SENIOR_SENDOFF_QUESTIONS,
+      ...formMeta.questions,
+      customQuestions
+    };
+  }, [formMeta]);
+  const visibleCustomQuestions = useMemo(
+    () => questions.customQuestions.filter((question) => !question.hidden),
+    [questions]
+  );
 
   useEffect(() => {
     if (!slug) return;
@@ -184,6 +255,16 @@ export default function SeniorSendoffFormPage() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load form'))
       .finally(() => setLoading(false));
   }, [slug]);
+
+  useEffect(() => {
+    if (!formMeta) return;
+    setFormState((current) => ({
+      ...current,
+      customResponses: Object.fromEntries(
+        visibleCustomQuestions.map((question) => [question.id, current.customResponses[question.id] || ''])
+      )
+    }));
+  }, [formMeta, visibleCustomQuestions]);
 
   useEffect(() => {
     if (!formMeta) return;
@@ -222,13 +303,17 @@ export default function SeniorSendoffFormPage() {
   }, [activeIntent?.clientSecret]);
 
   const readinessIssue = useMemo(() => {
-    if (!formState.parentName.trim()) return 'Enter parent/guardian name.';
-    if (!isValidEmail(formState.parentEmail)) return 'Enter a valid parent email.';
-    if (!formState.parentPhone.trim()) return 'Enter parent phone.';
-    if (!formState.studentName.trim()) return 'Enter student name.';
-    if (!formState.message.trim()) return 'Enter a shout-out message.';
+    if (!formState.parentName.trim()) return `Enter ${questions.parentNameLabel.toLowerCase()}.`;
+    if (!isValidEmail(formState.parentEmail)) return `Enter a valid ${questions.parentEmailLabel.toLowerCase()}.`;
+    if (!formState.parentPhone.trim()) return `Enter ${questions.parentPhoneLabel.toLowerCase()}.`;
+    if (!formState.studentName.trim()) return `Enter ${questions.studentNameLabel.toLowerCase()}.`;
+    if (!formState.message.trim()) return `Enter ${questions.messageLabel.toLowerCase()}.`;
+    const missingRequiredCustom = visibleCustomQuestions.find(
+      (question) => question.required && !(formState.customResponses[question.id] || '').trim()
+    );
+    if (missingRequiredCustom) return `${missingRequiredCustom.label} is required.`;
     return null;
-  }, [formState]);
+  }, [formState, questions, visibleCustomQuestions]);
 
   async function fetchEligibility(): Promise<SubmissionEligibility | null> {
     if (!formMeta) return null;
@@ -246,6 +331,7 @@ export default function SeniorSendoffFormPage() {
     setSubmitting(true);
     setError(null);
     try {
+      const visibleQuestionIds = new Set(visibleCustomQuestions.map((question) => question.id));
       const submission = await apiFetch<SeniorSendoffSubmissionResponse>(
         `/api/forms/senior-sendoff/${formMeta.publicSlug}/submissions`,
         {
@@ -256,6 +342,12 @@ export default function SeniorSendoffFormPage() {
             parentPhone: formState.parentPhone.trim(),
             studentName: formState.studentName.trim(),
             message: formState.message.trim(),
+            customResponses: Object.fromEntries(
+              Object.entries(formState.customResponses)
+                .filter(([key]) => visibleQuestionIds.has(key))
+                .map(([key, value]) => [key, value.trim()])
+                .filter(([, value]) => value)
+            ),
             ...(paymentIntentId ? { paymentIntentId } : {})
           })
         }
@@ -362,7 +454,11 @@ export default function SeniorSendoffFormPage() {
             type="button"
             onClick={() => {
               setResult(null);
-              setFormState((current) => ({ ...current, message: '' }));
+              setFormState((current) => ({
+                ...current,
+                message: '',
+                customResponses: Object.fromEntries(visibleCustomQuestions.map((question) => [question.id, '']))
+              }));
               setActiveIntent(null);
               setPaymentError(null);
               setError(null);
@@ -403,7 +499,7 @@ export default function SeniorSendoffFormPage() {
         <form onSubmit={(event) => void handlePrepareSubmit(event)} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-stone-500">Parent/Guardian Name</label>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-stone-500">{questions.parentNameLabel}</label>
               <input
                 className={INPUT_CLASS}
                 value={formState.parentName}
@@ -413,7 +509,7 @@ export default function SeniorSendoffFormPage() {
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-stone-500">Parent Email</label>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-stone-500">{questions.parentEmailLabel}</label>
               <input
                 className={INPUT_CLASS}
                 type="email"
@@ -424,7 +520,7 @@ export default function SeniorSendoffFormPage() {
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-stone-500">Parent Phone</label>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-stone-500">{questions.parentPhoneLabel}</label>
               <input
                 className={INPUT_CLASS}
                 value={formState.parentPhone}
@@ -434,7 +530,7 @@ export default function SeniorSendoffFormPage() {
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-stone-500">Student Name</label>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-stone-500">{questions.studentNameLabel}</label>
               <input
                 className={INPUT_CLASS}
                 value={formState.studentName}
@@ -446,7 +542,7 @@ export default function SeniorSendoffFormPage() {
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-stone-500">Shout-Out Message</label>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-stone-500">{questions.messageLabel}</label>
             <textarea
               rows={7}
               className={INPUT_CLASS + ' resize-none'}
@@ -455,6 +551,72 @@ export default function SeniorSendoffFormPage() {
               placeholder="Write your message for the playbill..."
             />
           </div>
+
+          {visibleCustomQuestions.length > 0 && (
+            <div className="space-y-3">
+              {visibleCustomQuestions.map((question) => (
+                <div key={question.id}>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-stone-500">
+                    {question.label}
+                    {question.required ? ' *' : ''}
+                  </label>
+                  {question.type === 'short_text' && (
+                    <input
+                      className={INPUT_CLASS}
+                      value={formState.customResponses[question.id] || ''}
+                      onChange={(event) =>
+                        setFormState((current) => ({
+                          ...current,
+                          customResponses: {
+                            ...current.customResponses,
+                            [question.id]: event.target.value
+                          }
+                        }))
+                      }
+                    />
+                  )}
+                  {question.type === 'long_text' && (
+                    <textarea
+                      rows={4}
+                      className={INPUT_CLASS + ' resize-none'}
+                      value={formState.customResponses[question.id] || ''}
+                      onChange={(event) =>
+                        setFormState((current) => ({
+                          ...current,
+                          customResponses: {
+                            ...current.customResponses,
+                            [question.id]: event.target.value
+                          }
+                        }))
+                      }
+                    />
+                  )}
+                  {question.type === 'multiple_choice' && (
+                    <select
+                      className={INPUT_CLASS}
+                      value={formState.customResponses[question.id] || ''}
+                      onChange={(event) =>
+                        setFormState((current) => ({
+                          ...current,
+                          customResponses: {
+                            ...current.customResponses,
+                            [question.id]: event.target.value
+                          }
+                        }))
+                      }
+                    >
+                      <option value="">Select...</option>
+                      {question.options.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-700">
             {eligibilityLoading && <p>Checking limit and payment status...</p>}

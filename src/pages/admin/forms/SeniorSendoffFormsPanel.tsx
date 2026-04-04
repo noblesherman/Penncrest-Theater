@@ -11,6 +11,7 @@ type SeniorSendoffFormSummary = {
   schemaVersion: string;
   title: string;
   instructions: string;
+  questions: SeniorSendoffQuestions;
   deadlineAt: string;
   isOpen: boolean;
   secondSubmissionPriceCents: number;
@@ -30,6 +31,7 @@ type SeniorSendoffSubmission = {
   parentPhone: string;
   studentName: string;
   message: string;
+  extraResponses?: Record<string, string>;
   entryNumber: number;
   isPaid: boolean;
   paymentIntentId?: string | null;
@@ -45,9 +47,40 @@ type ShowOption = { id: string; title: string };
 type FormDraft = {
   title: string;
   instructions: string;
+  questions: SeniorSendoffQuestions;
   deadlineAt: string;
   isOpen: boolean;
   secondSubmissionPriceCents: number;
+  secondSubmissionPriceInput: string;
+};
+
+type SeniorSendoffQuestions = {
+  parentNameLabel: string;
+  parentEmailLabel: string;
+  parentPhoneLabel: string;
+  studentNameLabel: string;
+  messageLabel: string;
+  customQuestions: SeniorSendoffCustomQuestion[];
+};
+
+type SeniorSendoffCustomQuestionType = 'short_text' | 'long_text' | 'multiple_choice';
+
+type SeniorSendoffCustomQuestion = {
+  id: string;
+  label: string;
+  type: SeniorSendoffCustomQuestionType;
+  required: boolean;
+  hidden: boolean;
+  options: string[];
+};
+
+const DEFAULT_SENIOR_SENDOFF_QUESTIONS: SeniorSendoffQuestions = {
+  parentNameLabel: 'Parent/Guardian Name',
+  parentEmailLabel: 'Parent Email',
+  parentPhoneLabel: 'Parent Phone',
+  studentNameLabel: 'Student Name',
+  messageLabel: 'Shout-Out Message',
+  customQuestions: []
 };
 
 const inputCls =
@@ -98,6 +131,45 @@ function parseUsdToCents(value: string): number | null {
   return Math.round(amount * 100);
 }
 
+function normalizeQuestions(questions: Partial<SeniorSendoffQuestions> | undefined): SeniorSendoffQuestions {
+  const customQuestions = Array.isArray(questions?.customQuestions)
+    ? questions.customQuestions
+        .map((question) => {
+          const type: SeniorSendoffCustomQuestionType =
+            question?.type === 'long_text' || question?.type === 'multiple_choice' ? question.type : 'short_text';
+          return {
+            id: (question?.id || '').trim(),
+            label: (question?.label || '').trim(),
+            type,
+            required: Boolean(question?.required),
+            hidden: Boolean(question?.hidden),
+            options:
+              type === 'multiple_choice'
+                ? Array.from(
+                    new Set(
+                      (Array.isArray(question?.options) ? question.options : [])
+                        .map((option) => option.trim())
+                        .filter(Boolean)
+                    )
+                  )
+                : []
+          };
+        })
+        .filter((question) => question.id && question.label && (question.type !== 'multiple_choice' || question.options.length >= 2))
+    : [];
+
+  return { ...DEFAULT_SENIOR_SENDOFF_QUESTIONS, ...(questions || {}), customQuestions };
+}
+
+function makeCustomQuestionId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return `q_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeOptionsText(value: string): string[] {
+  return Array.from(new Set(value.split('\n').map((line) => line.trim()).filter(Boolean)));
+}
+
 export default function SeniorSendoffFormsPanel() {
   const [forms, setForms] = useState<SeniorSendoffFormSummary[]>([]);
   const [shows, setShows] = useState<ShowOption[]>([]);
@@ -114,10 +186,49 @@ export default function SeniorSendoffFormsPanel() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'settings' | 'responses'>('settings');
+  const [activeTab, setActiveTab] = useState<'settings' | 'questions' | 'responses'>('settings');
 
   const selectedForm = useMemo(() => forms.find((f) => f.id === selectedFormId) ?? null, [forms, selectedFormId]);
   const selectedDraft = selectedForm ? drafts[selectedForm.id] : null;
+  const selectedCustomQuestionsById = useMemo(
+    () => new Map((selectedForm?.questions.customQuestions ?? []).map((question) => [question.id, question])),
+    [selectedForm]
+  );
+
+  const updateSelectedDraftQuestions = useCallback(
+    (updater: (questions: SeniorSendoffQuestions) => SeniorSendoffQuestions) => {
+      if (!selectedForm) return;
+      setDrafts((current) => {
+        const draft = current[selectedForm.id];
+        if (!draft) return current;
+        return {
+          ...current,
+          [selectedForm.id]: {
+            ...draft,
+            questions: updater(draft.questions)
+          }
+        };
+      });
+    },
+    [selectedForm]
+  );
+
+  const addCustomQuestion = useCallback(() => {
+    updateSelectedDraftQuestions((questions) => ({
+      ...questions,
+      customQuestions: [
+        ...questions.customQuestions,
+        {
+          id: makeCustomQuestionId(),
+          label: '',
+          type: 'short_text',
+          required: false,
+          hidden: false,
+          options: []
+        }
+      ]
+    }));
+  }, [updateSelectedDraftQuestions]);
 
   const loadBase = useCallback(async () => {
     setLoading(true);
@@ -127,6 +238,10 @@ export default function SeniorSendoffFormsPanel() {
         adminFetch<SeniorSendoffFormSummary[]>('/api/admin/forms/senior-sendoff'),
         adminFetch<PerformanceRow[]>('/api/admin/performances?scope=all&kind=all')
       ]);
+      const normalized = formRows.map((form) => ({
+        ...form,
+        questions: normalizeQuestions(form.questions)
+      }));
 
       const showMap = new Map<string, ShowOption>();
       performanceRows.forEach((row) => {
@@ -134,25 +249,27 @@ export default function SeniorSendoffFormsPanel() {
       });
 
       setShows(Array.from(showMap.values()).sort((a, b) => a.title.localeCompare(b.title)));
-      setForms(formRows);
+      setForms(normalized);
       setDrafts(
         Object.fromEntries(
-          formRows.map((form) => [
+          normalized.map((form) => [
             form.id,
             {
               title: form.title,
               instructions: form.instructions,
+              questions: form.questions,
               deadlineAt: toLocalInputValue(form.deadlineAt),
               isOpen: form.isOpen,
-              secondSubmissionPriceCents: form.secondSubmissionPriceCents
+              secondSubmissionPriceCents: form.secondSubmissionPriceCents,
+              secondSubmissionPriceInput: (form.secondSubmissionPriceCents / 100).toFixed(2)
             }
           ])
         )
       );
 
       setSelectedFormId((current) => {
-        if (current && formRows.some((row) => row.id === current)) return current;
-        return formRows[0]?.id ?? null;
+        if (current && normalized.some((row) => row.id === current)) return current;
+        return normalized[0]?.id ?? null;
       });
 
       if (!selectedShowId && showMap.size > 0) {
@@ -218,19 +335,22 @@ export default function SeniorSendoffFormsPanel() {
           ...(createDeadlineAt ? { deadlineAt: toIsoFromLocalInput(createDeadlineAt) } : {})
         })
       });
+      const normalizedCreated = { ...created, questions: normalizeQuestions(created.questions) };
 
-      setForms((current) => [created, ...current]);
+      setForms((current) => [normalizedCreated, ...current]);
       setDrafts((current) => ({
         ...current,
-        [created.id]: {
-          title: created.title,
-          instructions: created.instructions,
-          deadlineAt: toLocalInputValue(created.deadlineAt),
-          isOpen: created.isOpen,
-          secondSubmissionPriceCents: created.secondSubmissionPriceCents
+        [normalizedCreated.id]: {
+          title: normalizedCreated.title,
+          instructions: normalizedCreated.instructions,
+          questions: normalizedCreated.questions,
+          deadlineAt: toLocalInputValue(normalizedCreated.deadlineAt),
+          isOpen: normalizedCreated.isOpen,
+          secondSubmissionPriceCents: normalizedCreated.secondSubmissionPriceCents,
+          secondSubmissionPriceInput: (normalizedCreated.secondSubmissionPriceCents / 100).toFixed(2)
         }
       }));
-      setSelectedFormId(created.id);
+      setSelectedFormId(normalizedCreated.id);
       setNotice('Senior send-off form created.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create form');
@@ -243,6 +363,12 @@ export default function SeniorSendoffFormsPanel() {
     const draft = drafts[formId];
     if (!draft) return;
 
+    const secondSubmissionPriceCents = parseUsdToCents(draft.secondSubmissionPriceInput);
+    if (secondSubmissionPriceCents === null) {
+      setError('Enter a valid second shout-out fee amount.');
+      return;
+    }
+
     setSaving(true);
     setError(null);
     setNotice(null);
@@ -253,21 +379,25 @@ export default function SeniorSendoffFormsPanel() {
         body: JSON.stringify({
           title: draft.title.trim(),
           instructions: draft.instructions.trim(),
+          questions: draft.questions,
           deadlineAt: toIsoFromLocalInput(draft.deadlineAt),
           isOpen: draft.isOpen,
-          secondSubmissionPriceCents: draft.secondSubmissionPriceCents
+          secondSubmissionPriceCents
         })
       });
+      const normalizedUpdated = { ...updated, questions: normalizeQuestions(updated.questions) };
 
-      setForms((current) => current.map((row) => (row.id === formId ? updated : row)));
+      setForms((current) => current.map((row) => (row.id === formId ? normalizedUpdated : row)));
       setDrafts((current) => ({
         ...current,
         [formId]: {
-          title: updated.title,
-          instructions: updated.instructions,
-          deadlineAt: toLocalInputValue(updated.deadlineAt),
-          isOpen: updated.isOpen,
-          secondSubmissionPriceCents: updated.secondSubmissionPriceCents
+          title: normalizedUpdated.title,
+          instructions: normalizedUpdated.instructions,
+          questions: normalizedUpdated.questions,
+          deadlineAt: toLocalInputValue(normalizedUpdated.deadlineAt),
+          isOpen: normalizedUpdated.isOpen,
+          secondSubmissionPriceCents: normalizedUpdated.secondSubmissionPriceCents,
+          secondSubmissionPriceInput: (normalizedUpdated.secondSubmissionPriceCents / 100).toFixed(2)
         }
       }));
       setNotice('Form settings saved.');
@@ -289,6 +419,25 @@ export default function SeniorSendoffFormsPanel() {
   }
 
   function exportSubmissionsCsv(form: SeniorSendoffFormSummary): void {
+    const customQuestions = form.questions.customQuestions;
+    const configuredQuestionIds = new Set(customQuestions.map((question) => question.id));
+    const legacyQuestionIds = Array.from(
+      new Set(submissions.flatMap((submission) => Object.keys(submission.extraResponses || {})))
+    )
+      .filter((questionId) => !configuredQuestionIds.has(questionId))
+      .sort((a, b) => a.localeCompare(b));
+
+    const customColumns = [
+      ...customQuestions.map((question) => ({
+        id: question.id,
+        header: `Custom: ${question.label} (${question.id}${question.hidden ? ', hidden' : ''}${question.required ? ', required' : ''})`
+      })),
+      ...legacyQuestionIds.map((questionId) => ({
+        id: questionId,
+        header: `Custom: ${questionId} (legacy key)`
+      }))
+    ];
+
     const headers = [
       'Submission ID',
       'Form ID',
@@ -307,7 +456,8 @@ export default function SeniorSendoffFormsPanel() {
       'Payment Intent ID',
       'Submitted At (Local)',
       'Created At (Local)',
-      'Updated At (Local)'
+      'Updated At (Local)',
+      ...customColumns.map((column) => column.header)
     ];
 
     const rows = submissions.map((submission) => [
@@ -330,7 +480,8 @@ export default function SeniorSendoffFormsPanel() {
       submission.paymentIntentId || '',
       formatDateTime(submission.submittedAt),
       formatDateTime(submission.createdAt),
-      formatDateTime(submission.updatedAt)
+      formatDateTime(submission.updatedAt),
+      ...customColumns.map((column) => submission.extraResponses?.[column.id] || '')
     ]);
 
     const csvContent = [headers, ...rows]
@@ -498,12 +649,13 @@ export default function SeniorSendoffFormsPanel() {
                 <div className="flex gap-0 border-b border-stone-100 px-6">
                   {[
                     { key: 'settings', label: 'Settings' },
+                    { key: 'questions', label: 'Questions' },
                     { key: 'responses', label: `Responses${submissions.length ? ` (${submissions.length})` : ''}` }
                   ].map((tab) => (
                     <button
                       key={tab.key}
                       type="button"
-                      onClick={() => setActiveTab(tab.key as 'settings' | 'responses')}
+                      onClick={() => setActiveTab(tab.key as 'settings' | 'questions' | 'responses')}
                       className={`py-3 px-1 mr-6 text-sm font-semibold border-b-2 transition ${
                         activeTab === tab.key
                           ? 'border-red-700 text-red-700'
@@ -552,24 +704,27 @@ export default function SeniorSendoffFormsPanel() {
                         <div>
                           <label className={labelCls}>Second Shout-Out Fee (USD)</label>
                           <input
-                            value={(selectedDraft.secondSubmissionPriceCents / 100).toFixed(2)}
-                            onChange={(event) => {
-                              const cents = parseUsdToCents(event.target.value);
+                            value={selectedDraft.secondSubmissionPriceInput}
+                            onChange={(event) =>
                               setDrafts((current) => ({
                                 ...current,
                                 [selectedForm.id]: {
                                   ...current[selectedForm.id],
-                                  secondSubmissionPriceCents: cents ?? current[selectedForm.id].secondSubmissionPriceCents
+                                  secondSubmissionPriceInput: event.target.value
                                 }
-                              }));
-                            }}
+                              }))
+                            }
                             className={inputCls}
                           />
                           <p className="mt-1 text-xs text-stone-400">Set to 0.00 to make both shout-outs free.</p>
                         </div>
                         <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3">
                           <p className="text-xs font-semibold uppercase tracking-wider text-stone-400">Current fee</p>
-                          <p className="mt-1 text-lg font-bold text-stone-900">{formatUsd(selectedDraft.secondSubmissionPriceCents)}</p>
+                          <p className="mt-1 text-lg font-bold text-stone-900">
+                            {formatUsd(
+                              parseUsdToCents(selectedDraft.secondSubmissionPriceInput) ?? selectedDraft.secondSubmissionPriceCents
+                            )}
+                          </p>
                         </div>
                       </div>
 
@@ -605,6 +760,188 @@ export default function SeniorSendoffFormsPanel() {
                           className={inputCls + ' resize-none'}
                           placeholder="Instructions shown at the top of the public form..."
                         />
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab === 'questions' && (
+                    <div className="space-y-6">
+                      <div>
+                        <p className="text-sm font-semibold text-stone-700 mb-1">Base Fields</p>
+                        <p className="text-xs text-stone-400 mb-4">These fields are always included. You can rename their labels.</p>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                          {(
+                            [
+                              ['parentNameLabel', 'Parent/Guardian Name'],
+                              ['parentEmailLabel', 'Parent Email'],
+                              ['parentPhoneLabel', 'Parent Phone'],
+                              ['studentNameLabel', 'Student Name'],
+                              ['messageLabel', 'Message'],
+                            ] as [keyof SeniorSendoffQuestions, string][]
+                          ).map(([field, display]) => (
+                            <div key={field}>
+                              <label className={labelCls}>{display}</label>
+                              <input
+                                value={selectedDraft.questions[field] as string}
+                                onChange={(event) =>
+                                  updateSelectedDraftQuestions((questions) => ({ ...questions, [field]: event.target.value }))
+                                }
+                                className={inputCls}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="border-t border-stone-100 pt-5">
+                        <div className="mb-4 flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-semibold text-stone-700">Custom Questions</p>
+                            <p className="text-xs text-stone-400">Additional fields shown after the base fields. Hidden questions are saved but not shown to parents.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={addCustomQuestion}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition hover:bg-stone-50"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Add Question
+                          </button>
+                        </div>
+
+                        {selectedDraft.questions.customQuestions.length === 0 ? (
+                          <div className="rounded-xl border border-dashed border-stone-200 px-4 py-8 text-center text-sm text-stone-400">
+                            No custom questions yet. Click Add Question to create one.
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {selectedDraft.questions.customQuestions.map((question, index) => (
+                              <div key={question.id} className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+                                <div className="mb-3 flex items-center justify-between">
+                                  <span className="text-xs font-bold uppercase tracking-widest text-stone-400">
+                                    Question {index + 1}
+                                    {question.hidden ? ' - hidden' : ''}
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        updateSelectedDraftQuestions((questions) => ({
+                                          ...questions,
+                                          customQuestions: questions.customQuestions.map((item) =>
+                                            item.id === question.id ? { ...item, hidden: !item.hidden } : item
+                                          ),
+                                        }))
+                                      }
+                                      className="rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-xs font-semibold text-stone-600 transition hover:bg-stone-100"
+                                    >
+                                      {question.hidden ? 'Unhide' : 'Hide'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        updateSelectedDraftQuestions((questions) => ({
+                                          ...questions,
+                                          customQuestions: questions.customQuestions.filter((item) => item.id !== question.id),
+                                        }))
+                                      }
+                                      className="rounded-lg border border-red-100 bg-white px-2.5 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50"
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="grid gap-3 sm:grid-cols-[1fr,160px,auto]">
+                                  <div>
+                                    <label className={labelCls}>Label</label>
+                                    <input
+                                      value={question.label}
+                                      onChange={(event) =>
+                                        updateSelectedDraftQuestions((questions) => ({
+                                          ...questions,
+                                          customQuestions: questions.customQuestions.map((item) =>
+                                            item.id === question.id ? { ...item, label: event.target.value } : item
+                                          ),
+                                        }))
+                                      }
+                                      className={inputCls}
+                                      placeholder="Question text..."
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <label className={labelCls}>Type</label>
+                                    <select
+                                      value={question.type}
+                                      onChange={(event) => {
+                                        const nextType = event.target.value as SeniorSendoffCustomQuestionType;
+                                        updateSelectedDraftQuestions((questions) => ({
+                                          ...questions,
+                                          customQuestions: questions.customQuestions.map((item) =>
+                                            item.id === question.id
+                                              ? {
+                                                  ...item,
+                                                  type: nextType,
+                                                  options: nextType === 'multiple_choice' ? item.options : []
+                                                }
+                                              : item
+                                          ),
+                                        }));
+                                      }}
+                                      className={inputCls}
+                                    >
+                                      <option value="short_text">Short text</option>
+                                      <option value="long_text">Long text</option>
+                                      <option value="multiple_choice">Multiple choice</option>
+                                    </select>
+                                  </div>
+
+                                  <div className="flex items-end pb-2">
+                                    <label className="flex items-center gap-2 text-sm text-stone-600 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={question.required}
+                                        onChange={(event) =>
+                                          updateSelectedDraftQuestions((questions) => ({
+                                            ...questions,
+                                            customQuestions: questions.customQuestions.map((item) =>
+                                              item.id === question.id ? { ...item, required: event.target.checked } : item
+                                            ),
+                                          }))
+                                        }
+                                        className="accent-red-700"
+                                      />
+                                      Required
+                                    </label>
+                                  </div>
+                                </div>
+
+                                {question.type === 'multiple_choice' && (
+                                  <div className="mt-3">
+                                    <label className={labelCls}>Options (one per line, min. 2)</label>
+                                    <textarea
+                                      rows={4}
+                                      value={question.options.join('\n')}
+                                      onChange={(event) =>
+                                        updateSelectedDraftQuestions((questions) => ({
+                                          ...questions,
+                                          customQuestions: questions.customQuestions.map((item) =>
+                                            item.id === question.id
+                                              ? { ...item, options: normalizeOptionsText(event.target.value) }
+                                              : item
+                                          ),
+                                        }))
+                                      }
+                                      className={inputCls + ' resize-none'}
+                                      placeholder="Option A&#10;Option B&#10;Option C"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -735,6 +1072,22 @@ export default function SeniorSendoffFormsPanel() {
                   {selectedSubmission.message || '-'}
                 </p>
               </div>
+
+              {selectedSubmission.extraResponses && Object.keys(selectedSubmission.extraResponses).length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-400">Custom Responses</p>
+                  <div className="space-y-2">
+                    {Object.entries(selectedSubmission.extraResponses).map(([questionId, value]) => (
+                      <div key={questionId} className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
+                        <p className="text-xs font-semibold text-stone-600">
+                          {selectedCustomQuestionsById.get(questionId)?.label ?? 'Custom question'}
+                        </p>
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-stone-700">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

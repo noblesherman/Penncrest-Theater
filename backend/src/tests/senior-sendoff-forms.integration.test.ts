@@ -251,4 +251,87 @@ describe.sequential('senior send-off forms integration', () => {
     expect(rows[1].entryNumber).toBe(2);
     expect(rows[1].isPaid).toBe(true);
   });
+
+  it('supports custom questions and validates required responses', async () => {
+    const show = await createShowWithPerformance(`Senior Sendoff Questions ${Date.now()}`);
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/forms/senior-sendoff',
+      headers: authHeaders(),
+      payload: { showId: show.id, secondSubmissionPriceCents: 0 }
+    });
+    expect(createResponse.statusCode).toBe(201);
+    const form = createResponse.json();
+
+    const patchResponse = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/forms/senior-sendoff/${encodeURIComponent(form.id)}`,
+      headers: authHeaders(),
+      payload: {
+        questions: {
+          messageLabel: 'Playbill Message',
+          customQuestions: [
+            {
+              id: 'relationship',
+              label: 'Relationship',
+              type: 'multiple_choice',
+              required: true,
+              options: ['Parent', 'Sibling', 'Guardian']
+            },
+            {
+              id: 'favorite-memory',
+              label: 'Favorite Memory',
+              type: 'long_text',
+              required: false
+            }
+          ]
+        }
+      }
+    });
+    expect(patchResponse.statusCode).toBe(200);
+    expect(patchResponse.json().questions.messageLabel).toBe('Playbill Message');
+    expect(patchResponse.json().questions.customQuestions).toHaveLength(2);
+
+    const missingRequiredCustom = await app.inject({
+      method: 'POST',
+      url: `/api/forms/senior-sendoff/${encodeURIComponent(form.publicSlug)}/submissions`,
+      payload: {
+        parentName: 'Sam Parent',
+        parentEmail: 'sam.parent@example.com',
+        parentPhone: '610-555-0199',
+        studentName: 'Avery Senior',
+        message: 'Proud of you!'
+      }
+    });
+    expect(missingRequiredCustom.statusCode).toBe(400);
+    expect(missingRequiredCustom.json().error).toContain('Relationship is required');
+
+    const validSubmit = await app.inject({
+      method: 'POST',
+      url: `/api/forms/senior-sendoff/${encodeURIComponent(form.publicSlug)}/submissions`,
+      payload: {
+        parentName: 'Sam Parent',
+        parentEmail: 'sam.parent@example.com',
+        parentPhone: '610-555-0199',
+        studentName: 'Avery Senior',
+        message: 'Proud of you!',
+        customResponses: {
+          relationship: 'Parent',
+          'favorite-memory': 'Opening night rehearsals were unforgettable.'
+        }
+      }
+    });
+    expect(validSubmit.statusCode).toBe(201);
+
+    const stored = await prisma.seniorSendoffSubmission.findFirstOrThrow({
+      where: {
+        formId: form.id,
+        parentEmail: 'sam.parent@example.com'
+      }
+    });
+    const storedResponses = (stored.extraResponses || {}) as Record<string, string>;
+    expect(storedResponses.relationship).toBe('Parent');
+    expect(storedResponses['favorite-memory']).toContain('Opening night');
+  });
 });
