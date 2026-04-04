@@ -12,6 +12,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
+    "reset:system:keep-users": "tsx src/scripts/reset-system-keep-users.ts",
     "seed": "prisma db seed",
     "cron:release-holds": "tsx src/jobs/release-expired-holds.ts",
     "cron:expire-pending-checkouts": "tsx src/jobs/expire-pending-checkouts.ts",
