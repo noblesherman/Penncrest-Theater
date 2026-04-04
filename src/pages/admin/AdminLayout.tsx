@@ -42,7 +42,7 @@ type NavSection = {
 
 const navSections: NavSection[] = [
   {
-    title: 'Overview',
+    title: 'Operations',
     items: [
       { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, minRole: 'BOX_OFFICE' },
       { to: '/admin/finance', label: 'Finance', icon: CircleDollarSign, minRole: 'ADMIN' },
@@ -68,7 +68,7 @@ const navSections: NavSection[] = [
     ]
   },
   {
-    title: 'System',
+    title: 'Admin',
     items: [
       { to: '/admin/fundraise', label: 'Fundraise', icon: HandCoins, minRole: 'ADMIN' },
       { to: '/admin/trips', label: 'Trip Payments', icon: Plane, minRole: 'ADMIN' },

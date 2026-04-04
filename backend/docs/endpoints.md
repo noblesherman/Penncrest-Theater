@@ -389,22 +389,59 @@ Response:
 ```
 
 ### `GET /api/admin/dashboard`
+Query:
+```text
+range=month|today|rolling30 (default: month)
+```
+
 Response:
 ```json
 {
-  "salesToday": 4200,
-  "seatsSold": 120,
-  "revenue": 19800,
-  "checkIns": 0,
-  "salesByPerformance": [
-    {
-      "performanceId": "perf_123",
-      "performanceTitle": "Little Shop of Horrors",
-      "startsAt": "2026-03-20T23:00:00.000Z",
-      "orders": 11,
-      "revenue": 19800
+  "generatedAt": "2026-04-04T17:25:13.000Z",
+  "range": "month",
+  "core": {
+    "paidRevenueCents": 4200,
+    "paidOrderCount": 3,
+    "ticketsIssuedCount": 3,
+    "checkInsCount": 1
+  },
+  "operations": {
+    "upcomingPerformances": [],
+    "recentOrders": [],
+    "scanner": {
+      "activeSessions": 0,
+      "latestScanAt": null
     }
-  ]
+  },
+  "quickLinks": {
+    "orders": "/admin/orders",
+    "scanner": "/admin/scanner"
+  },
+  "adminModules": {
+    "trips": {
+      "activeTripCount": 2,
+      "enrollmentCount": 3,
+      "collectedCents": 16000,
+      "remainingCents": 14000,
+      "nextDueAt": "2026-04-06T13:25:00.000Z"
+    },
+    "fundraise": {
+      "activeEventCount": 2,
+      "seatsSold": 3,
+      "seatsTotal": 5,
+      "donationSucceededCents": 5800
+    },
+    "forms": {
+      "openCount": 2,
+      "closedCount": 3,
+      "responseCount": 6,
+      "programBio": { "openCount": 1, "closedCount": 2, "responseCount": 3 },
+      "seniorSendoff": { "openCount": 1, "closedCount": 1, "responseCount": 3 }
+    },
+    "system": {
+      "recentAudit": []
+    }
+  }
 }
 ```
 
