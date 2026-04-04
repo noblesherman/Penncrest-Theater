@@ -45,6 +45,8 @@ const AdminStudentCreditsPage = lazy(() => import('./pages/admin/StudentCredits'
 const AdminUsersPage = lazy(() => import('./pages/admin/Users'));
 const AdminAboutControlPage = lazy(() => import('./pages/admin/AboutControl'));
 const AdminFundraisePage = lazy(() => import('./pages/admin/Fundraise'));
+const AdminTripsPage = lazy(() => import('./pages/admin/Trips'));
+const TripPaymentsPage = lazy(() => import('./pages/TripPayments'));
 
 function PublicLayout() {
   return (
@@ -94,6 +96,7 @@ export default function App() {
                   <Route path="users" element={<AdminUsersPage />} />
                   <Route path="about" element={<AdminAboutControlPage />} />
                   <Route path="fundraise" element={<AdminFundraisePage />} />
+                  <Route path="trips" element={<AdminTripsPage />} />
                 </Route>
               </Route>
 
@@ -115,6 +118,7 @@ export default function App() {
                   <Route path="interest-meeting" element={<InterestMeeting />} />
                   <Route path="fundraising" element={<Fundraising />} />
                   <Route path="fundraising/events/:slug" element={<FundraisingEventDetail />} />
+                  <Route path="trip-payments" element={<TripPaymentsPage />} />
                   <Route path="forms/senior-sendoff/:slug" element={<SeniorSendoffFormPage />} />
                   <Route path="forms/:slug" element={<ProgramBioFormPage />} />
                   <Route path="privacy-policy" element={<PrivacyPolicy />} />

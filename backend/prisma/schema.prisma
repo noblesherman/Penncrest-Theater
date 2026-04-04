@@ -125,6 +125,13 @@ enum AdminRole {
   SUPER_ADMIN
 }
 
+enum TripPaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  EXPIRED
+}
+
 model AdminUser {
   id           String    @id @default(cuid())
   username     String    @unique
@@ -716,4 +723,140 @@ model ContentPage {
   @@unique([scope, slug])
   @@index([scope])
   @@index([updatedByAdminId])
+}
+
+model Trip {
+  id                  String           @id @default(cuid())
+  title               String
+  slug                String           @unique
+  destination         String?
+  startsAt            DateTime?
+  dueAt               DateTime
+  defaultCostCents    Int
+  allowPartialPayments Boolean         @default(false)
+  isPublished         Boolean          @default(false)
+  isArchived          Boolean          @default(false)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  documents           TripDocument[]
+  enrollments         TripEnrollment[]
+
+  @@index([isPublished, isArchived, dueAt])
+  @@index([startsAt])
+}
+
+model TripDocument {
+  id        String   @id @default(cuid())
+  tripId    String
+  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  title     String
+  fileUrl   String
+  fileKey   String?
+  mimeType  String
+  sizeBytes Int
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tripId, sortOrder, createdAt])
+}
+
+model TripStudent {
+  id         String           @id @default(cuid())
+  name       String
+  grade      String?
+  isActive   Boolean          @default(true)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  enrollments TripEnrollment[]
+  account    TripAccount?
+
+  @@index([isActive, name])
+}
+
+model TripEnrollment {
+  id               String                  @id @default(cuid())
+  tripId           String
+  trip             Trip                    @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  studentId        String
+  student          TripStudent             @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  targetAmountCents Int
+  dueAtOverride    DateTime?
+  claimedByAccountId String?
+  claimedByAccount TripAccount?            @relation("TripEnrollmentClaimedBy", fields: [claimedByAccountId], references: [id], onDelete: SetNull)
+  claimedAt        DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  payments         TripPayment[]
+  balanceAdjustments TripBalanceAdjustment[]
+
+  @@unique([tripId, studentId])
+  @@index([studentId, tripId])
+  @@index([claimedByAccountId])
+  @@index([dueAtOverride])
+}
+
+model TripAccount {
+  id               String            @id @default(cuid())
+  email            String            @unique
+  name             String?
+  studentId        String?           @unique
+  student          TripStudent?      @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  stripeCustomerId String?
+  isActive         Boolean           @default(true)
+  lastLoginAt      DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  loginCodes       TripLoginCode[]
+  payments         TripPayment[]
+  claimedEnrollments TripEnrollment[] @relation("TripEnrollmentClaimedBy")
+
+  @@index([isActive, lastLoginAt])
+}
+
+model TripLoginCode {
+  id          String      @id @default(cuid())
+  accountId   String
+  account     TripAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  codeHash    String
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  attemptCount Int        @default(0)
+  createdAt   DateTime    @default(now())
+
+  @@index([accountId, createdAt])
+  @@index([accountId, expiresAt, consumedAt])
+}
+
+model TripPayment {
+  id                      String            @id @default(cuid())
+  enrollmentId            String
+  enrollment              TripEnrollment    @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
+  accountId               String
+  account                 TripAccount       @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  amountCents             Int
+  currency                String            @default("usd")
+  stripeCheckoutSessionId String?           @unique
+  stripePaymentIntentId   String?           @unique
+  status                  TripPaymentStatus @default(PENDING)
+  paidAt                  DateTime?
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+
+  @@index([enrollmentId, status, createdAt])
+  @@index([accountId, createdAt])
+}
+
+model TripBalanceAdjustment {
+  id                      String         @id @default(cuid())
+  enrollmentId            String
+  enrollment              TripEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  previousTargetAmountCents Int
+  newTargetAmountCents    Int
+  reason                  String
+  actorAdminId            String?
+  createdAt               DateTime       @default(now())
+
+  @@index([enrollmentId, createdAt])
+  @@index([actorAdminId, createdAt])
 }

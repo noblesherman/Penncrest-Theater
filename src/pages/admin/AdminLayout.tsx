@@ -15,6 +15,7 @@ import {
   ScanLine,
   ScrollText,
   ShieldCheck,
+  Plane,
   Ticket,
   UserCheck,
   UsersRound,
@@ -70,6 +71,7 @@ const navSections: NavSection[] = [
     title: 'System',
     items: [
       { to: '/admin/fundraise', label: 'Fundraise', icon: HandCoins, minRole: 'ADMIN' },
+      { to: '/admin/trips', label: 'Trip Payments', icon: Plane, minRole: 'ADMIN' },
       { to: '/admin/audit', label: 'Audit Log', icon: ScrollText, minRole: 'ADMIN' },
       { to: '/admin/about', label: 'About', icon: FilePenLine, minRole: 'SUPER_ADMIN' },
       { to: '/admin/users', label: 'Manage Users', icon: ShieldCheck, minRole: 'SUPER_ADMIN' }
@@ -88,6 +90,7 @@ const routeAccessRules: Array<{ prefix: string; minRole: AdminRole }> = [
   { prefix: '/admin/staff-comps', minRole: 'ADMIN' },
   { prefix: '/admin/student-credits', minRole: 'ADMIN' },
   { prefix: '/admin/fundraise', minRole: 'ADMIN' },
+  { prefix: '/admin/trips', minRole: 'ADMIN' },
   { prefix: '/admin/audit', minRole: 'ADMIN' },
   { prefix: '/admin/about', minRole: 'SUPER_ADMIN' },
   { prefix: '/admin/orders', minRole: 'BOX_OFFICE' },

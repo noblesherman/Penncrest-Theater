@@ -10,6 +10,7 @@ import { rawBodyPlugin } from './plugins/raw-body.js';
 import { rateLimitPlugin } from './plugins/rate-limit.js';
 import { adminAuthPlugin } from './plugins/admin-auth.js';
 import { userAuthPlugin } from './plugins/user-auth.js';
+import { tripAccountAuthPlugin } from './plugins/trip-account-auth.js';
 import { healthRoutes } from './routes/health.js';
 import { performanceRoutes } from './routes/performances.js';
 import { holdRoutes } from './routes/hold.js';
@@ -42,12 +43,15 @@ import { adminUserRoutes } from './routes/admin-users.js';
 import { aboutContentRoutes } from './routes/about-content.js';
 import { adminUploadRoutes } from './routes/admin-uploads.js';
 import { mobileRoutes } from './routes/mobile.js';
+import { tripAuthRoutes } from './routes/trip-auth.js';
+import { tripPortalRoutes } from './routes/trips-portal.js';
+import { adminTripRoutes } from './routes/admin-trips.js';
 import { releaseExpiredHolds } from './services/hold-service.js';
 
 export async function createServer() {
   const app = Fastify({
     logger: env.NODE_ENV === 'development',
-    bodyLimit: 10 * 1024 * 1024
+    bodyLimit: 16 * 1024 * 1024
   });
 
   await app.register(helmetPlugin);
@@ -57,6 +61,7 @@ export async function createServer() {
   await app.register(rateLimitPlugin);
   await app.register(adminAuthPlugin);
   await app.register(userAuthPlugin);
+  await app.register(tripAccountAuthPlugin);
 
   const allowedOrigins = getAllowedOrigins();
   app.options('/api/*', async (request, reply) => {
@@ -91,6 +96,8 @@ export async function createServer() {
   await app.register(mobileRoutes);
   await app.register(programBioFormRoutes);
   await app.register(seniorSendoffFormRoutes);
+  await app.register(tripAuthRoutes);
+  await app.register(tripPortalRoutes);
 
   // Compatibility routes
   await app.register(showRoutes);
@@ -112,6 +119,7 @@ export async function createServer() {
   await app.register(adminCheckInRoutes);
   await app.register(adminUserRoutes);
   await app.register(adminUploadRoutes);
+  await app.register(adminTripRoutes);
 
   app.setErrorHandler((error, _request, reply) => {
     app.log.error(error);

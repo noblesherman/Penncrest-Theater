@@ -54,6 +54,21 @@ type UploadResponse = {
   mimeType: string;
 };
 
+function fileToRawDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read file.'));
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        reject(new Error('Failed to parse file.'));
+        return;
+      }
+      resolve(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export async function uploadAdminImage(file: File, options: UploadOptions): Promise<UploadResponse> {
   const maxFileBytes = options.maxFileBytes ?? 8 * 1024 * 1024;
   if (!file.type.startsWith('image/')) {
@@ -74,3 +89,25 @@ export async function uploadAdminImage(file: File, options: UploadOptions): Prom
   });
 }
 
+export async function uploadAdminPdf(
+  file: File,
+  options: { scope: string; filenameBase?: string; maxFileBytes?: number }
+): Promise<UploadResponse> {
+  const maxFileBytes = options.maxFileBytes ?? 8 * 1024 * 1024;
+  if (file.type !== 'application/pdf') {
+    throw new Error('Upload a PDF file.');
+  }
+  if (file.size > maxFileBytes) {
+    throw new Error(`File too large (max ${Math.round(maxFileBytes / (1024 * 1024))}MB).`);
+  }
+
+  const dataUrl = await fileToRawDataUrl(file);
+  return adminFetch<UploadResponse>('/api/admin/uploads/pdf', {
+    method: 'POST',
+    body: JSON.stringify({
+      dataUrl,
+      scope: options.scope,
+      filenameBase: options.filenameBase
+    })
+  });
+}

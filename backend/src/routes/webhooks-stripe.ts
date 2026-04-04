@@ -8,6 +8,12 @@ import { expirePendingCheckoutAttempt } from '../services/checkout-attempt-servi
 import { finalizeCheckoutSession, finalizePaymentIntent } from '../services/stripe-checkout-finalization.js';
 import { syncRefundFromCharge } from '../services/order-refund-service.js';
 import { reconcileDonationThankYouEmailByPaymentIntentId } from '../services/donation-thank-you-service.js';
+import {
+  finalizeTripPaymentFromCheckoutSession,
+  finalizeTripPaymentFromPaymentIntent,
+  markTripPaymentExpiredFromCheckoutSession,
+  markTripPaymentFailedFromPaymentIntent
+} from '../services/trip-payment-finalization.js';
 
 const STRIPE_WEBHOOK_PROCESSING_STALE_MS = 5 * 60 * 1000;
 
@@ -152,11 +158,17 @@ async function markStripeWebhookEventFailed(event: Stripe.Event, err: unknown): 
 async function processStripeWebhookEvent(app: FastifyInstance, event: Stripe.Event): Promise<void> {
   switch (event.type) {
     case 'checkout.session.completed': {
-      const result = await finalizeCheckoutSession(event.data.object as Stripe.Checkout.Session);
+      const session = event.data.object as Stripe.Checkout.Session;
+      if (session.metadata?.source === 'trip_payment') {
+        await finalizeTripPaymentFromCheckoutSession(session);
+        break;
+      }
+
+      const result = await finalizeCheckoutSession(session);
       if (result.outcome === 'finalization_failed') {
         app.log.error(
           {
-            stripeSessionId: (event.data.object as Stripe.Checkout.Session).id,
+            stripeSessionId: session.id,
             refundOutcome: result.refundOutcome || null
           },
           'Stripe checkout finalization failed and recovery was triggered'
@@ -167,6 +179,11 @@ async function processStripeWebhookEvent(app: FastifyInstance, event: Stripe.Eve
     case 'payment_intent.succeeded': {
       const paymentIntent = event.data.object as Stripe.PaymentIntent;
       const paymentSource = paymentIntent.metadata?.source;
+
+      if (paymentSource === 'trip_payment') {
+        await finalizeTripPaymentFromPaymentIntent(paymentIntent);
+        break;
+      }
 
       if (paymentSource === 'fundraising_donation') {
         const reconcileResult = await reconcileDonationThankYouEmailByPaymentIntentId(paymentIntent.id);
@@ -211,6 +228,11 @@ async function processStripeWebhookEvent(app: FastifyInstance, event: Stripe.Eve
     }
     case 'payment_intent.payment_failed': {
       const paymentIntent = event.data.object as Stripe.PaymentIntent;
+      if (paymentIntent.metadata?.source === 'trip_payment') {
+        await markTripPaymentFailedFromPaymentIntent(paymentIntent);
+        break;
+      }
+
       const orderId = paymentIntent.metadata?.orderId;
 
       if (orderId) {
@@ -220,6 +242,11 @@ async function processStripeWebhookEvent(app: FastifyInstance, event: Stripe.Eve
     }
     case 'checkout.session.expired': {
       const session = event.data.object as Stripe.Checkout.Session;
+      if (session.metadata?.source === 'trip_payment') {
+        await markTripPaymentExpiredFromCheckoutSession(session);
+        break;
+      }
+
       const orderId = session.metadata?.orderId;
 
       if (orderId) {

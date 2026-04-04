@@ -32,6 +32,9 @@ const EnvSchema = z.object({
 
   STAFF_CLAIM_CODE: z.string().optional(),
   STAFF_REDEEM_CODE_TTL_MINUTES: z.coerce.number().int().min(5).max(60 * 24 * 30).default(60 * 24 * 7),
+  TRIP_LOGIN_CODE_TTL_MINUTES: z.coerce.number().int().min(5).max(120).default(15),
+  TRIP_LOGIN_CODE_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(6),
+  TRIP_ACCOUNT_TOKEN_TTL_HOURS: z.coerce.number().int().min(1).max(24 * 14).default(24),
 
   GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional(),

@@ -46,6 +46,13 @@ type SeniorSendoffSubmissionEmailPayload = {
   paymentIntentId: string | null;
 };
 
+type TripLoginCodeEmailPayload = {
+  email: string;
+  accountName?: string | null;
+  code: string;
+  expiresAt: Date;
+};
+
 type EmailLogoAttachment = {
   filename: string;
   content: Buffer;
@@ -103,6 +110,17 @@ function formatMoney(amountCents: number, currency: string): string {
   } catch {
     return `$${(amountCents / 100).toFixed(2)}`;
   }
+}
+
+function formatTripCodeExpiry(expiresAt: Date): string {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short'
+  }).format(expiresAt);
 }
 
 function inferMimeTypeFromFile(path: string): string {
@@ -542,6 +560,62 @@ export async function sendSeniorSendoffSubmissionEmail(payload: SeniorSendoffSub
     from: env.SMTP_FROM,
     to: parentEmail,
     subject: `Senior Send-Off submitted - ${payload.studentName} (${payload.showTitle})`,
+    text,
+    html
+  });
+}
+
+export async function sendTripLoginCodeEmail(payload: TripLoginCodeEmailPayload): Promise<void> {
+  if (!transporter || !env.SMTP_FROM) {
+    console.warn('SMTP is not configured; skipping trip login code email send.');
+    return;
+  }
+
+  const recipient = payload.email.trim().toLowerCase();
+  const safeName = escapeHtml(payload.accountName?.trim() || 'Family');
+  const safeCode = escapeHtml(payload.code);
+  const expiryLabel = formatTripCodeExpiry(payload.expiresAt);
+  const safeExpiry = escapeHtml(expiryLabel);
+
+  const text = [
+    `Hi ${payload.accountName?.trim() || 'Family'},`,
+    '',
+    `Your Penncrest Theater trip portal sign-in code is: ${payload.code}`,
+    `This code expires at ${expiryLabel}.`,
+    '',
+    'If you did not request this, you can ignore this message.'
+  ].join('\n');
+
+  const html = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:24px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;">
+            <tr>
+              <td style="background:#1a0505;border-radius:14px 14px 0 0;padding:20px;">
+                <div style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#c9a84c;margin-bottom:8px;">${BRAND_NAME}</div>
+                <div style="font-family:Georgia,'Times New Roman',serif;font-size:24px;font-weight:700;color:#f5f0e8;line-height:1.2;">Trip Payments Sign-In Code</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="background:#fffdf7;border:1px solid #e8dfc8;border-top:none;border-radius:0 0 14px 14px;padding:22px;">
+                <p style="margin:0 0 12px 0;font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#3d2020;">Hi ${safeName},</p>
+                <p style="margin:0 0 12px 0;font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#3d2020;">Use this one-time code to sign in:</p>
+                <div style="font-family:Arial,sans-serif;font-size:34px;letter-spacing:5px;font-weight:700;color:#8b1a1a;margin:4px 0 14px 0;">${safeCode}</div>
+                <p style="margin:0 0 8px 0;font-family:Arial,sans-serif;font-size:13px;color:#5a3a1a;">Expires: ${safeExpiry}</p>
+                <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;color:#6f5a44;">If you did not request this code, you can ignore this email.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  `;
+
+  await transporter.sendMail({
+    from: env.SMTP_FROM,
+    to: recipient,
+    subject: 'Your Penncrest Theater trip sign-in code',
     text,
     html
   });
