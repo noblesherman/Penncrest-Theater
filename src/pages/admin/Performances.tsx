@@ -1,5 +1,6 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { createPortal } from 'react-dom';
 import { adminFetch } from '../../lib/adminAuth';
 import { uploadAdminImage } from '../../lib/adminUploads';
 import {
@@ -241,6 +242,29 @@ export default function AdminPerformancesPage() {
       .catch(e => setError(e instanceof Error ? e.message : 'Load failed'));
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    if (!showWizard) return;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [showWizard]);
+
+  useEffect(() => {
+    if (!showWizard) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeWizard();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showWizard]);
 
   const goTo = (next: number) => { setDir(next > step ? 1 : -1); setStep(next); setError(null); };
 
@@ -719,93 +743,107 @@ export default function AdminPerformancesPage() {
       </div>
 
       {/* ── wizard modal ── */}
-      <AnimatePresence>
-        {showWizard && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm sm:items-center sm:p-4">
-            <motion.div
-              initial={{ scale: 0.93, opacity: 0, y: 16 }}
-              animate={{ scale: 1,    opacity: 1, y: 0  }}
-              exit={{    scale: 0.93, opacity: 0, y: 16 }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-              className="flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl sm:max-w-lg sm:rounded-3xl"
-            >
-              {/* header */}
-              <div className="border-b border-stone-100 px-4 pb-4 pt-5 sm:px-6 flex-shrink-0">
-                <div className="flex items-center justify-between mb-4">
-                  <p className="font-bold text-stone-900" style={{ fontFamily: 'var(--font-sans)' }}>
-                    {editingId ? 'Edit Performance' : 'New Performance'}
-                  </p>
-                  <button onClick={closeWizard} className="text-stone-300 hover:text-stone-600 transition rounded-full p-1 hover:bg-stone-50"><X className="w-5 h-5" /></button>
-                </div>
-                {/* step pills */}
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {STEPS.map((s, i) => {
-                    const Icon = s.icon;
-                    const done = i < step, active = i === step;
-                    return (
-                      <button key={s.id} type="button" onClick={() => goTo(i)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                          active ? 'bg-red-700 text-white shadow-sm' :
-                          done   ? 'bg-green-50 text-green-700 border border-green-200' :
-                                   'bg-stone-100 text-stone-400 hover:bg-stone-200'
-                        }`}>
-                        {done ? <Check className="w-3 h-3" /> : <Icon className="w-3 h-3" />}
-                        <span className="hidden sm:inline">{s.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* body */}
-              <div className="flex-1 min-h-0 overflow-y-auto px-4 py-5 sm:px-6">
-                <AnimatePresence mode="wait" initial={false}>
-                  <motion.div key={step}
-                    initial={{ x: dir * 32, opacity: 0 }}
-                    animate={{ x: 0,        opacity: 1 }}
-                    exit={{    x: dir * -32, opacity: 0 }}
-                    transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+      {typeof document !== 'undefined'
+        ? createPortal(
+            <AnimatePresence>
+              {showWizard && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={closeWizard}
+                  className="fixed inset-0 z-[130] flex items-end justify-center bg-black/40 backdrop-blur-sm sm:items-center sm:p-4"
+                >
+                  <motion.div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="admin-performance-wizard-title"
+                    initial={{ scale: 0.93, opacity: 0, y: 16 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    exit={{ scale: 0.93, opacity: 0, y: 16 }}
+                    transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                    onClick={(event) => event.stopPropagation()}
+                    className="flex h-[100dvh] w-full flex-col bg-white shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:max-w-lg sm:overflow-hidden sm:rounded-3xl"
                   >
-                    {stepContent[step]}
+                    {/* header */}
+                    <div className="mb-0 flex-shrink-0 border-b border-stone-100 px-4 pb-4 pt-5 sm:px-6">
+                      <div className="mb-4 flex items-center justify-between">
+                        <p id="admin-performance-wizard-title" className="font-bold text-stone-900" style={{ fontFamily: 'var(--font-sans)' }}>
+                          {editingId ? 'Edit Performance' : 'New Performance'}
+                        </p>
+                        <button onClick={closeWizard} className="rounded-full p-1 text-stone-300 transition hover:bg-stone-50 hover:text-stone-600"><X className="w-5 h-5" /></button>
+                      </div>
+                      {/* step pills */}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {STEPS.map((s, i) => {
+                          const Icon = s.icon;
+                          const done = i < step, active = i === step;
+                          return (
+                            <button key={s.id} type="button" onClick={() => goTo(i)}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                                active ? 'bg-red-700 text-white shadow-sm' :
+                                done   ? 'bg-green-50 text-green-700 border border-green-200' :
+                                         'bg-stone-100 text-stone-400 hover:bg-stone-200'
+                              }`}>
+                              {done ? <Check className="w-3 h-3" /> : <Icon className="w-3 h-3" />}
+                              <span className="hidden sm:inline">{s.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* body */}
+                    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+                      <AnimatePresence mode="wait" initial={false}>
+                        <motion.div key={step}
+                          initial={{ x: dir * 32, opacity: 0 }}
+                          animate={{ x: 0,        opacity: 1 }}
+                          exit={{    x: dir * -32, opacity: 0 }}
+                          transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                        >
+                          {stepContent[step]}
+                        </motion.div>
+                      </AnimatePresence>
+
+                      <AnimatePresence>
+                        {error && (
+                          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                            className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                            {error}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+
+                    {/* footer */}
+                    <div className="flex-shrink-0 border-t border-stone-100 bg-stone-50/60 px-4 py-4 sm:px-6">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                      <button type="button" onClick={() => goTo(step - 1)} disabled={step === 0}
+                        className="flex items-center gap-1 text-sm font-semibold text-stone-400 hover:text-stone-800 disabled:cursor-not-allowed disabled:opacity-25 transition">
+                        <ChevronLeft className="w-4 h-4" /> Back
+                      </button>
+                      <span className="text-xs text-stone-300">{step + 1} / {STEPS.length}</span>
+                      {step < STEPS.length - 1
+                        ? <button type="button" onClick={() => goTo(step + 1)}
+                            className="flex items-center gap-1.5 bg-stone-900 text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-stone-800 transition">
+                            Next <ChevronRight className="w-4 h-4" />
+                          </button>
+                        : <motion.button type="button" onClick={submit}
+                            whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                            className="flex items-center gap-1.5 bg-red-700 text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-red-800 transition shadow-sm shadow-red-100">
+                            <Check className="w-4 h-4" /> {editingId ? 'Save Changes' : 'Create'}
+                          </motion.button>
+                      }
+                      </div>
+                    </div>
                   </motion.div>
-                </AnimatePresence>
-
-                <AnimatePresence>
-                  {error && (
-                    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                      className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                      {error}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* footer */}
-              <div className="border-t border-stone-100 bg-stone-50/60 px-4 py-4 sm:px-6 flex-shrink-0">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                <button type="button" onClick={() => goTo(step - 1)} disabled={step === 0}
-                  className="flex items-center gap-1 text-sm font-semibold text-stone-400 hover:text-stone-800 disabled:opacity-25 disabled:cursor-not-allowed transition">
-                  <ChevronLeft className="w-4 h-4" /> Back
-                </button>
-                <span className="text-xs text-stone-300">{step + 1} / {STEPS.length}</span>
-                {step < STEPS.length - 1
-                  ? <button type="button" onClick={() => goTo(step + 1)}
-                      className="flex items-center gap-1.5 bg-stone-900 text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-stone-800 transition">
-                      Next <ChevronRight className="w-4 h-4" />
-                    </button>
-                  : <motion.button type="button" onClick={submit}
-                      whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                      className="flex items-center gap-1.5 bg-red-700 text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-red-800 transition shadow-sm shadow-red-100">
-                      <Check className="w-4 h-4" /> {editingId ? 'Save Changes' : 'Create'}
-                    </motion.button>
-                }
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                </motion.div>
+              )}
+            </AnimatePresence>,
+            document.body
+          )
+        : null}
 
       {/* ── list ── */}
       <div className="space-y-3">
