@@ -73,7 +73,10 @@ async function getHoldSessionIdForOrder(
 }
 
 function resolveRequestedSeatIds(order: FinalizableOrder, metadataSeatIds: string[]): string[] {
-  const orderSeatIds = order.orderSeats.map((seat) => seat.seatId).sort();
+  const orderSeatIds = order.orderSeats
+    .map((seat) => seat.seatId)
+    .filter((seatId): seatId is string => typeof seatId === 'string' && seatId.length > 0)
+    .sort();
   const normalizedMetadataSeatIds = [...metadataSeatIds].sort();
 
   if (orderSeatIds.length > 0) {
@@ -111,6 +114,7 @@ async function createMissingTickets(
 ): Promise<void> {
   const existingTicketSeatIds = new Set(order.tickets.map((ticket) => ticket.seatId));
   let firstTeacherCompTicketId = order.tickets.find((ticket) => {
+    if (!ticket.seatId) return false;
     const orderSeat = orderSeatPricingBySeatId.get(ticket.seatId);
     return order.source === 'STAFF_COMP' && Boolean(orderSeat?.isComplimentary);
   })?.id || null;
@@ -253,7 +257,11 @@ async function finalizePaidOrderTx(
     }
   }
 
-  const orderSeatIds = new Set(order.orderSeats.map((seat) => seat.seatId));
+  const orderSeatIds = new Set(
+    order.orderSeats
+      .map((seat) => seat.seatId)
+      .filter((seatId): seatId is string => typeof seatId === 'string' && seatId.length > 0)
+  );
   const missingOrderSeatRows = seats.filter((seat) => !orderSeatIds.has(seat.id));
   if (missingOrderSeatRows.length > 0) {
     await tx.orderSeat.createMany({
@@ -274,14 +282,18 @@ async function finalizePaidOrderTx(
       : order.orderSeats;
 
   const amountTotal = refreshedOrderSeats.reduce((sum, orderSeat) => sum + orderSeat.price, 0);
-  const orderSeatPricingBySeatId = new Map(
-    refreshedOrderSeats.map((orderSeat) => [
-      orderSeat.seatId,
-      {
-        price: orderSeat.price,
-        isComplimentary: orderSeat.isComplimentary
-      }
-    ])
+  const orderSeatPricingBySeatId = new Map<string, { price: number; isComplimentary: boolean }>(
+    refreshedOrderSeats.flatMap((orderSeat) =>
+      orderSeat.seatId
+        ? [[
+            orderSeat.seatId,
+            {
+              price: orderSeat.price,
+              isComplimentary: orderSeat.isComplimentary
+            }
+          ]]
+        : []
+    )
   );
 
   await createMissingTickets(tx, order, seats, orderSeatPricingBySeatId);
@@ -340,7 +352,23 @@ async function sendTicketsEmailForOrder(orderId: string): Promise<void> {
     return;
   }
 
-  const orderSeatBySeatId = new Map(paidOrder.orderSeats.map((seat) => [seat.seatId, seat]));
+  const orderSeatBySeatId = new Map(
+    paidOrder.orderSeats
+      .filter((seat) => seat.seatId)
+      .map((seat) => [seat.seatId as string, seat])
+  );
+  const emailTickets = paidOrder.tickets.flatMap((ticket) => {
+    if (!ticket.seat) return [];
+    const orderSeat = ticket.seatId ? orderSeatBySeatId.get(ticket.seatId) : undefined;
+    return [{
+      publicId: ticket.publicId,
+      row: ticket.seat.row,
+      number: ticket.seat.number,
+      sectionName: ticket.seat.sectionName,
+      ticketType: orderSeat?.ticketType || null,
+      attendeeName: orderSeat?.attendeeName || null
+    }];
+  });
 
   try {
     await sendTicketsEmail({
@@ -350,14 +378,7 @@ async function sendTicketsEmailForOrder(orderId: string): Promise<void> {
       showTitle: paidOrder.performance.title || paidOrder.performance.show.title,
       startsAtIso: paidOrder.performance.startsAt.toISOString(),
       venue: paidOrder.performance.venue,
-      tickets: paidOrder.tickets.map((ticket) => ({
-        publicId: ticket.publicId,
-        row: ticket.seat.row,
-        number: ticket.seat.number,
-        sectionName: ticket.seat.sectionName,
-        ticketType: orderSeatBySeatId.get(ticket.seatId)?.ticketType || null,
-        attendeeName: orderSeatBySeatId.get(ticket.seatId)?.attendeeName || null
-      }))
+      tickets: emailTickets
     });
   } catch (err) {
     console.error('Ticket email send failed', err);

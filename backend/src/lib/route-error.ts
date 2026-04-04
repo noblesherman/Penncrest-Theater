@@ -36,6 +36,16 @@ export function handleRouteError(reply: FastifyReply, err: unknown, fallbackMess
     return;
   }
 
+  if (
+    err instanceof Error &&
+    /Unknown arg `(?:questionConfig|extraResponses)`|Unknown argument `(?:questionConfig|extraResponses)`/i.test(err.message)
+  ) {
+    reply.status(503).send({
+      error: 'Backend Prisma client is out of date. Run prisma generate and redeploy backend.'
+    });
+    return;
+  }
+
   reply.log.error({ err }, fallbackMessage);
 
   if (err instanceof Error) {

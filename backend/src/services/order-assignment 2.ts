@@ -313,6 +313,18 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
 
   if (params.sendEmail) {
     const orderSeatBySeatId = new Map(order.orderSeats.map((seat) => [seat.seatId, seat]));
+    const emailTickets = order.tickets.flatMap((ticket) => {
+      if (!ticket.seat) return [];
+      const orderSeat = ticket.seatId ? orderSeatBySeatId.get(ticket.seatId) : undefined;
+      return [{
+        publicId: ticket.publicId,
+        row: ticket.seat.row,
+        number: ticket.seat.number,
+        sectionName: ticket.seat.sectionName,
+        ticketType: orderSeat?.ticketType || null,
+        attendeeName: orderSeat?.attendeeName || null
+      }];
+    });
 
     await sendTicketsEmail({
       orderId: order.id,
@@ -321,14 +333,7 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
       showTitle: order.performance.title || order.performance.show.title,
       startsAtIso: order.performance.startsAt.toISOString(),
       venue: order.performance.venue,
-      tickets: order.tickets.map((ticket) => ({
-        publicId: ticket.publicId,
-        row: ticket.seat.row,
-        number: ticket.seat.number,
-        sectionName: ticket.seat.sectionName,
-        ticketType: orderSeatBySeatId.get(ticket.seatId)?.ticketType || null,
-        attendeeName: orderSeatBySeatId.get(ticket.seatId)?.attendeeName || null
-      }))
+      tickets: emailTickets
     });
   }
 

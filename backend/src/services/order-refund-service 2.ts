@@ -106,16 +106,22 @@ export async function applySuccessfulRefundToOrder(params: {
       notes: 'Stripe refund confirmed'
     });
 
-    await tx.seat.updateMany({
-      where: {
-        id: { in: order.orderSeats.map((seat) => seat.seatId) },
-        status: 'SOLD'
-      },
-      data: {
-        status: 'AVAILABLE',
-        holdSessionId: null
-      }
-    });
+    const soldSeatIds = order.orderSeats
+      .map((seat) => seat.seatId)
+      .filter((seatId): seatId is string => typeof seatId === 'string' && seatId.length > 0);
+
+    if (soldSeatIds.length > 0) {
+      await tx.seat.updateMany({
+        where: {
+          id: { in: soldSeatIds },
+          status: 'SOLD'
+        },
+        data: {
+          status: 'AVAILABLE',
+          holdSessionId: null
+        }
+      });
+    }
   });
 }
 
