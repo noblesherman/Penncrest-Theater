@@ -19,7 +19,9 @@ import {
   Ticket,
   UserCheck,
   UsersRound,
-  ChevronRight
+  ChevronRight,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import type { AdminRole } from '../../lib/adminAuth';
@@ -98,6 +100,8 @@ const routeAccessRules: Array<{ prefix: string; minRole: AdminRole }> = [
   { prefix: '/admin/dashboard', minRole: 'BOX_OFFICE' }
 ];
 
+const SIDEBAR_COLLAPSED_KEY = 'admin_sidebar_collapsed';
+
 function isLinkActive(pathname: string, to: string): boolean {
   if (pathname === to) return true;
   return pathname.startsWith(`${to}/`);
@@ -118,6 +122,10 @@ export default function AdminLayout() {
   const location = useLocation();
   const { loading, admin } = useAdminGuard();
   const [postLoginGreeting, setPostLoginGreeting] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1';
+  });
 
   useEffect(() => {
     if (!admin) return;
@@ -182,6 +190,11 @@ export default function AdminLayout() {
     };
   }, [postLoginGreeting]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed ? '1' : '0');
+  }, [sidebarCollapsed]);
+
   const pathname = location.pathname;
   const isScannerLive = pathname === '/admin/scanner/live' || pathname.startsWith('/admin/scanner/live/');
   const matchedRule = routeAccessRules
@@ -231,15 +244,26 @@ export default function AdminLayout() {
     <div className="min-h-screen flex bg-[#f5f4f2] font-sans">
 
       {/* ── Sidebar ─────────────────────────────────────────────────────── */}
-      <aside className="hidden md:flex flex-col w-[232px] min-h-screen bg-[#111110] shrink-0 sticky top-0 h-screen overflow-y-auto">
+      <aside
+        className={`
+          hidden md:flex flex-col min-h-screen bg-[#111110] shrink-0 sticky top-0 h-screen overflow-hidden
+          transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]
+          ${sidebarCollapsed ? 'w-[84px]' : 'w-[232px]'}
+        `}
+      >
 
         {/* Logo */}
-        <div className="px-5 pt-6 pb-5 border-b border-white/[0.06]">
-          <Link to="/admin/dashboard" className="flex items-center gap-2.5 group">
+        <div className={`pt-6 pb-5 border-b border-white/[0.06] ${sidebarCollapsed ? 'px-3' : 'px-5'}`}>
+          <Link to="/admin/dashboard" className={`flex items-center group ${sidebarCollapsed ? 'justify-center' : 'gap-2.5'}`}>
             <div className="h-7 w-7 rounded-md bg-rose-600 flex items-center justify-center shrink-0">
               <Ticket className="h-3.5 w-3.5 text-white" />
             </div>
-            <div>
+            <div
+              className={`
+                min-w-0 overflow-hidden transition-all duration-250
+                ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'max-w-[140px] opacity-100'}
+              `}
+            >
               <span className="text-white text-sm font-semibold tracking-tight leading-none block" style={{ fontFamily: "var(--font-sans)" }}>
                 Penncrest Theater
               </span>
@@ -251,22 +275,26 @@ export default function AdminLayout() {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto">
+        <nav className={`no-scrollbar flex-1 py-4 space-y-5 overflow-y-auto ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
           {visibleNavSections.map((section) => (
             <div key={section.title}>
-              <p className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
-                {section.title}
-              </p>
+              {sidebarCollapsed ? <div className="mx-2 mb-2 h-px bg-white/[0.06]" /> : (
+                <p className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
+                  {section.title}
+                </p>
+              )}
               <div className="space-y-0.5">
                 {section.items.map((item) => {
                   const Icon = item.icon;
                   const active = isLinkActive(pathname, item.to);
                   return (
                     <Link
+                      title={sidebarCollapsed ? item.label : undefined}
                       key={item.to}
                       to={item.to}
                       className={`
-                        flex items-center gap-2.5 px-2.5 py-2 rounded-md text-[13px] font-medium transition-all duration-100
+                        flex items-center rounded-md text-[13px] font-medium transition-all duration-150
+                        ${sidebarCollapsed ? 'justify-center px-0 py-2.5' : 'gap-2.5 px-2.5 py-2'}
                         ${active
                           ? 'bg-white/[0.08] text-white'
                           : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]'
@@ -274,8 +302,8 @@ export default function AdminLayout() {
                       `}
                     >
                       <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-rose-400' : 'text-zinc-600'}`} />
-                      {item.label}
-                      {active && <ChevronRight className="h-3 w-3 ml-auto text-zinc-600" />}
+                      {!sidebarCollapsed ? item.label : null}
+                      {active && !sidebarCollapsed ? <ChevronRight className="h-3 w-3 ml-auto text-zinc-600" /> : null}
                     </Link>
                   );
                 })}
@@ -285,20 +313,29 @@ export default function AdminLayout() {
         </nav>
 
         {/* User footer */}
-        <div className="px-3 py-4 border-t border-white/[0.06]">
+        <div className={`py-4 border-t border-white/[0.06] ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
           <Link
             to="/admin/scanner/live"
-            className="flex items-center gap-2 px-2.5 py-2 rounded-md text-[13px] font-medium text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-all mb-1"
+            title={sidebarCollapsed ? 'Full-Screen Scanner' : undefined}
+            className={`
+              flex items-center rounded-md text-[13px] font-medium text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]
+              transition-all mb-1 ${sidebarCollapsed ? 'justify-center px-0 py-2.5' : 'gap-2 px-2.5 py-2'}
+            `}
           >
             <ScanLine className="h-3.5 w-3.5 text-zinc-600" />
-            Full-Screen Scanner
+            {!sidebarCollapsed ? 'Full-Screen Scanner' : null}
           </Link>
 
-          <div className="mt-3 flex items-center gap-2.5 px-2.5 py-2 rounded-md border border-white/[0.06]">
+          <div className={`mt-3 flex items-center rounded-md border border-white/[0.06] ${sidebarCollapsed ? 'justify-center px-0 py-2' : 'gap-2.5 px-2.5 py-2'}`}>
             <div className="h-6 w-6 rounded-full bg-rose-900 flex items-center justify-center shrink-0">
               <span className="text-[9px] font-bold text-rose-200">{initials}</span>
             </div>
-            <div className="min-w-0 flex-1">
+            <div
+              className={`
+                min-w-0 flex-1 overflow-hidden transition-all duration-250
+                ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'max-w-[130px] opacity-100'}
+              `}
+            >
               <p className="text-[12px] font-medium text-zinc-300 truncate leading-none">{admin.name}</p>
               <p className="text-[10px] text-zinc-600 mt-0.5 leading-none">{formatAdminRole(admin.role)}</p>
             </div>
@@ -330,12 +367,21 @@ export default function AdminLayout() {
           </div>
 
           {/* Page title */}
-          <div className="hidden md:flex items-center gap-1.5 text-sm text-zinc-400">
+          <div className="hidden md:flex items-center gap-2 text-sm text-zinc-400">
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed((current) => !current)}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-black/[0.08] bg-white text-zinc-600 transition-all hover:border-zinc-300 hover:text-zinc-900"
+              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {sidebarCollapsed ? <PanelLeftOpen className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}
+            </button>
             <span className="text-zinc-800 font-medium">{pageTitle}</span>
           </div>
 
           {/* Mobile nav pills */}
-          <div className="flex md:hidden gap-1.5 overflow-x-auto flex-1 px-1">
+          <div className="no-scrollbar flex md:hidden gap-1.5 overflow-x-auto flex-1 px-1">
             {visibleNavSections.flatMap((s) => s.items).map((item) => {
               const Icon = item.icon;
               const active = isLinkActive(pathname, item.to);
