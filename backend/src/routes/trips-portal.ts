@@ -1,4 +1,5 @@
 import { FastifyPluginAsync } from 'fastify';
+import Stripe from 'stripe';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
@@ -6,6 +7,7 @@ import { handleRouteError } from '../lib/route-error.js';
 import { HttpError } from '../lib/http-error.js';
 import { stripe } from '../lib/stripe.js';
 import { env } from '../lib/env.js';
+import { finalizeTripPaymentFromCheckoutSession, finalizeTripPaymentFromPaymentIntent } from '../services/trip-payment-finalization.js';
 
 const claimStudentSchema = z.object({
   studentId: z.string().trim().min(1)
@@ -112,6 +114,66 @@ async function ensureStripeCustomerForTripAccount(account: {
 }
 
 export const tripPortalRoutes: FastifyPluginAsync = async (app) => {
+  const reconcilePendingTripPayment = async (payment: {
+    id: string;
+    status: string;
+    stripeCheckoutSessionId: string | null;
+    stripePaymentIntentId: string | null;
+  }) => {
+    if (payment.status !== 'PENDING') return;
+
+    if (payment.stripeCheckoutSessionId) {
+      try {
+        const session = await stripe.checkout.sessions.retrieve(payment.stripeCheckoutSessionId);
+        if (session.status === 'complete' && session.payment_status === 'paid') {
+          await finalizeTripPaymentFromCheckoutSession(session as Stripe.Checkout.Session);
+          return;
+        }
+      } catch (err) {
+        app.log.warn(err, `Trip payment reconciliation failed for stripe session ${payment.stripeCheckoutSessionId}`);
+      }
+    }
+
+    if (!payment.stripePaymentIntentId) {
+      return;
+    }
+
+    try {
+      const paymentIntent = await stripe.paymentIntents.retrieve(payment.stripePaymentIntentId);
+      if (paymentIntent.status === 'succeeded') {
+        await finalizeTripPaymentFromPaymentIntent(paymentIntent as Stripe.PaymentIntent);
+      }
+    } catch (err) {
+      app.log.warn(err, `Trip payment reconciliation failed for stripe payment intent ${payment.stripePaymentIntentId}`);
+    }
+  };
+
+  const reconcilePendingTripPaymentsForAccount = async (accountId: string) => {
+    const pendingPayments = await prisma.tripPayment.findMany({
+      where: {
+        accountId,
+        status: 'PENDING',
+        OR: [{ stripeCheckoutSessionId: { not: null } }, { stripePaymentIntentId: { not: null } }]
+      },
+      select: {
+        id: true,
+        status: true,
+        stripeCheckoutSessionId: true,
+        stripePaymentIntentId: true
+      },
+      orderBy: {
+        createdAt: 'desc'
+      },
+      take: 25
+    });
+
+    if (pendingPayments.length === 0) {
+      return;
+    }
+
+    await Promise.allSettled(pendingPayments.map((payment) => reconcilePendingTripPayment(payment)));
+  };
+
   app.get('/api/trips/portal/claim-options', { preHandler: app.authenticateTripAccount }, async (request, reply) => {
     try {
       const account = await prisma.tripAccount.findUnique({
@@ -349,6 +411,8 @@ export const tripPortalRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(409).send({ error: 'Student claim required' });
       }
 
+      await reconcilePendingTripPaymentsForAccount(account.id);
+
       const enrollments = await prisma.tripEnrollment.findMany({
         where: {
           studentId: account.studentId,
@@ -467,6 +531,8 @@ export const tripPortalRoutes: FastifyPluginAsync = async (app) => {
       if (!account || !account.isActive || !account.studentId) {
         return reply.status(401).send({ error: 'Unauthorized' });
       }
+
+      await reconcilePendingTripPaymentsForAccount(account.id);
 
       if (parsedQuery.data.enrollmentId) {
         const enrollment = await prisma.tripEnrollment.findUnique({
