@@ -11,6 +11,7 @@ type ProgramBioFormSummary = {
   schemaVersion: string;
   title: string;
   instructions: string;
+  questions: ProgramBioQuestions;
   deadlineAt: string;
   isOpen: boolean;
   acceptingResponses: boolean;
@@ -18,6 +19,15 @@ type ProgramBioFormSummary = {
   responseCount: number;
   createdAt: string;
   updatedAt: string;
+};
+
+type ProgramBioQuestions = {
+  fullNameLabel: string;
+  schoolEmailLabel: string;
+  gradeLevelLabel: string;
+  roleInShowLabel: string;
+  bioLabel: string;
+  headshotLabel: string;
 };
 
 type ProgramBioSubmission = {
@@ -47,6 +57,7 @@ type ShowOption = {
 type FormDraft = {
   title: string;
   instructions: string;
+  questions: ProgramBioQuestions;
   deadlineAt: string;
   isOpen: boolean;
 };
@@ -57,6 +68,22 @@ type SyncResult = {
   syncCast: { created: number; updated: number; skipped: number } | null;
   syncStudentCredits: { created: number; updated: number; skipped: number } | null;
 };
+
+const DEFAULT_PROGRAM_BIO_QUESTIONS: ProgramBioQuestions = {
+  fullNameLabel: 'Full name',
+  schoolEmailLabel: 'School email',
+  gradeLevelLabel: 'Grade',
+  roleInShowLabel: 'Role in show',
+  bioLabel: 'Bio',
+  headshotLabel: 'Headshot upload'
+};
+
+function normalizeQuestions(questions: Partial<ProgramBioQuestions> | undefined): ProgramBioQuestions {
+  return {
+    ...DEFAULT_PROGRAM_BIO_QUESTIONS,
+    ...(questions || {})
+  };
+}
 
 function toLocalInputValue(value: string): string {
   const date = new Date(value);
@@ -105,6 +132,10 @@ export default function AdminFormsPage() {
         adminFetch<ProgramBioFormSummary[]>('/api/admin/forms'),
         adminFetch<PerformanceRow[]>('/api/admin/performances?scope=all&kind=all')
       ]);
+      const normalizedFormRows = formRows.map((form) => ({
+        ...form,
+        questions: normalizeQuestions(form.questions)
+      }));
 
       const showMap = new Map<string, ShowOption>();
       performanceRows.forEach((row) => {
@@ -114,14 +145,15 @@ export default function AdminFormsPage() {
       });
 
       setShows(Array.from(showMap.values()).sort((a, b) => a.title.localeCompare(b.title)));
-      setForms(formRows);
+      setForms(normalizedFormRows);
       setDrafts(
         Object.fromEntries(
-          formRows.map((form) => [
+          normalizedFormRows.map((form) => [
             form.id,
             {
               title: form.title,
               instructions: form.instructions,
+              questions: form.questions,
               deadlineAt: toLocalInputValue(form.deadlineAt),
               isOpen: form.isOpen
             }
@@ -129,8 +161,8 @@ export default function AdminFormsPage() {
         )
       );
       setSelectedFormId((current) => {
-        if (current && formRows.some((row) => row.id === current)) return current;
-        return formRows[0]?.id || null;
+        if (current && normalizedFormRows.some((row) => row.id === current)) return current;
+        return normalizedFormRows[0]?.id || null;
       });
       if (!selectedShowId && showMap.size > 0) {
         setSelectedShowId(Array.from(showMap.values())[0].id);
@@ -192,6 +224,7 @@ export default function AdminFormsPage() {
         [created.id]: {
           title: created.title,
           instructions: created.instructions,
+          questions: normalizeQuestions(created.questions),
           deadlineAt: toLocalInputValue(created.deadlineAt),
           isOpen: created.isOpen
         }
@@ -218,6 +251,7 @@ export default function AdminFormsPage() {
         body: JSON.stringify({
           title: draft.title.trim(),
           instructions: draft.instructions.trim(),
+          questions: draft.questions,
           deadlineAt: toIsoFromLocalInput(draft.deadlineAt),
           isOpen: draft.isOpen
         })
@@ -229,6 +263,7 @@ export default function AdminFormsPage() {
         [formId]: {
           title: updated.title,
           instructions: updated.instructions,
+          questions: normalizeQuestions(updated.questions),
           deadlineAt: toLocalInputValue(updated.deadlineAt),
           isOpen: updated.isOpen
         }
@@ -445,6 +480,127 @@ export default function AdminFormsPage() {
                   className="w-full rounded-xl border border-stone-300 px-3 py-2"
                 />
               </label>
+
+              <div className="space-y-3 rounded-xl border border-stone-200 bg-stone-50 p-3">
+                <h3 className="text-sm font-semibold text-stone-800">Form Questions</h3>
+                <p className="text-xs text-stone-600">Edit the labels students see on the public form.</p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="space-y-1 text-sm">
+                    <span className="font-semibold text-stone-700">Full Name</span>
+                    <input
+                      value={selectedDraft.questions.fullNameLabel}
+                      onChange={(event) =>
+                        setDrafts((current) => ({
+                          ...current,
+                          [selectedForm.id]: {
+                            ...current[selectedForm.id],
+                            questions: {
+                              ...current[selectedForm.id].questions,
+                              fullNameLabel: event.target.value
+                            }
+                          }
+                        }))
+                      }
+                      className="w-full rounded-xl border border-stone-300 px-3 py-2"
+                    />
+                  </label>
+                  <label className="space-y-1 text-sm">
+                    <span className="font-semibold text-stone-700">School Email</span>
+                    <input
+                      value={selectedDraft.questions.schoolEmailLabel}
+                      onChange={(event) =>
+                        setDrafts((current) => ({
+                          ...current,
+                          [selectedForm.id]: {
+                            ...current[selectedForm.id],
+                            questions: {
+                              ...current[selectedForm.id].questions,
+                              schoolEmailLabel: event.target.value
+                            }
+                          }
+                        }))
+                      }
+                      className="w-full rounded-xl border border-stone-300 px-3 py-2"
+                    />
+                  </label>
+                  <label className="space-y-1 text-sm">
+                    <span className="font-semibold text-stone-700">Grade</span>
+                    <input
+                      value={selectedDraft.questions.gradeLevelLabel}
+                      onChange={(event) =>
+                        setDrafts((current) => ({
+                          ...current,
+                          [selectedForm.id]: {
+                            ...current[selectedForm.id],
+                            questions: {
+                              ...current[selectedForm.id].questions,
+                              gradeLevelLabel: event.target.value
+                            }
+                          }
+                        }))
+                      }
+                      className="w-full rounded-xl border border-stone-300 px-3 py-2"
+                    />
+                  </label>
+                  <label className="space-y-1 text-sm">
+                    <span className="font-semibold text-stone-700">Role In Show</span>
+                    <input
+                      value={selectedDraft.questions.roleInShowLabel}
+                      onChange={(event) =>
+                        setDrafts((current) => ({
+                          ...current,
+                          [selectedForm.id]: {
+                            ...current[selectedForm.id],
+                            questions: {
+                              ...current[selectedForm.id].questions,
+                              roleInShowLabel: event.target.value
+                            }
+                          }
+                        }))
+                      }
+                      className="w-full rounded-xl border border-stone-300 px-3 py-2"
+                    />
+                  </label>
+                  <label className="space-y-1 text-sm">
+                    <span className="font-semibold text-stone-700">Bio</span>
+                    <input
+                      value={selectedDraft.questions.bioLabel}
+                      onChange={(event) =>
+                        setDrafts((current) => ({
+                          ...current,
+                          [selectedForm.id]: {
+                            ...current[selectedForm.id],
+                            questions: {
+                              ...current[selectedForm.id].questions,
+                              bioLabel: event.target.value
+                            }
+                          }
+                        }))
+                      }
+                      className="w-full rounded-xl border border-stone-300 px-3 py-2"
+                    />
+                  </label>
+                  <label className="space-y-1 text-sm">
+                    <span className="font-semibold text-stone-700">Headshot</span>
+                    <input
+                      value={selectedDraft.questions.headshotLabel}
+                      onChange={(event) =>
+                        setDrafts((current) => ({
+                          ...current,
+                          [selectedForm.id]: {
+                            ...current[selectedForm.id],
+                            questions: {
+                              ...current[selectedForm.id].questions,
+                              headshotLabel: event.target.value
+                            }
+                          }
+                        }))
+                      }
+                      className="w-full rounded-xl border border-stone-300 px-3 py-2"
+                    />
+                  </label>
+                </div>
+              </div>
 
               <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
                 <div className="text-sm font-semibold text-stone-800">Sync to Show</div>

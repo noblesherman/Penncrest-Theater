@@ -28,6 +28,37 @@ Notes:
 - You can submit again with the same school email to update your response.
 - The latest submission for your school email is what the team will review and sync.`;
 
+const programBioQuestionsPatchSchema = z
+  .object({
+    fullNameLabel: z.string().trim().min(1).max(120).optional(),
+    schoolEmailLabel: z.string().trim().min(1).max(120).optional(),
+    gradeLevelLabel: z.string().trim().min(1).max(120).optional(),
+    roleInShowLabel: z.string().trim().min(1).max(120).optional(),
+    bioLabel: z.string().trim().min(1).max(120).optional(),
+    headshotLabel: z.string().trim().min(1).max(120).optional()
+  })
+  .strict();
+
+type ProgramBioQuestionsPatch = z.infer<typeof programBioQuestionsPatchSchema>;
+
+type ProgramBioQuestions = {
+  fullNameLabel: string;
+  schoolEmailLabel: string;
+  gradeLevelLabel: string;
+  roleInShowLabel: string;
+  bioLabel: string;
+  headshotLabel: string;
+};
+
+const PROGRAM_BIO_DEFAULT_QUESTIONS: ProgramBioQuestions = {
+  fullNameLabel: 'Full name',
+  schoolEmailLabel: 'School email',
+  gradeLevelLabel: 'Grade',
+  roleInShowLabel: 'Role in show',
+  bioLabel: 'Bio',
+  headshotLabel: 'Headshot upload'
+};
+
 const createProgramBioFormSchema = z.object({
   showId: z.string().trim().min(1),
   deadlineAt: z.string().datetime().optional()
@@ -38,7 +69,8 @@ const updateProgramBioFormSchema = z
     title: z.string().trim().min(1).max(180).optional(),
     instructions: z.string().trim().min(1).max(12_000).optional(),
     deadlineAt: z.string().datetime().optional(),
-    isOpen: z.boolean().optional()
+    isOpen: z.boolean().optional(),
+    questions: programBioQuestionsPatchSchema.optional()
   })
   .refine((value) => Object.values(value).some((field) => field !== undefined), {
     message: 'Provide at least one field to update'
@@ -154,6 +186,32 @@ function acceptanceMessage(form: { isOpen: boolean; deadlineAt: Date }, now: Dat
   return '';
 }
 
+function normalizeProgramBioQuestions(value: Prisma.JsonValue | null | undefined): ProgramBioQuestions {
+  const parsed = programBioQuestionsPatchSchema.safeParse(value ?? {});
+  if (!parsed.success) {
+    return { ...PROGRAM_BIO_DEFAULT_QUESTIONS };
+  }
+  return {
+    ...PROGRAM_BIO_DEFAULT_QUESTIONS,
+    ...Object.fromEntries(
+      Object.entries(parsed.data).filter(([, fieldValue]) => fieldValue !== undefined)
+    )
+  };
+}
+
+function mergeProgramBioQuestions(
+  current: Prisma.JsonValue | null | undefined,
+  patch: ProgramBioQuestionsPatch
+): ProgramBioQuestions {
+  const base = normalizeProgramBioQuestions(current);
+  return {
+    ...base,
+    ...Object.fromEntries(
+      Object.entries(patch).filter(([, value]) => value !== undefined)
+    )
+  };
+}
+
 function serializeFormSummary(
   form: {
     id: string;
@@ -162,6 +220,7 @@ function serializeFormSummary(
     schemaVersion: string;
     title: string;
     instructions: string;
+    questionConfig: Prisma.JsonValue | null;
     deadlineAt: Date;
     isOpen: boolean;
     createdAt: Date;
@@ -184,6 +243,7 @@ function serializeFormSummary(
     schemaVersion: form.schemaVersion,
     title: form.title,
     instructions: form.instructions,
+    questions: normalizeProgramBioQuestions(form.questionConfig),
     deadlineAt: form.deadlineAt,
     isOpen: form.isOpen,
     acceptingResponses,
@@ -477,6 +537,7 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
             schemaVersion: PROGRAM_BIO_SCHEMA_VERSION,
             title: PROGRAM_BIO_DEFAULT_TITLE,
             instructions: PROGRAM_BIO_DEFAULT_INSTRUCTIONS,
+            questionConfig: PROGRAM_BIO_DEFAULT_QUESTIONS,
             deadlineAt,
             isOpen: true,
             createdByAdminId: request.adminUser?.id || null,
@@ -604,11 +665,16 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
         throw new HttpError(404, 'Form not found');
       }
 
+      const nextQuestions = parsed.data.questions
+        ? mergeProgramBioQuestions(existing.questionConfig, parsed.data.questions)
+        : undefined;
+
       const updated = await prisma.programBioForm.update({
         where: { id: params.id },
         data: {
           title: parsed.data.title,
           instructions: parsed.data.instructions,
+          questionConfig: nextQuestions,
           deadlineAt: parsed.data.deadlineAt ? new Date(parsed.data.deadlineAt) : undefined,
           isOpen: parsed.data.isOpen,
           updatedByAdminId: request.adminUser?.id || null
@@ -815,6 +881,7 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
         schemaVersion: form.schemaVersion,
         title: form.title,
         instructions: form.instructions,
+        questions: normalizeProgramBioQuestions(form.questionConfig),
         deadlineAt: form.deadlineAt,
         isOpen: form.isOpen,
         acceptingResponses: isAcceptingResponses(form, now),

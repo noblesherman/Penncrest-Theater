@@ -17,6 +17,16 @@ type PublicProgramBioForm = {
     title: string;
   };
   requiredFields: string[];
+  questions?: Partial<ProgramBioQuestions>;
+};
+
+type ProgramBioQuestions = {
+  fullNameLabel: string;
+  schoolEmailLabel: string;
+  gradeLevelLabel: string;
+  roleInShowLabel: string;
+  bioLabel: string;
+  headshotLabel: string;
 };
 
 type SubmissionResult = {
@@ -35,6 +45,15 @@ type FormState = {
 };
 
 const MAX_WORDS = 120;
+
+const DEFAULT_PROGRAM_BIO_QUESTIONS: ProgramBioQuestions = {
+  fullNameLabel: 'Full name',
+  schoolEmailLabel: 'School email',
+  gradeLevelLabel: 'Grade',
+  roleInShowLabel: 'Role in show',
+  bioLabel: 'Bio',
+  headshotLabel: 'Headshot upload'
+};
 
 function countWords(value: string): number {
   return value
@@ -176,6 +195,11 @@ export default function ProgramBioFormPage() {
     );
   }
 
+  const questionLabels: ProgramBioQuestions = {
+    ...DEFAULT_PROGRAM_BIO_QUESTIONS,
+    ...(formMeta.questions || {})
+  };
+
   return (
     <div className="mx-auto max-w-3xl rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
       <h1 className="text-2xl font-black text-stone-900">{formMeta.title}</h1>
@@ -190,7 +214,7 @@ export default function ProgramBioFormPage() {
       ) : (
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           <label className="block text-sm">
-            <span className="font-semibold text-stone-800">Full name</span>
+            <span className="font-semibold text-stone-800">{questionLabels.fullNameLabel}</span>
             <input
               required
               value={formState.fullName}
@@ -200,7 +224,7 @@ export default function ProgramBioFormPage() {
           </label>
 
           <label className="block text-sm">
-            <span className="font-semibold text-stone-800">School email</span>
+            <span className="font-semibold text-stone-800">{questionLabels.schoolEmailLabel}</span>
             <input
               required
               type="email"
@@ -212,7 +236,7 @@ export default function ProgramBioFormPage() {
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block text-sm">
-              <span className="font-semibold text-stone-800">Grade</span>
+              <span className="font-semibold text-stone-800">{questionLabels.gradeLevelLabel}</span>
               <select
                 required
                 value={formState.gradeLevel}
@@ -228,7 +252,7 @@ export default function ProgramBioFormPage() {
             </label>
 
             <label className="block text-sm">
-              <span className="font-semibold text-stone-800">Role in show</span>
+              <span className="font-semibold text-stone-800">{questionLabels.roleInShowLabel}</span>
               <input
                 required
                 value={formState.roleInShow}
@@ -239,7 +263,7 @@ export default function ProgramBioFormPage() {
           </div>
 
           <label className="block text-sm">
-            <span className="font-semibold text-stone-800">Bio</span>
+            <span className="font-semibold text-stone-800">{questionLabels.bioLabel}</span>
             <textarea
               required
               rows={6}
@@ -253,7 +277,7 @@ export default function ProgramBioFormPage() {
           </label>
 
           <label className="block text-sm">
-            <span className="font-semibold text-stone-800">Headshot upload</span>
+            <span className="font-semibold text-stone-800">{questionLabels.headshotLabel}</span>
             <input
               required
               type="file"

@@ -228,6 +228,7 @@ model ProgramBioForm {
   schemaVersion   String                 @default("PROGRAM_BIO_V1")
   title           String
   instructions    String
+  questionConfig  Json?
   deadlineAt      DateTime
   isOpen          Boolean                @default(true)
   createdByAdminId String?
