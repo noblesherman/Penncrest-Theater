@@ -28,6 +28,18 @@ Notes:
 - You can submit again with the same school email to update your response.
 - The latest submission for your school email is what the team will review and sync.`;
 
+const programBioCustomQuestionTypeSchema = z.enum(['short_text', 'long_text', 'multiple_choice']);
+
+const programBioCustomQuestionSchema = z
+  .object({
+    id: z.string().trim().min(1).max(100),
+    label: z.string().trim().max(160),
+    type: programBioCustomQuestionTypeSchema,
+    required: z.boolean().optional(),
+    options: z.array(z.string().trim().min(1).max(160)).max(25).optional()
+  })
+  .strict();
+
 const programBioQuestionsPatchSchema = z
   .object({
     fullNameLabel: z.string().trim().min(1).max(120).optional(),
@@ -35,9 +47,20 @@ const programBioQuestionsPatchSchema = z
     gradeLevelLabel: z.string().trim().min(1).max(120).optional(),
     roleInShowLabel: z.string().trim().min(1).max(120).optional(),
     bioLabel: z.string().trim().min(1).max(120).optional(),
-    headshotLabel: z.string().trim().min(1).max(120).optional()
+    headshotLabel: z.string().trim().min(1).max(120).optional(),
+    customQuestions: z.array(programBioCustomQuestionSchema).max(40).optional()
   })
   .strict();
+
+type ProgramBioCustomQuestionType = z.infer<typeof programBioCustomQuestionTypeSchema>;
+
+type ProgramBioCustomQuestion = {
+  id: string;
+  label: string;
+  type: ProgramBioCustomQuestionType;
+  required: boolean;
+  options: string[];
+};
 
 type ProgramBioQuestionsPatch = z.infer<typeof programBioQuestionsPatchSchema>;
 
@@ -48,6 +71,7 @@ type ProgramBioQuestions = {
   roleInShowLabel: string;
   bioLabel: string;
   headshotLabel: string;
+  customQuestions: ProgramBioCustomQuestion[];
 };
 
 const PROGRAM_BIO_DEFAULT_QUESTIONS: ProgramBioQuestions = {
@@ -56,7 +80,8 @@ const PROGRAM_BIO_DEFAULT_QUESTIONS: ProgramBioQuestions = {
   gradeLevelLabel: 'Grade',
   roleInShowLabel: 'Role in show',
   bioLabel: 'Bio',
-  headshotLabel: 'Headshot upload'
+  headshotLabel: 'Headshot upload',
+  customQuestions: []
 };
 
 const createProgramBioFormSchema = z.object({
@@ -87,7 +112,8 @@ const publicProgramBioSubmissionSchema = z.object({
   gradeLevel: z.coerce.number().int().min(9).max(12),
   roleInShow: z.string().trim().min(1).max(120),
   bio: z.string().trim().min(1).max(2400),
-  headshotDataUrl: z.string().trim().min(1).max(9_000_000)
+  headshotDataUrl: z.string().trim().min(1).max(9_000_000),
+  customResponses: z.record(z.string().max(4_000)).optional()
 });
 
 type AdminRequestLike = {
@@ -186,16 +212,66 @@ function acceptanceMessage(form: { isOpen: boolean; deadlineAt: Date }, now: Dat
   return '';
 }
 
+function normalizeCustomQuestionOptions(options: string[] | undefined): string[] {
+  if (!options) return [];
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const option of options) {
+    const trimmed = option.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    normalized.push(trimmed);
+  }
+  return normalized;
+}
+
+function normalizeCustomQuestions(value: ProgramBioQuestionsPatch['customQuestions']): ProgramBioCustomQuestion[] {
+  if (!Array.isArray(value)) return [];
+
+  const seenIds = new Set<string>();
+  const normalized: ProgramBioCustomQuestion[] = [];
+
+  for (const question of value) {
+    const id = question.id.trim();
+    if (!id || seenIds.has(id)) continue;
+
+    const label = question.label.trim();
+    if (!label) continue;
+
+    const options = question.type === 'multiple_choice'
+      ? normalizeCustomQuestionOptions(question.options)
+      : [];
+
+    if (question.type === 'multiple_choice' && options.length < 2) continue;
+
+    normalized.push({
+      id,
+      label,
+      type: question.type,
+      required: Boolean(question.required),
+      options
+    });
+    seenIds.add(id);
+  }
+
+  return normalized;
+}
+
 function normalizeProgramBioQuestions(value: Prisma.JsonValue | null | undefined): ProgramBioQuestions {
   const parsed = programBioQuestionsPatchSchema.safeParse(value ?? {});
   if (!parsed.success) {
     return { ...PROGRAM_BIO_DEFAULT_QUESTIONS };
   }
+
+  const { customQuestions, ...labelPatch } = parsed.data;
+  const normalizedLabels = Object.fromEntries(
+    Object.entries(labelPatch).filter(([, fieldValue]) => fieldValue !== undefined)
+  ) as Omit<ProgramBioQuestions, 'customQuestions'>;
+
   return {
     ...PROGRAM_BIO_DEFAULT_QUESTIONS,
-    ...Object.fromEntries(
-      Object.entries(parsed.data).filter(([, fieldValue]) => fieldValue !== undefined)
-    )
+    ...normalizedLabels,
+    customQuestions: normalizeCustomQuestions(customQuestions)
   };
 }
 
@@ -204,12 +280,46 @@ function mergeProgramBioQuestions(
   patch: ProgramBioQuestionsPatch
 ): ProgramBioQuestions {
   const base = normalizeProgramBioQuestions(current);
-  return {
+  const { customQuestions, ...labelPatch } = patch;
+  const normalizedLabels = Object.fromEntries(
+    Object.entries(labelPatch).filter(([, fieldValue]) => fieldValue !== undefined)
+  ) as Partial<Omit<ProgramBioQuestions, 'customQuestions'>>;
+
+  return normalizeProgramBioQuestions({
     ...base,
-    ...Object.fromEntries(
-      Object.entries(patch).filter(([, value]) => value !== undefined)
-    )
-  };
+    ...normalizedLabels,
+    customQuestions: customQuestions ?? base.customQuestions
+  } as Prisma.JsonObject);
+}
+
+function normalizeSubmissionCustomResponses(
+  value: Record<string, string> | undefined,
+  customQuestions: ProgramBioCustomQuestion[]
+): Record<string, string> {
+  if (customQuestions.length === 0) return {};
+
+  const source = value || {};
+  const normalized: Record<string, string> = {};
+
+  for (const question of customQuestions) {
+    const raw = source[question.id];
+    const trimmed = typeof raw === 'string' ? raw.trim() : '';
+
+    if (!trimmed) {
+      if (question.required) {
+        throw new HttpError(400, `${question.label} is required.`);
+      }
+      continue;
+    }
+
+    if (question.type === 'multiple_choice' && !question.options.includes(trimmed)) {
+      throw new HttpError(400, `Invalid response for "${question.label}".`);
+    }
+
+    normalized[question.id] = trimmed;
+  }
+
+  return normalized;
 }
 
 function serializeFormSummary(
@@ -744,6 +854,7 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
           roleInShow: submission.roleInShow,
           bio: submission.bio,
           headshotUrl: submission.headshotUrl,
+          extraResponses: submission.extraResponses ?? {},
           submittedAt: submission.submittedAt,
           createdAt: submission.createdAt,
           updatedAt: submission.updatedAt
@@ -910,6 +1021,7 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
         select: {
           id: true,
           showId: true,
+          questionConfig: true,
           isOpen: true,
           deadlineAt: true
         }
@@ -931,6 +1043,12 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
       if (countWords(parsed.data.bio) > PROGRAM_BIO_MAX_WORDS) {
         throw new HttpError(400, `Bio must be ${PROGRAM_BIO_MAX_WORDS} words or fewer.`);
       }
+
+      const questionConfig = normalizeProgramBioQuestions(form.questionConfig);
+      const normalizedCustomResponses = normalizeSubmissionCustomResponses(
+        parsed.data.customResponses,
+        questionConfig.customQuestions
+      );
 
       const uploaded = await uploadImageFromDataUrl({
         dataUrl: parsed.data.headshotDataUrl,
@@ -961,6 +1079,7 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
           gradeLevel: parsed.data.gradeLevel,
           roleInShow: parsed.data.roleInShow,
           bio: parsed.data.bio,
+          extraResponses: normalizedCustomResponses,
           headshotUrl: uploaded.url,
           headshotKey: uploaded.key,
           submittedAt: new Date()
@@ -972,6 +1091,7 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
           gradeLevel: parsed.data.gradeLevel,
           roleInShow: parsed.data.roleInShow,
           bio: parsed.data.bio,
+          extraResponses: normalizedCustomResponses,
           headshotUrl: uploaded.url,
           headshotKey: uploaded.key
         },

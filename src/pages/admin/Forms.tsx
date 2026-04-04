@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Copy, RefreshCw, Save, Users, X } from 'lucide-react';
+import { ChevronRight, Copy, Plus, RefreshCw, Save, Users, X } from 'lucide-react';
 import { adminFetch } from '../../lib/adminAuth';
 
 type ProgramBioFormSummary = {
@@ -28,6 +28,17 @@ type ProgramBioQuestions = {
   roleInShowLabel: string;
   bioLabel: string;
   headshotLabel: string;
+  customQuestions: ProgramBioCustomQuestion[];
+};
+
+type ProgramBioCustomQuestionType = 'short_text' | 'long_text' | 'multiple_choice';
+
+type ProgramBioCustomQuestion = {
+  id: string;
+  label: string;
+  type: ProgramBioCustomQuestionType;
+  required: boolean;
+  options: string[];
 };
 
 type ProgramBioSubmission = {
@@ -39,21 +50,14 @@ type ProgramBioSubmission = {
   roleInShow: string;
   bio: string;
   headshotUrl: string;
+  extraResponses?: Record<string, string>;
   submittedAt: string;
   createdAt: string;
   updatedAt: string;
 };
 
-type PerformanceRow = {
-  showId: string;
-  showTitle: string;
-};
-
-type ShowOption = {
-  id: string;
-  title: string;
-};
-
+type PerformanceRow = { showId: string; showTitle: string };
+type ShowOption = { id: string; title: string };
 type FormDraft = {
   title: string;
   instructions: string;
@@ -75,14 +79,48 @@ const DEFAULT_PROGRAM_BIO_QUESTIONS: ProgramBioQuestions = {
   gradeLevelLabel: 'Grade',
   roleInShowLabel: 'Role in show',
   bioLabel: 'Bio',
-  headshotLabel: 'Headshot upload'
+  headshotLabel: 'Headshot upload',
+  customQuestions: [],
 };
 
 function normalizeQuestions(questions: Partial<ProgramBioQuestions> | undefined): ProgramBioQuestions {
-  return {
-    ...DEFAULT_PROGRAM_BIO_QUESTIONS,
-    ...(questions || {})
-  };
+  const customQuestions = Array.isArray(questions?.customQuestions)
+    ? questions.customQuestions
+        .map((q) => {
+          const type: ProgramBioCustomQuestionType =
+            q?.type === 'long_text' || q?.type === 'multiple_choice' ? q.type : 'short_text';
+          return {
+            id: (q?.id || '').trim(),
+            label: (q?.label || '').trim(),
+            type,
+            required: Boolean(q?.required),
+            options:
+              type === 'multiple_choice'
+                ? Array.from(
+                    new Set(
+                      (Array.isArray(q?.options) ? q.options : [])
+                        .map((o) => o.trim())
+                        .filter(Boolean)
+                    )
+                  )
+                : [],
+          };
+        })
+        .filter(
+          (q) =>
+            q.id && q.label && (q.type !== 'multiple_choice' || q.options.length >= 2)
+        )
+    : [];
+  return { ...DEFAULT_PROGRAM_BIO_QUESTIONS, ...(questions || {}), customQuestions };
+}
+
+function makeCustomQuestionId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return `q_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeOptionsText(value: string): string[] {
+  return Array.from(new Set(value.split('\n').map((l) => l.trim()).filter(Boolean)));
 }
 
 function toLocalInputValue(value: string): string {
@@ -93,9 +131,12 @@ function toLocalInputValue(value: string): string {
 }
 
 function toIsoFromLocalInput(value: string): string {
-  const date = new Date(value);
-  return date.toISOString();
+  return new Date(value).toISOString();
 }
+
+// ── Shared input styles ──
+const inputCls = 'w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 placeholder:text-stone-400 focus:border-stone-400 focus:outline-none transition';
+const labelCls = 'block text-xs font-semibold uppercase tracking-wider text-stone-500 mb-1.5';
 
 export default function AdminFormsPage() {
   const [forms, setForms] = useState<ProgramBioFormSummary[]>([]);
@@ -116,13 +157,37 @@ export default function AdminFormsPage() {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // which tab is active in the detail panel
+  const [activeTab, setActiveTab] = useState<'settings' | 'questions' | 'sync' | 'responses'>('settings');
 
-  const selectedForm = useMemo(
-    () => forms.find((form) => form.id === selectedFormId) || null,
-    [forms, selectedFormId]
+  const selectedForm = useMemo(() => forms.find((f) => f.id === selectedFormId) ?? null, [forms, selectedFormId]);
+  const selectedDraft = selectedForm ? drafts[selectedForm.id] : null;
+  const selectedCustomQuestionsById = useMemo(
+    () => new Map((selectedForm?.questions.customQuestions ?? []).map((q) => [q.id, q])),
+    [selectedForm]
   );
 
-  const selectedDraft = selectedForm ? drafts[selectedForm.id] : null;
+  const updateSelectedDraftQuestions = useCallback(
+    (updater: (q: ProgramBioQuestions) => ProgramBioQuestions) => {
+      if (!selectedForm) return;
+      setDrafts((cur) => {
+        const draft = cur[selectedForm.id];
+        if (!draft) return cur;
+        return { ...cur, [selectedForm.id]: { ...draft, questions: updater(draft.questions) } };
+      });
+    },
+    [selectedForm]
+  );
+
+  const addCustomQuestion = useCallback(() => {
+    updateSelectedDraftQuestions((q) => ({
+      ...q,
+      customQuestions: [
+        ...q.customQuestions,
+        { id: makeCustomQuestionId(), label: '', type: 'short_text', required: false, options: [] },
+      ],
+    }));
+  }, [updateSelectedDraftQuestions]);
 
   const loadBase = useCallback(async () => {
     setLoading(true);
@@ -130,43 +195,34 @@ export default function AdminFormsPage() {
     try {
       const [formRows, performanceRows] = await Promise.all([
         adminFetch<ProgramBioFormSummary[]>('/api/admin/forms'),
-        adminFetch<PerformanceRow[]>('/api/admin/performances?scope=all&kind=all')
+        adminFetch<PerformanceRow[]>('/api/admin/performances?scope=all&kind=all'),
       ]);
-      const normalizedFormRows = formRows.map((form) => ({
-        ...form,
-        questions: normalizeQuestions(form.questions)
-      }));
-
+      const normalized = formRows.map((f) => ({ ...f, questions: normalizeQuestions(f.questions) }));
       const showMap = new Map<string, ShowOption>();
-      performanceRows.forEach((row) => {
-        if (!showMap.has(row.showId)) {
-          showMap.set(row.showId, { id: row.showId, title: row.showTitle });
-        }
+      performanceRows.forEach((r) => {
+        if (!showMap.has(r.showId)) showMap.set(r.showId, { id: r.showId, title: r.showTitle });
       });
-
       setShows(Array.from(showMap.values()).sort((a, b) => a.title.localeCompare(b.title)));
-      setForms(normalizedFormRows);
+      setForms(normalized);
       setDrafts(
         Object.fromEntries(
-          normalizedFormRows.map((form) => [
-            form.id,
+          normalized.map((f) => [
+            f.id,
             {
-              title: form.title,
-              instructions: form.instructions,
-              questions: form.questions,
-              deadlineAt: toLocalInputValue(form.deadlineAt),
-              isOpen: form.isOpen
-            }
+              title: f.title,
+              instructions: f.instructions,
+              questions: f.questions,
+              deadlineAt: toLocalInputValue(f.deadlineAt),
+              isOpen: f.isOpen,
+            },
           ])
         )
       );
-      setSelectedFormId((current) => {
-        if (current && normalizedFormRows.some((row) => row.id === current)) return current;
-        return normalizedFormRows[0]?.id || null;
+      setSelectedFormId((cur) => {
+        if (cur && normalized.some((r) => r.id === cur)) return cur;
+        return normalized[0]?.id ?? null;
       });
-      if (!selectedShowId && showMap.size > 0) {
-        setSelectedShowId(Array.from(showMap.values())[0].id);
-      }
+      if (!selectedShowId && showMap.size > 0) setSelectedShowId(Array.from(showMap.values())[0].id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load forms');
     } finally {
@@ -188,48 +244,27 @@ export default function AdminFormsPage() {
     }
   }, []);
 
+  useEffect(() => { void loadBase(); }, [loadBase]);
   useEffect(() => {
-    void loadBase();
-  }, [loadBase]);
-
-  useEffect(() => {
-    if (!selectedFormId) {
-      setSubmissions([]);
-      return;
-    }
+    if (!selectedFormId) { setSubmissions([]); return; }
     void loadSubmissions(selectedFormId);
   }, [selectedFormId, loadSubmissions]);
 
   async function createForm(): Promise<void> {
-    if (!selectedShowId) {
-      setError('Choose a show first.');
-      return;
-    }
-
-    setCreating(true);
-    setError(null);
-    setNotice(null);
+    if (!selectedShowId) { setError('Choose a show first.'); return; }
+    setCreating(true); setError(null); setNotice(null);
     try {
       const created = await adminFetch<ProgramBioFormSummary>('/api/admin/forms', {
         method: 'POST',
-        body: JSON.stringify({
-          showId: selectedShowId,
-          ...(createDeadlineAt ? { deadlineAt: toIsoFromLocalInput(createDeadlineAt) } : {})
-        })
+        body: JSON.stringify({ showId: selectedShowId, ...(createDeadlineAt ? { deadlineAt: toIsoFromLocalInput(createDeadlineAt) } : {}) }),
       });
-
-      setForms((current) => [created, ...current]);
-      setDrafts((current) => ({
-        ...current,
-        [created.id]: {
-          title: created.title,
-          instructions: created.instructions,
-          questions: normalizeQuestions(created.questions),
-          deadlineAt: toLocalInputValue(created.deadlineAt),
-          isOpen: created.isOpen
-        }
+      const norm = { ...created, questions: normalizeQuestions(created.questions) };
+      setForms((cur) => [norm, ...cur]);
+      setDrafts((cur) => ({
+        ...cur,
+        [norm.id]: { title: norm.title, instructions: norm.instructions, questions: norm.questions, deadlineAt: toLocalInputValue(norm.deadlineAt), isOpen: norm.isOpen },
       }));
-      setSelectedFormId(created.id);
+      setSelectedFormId(norm.id);
       setNotice('Program bio form created.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create form');
@@ -241,32 +276,17 @@ export default function AdminFormsPage() {
   async function saveForm(formId: string): Promise<void> {
     const draft = drafts[formId];
     if (!draft) return;
-
-    setSaving(true);
-    setError(null);
-    setNotice(null);
+    setSaving(true); setError(null); setNotice(null);
     try {
       const updated = await adminFetch<ProgramBioFormSummary>(`/api/admin/forms/${formId}`, {
         method: 'PATCH',
-        body: JSON.stringify({
-          title: draft.title.trim(),
-          instructions: draft.instructions.trim(),
-          questions: draft.questions,
-          deadlineAt: toIsoFromLocalInput(draft.deadlineAt),
-          isOpen: draft.isOpen
-        })
+        body: JSON.stringify({ title: draft.title.trim(), instructions: draft.instructions.trim(), questions: draft.questions, deadlineAt: toIsoFromLocalInput(draft.deadlineAt), isOpen: draft.isOpen }),
       });
-
-      setForms((current) => current.map((row) => (row.id === formId ? updated : row)));
-      setDrafts((current) => ({
-        ...current,
-        [formId]: {
-          title: updated.title,
-          instructions: updated.instructions,
-          questions: normalizeQuestions(updated.questions),
-          deadlineAt: toLocalInputValue(updated.deadlineAt),
-          isOpen: updated.isOpen
-        }
+      const norm = { ...updated, questions: normalizeQuestions(updated.questions) };
+      setForms((cur) => cur.map((r) => (r.id === formId ? norm : r)));
+      setDrafts((cur) => ({
+        ...cur,
+        [formId]: { title: norm.title, instructions: norm.instructions, questions: norm.questions, deadlineAt: toLocalInputValue(norm.deadlineAt), isOpen: norm.isOpen },
       }));
       setNotice('Form settings saved.');
     } catch (err) {
@@ -277,26 +297,19 @@ export default function AdminFormsPage() {
   }
 
   async function runSync(formId: string): Promise<void> {
-    if (!syncCast && !syncStudentCredits) {
-      setError('Choose at least one sync target.');
-      return;
-    }
-
-    setSyncing(true);
-    setError(null);
-    setNotice(null);
-    setSyncResult(null);
+    if (!syncCast && !syncStudentCredits) { setError('Choose at least one sync target.'); return; }
+    setSyncing(true); setError(null); setNotice(null); setSyncResult(null);
     try {
       const result = await adminFetch<SyncResult>(`/api/admin/forms/${formId}/sync`, {
         method: 'POST',
-        body: JSON.stringify({ syncCast, syncStudentCredits })
+        body: JSON.stringify({ syncCast, syncStudentCredits }),
       });
       setSyncResult(result);
       await loadBase();
       await loadSubmissions(formId);
       setNotice('Sync completed.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sync form submissions');
+      setError(err instanceof Error ? err.message : 'Failed to sync');
     } finally {
       setSyncing(false);
     }
@@ -312,414 +325,565 @@ export default function AdminFormsPage() {
     }
   }
 
-  const usedShowIds = useMemo(() => new Set(forms.map((form) => form.showId)), [forms]);
+  const usedShowIds = useMemo(() => new Set(forms.map((f) => f.showId)), [forms]);
+  const tabs = [
+    { key: 'settings', label: 'Settings' },
+    { key: 'questions', label: 'Questions' },
+    { key: 'sync', label: 'Sync' },
+    { key: 'responses', label: `Responses${submissions.length ? ` (${submissions.length})` : ''}` },
+  ] as const;
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-        <h1 className="text-2xl font-black text-stone-900">Admin Forms</h1>
-        <p className="mt-1 text-sm text-stone-600">Create and manage Program Bio forms linked to a specific show.</p>
+    <div className="min-h-screen bg-stone-50 p-6 font-sans">
+      <div className="mx-auto max-w-6xl space-y-6">
 
-        <div className="mt-4 grid gap-3 md:grid-cols-[1fr,220px,auto]">
-          <select
-            className="rounded-xl border border-stone-300 px-3 py-2 text-sm"
-            value={selectedShowId}
-            onChange={(event) => setSelectedShowId(event.target.value)}
-          >
-            {shows.length === 0 ? <option value="">No shows available</option> : null}
-            {shows.map((show) => (
-              <option key={show.id} value={show.id} disabled={usedShowIds.has(show.id)}>
-                {show.title}{usedShowIds.has(show.id) ? ' (form exists)' : ''}
-              </option>
-            ))}
-          </select>
-
-          <input
-            type="datetime-local"
-            value={createDeadlineAt}
-            onChange={(event) => setCreateDeadlineAt(event.target.value)}
-            className="rounded-xl border border-stone-300 px-3 py-2 text-sm"
-          />
-
+        {/* ── Page header ── */}
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-red-700">Admin</p>
+            <h1 className="mt-0.5 text-2xl font-bold text-stone-900">Program Bio Forms</h1>
+            <p className="mt-1 text-sm text-stone-500">Create and manage bio collection forms linked to a show.</p>
+          </div>
           <button
             type="button"
-            onClick={() => void createForm()}
-            disabled={creating || !selectedShowId || usedShowIds.has(selectedShowId)}
-            className="inline-flex items-center justify-center rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-600 transition hover:bg-stone-50 disabled:opacity-50"
+            onClick={() => void loadBase()}
+            disabled={loading}
           >
-            {creating ? 'Creating…' : 'Create Form'}
+            <RefreshCw className="h-3.5 w-3.5" />
+            {loading ? 'Refreshing…' : 'Refresh'}
           </button>
         </div>
-      </div>
 
-      {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-      {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</div> : null}
+        {/* ── Alerts ── */}
+        {error && (
+          <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <span className="mt-0.5 h-1.5 w-1.5 flex-none rounded-full bg-red-500" />
+            {error}
+          </div>
+        )}
+        {notice && (
+          <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            <span className="mt-0.5 h-1.5 w-1.5 flex-none rounded-full bg-emerald-500" />
+            {notice}
+          </div>
+        )}
 
-      <div className="grid gap-5 lg:grid-cols-[300px,1fr]">
-        <aside className="rounded-2xl border border-stone-200 bg-white p-3 shadow-sm">
-          <div className="mb-2 flex items-center justify-between px-1">
-            <h2 className="text-sm font-semibold text-stone-700">Forms</h2>
+        {/* ── Create form row ── */}
+        <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+          <p className={labelCls}>Create New Form</p>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex-1 min-w-[200px]">
+              <p className="mb-1.5 text-xs text-stone-500">Show</p>
+              <select className={inputCls} value={selectedShowId} onChange={(e) => setSelectedShowId(e.target.value)}>
+                {shows.length === 0 && <option value="">No shows available</option>}
+                {shows.map((s) => (
+                  <option key={s.id} value={s.id} disabled={usedShowIds.has(s.id)}>
+                    {s.title}{usedShowIds.has(s.id) ? ' — form exists' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="w-52">
+              <p className="mb-1.5 text-xs text-stone-500">Deadline (optional)</p>
+              <input type="datetime-local" value={createDeadlineAt} onChange={(e) => setCreateDeadlineAt(e.target.value)} className={inputCls} />
+            </div>
             <button
               type="button"
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-stone-600 hover:bg-stone-100"
-              onClick={() => void loadBase()}
-              disabled={loading}
+              onClick={() => void createForm()}
+              disabled={creating || !selectedShowId || usedShowIds.has(selectedShowId)}
+              className="inline-flex items-center gap-2 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <RefreshCw className="h-3.5 w-3.5" /> Refresh
+              <Plus className="h-4 w-4" />
+              {creating ? 'Creating…' : 'Create Form'}
             </button>
           </div>
+        </div>
 
-          {forms.length === 0 ? <div className="px-1 py-4 text-sm text-stone-500">No forms yet.</div> : null}
+        {/* ── Main layout ── */}
+        <div className="grid gap-5 lg:grid-cols-[260px,1fr]">
 
-          <div className="space-y-2">
+          {/* Sidebar */}
+          <aside className="space-y-2">
+            <p className={labelCls + ' px-1'}>All Forms</p>
+            {forms.length === 0 && !loading && (
+              <p className="rounded-xl border border-stone-200 bg-white px-4 py-6 text-center text-sm text-stone-400">No forms yet.</p>
+            )}
             {forms.map((form) => {
               const active = form.id === selectedFormId;
               return (
                 <button
-                  type="button"
                   key={form.id}
+                  type="button"
                   onClick={() => setSelectedFormId(form.id)}
-                  className={`w-full rounded-xl border px-3 py-2 text-left transition ${
-                    active ? 'border-red-300 bg-red-50' : 'border-stone-200 bg-white hover:border-stone-300'
+                  className={`group w-full rounded-xl border px-4 py-3 text-left transition ${
+                    active
+                      ? 'border-red-200 bg-red-50'
+                      : 'border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50'
                   }`}
                 >
-                  <div className="text-sm font-semibold text-stone-900">{form.show.title}</div>
-                  <div className="mt-0.5 text-xs text-stone-600">{form.responseCount} responses</div>
-                  <div className="mt-1 text-[11px] font-semibold text-stone-500">{form.status}</div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-stone-900 leading-tight">{form.show.title}</span>
+                    <ChevronRight className={`h-3.5 w-3.5 flex-none transition ${active ? 'text-red-500' : 'text-stone-300 group-hover:text-stone-400'}`} />
+                  </div>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                      form.status === 'OPEN' ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-500'
+                    }`}>
+                      {form.status}
+                    </span>
+                    <span className="text-xs text-stone-400">{form.responseCount} response{form.responseCount !== 1 ? 's' : ''}</span>
+                  </div>
                 </button>
               );
             })}
-          </div>
-        </aside>
+          </aside>
 
-        <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-          {!selectedForm || !selectedDraft ? (
-            <div className="text-sm text-stone-500">Select a form to view details.</div>
-          ) : (
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h2 className="text-xl font-black text-stone-900">{selectedForm.show.title}</h2>
-                  <div className="text-xs text-stone-500">Schema: {selectedForm.schemaVersion}</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void copyShareLink(selectedForm)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-stone-300 px-3 py-1.5 text-xs font-semibold text-stone-700"
-                  >
-                    <Copy className="h-3.5 w-3.5" /> Copy Link
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void saveForm(selectedForm.id)}
-                    disabled={saving}
-                    className="inline-flex items-center gap-1 rounded-lg bg-stone-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-                  >
-                    <Save className="h-3.5 w-3.5" /> {saving ? 'Saving…' : 'Save'}
-                  </button>
-                </div>
+          {/* Detail panel */}
+          <div className="rounded-2xl border border-stone-200 bg-white shadow-sm">
+            {!selectedForm || !selectedDraft ? (
+              <div className="flex h-48 items-center justify-center text-sm text-stone-400">
+                Select a form to view details.
               </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="space-y-1 text-sm">
-                  <span className="font-semibold text-stone-700">Title</span>
-                  <input
-                    value={selectedDraft.title}
-                    onChange={(event) =>
-                      setDrafts((current) => ({
-                        ...current,
-                        [selectedForm.id]: { ...current[selectedForm.id], title: event.target.value }
-                      }))
-                    }
-                    className="w-full rounded-xl border border-stone-300 px-3 py-2"
-                  />
-                </label>
-
-                <label className="space-y-1 text-sm">
-                  <span className="font-semibold text-stone-700">Deadline</span>
-                  <input
-                    type="datetime-local"
-                    value={selectedDraft.deadlineAt}
-                    onChange={(event) =>
-                      setDrafts((current) => ({
-                        ...current,
-                        [selectedForm.id]: { ...current[selectedForm.id], deadlineAt: event.target.value }
-                      }))
-                    }
-                    className="w-full rounded-xl border border-stone-300 px-3 py-2"
-                  />
-                </label>
-              </div>
-
-              <label className="flex items-center gap-2 text-sm text-stone-700">
-                <input
-                  type="checkbox"
-                  checked={selectedDraft.isOpen}
-                  onChange={(event) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [selectedForm.id]: { ...current[selectedForm.id], isOpen: event.target.checked }
-                    }))
-                  }
-                />
-                Form is open
-              </label>
-
-              <label className="space-y-1 text-sm">
-                <span className="font-semibold text-stone-700">Instructions</span>
-                <textarea
-                  rows={8}
-                  value={selectedDraft.instructions}
-                  onChange={(event) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [selectedForm.id]: { ...current[selectedForm.id], instructions: event.target.value }
-                    }))
-                  }
-                  className="w-full rounded-xl border border-stone-300 px-3 py-2"
-                />
-              </label>
-
-              <div className="space-y-3 rounded-xl border border-stone-200 bg-stone-50 p-3">
-                <h3 className="text-sm font-semibold text-stone-800">Form Questions</h3>
-                <p className="text-xs text-stone-600">Edit the labels students see on the public form.</p>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <label className="space-y-1 text-sm">
-                    <span className="font-semibold text-stone-700">Full Name</span>
-                    <input
-                      value={selectedDraft.questions.fullNameLabel}
-                      onChange={(event) =>
-                        setDrafts((current) => ({
-                          ...current,
-                          [selectedForm.id]: {
-                            ...current[selectedForm.id],
-                            questions: {
-                              ...current[selectedForm.id].questions,
-                              fullNameLabel: event.target.value
-                            }
-                          }
-                        }))
-                      }
-                      className="w-full rounded-xl border border-stone-300 px-3 py-2"
-                    />
-                  </label>
-                  <label className="space-y-1 text-sm">
-                    <span className="font-semibold text-stone-700">School Email</span>
-                    <input
-                      value={selectedDraft.questions.schoolEmailLabel}
-                      onChange={(event) =>
-                        setDrafts((current) => ({
-                          ...current,
-                          [selectedForm.id]: {
-                            ...current[selectedForm.id],
-                            questions: {
-                              ...current[selectedForm.id].questions,
-                              schoolEmailLabel: event.target.value
-                            }
-                          }
-                        }))
-                      }
-                      className="w-full rounded-xl border border-stone-300 px-3 py-2"
-                    />
-                  </label>
-                  <label className="space-y-1 text-sm">
-                    <span className="font-semibold text-stone-700">Grade</span>
-                    <input
-                      value={selectedDraft.questions.gradeLevelLabel}
-                      onChange={(event) =>
-                        setDrafts((current) => ({
-                          ...current,
-                          [selectedForm.id]: {
-                            ...current[selectedForm.id],
-                            questions: {
-                              ...current[selectedForm.id].questions,
-                              gradeLevelLabel: event.target.value
-                            }
-                          }
-                        }))
-                      }
-                      className="w-full rounded-xl border border-stone-300 px-3 py-2"
-                    />
-                  </label>
-                  <label className="space-y-1 text-sm">
-                    <span className="font-semibold text-stone-700">Role In Show</span>
-                    <input
-                      value={selectedDraft.questions.roleInShowLabel}
-                      onChange={(event) =>
-                        setDrafts((current) => ({
-                          ...current,
-                          [selectedForm.id]: {
-                            ...current[selectedForm.id],
-                            questions: {
-                              ...current[selectedForm.id].questions,
-                              roleInShowLabel: event.target.value
-                            }
-                          }
-                        }))
-                      }
-                      className="w-full rounded-xl border border-stone-300 px-3 py-2"
-                    />
-                  </label>
-                  <label className="space-y-1 text-sm">
-                    <span className="font-semibold text-stone-700">Bio</span>
-                    <input
-                      value={selectedDraft.questions.bioLabel}
-                      onChange={(event) =>
-                        setDrafts((current) => ({
-                          ...current,
-                          [selectedForm.id]: {
-                            ...current[selectedForm.id],
-                            questions: {
-                              ...current[selectedForm.id].questions,
-                              bioLabel: event.target.value
-                            }
-                          }
-                        }))
-                      }
-                      className="w-full rounded-xl border border-stone-300 px-3 py-2"
-                    />
-                  </label>
-                  <label className="space-y-1 text-sm">
-                    <span className="font-semibold text-stone-700">Headshot</span>
-                    <input
-                      value={selectedDraft.questions.headshotLabel}
-                      onChange={(event) =>
-                        setDrafts((current) => ({
-                          ...current,
-                          [selectedForm.id]: {
-                            ...current[selectedForm.id],
-                            questions: {
-                              ...current[selectedForm.id].questions,
-                              headshotLabel: event.target.value
-                            }
-                          }
-                        }))
-                      }
-                      className="w-full rounded-xl border border-stone-300 px-3 py-2"
-                    />
-                  </label>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
-                <div className="text-sm font-semibold text-stone-800">Sync to Show</div>
-                <div className="mt-2 space-y-2 text-sm text-stone-700">
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" checked={syncCast} onChange={(event) => setSyncCast(event.target.checked)} />
-                    sync cast
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={syncStudentCredits}
-                      onChange={(event) => setSyncStudentCredits(event.target.checked)}
-                    />
-                    sync cast promo codes (Student Credits)
-                  </label>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void runSync(selectedForm.id)}
-                  disabled={syncing || (!syncCast && !syncStudentCredits)}
-                  className="mt-3 inline-flex items-center gap-2 rounded-lg bg-red-700 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-                >
-                  <Users className="h-3.5 w-3.5" /> {syncing ? 'Syncing…' : 'Sync to Show'}
-                </button>
-
-                {syncResult ? (
-                  <div className="mt-3 rounded-lg border border-stone-200 bg-white p-2 text-xs text-stone-700">
-                    <div>Processed submissions: {syncResult.submissionCount}</div>
-                    {syncResult.syncCast ? (
-                      <div>
-                        Cast: +{syncResult.syncCast.created} created, {syncResult.syncCast.updated} updated, {syncResult.syncCast.skipped} skipped
-                      </div>
-                    ) : null}
-                    {syncResult.syncStudentCredits ? (
-                      <div>
-                        Student Credits: +{syncResult.syncStudentCredits.created} created, {syncResult.syncStudentCredits.updated} updated, {syncResult.syncStudentCredits.skipped} skipped
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-
+            ) : (
               <div>
-                <h3 className="text-sm font-semibold text-stone-800">Responses</h3>
-                {loadingSubmissions ? <div className="mt-2 text-sm text-stone-500">Loading responses…</div> : null}
-                {!loadingSubmissions && submissions.length === 0 ? (
-                  <div className="mt-2 text-sm text-stone-500">No responses yet.</div>
-                ) : null}
-
-                {!loadingSubmissions && submissions.length > 0 ? (
-                  <div className="mt-2 overflow-x-auto rounded-xl border border-stone-200">
-                    <table className="min-w-full text-left text-sm">
-                      <thead className="bg-stone-50 text-xs uppercase tracking-wide text-stone-500">
-                        <tr>
-                          <th className="px-3 py-2">Name</th>
-                          <th className="px-3 py-2">Email</th>
-                          <th className="px-3 py-2">Grade</th>
-                          <th className="px-3 py-2">Updated</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {submissions.map((submission) => (
-                          <tr
-                            key={submission.id}
-                            className="cursor-pointer border-t border-stone-100 hover:bg-stone-50"
-                            onClick={() => setSelectedSubmission(submission)}
-                          >
-                            <td className="px-3 py-2 font-medium text-stone-900">{submission.fullName}</td>
-                            <td className="px-3 py-2 text-stone-700">{submission.schoolEmail}</td>
-                            <td className="px-3 py-2 text-stone-700">{submission.gradeLevel}</td>
-                            <td className="px-3 py-2 text-stone-600">{new Date(submission.updatedAt).toLocaleString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                {/* Panel header */}
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-stone-100 px-6 pt-5 pb-4">
+                  <div>
+                    <h2 className="text-lg font-bold text-stone-900">{selectedForm.show.title}</h2>
+                    <p className="mt-0.5 text-xs text-stone-400">Schema v{selectedForm.schemaVersion} · {selectedForm.responseCount} response{selectedForm.responseCount !== 1 ? 's' : ''}</p>
                   </div>
-                ) : null}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void copyShareLink(selectedForm)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-600 transition hover:bg-stone-50"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      Copy Link
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void saveForm(selectedForm.id)}
+                      disabled={saving}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-stone-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-stone-700 disabled:opacity-50"
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      {saving ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tabs */}
+                <div className="flex gap-0 border-b border-stone-100 px-6">
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setActiveTab(tab.key)}
+                      className={`py-3 px-1 mr-6 text-sm font-semibold border-b-2 transition ${
+                        activeTab === tab.key
+                          ? 'border-red-700 text-red-700'
+                          : 'border-transparent text-stone-400 hover:text-stone-700'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="p-6">
+
+                  {/* ── SETTINGS TAB ── */}
+                  {activeTab === 'settings' && (
+                    <div className="space-y-5">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className={labelCls}>Title</label>
+                          <input
+                            value={selectedDraft.title}
+                            onChange={(e) => setDrafts((cur) => ({ ...cur, [selectedForm.id]: { ...cur[selectedForm.id], title: e.target.value } }))}
+                            className={inputCls}
+                          />
+                        </div>
+                        <div>
+                          <label className={labelCls}>Submission Deadline</label>
+                          <input
+                            type="datetime-local"
+                            value={selectedDraft.deadlineAt}
+                            onChange={(e) => setDrafts((cur) => ({ ...cur, [selectedForm.id]: { ...cur[selectedForm.id], deadlineAt: e.target.value } }))}
+                            className={inputCls}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3">
+                        <input
+                          id="isOpen"
+                          type="checkbox"
+                          checked={selectedDraft.isOpen}
+                          onChange={(e) => setDrafts((cur) => ({ ...cur, [selectedForm.id]: { ...cur[selectedForm.id], isOpen: e.target.checked } }))}
+                          className="h-4 w-4 rounded border-stone-300 accent-red-700"
+                        />
+                        <label htmlFor="isOpen" className="text-sm font-medium text-stone-700 cursor-pointer">
+                          Form is open — students can submit responses
+                        </label>
+                      </div>
+
+                      <div>
+                        <label className={labelCls}>Instructions</label>
+                        <textarea
+                          rows={6}
+                          value={selectedDraft.instructions}
+                          onChange={(e) => setDrafts((cur) => ({ ...cur, [selectedForm.id]: { ...cur[selectedForm.id], instructions: e.target.value } }))}
+                          className={inputCls + ' resize-none'}
+                          placeholder="Instructions shown to students at the top of the form…"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── QUESTIONS TAB ── */}
+                  {activeTab === 'questions' && (
+                    <div className="space-y-6">
+                      <div>
+                        <p className="text-sm font-semibold text-stone-700 mb-1">Base Fields</p>
+                        <p className="text-xs text-stone-400 mb-4">These fields are always included. You can rename their labels.</p>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                          {(
+                            [
+                              ['fullNameLabel', 'Full Name'],
+                              ['schoolEmailLabel', 'School Email'],
+                              ['gradeLevelLabel', 'Grade Level'],
+                              ['roleInShowLabel', 'Role in Show'],
+                              ['bioLabel', 'Bio'],
+                              ['headshotLabel', 'Headshot'],
+                            ] as [keyof ProgramBioQuestions, string][]
+                          ).map(([field, display]) => (
+                            <div key={field}>
+                              <label className={labelCls}>{display}</label>
+                              <input
+                                value={selectedDraft.questions[field] as string}
+                                onChange={(e) =>
+                                  updateSelectedDraftQuestions((q) => ({ ...q, [field]: e.target.value }))
+                                }
+                                className={inputCls}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="border-t border-stone-100 pt-5">
+                        <div className="mb-4 flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-semibold text-stone-700">Custom Questions</p>
+                            <p className="text-xs text-stone-400">Additional fields shown after the base fields.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={addCustomQuestion}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition hover:bg-stone-50"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Add Question
+                          </button>
+                        </div>
+
+                        {selectedDraft.questions.customQuestions.length === 0 ? (
+                          <div className="rounded-xl border border-dashed border-stone-200 px-4 py-8 text-center text-sm text-stone-400">
+                            No custom questions yet. Click Add Question to create one.
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {selectedDraft.questions.customQuestions.map((q, i) => (
+                              <div key={q.id} className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+                                <div className="mb-3 flex items-center justify-between">
+                                  <span className="text-xs font-bold uppercase tracking-widest text-stone-400">Question {i + 1}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      updateSelectedDraftQuestions((questions) => ({
+                                        ...questions,
+                                        customQuestions: questions.customQuestions.filter((item) => item.id !== q.id),
+                                      }))
+                                    }
+                                    className="rounded-lg border border-red-100 bg-white px-2.5 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                                <div className="grid gap-3 sm:grid-cols-[1fr,160px,auto]">
+                                  <div>
+                                    <label className={labelCls}>Label</label>
+                                    <input
+                                      value={q.label}
+                                      onChange={(e) =>
+                                        updateSelectedDraftQuestions((questions) => ({
+                                          ...questions,
+                                          customQuestions: questions.customQuestions.map((item) =>
+                                            item.id === q.id ? { ...item, label: e.target.value } : item
+                                          ),
+                                        }))
+                                      }
+                                      className={inputCls}
+                                      placeholder="Question text…"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className={labelCls}>Type</label>
+                                    <select
+                                      value={q.type}
+                                      onChange={(e) => {
+                                        const nextType = e.target.value as ProgramBioCustomQuestionType;
+                                        updateSelectedDraftQuestions((questions) => ({
+                                          ...questions,
+                                          customQuestions: questions.customQuestions.map((item) =>
+                                            item.id === q.id
+                                              ? { ...item, type: nextType, options: nextType === 'multiple_choice' ? item.options : [] }
+                                              : item
+                                          ),
+                                        }));
+                                      }}
+                                      className={inputCls}
+                                    >
+                                      <option value="short_text">Short text</option>
+                                      <option value="long_text">Long text</option>
+                                      <option value="multiple_choice">Multiple choice</option>
+                                    </select>
+                                  </div>
+                                  <div className="flex items-end pb-2">
+                                    <label className="flex items-center gap-2 text-sm text-stone-600 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={q.required}
+                                        onChange={(e) =>
+                                          updateSelectedDraftQuestions((questions) => ({
+                                            ...questions,
+                                            customQuestions: questions.customQuestions.map((item) =>
+                                              item.id === q.id ? { ...item, required: e.target.checked } : item
+                                            ),
+                                          }))
+                                        }
+                                        className="accent-red-700"
+                                      />
+                                      Required
+                                    </label>
+                                  </div>
+                                </div>
+                                {q.type === 'multiple_choice' && (
+                                  <div className="mt-3">
+                                    <label className={labelCls}>Options (one per line, min. 2)</label>
+                                    <textarea
+                                      rows={4}
+                                      value={q.options.join('\n')}
+                                      onChange={(e) =>
+                                        updateSelectedDraftQuestions((questions) => ({
+                                          ...questions,
+                                          customQuestions: questions.customQuestions.map((item) =>
+                                            item.id === q.id ? { ...item, options: normalizeOptionsText(e.target.value) } : item
+                                          ),
+                                        }))
+                                      }
+                                      className={inputCls + ' resize-none'}
+                                      placeholder="Option A&#10;Option B&#10;Option C"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── SYNC TAB ── */}
+                  {activeTab === 'sync' && (
+                    <div className="space-y-5 max-w-md">
+                      <div>
+                        <p className="text-sm font-semibold text-stone-700 mb-1">Sync Submissions to Show</p>
+                        <p className="text-xs leading-relaxed text-stone-400">
+                          Pull submitted bios into the show's cast list and optionally generate student promo codes.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        {[
+                          { checked: syncCast, onChange: setSyncCast, label: 'Sync cast', sub: 'Creates or updates cast members from submissions' },
+                          { checked: syncStudentCredits, onChange: setSyncStudentCredits, label: 'Sync student credits', sub: 'Generates promo codes for cast members' },
+                        ].map(({ checked, onChange, label, sub }) => (
+                          <label key={label} className="flex cursor-pointer items-start gap-3 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 transition hover:border-stone-300">
+                            <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 accent-red-700" />
+                            <div>
+                              <p className="text-sm font-semibold text-stone-800">{label}</p>
+                              <p className="text-xs text-stone-400">{sub}</p>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => void runSync(selectedForm.id)}
+                        disabled={syncing || (!syncCast && !syncStudentCredits)}
+                        className="inline-flex items-center gap-2 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-800 disabled:opacity-50"
+                      >
+                        <Users className="h-4 w-4" />
+                        {syncing ? 'Syncing…' : 'Run Sync'}
+                      </button>
+
+                      {syncResult && (
+                        <div className="rounded-xl border border-stone-200 bg-stone-50 p-4 text-sm space-y-1">
+                          <p className="font-semibold text-stone-800 mb-2">Sync Results</p>
+                          <p className="text-stone-600">Submissions processed: <span className="font-semibold text-stone-900">{syncResult.submissionCount}</span></p>
+                          {syncResult.syncCast && (
+                            <p className="text-stone-600">
+                              Cast: <span className="text-emerald-700 font-medium">+{syncResult.syncCast.created} created</span>, {syncResult.syncCast.updated} updated, {syncResult.syncCast.skipped} skipped
+                            </p>
+                          )}
+                          {syncResult.syncStudentCredits && (
+                            <p className="text-stone-600">
+                              Credits: <span className="text-emerald-700 font-medium">+{syncResult.syncStudentCredits.created} created</span>, {syncResult.syncStudentCredits.updated} updated, {syncResult.syncStudentCredits.skipped} skipped
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── RESPONSES TAB ── */}
+                  {activeTab === 'responses' && (
+                    <div>
+                      {loadingSubmissions && (
+                        <div className="flex items-center justify-center py-10">
+                          <div className="h-7 w-7 animate-spin rounded-full border-2 border-stone-200 border-t-red-700" />
+                        </div>
+                      )}
+                      {!loadingSubmissions && submissions.length === 0 && (
+                        <div className="rounded-xl border border-dashed border-stone-200 px-4 py-10 text-center text-sm text-stone-400">
+                          No responses yet.
+                        </div>
+                      )}
+                      {!loadingSubmissions && submissions.length > 0 && (
+                        <div className="overflow-hidden rounded-xl border border-stone-200">
+                          <table className="min-w-full text-sm">
+                            <thead>
+                              <tr className="bg-stone-50 text-left">
+                                <th className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-stone-500">Name</th>
+                                <th className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-stone-500">Email</th>
+                                <th className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-stone-500">Grade</th>
+                                <th className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-stone-500">Role</th>
+                                <th className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-stone-500">Updated</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-stone-100">
+                              {submissions.map((sub) => (
+                                <tr
+                                  key={sub.id}
+                                  className="cursor-pointer transition hover:bg-stone-50"
+                                  onClick={() => setSelectedSubmission(sub)}
+                                >
+                                  <td className="px-4 py-3 font-medium text-stone-900">{sub.fullName}</td>
+                                  <td className="px-4 py-3 text-stone-500">{sub.schoolEmail}</td>
+                                  <td className="px-4 py-3 text-stone-500">{sub.gradeLevel}</td>
+                                  <td className="px-4 py-3 text-stone-500">{sub.roleInShow}</td>
+                                  <td className="px-4 py-3 text-stone-400">{new Date(sub.updatedAt).toLocaleDateString()}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                </div>
               </div>
-            </div>
-          )}
-        </section>
+            )}
+          </div>
+        </div>
       </div>
 
-      {selectedSubmission ? (
-        <div className="fixed inset-0 z-40 flex justify-end bg-black/30" onClick={() => setSelectedSubmission(null)}>
+      {/* ── Submission detail drawer ── */}
+      {selectedSubmission && (
+        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setSelectedSubmission(null)}>
+          <div className="absolute inset-0 bg-black/25 backdrop-blur-sm" />
           <div
-            className="h-full w-full max-w-xl overflow-y-auto bg-white p-5 shadow-xl"
-            onClick={(event) => event.stopPropagation()}
+            className="relative z-10 h-full w-full max-w-md overflow-y-auto bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-lg font-black text-stone-900">Response Detail</h3>
-              <button type="button" onClick={() => setSelectedSubmission(null)} className="rounded-md p-1 text-stone-500 hover:bg-stone-100">
+            {/* Drawer header */}
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-stone-100 bg-white px-5 py-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-stone-400">Response</p>
+                <p className="mt-0.5 text-base font-bold text-stone-900">{selectedSubmission.fullName}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedSubmission(null)}
+                className="rounded-lg p-1.5 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+              >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="space-y-2 text-sm text-stone-700">
-              <div><strong>Name:</strong> {selectedSubmission.fullName}</div>
-              <div><strong>Email:</strong> {selectedSubmission.schoolEmail}</div>
-              <div><strong>Grade:</strong> {selectedSubmission.gradeLevel}</div>
-              <div><strong>Role:</strong> {selectedSubmission.roleInShow}</div>
-              <div><strong>Updated:</strong> {new Date(selectedSubmission.updatedAt).toLocaleString()}</div>
-            </div>
+            <div className="p-5 space-y-5">
+              {/* Quick facts */}
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  ['Email', selectedSubmission.schoolEmail],
+                  ['Grade', String(selectedSubmission.gradeLevel)],
+                  ['Role', selectedSubmission.roleInShow],
+                  ['Submitted', new Date(selectedSubmission.submittedAt).toLocaleDateString()],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-xl bg-stone-50 px-3 py-2.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-400">{label}</p>
+                    <p className="mt-0.5 text-sm font-medium text-stone-800 break-words">{value}</p>
+                  </div>
+                ))}
+              </div>
 
-            <div className="mt-4">
-              <div className="mb-1 text-sm font-semibold text-stone-800">Bio</div>
-              <p className="whitespace-pre-wrap rounded-lg border border-stone-200 bg-stone-50 p-3 text-sm text-stone-700">
-                {selectedSubmission.bio}
-              </p>
-            </div>
+              {/* Bio */}
+              <div>
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-stone-400">Bio</p>
+                <p className="whitespace-pre-wrap rounded-xl border border-stone-100 bg-stone-50 px-4 py-3 text-sm leading-relaxed text-stone-700">
+                  {selectedSubmission.bio || '—'}
+                </p>
+              </div>
 
-            <div className="mt-4">
-              <div className="mb-1 text-sm font-semibold text-stone-800">Headshot</div>
-              <img src={selectedSubmission.headshotUrl} alt={selectedSubmission.fullName} className="w-full rounded-xl border border-stone-200 object-cover" />
+              {/* Custom responses */}
+              {selectedSubmission.extraResponses && Object.keys(selectedSubmission.extraResponses).length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-400">Custom Responses</p>
+                  <div className="space-y-2">
+                    {Object.entries(selectedSubmission.extraResponses).map(([qId, value]) => (
+                      <div key={qId} className="rounded-xl border border-stone-100 bg-stone-50 px-4 py-3">
+                        <p className="text-xs font-semibold text-stone-600">
+                          {selectedCustomQuestionsById.get(qId)?.label ?? 'Custom question'}
+                        </p>
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-stone-700">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Headshot */}
+              {selectedSubmission.headshotUrl && (
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-stone-400">Headshot</p>
+                  <img
+                    src={selectedSubmission.headshotUrl}
+                    alt={selectedSubmission.fullName}
+                    className="w-full rounded-xl border border-stone-100 object-cover"
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

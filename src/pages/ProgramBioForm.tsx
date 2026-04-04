@@ -17,7 +17,9 @@ type PublicProgramBioForm = {
     title: string;
   };
   requiredFields: string[];
-  questions?: Partial<ProgramBioQuestions>;
+  questions?: Partial<ProgramBioQuestions> & {
+    customQuestions?: ProgramBioCustomQuestion[];
+  };
 };
 
 type ProgramBioQuestions = {
@@ -27,6 +29,17 @@ type ProgramBioQuestions = {
   roleInShowLabel: string;
   bioLabel: string;
   headshotLabel: string;
+  customQuestions: ProgramBioCustomQuestion[];
+};
+
+type ProgramBioCustomQuestionType = 'short_text' | 'long_text' | 'multiple_choice';
+
+type ProgramBioCustomQuestion = {
+  id: string;
+  label: string;
+  type: ProgramBioCustomQuestionType;
+  required: boolean;
+  options: string[];
 };
 
 type SubmissionResult = {
@@ -42,6 +55,7 @@ type FormState = {
   gradeLevel: string;
   roleInShow: string;
   bio: string;
+  customResponses: Record<string, string>;
 };
 
 const MAX_WORDS = 120;
@@ -52,7 +66,8 @@ const DEFAULT_PROGRAM_BIO_QUESTIONS: ProgramBioQuestions = {
   gradeLevelLabel: 'Grade',
   roleInShowLabel: 'Role in show',
   bioLabel: 'Bio',
-  headshotLabel: 'Headshot upload'
+  headshotLabel: 'Headshot upload',
+  customQuestions: []
 };
 
 function countWords(value: string): number {
@@ -60,6 +75,28 @@ function countWords(value: string): number {
     .trim()
     .split(/\s+/)
     .filter(Boolean).length;
+}
+
+function normalizeCustomQuestions(value: ProgramBioCustomQuestion[] | undefined): ProgramBioCustomQuestion[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((question) => {
+      const type: ProgramBioCustomQuestionType =
+        question?.type === 'long_text' || question?.type === 'multiple_choice'
+          ? question.type
+          : 'short_text';
+      return {
+        id: (question?.id || '').trim(),
+        label: (question?.label || '').trim(),
+        type,
+        required: Boolean(question?.required),
+        options: type === 'multiple_choice'
+          ? Array.from(new Set((Array.isArray(question?.options) ? question.options : []).map((option) => option.trim()).filter(Boolean)))
+          : []
+      };
+    })
+    .filter((question) => question.id && question.label && (question.type !== 'multiple_choice' || question.options.length >= 2));
 }
 
 async function imageFileToDataUrl(file: File, maxWidth: number, maxHeight: number): Promise<string> {
@@ -109,7 +146,8 @@ export default function ProgramBioFormPage() {
     schoolEmail: '',
     gradeLevel: '',
     roleInShow: '',
-    bio: ''
+    bio: '',
+    customResponses: {}
   });
   const [headshotFile, setHeadshotFile] = useState<File | null>(null);
   const [result, setResult] = useState<SubmissionResult | null>(null);
@@ -128,6 +166,17 @@ export default function ProgramBioFormPage() {
   }, [slug]);
 
   const bioWordCount = useMemo(() => countWords(formState.bio), [formState.bio]);
+
+  useEffect(() => {
+    if (!formMeta) return;
+    const customQuestions = normalizeCustomQuestions(formMeta.questions?.customQuestions);
+    setFormState((current) => ({
+      ...current,
+      customResponses: Object.fromEntries(
+        customQuestions.map((question) => [question.id, current.customResponses[question.id] || ''])
+      )
+    }));
+  }, [formMeta]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -155,6 +204,11 @@ export default function ProgramBioFormPage() {
           gradeLevel: Number(formState.gradeLevel),
           roleInShow: formState.roleInShow.trim(),
           bio: formState.bio.trim(),
+          customResponses: Object.fromEntries(
+            Object.entries(formState.customResponses)
+              .map(([key, value]) => [key, value.trim()])
+              .filter(([, value]) => value)
+          ),
           headshotDataUrl
         })
       });
@@ -197,7 +251,8 @@ export default function ProgramBioFormPage() {
 
   const questionLabels: ProgramBioQuestions = {
     ...DEFAULT_PROGRAM_BIO_QUESTIONS,
-    ...(formMeta.questions || {})
+    ...(formMeta.questions || {}),
+    customQuestions: normalizeCustomQuestions(formMeta.questions?.customQuestions)
   };
 
   return (
@@ -275,6 +330,64 @@ export default function ProgramBioFormPage() {
               {bioWordCount}/{MAX_WORDS} words
             </span>
           </label>
+
+          {questionLabels.customQuestions.map((question) => (
+            <label key={question.id} className="block text-sm">
+              <span className="font-semibold text-stone-800">{question.label}</span>
+              {question.type === 'long_text' ? (
+                <textarea
+                  required={question.required}
+                  rows={4}
+                  value={formState.customResponses[question.id] || ''}
+                  onChange={(event) =>
+                    setFormState((current) => ({
+                      ...current,
+                      customResponses: {
+                        ...current.customResponses,
+                        [question.id]: event.target.value
+                      }
+                    }))
+                  }
+                  className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+                />
+              ) : question.type === 'multiple_choice' ? (
+                <select
+                  required={question.required}
+                  value={formState.customResponses[question.id] || ''}
+                  onChange={(event) =>
+                    setFormState((current) => ({
+                      ...current,
+                      customResponses: {
+                        ...current.customResponses,
+                        [question.id]: event.target.value
+                      }
+                    }))
+                  }
+                  className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+                >
+                  <option value="">Select an option</option>
+                  {question.options.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  required={question.required}
+                  value={formState.customResponses[question.id] || ''}
+                  onChange={(event) =>
+                    setFormState((current) => ({
+                      ...current,
+                      customResponses: {
+                        ...current.customResponses,
+                        [question.id]: event.target.value
+                      }
+                    }))
+                  }
+                  className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+                />
+              )}
+            </label>
+          ))}
 
           <label className="block text-sm">
             <span className="font-semibold text-stone-800">{questionLabels.headshotLabel}</span>

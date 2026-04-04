@@ -251,6 +251,7 @@ model ProgramBioSubmission {
   bio         String
   headshotUrl String
   headshotKey String?
+  extraResponses Json?
   submittedAt DateTime       @default(now())
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
