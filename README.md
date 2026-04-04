@@ -120,6 +120,11 @@ Database restore:
 npm run restore:db -- --file backups/postgres/<file>.dump.enc --yes-i-understand
 ```
 
+Hard reset all system data except users:
+```bash
+RESET_CONFIRM=WIPE_NON_USER_DATA npm --prefix backend run reset:system:keep-users -- --yes
+```
+
 Safer restore into a separate database first:
 ```bash
 npm run restore:db -- \
