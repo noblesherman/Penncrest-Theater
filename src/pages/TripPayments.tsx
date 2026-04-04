@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { EmbeddedCheckout, EmbeddedCheckoutProvider } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
-import { ArrowRight, Calendar, CheckCircle2, Clock3, CreditCard, FileText, PieChart, TrendingUp, Wallet } from 'lucide-react';
+import { ArrowRight, FileText } from 'lucide-react';
 import { clearTripToken, getTripToken, setTripToken, tripFetch } from '../lib/tripAuth';
 import { apiFetch } from '../lib/api';
 
@@ -128,13 +128,11 @@ function formatMoney(cents: number): string {
 }
 
 function formatDate(value: string): string {
-  return new Date(value).toLocaleString();
+  return new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function progressPercent(paidAmountCents: number, targetAmountCents: number): number {
-  if (targetAmountCents <= 0) {
-    return 100;
-  }
+  if (targetAmountCents <= 0) return 100;
   return Math.max(0, Math.min(100, Math.round((paidAmountCents / targetAmountCents) * 100)));
 }
 
@@ -144,104 +142,86 @@ function dueCountdown(dueAt: string, isOverdue: boolean): string {
     const lateBy = Math.max(1, Math.abs(days));
     return `${lateBy} day${lateBy === 1 ? '' : 's'} overdue`;
   }
-  if (days < 0) {
-    return 'Past due date';
-  }
-  if (days === 0) {
-    return 'Due today';
-  }
+  if (days < 0) return 'Past due date';
+  if (days === 0) return 'Due today';
   return `${days} day${days === 1 ? '' : 's'} left`;
 }
 
 function statusMeta(status: string): { label: string; className: string } {
-  if (status === 'SUCCEEDED') {
-    return {
-      label: 'Completed',
-      className: 'border-emerald-200 bg-emerald-50 text-emerald-700'
-    };
-  }
-  if (status === 'PENDING') {
-    return {
-      label: 'Processing',
-      className: 'border-amber-200 bg-amber-50 text-amber-700'
-    };
-  }
-  if (status === 'FAILED') {
-    return {
-      label: 'Failed',
-      className: 'border-rose-200 bg-rose-50 text-rose-700'
-    };
-  }
-  if (status === 'EXPIRED') {
-    return {
-      label: 'Expired',
-      className: 'border-stone-300 bg-stone-100 text-stone-700'
-    };
-  }
-  return {
-    label: status,
-    className: 'border-stone-300 bg-stone-100 text-stone-700'
-  };
+  if (status === 'SUCCEEDED') return { label: 'Completed', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+  if (status === 'PENDING') return { label: 'Processing', className: 'bg-amber-50 text-amber-700 border-amber-200' };
+  if (status === 'FAILED') return { label: 'Failed', className: 'bg-rose-50 text-rose-700 border-rose-200' };
+  if (status === 'EXPIRED') return { label: 'Expired', className: 'bg-stone-100 text-stone-600 border-stone-300' };
+  return { label: status, className: 'bg-stone-100 text-stone-600 border-stone-300' };
 }
 
-type ProgressDonutProps = {
+// SVG donut — no Chart.js dependency, keeps the bundle light
+function ProgressDonut({
+  paidAmountCents,
+  targetAmountCents,
+  size = 110,
+  stroke = 9,
+}: {
   paidAmountCents: number;
   targetAmountCents: number;
   size?: number;
   stroke?: number;
-};
-
-function ProgressDonut({ paidAmountCents, targetAmountCents, size = 132, stroke = 12 }: ProgressDonutProps) {
+}) {
   const percent = progressPercent(paidAmountCents, targetAmountCents);
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (percent / 100) * circumference;
 
   return (
-    <div className="relative" style={{ width: size, height: size }}>
+    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={radius} strokeWidth={stroke} className="fill-none stroke-stone-200" />
+        <circle cx={size / 2} cy={size / 2} r={radius} strokeWidth={stroke} className="fill-none stroke-[#e8d5d3]" />
         <circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
           strokeWidth={stroke}
           strokeLinecap="round"
-          className="fill-none stroke-orange-500 transition-all duration-500"
-          style={{
-            strokeDasharray: circumference,
-            strokeDashoffset: offset
-          }}
+          style={{ fill: 'none', stroke: '#C0392B', strokeDasharray: circumference, strokeDashoffset: offset, transition: 'stroke-dashoffset 0.6s ease' }}
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-        <div className="text-2xl font-semibold text-stone-900">{percent}%</div>
-        <div className="text-xs text-stone-500">funded</div>
+        <span className="text-xl font-semibold text-[#1a1611]" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>{percent}%</span>
+        <span className="text-[10px] text-[#7a7268]">funded</span>
       </div>
     </div>
   );
 }
 
-type EmbeddedCheckoutCardProps = {
-  clientSecret: string;
-  publishableKey: string;
-  onComplete: () => void;
-};
-
-function EmbeddedCheckoutCard(props: EmbeddedCheckoutCardProps) {
-  const stripePromise = useMemo(() => loadStripe(props.publishableKey), [props.publishableKey]);
+function EmbeddedCheckoutCard({ clientSecret, publishableKey, onComplete }: { clientSecret: string; publishableKey: string; onComplete: () => void }) {
+  const stripePromise = useMemo(() => loadStripe(publishableKey), [publishableKey]);
   return (
-    <div className="rounded-3xl border border-orange-200 bg-gradient-to-br from-orange-50 to-white p-4 shadow-sm">
-      <EmbeddedCheckoutProvider
-        stripe={stripePromise}
-        options={{
-          clientSecret: props.clientSecret,
-          onComplete: props.onComplete
-        }}
-      >
+    <div className="rounded-2xl border border-[#e8d5d3] bg-[#FDF5F4] p-4">
+      <EmbeddedCheckoutProvider stripe={stripePromise} options={{ clientSecret, onComplete }}>
         <EmbeddedCheckout />
       </EmbeddedCheckoutProvider>
     </div>
+  );
+}
+
+// Shared card wrapper
+function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`rounded-2xl border border-[rgba(26,22,17,0.1)] bg-white p-5 ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+function Eyebrow({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.16em] text-[#C0392B]">{children}</p>
+  );
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="text-xl font-semibold text-[#1a1611]" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>{children}</h2>
   );
 }
 
@@ -276,18 +256,16 @@ export default function TripPaymentsPage() {
       const me = await tripFetch<TripAuthMe>('/api/trip-auth/me');
       setSession(me);
       setAuthStage('authenticated');
-
       const claims = await tripFetch<ClaimOptionsResponse>('/api/trips/portal/claim-options');
       setClaimOptions(claims);
-
       if (claims.account.hasClaimedStudent) {
         const dash = await tripFetch<DashboardResponse>('/api/trips/portal/dashboard');
         setDashboard(dash);
         setAmountDraftByEnrollmentId(
-          Object.fromEntries(dash.enrollments.map((enrollment) => [enrollment.enrollmentId, (enrollment.remainingAmountCents / 100).toFixed(2)]))
+          Object.fromEntries(dash.enrollments.map((e) => [e.enrollmentId, (e.remainingAmountCents / 100).toFixed(2)]))
         );
         setActiveEnrollmentId((prev) => {
-          if (!prev || !dash.enrollments.some((enrollment) => enrollment.enrollmentId === prev)) {
+          if (!prev || !dash.enrollments.some((e) => e.enrollmentId === prev)) {
             return dash.enrollments[0]?.enrollmentId || null;
           }
           return prev;
@@ -310,9 +288,7 @@ export default function TripPaymentsPage() {
   }
 
   useEffect(() => {
-    if (!getTripToken()) {
-      return;
-    }
+    if (!getTripToken()) return;
     void loadAuthenticatedState();
   }, []);
 
@@ -321,17 +297,13 @@ export default function TripPaymentsPage() {
     setError(null);
     setNotice(null);
     setLoading(true);
-
     try {
       await apiFetch<{ success: true; expiresInMinutes: number }>('/api/trip-auth/request-code', {
         method: 'POST',
-        body: JSON.stringify({
-          email: requestCodeEmail.trim(),
-          name: requestCodeName.trim() || undefined
-        })
+        body: JSON.stringify({ email: requestCodeEmail.trim(), name: requestCodeName.trim() || undefined }),
       });
       setAuthStage('verify');
-      setNotice('Code sent. Check your email and enter the code below.');
+      setNotice('Code sent. Check your email and enter it below.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to request code');
     } finally {
@@ -344,14 +316,10 @@ export default function TripPaymentsPage() {
     setError(null);
     setNotice(null);
     setLoading(true);
-
     try {
       const verified = await apiFetch<VerifyCodeResponse>('/api/trip-auth/verify-code', {
         method: 'POST',
-        body: JSON.stringify({
-          email: requestCodeEmail.trim(),
-          code: verificationCode.trim()
-        })
+        body: JSON.stringify({ email: requestCodeEmail.trim(), code: verificationCode.trim() }),
       });
       setTripToken(verified.token);
       setVerificationCode('');
@@ -367,12 +335,8 @@ export default function TripPaymentsPage() {
     setError(null);
     setNotice(null);
     setLoading(true);
-
     try {
-      await tripFetch('/api/trips/portal/claim', {
-        method: 'POST',
-        body: JSON.stringify({ studentId })
-      });
+      await tripFetch('/api/trips/portal/claim', { method: 'POST', body: JSON.stringify({ studentId }) });
       await loadAuthenticatedState();
       setNotice('Student claimed successfully.');
     } catch (err) {
@@ -385,38 +349,22 @@ export default function TripPaymentsPage() {
   async function startPaymentSession(enrollment: DashboardResponse['enrollments'][number]) {
     setError(null);
     setNotice(null);
-
     const amountRaw = amountDraftByEnrollmentId[enrollment.enrollmentId] || '';
     const amountCents = Math.round(Number.parseFloat(amountRaw || '0') * 100);
     if (!Number.isFinite(amountCents) || amountCents <= 0) {
       setError('Enter a valid amount.');
       return;
     }
-
     try {
       const sessionResponse = await tripFetch<StartPaymentSessionResponse>('/api/trips/portal/payments/session', {
         method: 'POST',
-        body: JSON.stringify({
-          enrollmentId: enrollment.enrollmentId,
-          amountCents
-        })
+        body: JSON.stringify({ enrollmentId: enrollment.enrollmentId, amountCents }),
       });
-
       const publishableKey = (sessionResponse.publishableKey || fallbackPublishableKey || '').trim();
-      if (!publishableKey) {
-        throw new Error('Stripe publishable key is missing.');
-      }
-      if (!sessionResponse.clientSecret) {
-        throw new Error('Stripe client secret missing from payment session.');
-      }
-
+      if (!publishableKey) throw new Error('Stripe publishable key is missing.');
+      if (!sessionResponse.clientSecret) throw new Error('Stripe client secret missing from payment session.');
       setActiveEnrollmentId(enrollment.enrollmentId);
-      setActiveCheckout({
-        paymentId: sessionResponse.paymentId,
-        enrollmentId: enrollment.enrollmentId,
-        clientSecret: sessionResponse.clientSecret,
-        publishableKey
-      });
+      setActiveCheckout({ paymentId: sessionResponse.paymentId, enrollmentId: enrollment.enrollmentId, clientSecret: sessionResponse.clientSecret, publishableKey });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start payment session');
     }
@@ -425,7 +373,7 @@ export default function TripPaymentsPage() {
   async function handleCheckoutComplete() {
     setActiveCheckout(null);
     await loadAuthenticatedState();
-    setNotice('Payment completed. Balance and history refreshed.');
+    setNotice('Payment completed. Your balance and history have been refreshed.');
   }
 
   function handleLogout() {
@@ -443,16 +391,14 @@ export default function TripPaymentsPage() {
 
   const summary = useMemo(() => {
     if (!dashboard) return null;
-    const targetAmountCents = dashboard.enrollments.reduce((sum, enrollment) => sum + enrollment.targetAmountCents, 0);
-    const paidAmountCents = dashboard.enrollments.reduce((sum, enrollment) => sum + enrollment.paidAmountCents, 0);
-    const remainingAmountCents = dashboard.enrollments.reduce((sum, enrollment) => sum + enrollment.remainingAmountCents, 0);
+    const targetAmountCents = dashboard.enrollments.reduce((s, e) => s + e.targetAmountCents, 0);
+    const paidAmountCents = dashboard.enrollments.reduce((s, e) => s + e.paidAmountCents, 0);
+    const remainingAmountCents = dashboard.enrollments.reduce((s, e) => s + e.remainingAmountCents, 0);
     const nextDue = [...dashboard.enrollments]
-      .filter((enrollment) => enrollment.remainingAmountCents > 0)
+      .filter((e) => e.remainingAmountCents > 0)
       .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())[0];
-
-    const completedPayments = dashboard.payments.filter((payment) => payment.status === 'SUCCEEDED');
-    const pendingPayments = dashboard.payments.filter((payment) => payment.status === 'PENDING');
-
+    const completedPayments = dashboard.payments.filter((p) => p.status === 'SUCCEEDED');
+    const pendingPayments = dashboard.payments.filter((p) => p.status === 'PENDING');
     return {
       targetAmountCents,
       paidAmountCents,
@@ -460,345 +406,306 @@ export default function TripPaymentsPage() {
       completionPercent: progressPercent(paidAmountCents, targetAmountCents),
       nextDue,
       completedPayments: completedPayments.length,
-      pendingPayments: pendingPayments.length
+      pendingPayments: pendingPayments.length,
     };
   }, [dashboard]);
 
   const selectedEnrollment = useMemo(() => {
     if (!dashboard) return null;
-    return dashboard.enrollments.find((enrollment) => enrollment.enrollmentId === activeEnrollmentId) || dashboard.enrollments[0] || null;
+    return dashboard.enrollments.find((e) => e.enrollmentId === activeEnrollmentId) || dashboard.enrollments[0] || null;
   }, [dashboard, activeEnrollmentId]);
 
   const filteredPayments = useMemo(() => {
     if (!dashboard) return [];
-    if (historyFilter === 'ALL') {
-      return dashboard.payments;
-    }
-    return dashboard.payments.filter((payment) => payment.status === historyFilter);
+    if (historyFilter === 'ALL') return dashboard.payments;
+    return dashboard.payments.filter((p) => p.status === historyFilter);
   }, [dashboard, historyFilter]);
 
   const selectedEnrollmentPayments = useMemo(() => {
     if (!dashboard || !selectedEnrollment) return [];
-    return dashboard.payments.filter((payment) => payment.enrollmentId === selectedEnrollment.enrollmentId);
+    return dashboard.payments.filter((p) => p.enrollmentId === selectedEnrollment.enrollmentId);
   }, [dashboard, selectedEnrollment]);
 
+  const inputCls = 'w-full rounded-xl border border-[rgba(26,22,17,0.15)] bg-[#FAF8F5] px-3 py-2.5 text-sm text-[#1a1611] outline-none focus:border-[#C0392B] transition-colors';
+  const primaryBtn = 'inline-flex items-center gap-2 rounded-xl bg-[#C0392B] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#922b21] transition-colors';
+  const ghostBtn = 'rounded-xl border border-[rgba(26,22,17,0.15)] bg-white px-4 py-2.5 text-sm text-[#1a1611] hover:border-[rgba(26,22,17,0.35)] transition-colors';
+
+  const playfair = { fontFamily: "'Playfair Display', Georgia, serif" };
+
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#fff1d6_0%,#fff9ef_45%,#fffdf7_100%)] px-4 py-8">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+    <main className="min-h-screen bg-[#FAF8F5] px-4 py-10">
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;1,500&display=swap');`}</style>
+
+      <div className="mx-auto max-w-4xl">
+
+        {/* Header */}
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-3 border-b border-[rgba(26,22,17,0.1)] pb-6">
           <div>
-            <p className="mb-1 inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-orange-700">
-              <PieChart className="h-3.5 w-3.5" />
-              Trip Manager
-            </p>
-            <h1 className="text-3xl font-semibold tracking-tight text-stone-900">Trip Payments, Reimagined</h1>
-            <p className="mt-1 max-w-2xl text-sm text-stone-600">
-              Track progress, view payment momentum, and keep every trip deadline in one friendly dashboard.
-            </p>
+            <Eyebrow>Penncrest Theater · Trip Portal</Eyebrow>
+            <h1 className="text-4xl font-semibold leading-tight text-[#1a1611]" style={playfair}>
+              Trip <em className="italic text-[#C0392B]">Finances</em>
+            </h1>
+            <p className="mt-1.5 text-sm text-[#7a7268]">Track balances, payments, and deadlines for your student.</p>
           </div>
-          {authStage === 'authenticated' ? (
-            <button
-              onClick={handleLogout}
-              className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-700 transition hover:border-stone-500"
-            >
-              Sign Out
-            </button>
-          ) : null}
+          {authStage === 'authenticated' && (
+            <button onClick={handleLogout} className={ghostBtn}>Sign out</button>
+          )}
         </div>
 
-        {error ? <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
-        {notice ? <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div> : null}
-        {loading && authStage !== 'authenticated' ? <div className="mb-4 text-sm text-stone-500">Loading…</div> : null}
+        {/* Alerts */}
+        {error && <div className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
+        {notice && <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div>}
+        {loading && authStage !== 'authenticated' && <div className="mb-5 text-sm text-[#7a7268]">Loading…</div>}
 
-        {authStage === 'request' ? (
-          <section className="max-w-md rounded-3xl border border-orange-100 bg-white p-5 shadow-sm">
-            <h2 className="mb-1 text-lg font-semibold text-stone-900">Get Your Login Code</h2>
-            <p className="mb-4 text-sm text-stone-600">We will send a one-time sign-in code so families can securely access payment plans.</p>
+        {/* ── Request code ── */}
+        {authStage === 'request' && (
+          <Card className="max-w-md">
+            <Eyebrow>Sign in</Eyebrow>
+            <SectionTitle>Get your login code</SectionTitle>
+            <p className="mt-1 mb-5 text-sm text-[#7a7268]">We'll send a one-time code so families can securely access payment plans.</p>
             <form className="space-y-3" onSubmit={handleRequestCode}>
-              <input
-                className="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm"
-                type="email"
-                value={requestCodeEmail}
-                onChange={(event) => setRequestCodeEmail(event.target.value)}
-                placeholder="Email"
-                required
-              />
-              <input
-                className="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm"
-                value={requestCodeName}
-                onChange={(event) => setRequestCodeName(event.target.value)}
-                placeholder="Name (optional)"
-              />
-              <button className="inline-flex items-center gap-2 rounded-xl bg-stone-900 px-4 py-2 text-sm font-medium text-white">
-                Send Code <ArrowRight className="h-4 w-4" />
+              <input className={inputCls} type="email" value={requestCodeEmail} onChange={(e) => setRequestCodeEmail(e.target.value)} placeholder="Email address" required />
+              <input className={inputCls} value={requestCodeName} onChange={(e) => setRequestCodeName(e.target.value)} placeholder="Your name (optional)" />
+              <button className={primaryBtn} disabled={loading}>
+                Send code <ArrowRight className="h-4 w-4" />
               </button>
             </form>
-          </section>
-        ) : null}
+          </Card>
+        )}
 
-        {authStage === 'verify' ? (
-          <section className="max-w-md rounded-3xl border border-orange-100 bg-white p-5 shadow-sm">
-            <h2 className="mb-1 text-lg font-semibold text-stone-900">Verify and Continue</h2>
-            <p className="mb-4 text-sm text-stone-600">Enter the one-time code sent to {requestCodeEmail}.</p>
+        {/* ── Verify code ── */}
+        {authStage === 'verify' && (
+          <Card className="max-w-md">
+            <Eyebrow>Verification</Eyebrow>
+            <SectionTitle>Enter your code</SectionTitle>
+            <p className="mt-1 mb-5 text-sm text-[#7a7268]">We sent a 6-digit code to {requestCodeEmail}.</p>
             <form className="space-y-3" onSubmit={handleVerifyCode}>
-              <input
-                className="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-sm"
-                value={verificationCode}
-                onChange={(event) => setVerificationCode(event.target.value)}
-                placeholder="6-digit code"
-                required
-              />
+              <input className={inputCls} value={verificationCode} onChange={(e) => setVerificationCode(e.target.value)} placeholder="6-digit code" required />
               <div className="flex gap-2">
-                <button className="rounded-xl bg-stone-900 px-4 py-2 text-sm font-medium text-white">Verify</button>
-                <button
-                  type="button"
-                  className="rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700"
-                  onClick={() => setAuthStage('request')}
-                >
-                  Back
-                </button>
+                <button className={primaryBtn}>Verify</button>
+                <button type="button" className={ghostBtn} onClick={() => setAuthStage('request')}>Back</button>
               </div>
             </form>
-          </section>
-        ) : null}
+          </Card>
+        )}
 
-        {needsClaim ? (
-          <section className="rounded-3xl border border-orange-100 bg-white p-5 shadow-sm">
-            <h2 className="mb-1 text-lg font-semibold text-stone-900">Claim Your Student Profile</h2>
-            <p className="mb-4 text-sm text-stone-600">Claiming links this account to one student so balances and documents stay clean and secure.</p>
+        {/* ── Claim student ── */}
+        {needsClaim && (
+          <Card>
+            <Eyebrow>Account setup</Eyebrow>
+            <SectionTitle>Claim your student profile</SectionTitle>
+            <p className="mt-1 mb-5 text-sm text-[#7a7268]">Link this account to your student so balances and documents stay secure.</p>
             <div className="grid gap-3 md:grid-cols-2">
               {claimOptions?.claimableStudents.map((student) => (
-                <div key={student.id} className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
-                  <div className="text-base font-semibold text-stone-900">
+                <div key={student.id} className="rounded-xl border border-[rgba(26,22,17,0.1)] bg-[#FAF8F5] p-4">
+                  <p className="font-semibold text-[#1a1611]" style={playfair}>
                     {student.name}
-                    {student.grade ? <span className="ml-2 text-sm font-normal text-stone-500">Grade {student.grade}</span> : null}
-                  </div>
-                  <div className="mt-1 text-xs text-stone-500">Trips: {student.trips.map((trip) => trip.title).join(', ')}</div>
-                  <button
-                    className="mt-3 rounded-xl border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-700 transition hover:border-stone-500"
-                    onClick={() => void handleClaimStudent(student.id)}
-                  >
-                    Claim Student
-                  </button>
+                    {student.grade && <span className="ml-2 text-sm font-normal text-[#7a7268]">Grade {student.grade}</span>}
+                  </p>
+                  <p className="mt-1 text-xs text-[#7a7268]">{student.trips.map((t) => t.title).join(', ')}</p>
+                  <button className={`mt-3 ${ghostBtn}`} onClick={() => void handleClaimStudent(student.id)}>Claim student</button>
                 </div>
               ))}
             </div>
-            {claimOptions && claimOptions.claimableStudents.length === 0 ? (
-              <p className="text-sm text-stone-500">No unclaimed roster entries are currently available.</p>
-            ) : null}
-          </section>
-        ) : null}
+            {claimOptions?.claimableStudents.length === 0 && (
+              <p className="text-sm text-[#7a7268]">No unclaimed roster entries are currently available.</p>
+            )}
+          </Card>
+        )}
 
-        {authStage === 'authenticated' && dashboard && !needsClaim ? (
-          <div className="space-y-6">
-            <section className="relative overflow-hidden rounded-3xl border border-orange-200 bg-gradient-to-br from-orange-50 via-amber-50 to-white p-5 shadow-sm">
-              <div className="pointer-events-none absolute -right-16 -top-16 h-52 w-52 rounded-full bg-orange-200/35 blur-3xl" />
-              <div className="grid gap-5 md:grid-cols-[1.3fr_1fr]">
+        {/* ── Dashboard ── */}
+        {authStage === 'authenticated' && dashboard && !needsClaim && (
+          <div className="space-y-5">
+
+            {/* Hero summary */}
+            <div className="rounded-2xl border border-[#e8d5d3] bg-[#FDF5F4] p-6">
+              <div className="grid gap-6 md:grid-cols-[1fr_auto]">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-700">Family Dashboard</p>
-                  <h2 className="mt-1 text-2xl font-semibold text-stone-900">
+                  <Eyebrow>Family dashboard</Eyebrow>
+                  <h2 className="text-3xl font-semibold text-[#1a1611]" style={playfair}>
                     {dashboard.student?.name || session?.account.name || 'Student'}
-                    {dashboard.student?.grade ? <span className="ml-2 text-lg font-normal text-stone-500">Grade {dashboard.student.grade}</span> : null}
+                    {dashboard.student?.grade && (
+                      <span className="ml-3 text-xl font-normal text-[#7a7268]">Grade {dashboard.student.grade}</span>
+                    )}
                   </h2>
-                  <p className="mt-2 max-w-xl text-sm text-stone-600">
-                    You are {summary?.completionPercent || 0}% of the way to fully funding all active trips. Keep the momentum going.
+                  <p className="mt-2 text-sm text-[#7a7268]">
+                    {summary?.completionPercent || 0}% of all trip costs funded — keep the momentum going.
                   </p>
                   {summary?.nextDue ? (
-                    <div className="mt-4 inline-flex items-center gap-2 rounded-xl border border-orange-200 bg-white/80 px-3 py-2 text-sm text-stone-700">
-                      <Calendar className="h-4 w-4 text-orange-600" />
-                      Next due: <span className="font-medium">{summary.nextDue.trip.title}</span> on {formatDate(summary.nextDue.dueAt)}
+                    <div className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[#e8d5d3] bg-white px-3 py-2 text-sm text-[#1a1611]">
+                      <span className="h-2 w-2 rounded-full bg-amber-400 flex-shrink-0" />
+                      Next due: <span className="font-medium">{summary.nextDue.trip.title}</span> · {formatDate(summary.nextDue.dueAt)}
                     </div>
                   ) : (
                     <div className="mt-4 inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                      <CheckCircle2 className="h-4 w-4" />
-                      All published trip balances are paid.
+                      <span className="h-2 w-2 rounded-full bg-emerald-500 flex-shrink-0" />
+                      All trip balances are fully paid.
                     </div>
                   )}
                 </div>
-                <div className="rounded-2xl border border-white/80 bg-white/90 p-4 shadow-sm backdrop-blur">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-xs uppercase tracking-[0.14em] text-stone-500">Overall Progress</div>
-                      <div className="text-lg font-semibold text-stone-900">{formatMoney(summary?.paidAmountCents || 0)} paid</div>
-                    </div>
-                    <ProgressDonut paidAmountCents={summary?.paidAmountCents || 0} targetAmountCents={summary?.targetAmountCents || 0} />
-                  </div>
+                {/* Overall donut */}
+                <div className="flex flex-col items-center justify-center gap-1">
+                  <ProgressDonut paidAmountCents={summary?.paidAmountCents || 0} targetAmountCents={summary?.targetAmountCents || 0} size={120} stroke={10} />
+                  <p className="text-[10px] uppercase tracking-widest text-[#7a7268]">Overall</p>
                 </div>
               </div>
-            </section>
+            </div>
 
-            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-stone-500">
-                  <Wallet className="h-4 w-4" />
-                  Target
+            {/* Metric row */}
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                { label: 'Target', value: formatMoney(summary?.targetAmountCents || 0), sub: 'across all trips', cls: '' },
+                { label: 'Paid to date', value: formatMoney(summary?.paidAmountCents || 0), sub: `${summary?.completedPayments || 0} payments`, cls: 'border-[#e8d5d3] bg-[#FDF5F4]' },
+                { label: 'Remaining', value: formatMoney(summary?.remainingAmountCents || 0), sub: 'still to pay', cls: 'border-amber-200 bg-amber-50' },
+                { label: 'Activity', value: `${summary?.completedPayments || 0} done`, sub: `${summary?.pendingPayments || 0} pending`, cls: '' },
+              ].map(({ label, value, sub, cls }) => (
+                <div key={label} className={`rounded-2xl border border-[rgba(26,22,17,0.1)] bg-white p-4 ${cls}`}>
+                  <p className="text-[10px] uppercase tracking-[0.14em] text-[#7a7268]">{label}</p>
+                  <p className="mt-1 text-2xl font-semibold text-[#1a1611]" style={playfair}>{value}</p>
+                  <p className="mt-0.5 text-[11px] text-[#7a7268]">{sub}</p>
                 </div>
-                <div className="mt-1 text-2xl font-semibold text-stone-900">{formatMoney(summary?.targetAmountCents || 0)}</div>
-              </div>
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
-                <div className="flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-emerald-700">
-                  <TrendingUp className="h-4 w-4" />
-                  Paid
-                </div>
-                <div className="mt-1 text-2xl font-semibold text-emerald-900">{formatMoney(summary?.paidAmountCents || 0)}</div>
-              </div>
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
-                <div className="flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-amber-700">
-                  <Clock3 className="h-4 w-4" />
-                  Remaining
-                </div>
-                <div className="mt-1 text-2xl font-semibold text-amber-900">{formatMoney(summary?.remainingAmountCents || 0)}</div>
-              </div>
-              <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 shadow-sm">
-                <div className="flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-sky-700">
-                  <CreditCard className="h-4 w-4" />
-                  Activity
-                </div>
-                <div className="mt-1 text-lg font-semibold text-sky-900">
-                  {summary?.completedPayments || 0} complete / {summary?.pendingPayments || 0} pending
-                </div>
-              </div>
-            </section>
+              ))}
+            </div>
 
-            <section className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
-              <h3 className="text-lg font-semibold text-stone-900">Trip Progress Board</h3>
-              <p className="mb-4 mt-1 text-sm text-stone-600">Click any trip card to focus it. Each card shows progress, deadline pressure, and payment options.</p>
+            {/* Trip progress cards */}
+            <Card>
+              <Eyebrow>Enrollments</Eyebrow>
+              <SectionTitle>Trip progress</SectionTitle>
+              <p className="mt-1 mb-5 text-sm text-[#7a7268]">Select a trip to make a payment or view documents.</p>
               <div className="grid gap-4 lg:grid-cols-2">
                 {dashboard.enrollments.map((enrollment) => {
                   const isActive = enrollment.enrollmentId === selectedEnrollment?.enrollmentId;
                   const percent = progressPercent(enrollment.paidAmountCents, enrollment.targetAmountCents);
-                  const enrollmentHistory = dashboard.payments.filter((payment) => payment.enrollmentId === enrollment.enrollmentId);
-                  const successfulPayments = enrollmentHistory.filter((payment) => payment.status === 'SUCCEEDED');
-                  const averagePaymentCents =
-                    successfulPayments.length > 0
-                      ? Math.round(successfulPayments.reduce((sum, payment) => sum + payment.amountCents, 0) / successfulPayments.length)
-                      : null;
+                  const enrollmentHistory = dashboard.payments.filter((p) => p.enrollmentId === enrollment.enrollmentId);
+                  const successfulPayments = enrollmentHistory.filter((p) => p.status === 'SUCCEEDED');
+                  const avgCents = successfulPayments.length > 0
+                    ? Math.round(successfulPayments.reduce((s, p) => s + p.amountCents, 0) / successfulPayments.length)
+                    : null;
 
                   return (
                     <article
                       key={enrollment.enrollmentId}
-                      className={`rounded-3xl border p-4 transition ${
-                        isActive ? 'border-orange-300 bg-orange-50/60 shadow-sm' : 'border-stone-200 bg-stone-50/40 hover:border-stone-300'
+                      className={`rounded-2xl border p-4 cursor-pointer transition-all ${
+                        isActive
+                          ? 'border-[#C0392B] bg-[#FDF5F4] shadow-sm'
+                          : 'border-[rgba(26,22,17,0.1)] bg-[#FAF8F5] hover:border-[rgba(26,22,17,0.2)]'
                       }`}
                       onClick={() => setActiveEnrollmentId(enrollment.enrollmentId)}
-                      onMouseEnter={() => setActiveEnrollmentId(enrollment.enrollmentId)}
                     >
-                      <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
-                        <div>
-                          <h4 className="text-base font-semibold text-stone-900">{enrollment.trip.title}</h4>
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-stone-600">
-                            <span className="rounded-full border border-stone-300 bg-white px-2 py-0.5">Due {formatDate(enrollment.dueAt)}</span>
-                            <span
-                              className={`rounded-full border px-2 py-0.5 ${
-                                enrollment.isOverdue
-                                  ? 'border-rose-200 bg-rose-50 text-rose-700'
-                                  : enrollment.remainingAmountCents === 0
-                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                    : 'border-amber-200 bg-amber-50 text-amber-700'
-                              }`}
-                            >
+                      {/* Title row */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-semibold text-[#1a1611] truncate" style={playfair}>{enrollment.trip.title}</h4>
+                          <div className="mt-1.5 flex flex-wrap gap-1.5">
+                            <span className="rounded-full border border-[rgba(26,22,17,0.1)] bg-white px-2 py-0.5 text-[11px] text-[#7a7268]">
+                              Due {formatDate(enrollment.dueAt)}
+                            </span>
+                            <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                              enrollment.isOverdue
+                                ? 'border-rose-200 bg-rose-50 text-rose-700'
+                                : enrollment.remainingAmountCents === 0
+                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                  : 'border-amber-200 bg-amber-50 text-amber-700'
+                            }`}>
                               {dueCountdown(enrollment.dueAt, enrollment.isOverdue)}
                             </span>
                           </div>
-                          <div className="mt-3">
-                            <div className="mb-1 flex items-center justify-between text-xs text-stone-600">
-                              <span>Progress</span>
-                              <span>{percent}%</span>
-                            </div>
-                            <div className="h-2 overflow-hidden rounded-full bg-stone-200">
-                              <div className="h-full rounded-full bg-gradient-to-r from-orange-400 to-amber-500" style={{ width: `${percent}%` }} />
-                            </div>
-                          </div>
-                          <div className="mt-3 text-sm text-stone-700">
-                            Target {formatMoney(enrollment.targetAmountCents)} | Paid {formatMoney(enrollment.paidAmountCents)} | Remaining{' '}
-                            {formatMoney(enrollment.remainingAmountCents)}
-                          </div>
                         </div>
-                        <ProgressDonut paidAmountCents={enrollment.paidAmountCents} targetAmountCents={enrollment.targetAmountCents} size={116} stroke={10} />
+                        <ProgressDonut paidAmountCents={enrollment.paidAmountCents} targetAmountCents={enrollment.targetAmountCents} size={80} stroke={7} />
                       </div>
 
-                      <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                        <div className="rounded-xl border border-stone-200 bg-white p-2">
-                          <div className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Payments Made</div>
-                          <div className="text-base font-semibold text-stone-900">{successfulPayments.length}</div>
+                      {/* Progress bar */}
+                      <div className="mt-4">
+                        <div className="mb-1 flex justify-between text-[11px] text-[#7a7268]">
+                          <span>{formatMoney(enrollment.paidAmountCents)} paid</span>
+                          <span className="text-[#C0392B]">{formatMoney(enrollment.remainingAmountCents)} left</span>
                         </div>
-                        <div className="rounded-xl border border-stone-200 bg-white p-2">
-                          <div className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Avg Payment</div>
-                          <div className="text-base font-semibold text-stone-900">{averagePaymentCents ? formatMoney(averagePaymentCents) : '—'}</div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-[#e8d5d3]">
+                          <div className="h-full rounded-full bg-[#C0392B] transition-all duration-500" style={{ width: `${percent}%` }} />
                         </div>
-                        <div className="rounded-xl border border-stone-200 bg-white p-2">
-                          <div className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Last Payment</div>
-                          <div className="text-sm font-medium text-stone-900">{successfulPayments[0]?.paidAt ? formatDate(successfulPayments[0].paidAt) : '—'}</div>
-                        </div>
+                        <p className="mt-1 text-[10px] text-[#7a7268]">{percent}% of {formatMoney(enrollment.targetAmountCents)} target</p>
                       </div>
 
-                      <div className="mt-4 rounded-2xl border border-stone-200 bg-white p-3">
+                      {/* Mini stats */}
+                      <div className="mt-4 grid grid-cols-3 gap-2">
+                        {[
+                          { label: 'Payments', value: String(successfulPayments.length) },
+                          { label: 'Avg payment', value: avgCents ? formatMoney(avgCents) : '—' },
+                          { label: 'Last paid', value: successfulPayments[0]?.paidAt ? formatDate(successfulPayments[0].paidAt) : '—' },
+                        ].map(({ label, value }) => (
+                          <div key={label} className="rounded-xl border border-[rgba(26,22,17,0.08)] bg-white p-2">
+                            <p className="text-[10px] uppercase tracking-[0.1em] text-[#7a7268]">{label}</p>
+                            <p className="mt-0.5 text-sm font-medium text-[#1a1611]">{value}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Payment input */}
+                      <div className="mt-4 rounded-xl border border-[rgba(26,22,17,0.08)] bg-white p-3">
                         {!enrollment.canPay ? (
-                          <p className="text-sm text-stone-600">
-                            {enrollment.isOverdue ? 'Payments are blocked because this enrollment is past the due date.' : 'No remaining balance.'}
+                          <p className="text-sm text-[#7a7268]">
+                            {enrollment.isOverdue ? 'Payments are blocked — this enrollment is past due.' : 'No remaining balance.'}
                           </p>
                         ) : (
                           <div className="flex flex-wrap items-center gap-2">
                             <input
-                              className="w-40 rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                              className="w-36 rounded-xl border border-[rgba(26,22,17,0.15)] bg-[#FAF8F5] px-3 py-2 text-sm text-[#1a1611] outline-none focus:border-[#C0392B] transition-colors"
                               type="number"
                               min="0.01"
                               step="0.01"
                               value={amountDraftByEnrollmentId[enrollment.enrollmentId] || ''}
-                              onChange={(event) =>
-                                setAmountDraftByEnrollmentId((prev) => ({ ...prev, [enrollment.enrollmentId]: event.target.value }))
-                              }
+                              onChange={(e) => setAmountDraftByEnrollmentId((prev) => ({ ...prev, [enrollment.enrollmentId]: e.target.value }))}
                               disabled={!enrollment.allowPartialPayments}
+                              onClick={(e) => e.stopPropagation()}
                             />
-                            {!enrollment.allowPartialPayments ? (
-                              <span className="text-xs text-stone-500">One-time full payment only.</span>
-                            ) : (
-                              <span className="text-xs text-stone-500">Partial payments are enabled for this trip.</span>
-                            )}
                             <button
-                              className="inline-flex items-center gap-1 rounded-xl bg-stone-900 px-4 py-2 text-sm font-medium text-white"
-                              onClick={() => void startPaymentSession(enrollment)}
+                              className={primaryBtn}
+                              onClick={(e) => { e.stopPropagation(); void startPaymentSession(enrollment); }}
                             >
                               Pay <ArrowRight className="h-4 w-4" />
                             </button>
+                            <span className="text-[11px] text-[#7a7268]">
+                              {enrollment.allowPartialPayments ? 'Partial payments enabled' : 'Full payment only'}
+                            </span>
                           </div>
                         )}
                       </div>
 
-                      <div className="mt-4">
-                        <h5 className="mb-2 inline-flex items-center gap-2 text-sm font-semibold text-stone-800">
-                          <FileText className="h-4 w-4" />
-                          Documents
-                        </h5>
-                        {enrollment.trip.documents.length === 0 ? (
-                          <p className="text-sm text-stone-500">No documents uploaded.</p>
-                        ) : (
+                      {/* Documents */}
+                      {enrollment.trip.documents.length > 0 && (
+                        <div className="mt-4">
+                          <p className="mb-2 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.1em] text-[#7a7268]">
+                            <FileText className="h-3.5 w-3.5" /> Documents
+                          </p>
                           <div className="flex flex-wrap gap-2">
-                            {enrollment.trip.documents.map((document) => (
+                            {enrollment.trip.documents.map((doc) => (
                               <a
-                                key={document.id}
-                                href={document.fileUrl}
+                                key={doc.id}
+                                href={doc.fileUrl}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="rounded-xl border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-700 transition hover:border-stone-500"
+                                className="rounded-xl border border-[rgba(26,22,17,0.12)] bg-white px-3 py-1.5 text-[12px] text-[#1a1611] hover:border-[rgba(26,22,17,0.3)] transition-colors"
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                {document.title}
+                                {doc.title}
                               </a>
                             ))}
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </article>
                   );
                 })}
               </div>
-            </section>
+            </Card>
 
-            {activeCheckout ? (
-              <section className="space-y-2 rounded-3xl border border-orange-200 bg-white p-5 shadow-sm">
-                <h2 className="text-lg font-semibold text-stone-900">Complete Payment</h2>
-                <p className="text-sm text-stone-600">
-                  Secure checkout is ready. After payment, this dashboard refreshes with your updated progress and history.
+            {/* Embedded checkout */}
+            {activeCheckout && (
+              <Card>
+                <Eyebrow>Checkout</Eyebrow>
+                <SectionTitle>Complete payment</SectionTitle>
+                <p className="mt-1 mb-4 text-sm text-[#7a7268]">
+                  Secure checkout powered by Stripe. Your dashboard refreshes automatically after payment.
                 </p>
                 <EmbeddedCheckoutCard
                   key={activeCheckout.paymentId}
@@ -806,70 +713,73 @@ export default function TripPaymentsPage() {
                   publishableKey={activeCheckout.publishableKey}
                   onComplete={() => void handleCheckoutComplete()}
                 />
-              </section>
-            ) : null}
+              </Card>
+            )}
 
-            <section className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold text-stone-900">Payment Activity</h2>
-                <div className="flex flex-wrap items-center gap-2">
+            {/* Payment history */}
+            <Card>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <Eyebrow>History</Eyebrow>
+                  <SectionTitle>Payment activity</SectionTitle>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
                   {(['ALL', 'SUCCEEDED', 'PENDING', 'FAILED', 'EXPIRED'] as const).map((status) => (
                     <button
                       key={status}
-                      className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                      className={`rounded-full border px-3 py-1 text-[11px] font-medium transition ${
                         historyFilter === status
-                          ? 'border-stone-900 bg-stone-900 text-white'
-                          : 'border-stone-300 bg-white text-stone-700 hover:border-stone-500'
+                          ? 'border-[#C0392B] bg-[#C0392B] text-white'
+                          : 'border-[rgba(26,22,17,0.15)] bg-white text-[#7a7268] hover:border-[rgba(26,22,17,0.3)]'
                       }`}
                       onClick={() => setHistoryFilter(status)}
                     >
-                      {status === 'ALL' ? 'All' : status}
+                      {status === 'ALL' ? 'All' : status === 'SUCCEEDED' ? 'Completed' : status === 'PENDING' ? 'Pending' : status === 'FAILED' ? 'Failed' : 'Expired'}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {selectedEnrollment ? (
-                <div className="mb-3 rounded-2xl border border-orange-200 bg-orange-50 p-3 text-sm text-stone-700">
-                  <div className="font-medium text-stone-900">Focused Trip: {selectedEnrollment.trip.title}</div>
-                  <div className="mt-1">
-                    {selectedEnrollmentPayments.length} recorded transaction{selectedEnrollmentPayments.length === 1 ? '' : 's'} for this trip.
-                  </div>
+              {selectedEnrollment && (
+                <div className="mb-4 rounded-xl border border-[#e8d5d3] bg-[#FDF5F4] px-4 py-3 text-sm">
+                  <span className="font-medium text-[#1a1611]">{selectedEnrollment.trip.title}</span>
+                  <span className="ml-2 text-[#7a7268]">· {selectedEnrollmentPayments.length} transaction{selectedEnrollmentPayments.length === 1 ? '' : 's'}</span>
                 </div>
-              ) : null}
+              )}
 
               {filteredPayments.length === 0 ? (
-                <p className="text-sm text-stone-500">No payments yet for this filter.</p>
+                <p className="text-sm text-[#7a7268]">No payments match this filter.</p>
               ) : (
-                <div className="space-y-2">
+                <div className="divide-y divide-[rgba(26,22,17,0.07)]">
                   {filteredPayments.map((payment) => {
                     const meta = statusMeta(payment.status);
                     return (
-                      <div key={payment.id} className="rounded-2xl border border-stone-200 bg-stone-50 p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <div className="font-medium text-stone-900">{payment.tripTitle}</div>
-                            <div className="mt-1 text-xs text-stone-500">
-                              Created {formatDate(payment.createdAt)}
-                              {payment.paidAt ? ` • Paid ${formatDate(payment.paidAt)}` : ''}
-                            </div>
-                            {payment.stripePaymentIntentId ? (
-                              <div className="mt-1 text-[11px] text-stone-500">Reference {payment.stripePaymentIntentId}</div>
-                            ) : null}
-                          </div>
-                          <div className="text-right">
-                            <div className="text-lg font-semibold text-stone-900">{formatMoney(payment.amountCents)}</div>
-                            <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${meta.className}`}>{meta.label}</span>
-                          </div>
+                      <div key={payment.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                        <div>
+                          <p className="text-sm font-medium text-[#1a1611]">{payment.tripTitle}</p>
+                          <p className="mt-0.5 text-[11px] text-[#7a7268]">
+                            {formatDate(payment.createdAt)}
+                            {payment.paidAt ? ` · Paid ${formatDate(payment.paidAt)}` : ''}
+                          </p>
+                          {payment.stripePaymentIntentId && (
+                            <p className="mt-0.5 font-mono text-[10px] text-[#7a7268]">{payment.stripePaymentIntentId}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-lg font-semibold text-[#1a1611]" style={playfair}>{formatMoney(payment.amountCents)}</span>
+                          <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${meta.className}`}>{meta.label}</span>
                         </div>
                       </div>
                     );
                   })}
                 </div>
               )}
-            </section>
+            </Card>
+
           </div>
-        ) : null}
+        )}
+
+        <p className="mt-8 text-center text-[11px] text-[#7a7268]">Penncrest High School Theater · Payments secured by Stripe</p>
       </div>
     </main>
   );
