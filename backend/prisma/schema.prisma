@@ -710,6 +710,39 @@ model AuditLog {
   @@index([createdAt])
 }
 
+model DriveFolder {
+  id               String       @id @default(cuid())
+  name             String
+  parentId         String?
+  parent           DriveFolder? @relation("DriveFolderTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children         DriveFolder[] @relation("DriveFolderTree")
+  files            DriveFile[]
+  createdByAdminId String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([parentId, name])
+  @@index([parentId, name])
+  @@index([createdByAdminId, createdAt])
+}
+
+model DriveFile {
+  id                String      @id @default(cuid())
+  folderId          String?
+  folder            DriveFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  displayName       String
+  objectKey         String      @unique
+  publicUrl         String
+  mimeType          String
+  sizeBytes         Int
+  uploadedByAdminId String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([folderId, createdAt])
+  @@index([uploadedByAdminId, createdAt])
+}
+
 model ContentPage {
   id              String   @id @default(cuid())
   scope           String

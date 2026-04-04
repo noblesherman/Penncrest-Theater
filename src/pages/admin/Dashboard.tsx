@@ -44,6 +44,7 @@ type DashboardResponse = {
   quickLinks: {
     orders: string;
     scanner: string;
+    drive?: string;
     trips?: string;
     fundraise?: string;
     forms?: string;
@@ -207,6 +208,7 @@ export default function AdminDashboardPage() {
   const quickLinks = data?.quickLinks || {
     orders: '/admin/orders',
     scanner: '/admin/scanner',
+    drive: '/admin/drive',
     trips: '/admin/trips',
     fundraise: '/admin/fundraise',
     forms: '/admin/forms',
@@ -375,9 +377,12 @@ export default function AdminDashboardPage() {
           </div>
         ) : data?.adminModules ? (
           <section className="space-y-3">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4 text-zinc-700" />
-              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-700">Admin Modules</h2>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-zinc-700" />
+                <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-700">Admin Modules</h2>
+              </div>
+              <CtaLink to={quickLinks.drive || '/admin/drive'} label="Drive" />
             </div>
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

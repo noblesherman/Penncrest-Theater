@@ -46,12 +46,15 @@ import { mobileRoutes } from './routes/mobile.js';
 import { tripAuthRoutes } from './routes/trip-auth.js';
 import { tripPortalRoutes } from './routes/trips-portal.js';
 import { adminTripRoutes } from './routes/admin-trips.js';
+import { adminDriveRoutes } from './routes/admin-drive.js';
 import { releaseExpiredHolds } from './services/hold-service.js';
 
 export async function createServer() {
+  const uploadBodyLimitBytes = Math.max(16 * 1024 * 1024, Math.ceil(env.R2_MAX_UPLOAD_BYTES * 1.5));
+
   const app = Fastify({
     logger: env.NODE_ENV === 'development',
-    bodyLimit: 16 * 1024 * 1024
+    bodyLimit: uploadBodyLimitBytes
   });
 
   await app.register(helmetPlugin);
@@ -120,6 +123,7 @@ export async function createServer() {
   await app.register(adminUserRoutes);
   await app.register(adminUploadRoutes);
   await app.register(adminTripRoutes);
+  await app.register(adminDriveRoutes);
 
   app.setErrorHandler((error, _request, reply) => {
     app.log.error(error);

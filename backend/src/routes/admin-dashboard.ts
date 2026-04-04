@@ -75,6 +75,7 @@ function buildQuickLinks(isAdminOrHigher: boolean) {
 
   return {
     ...base,
+    drive: '/admin/drive',
     trips: '/admin/trips',
     fundraise: '/admin/fundraise',
     forms: '/admin/forms',

@@ -118,6 +118,7 @@ type DashboardPayload = {
   quickLinks: {
     orders: string;
     scanner: string;
+    drive?: string;
     trips?: string;
     fundraise?: string;
     forms?: string;
