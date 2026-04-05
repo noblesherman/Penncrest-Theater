@@ -305,65 +305,6 @@ function ImageField({
           </div>
         </div>
       </div>
-
-      {showCalendarInstructions && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 py-6 backdrop-blur-[2px]"
-          onClick={() => setShowCalendarInstructions(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Calendar URL setup instructions"
-        >
-          <div
-            className="w-full max-w-3xl overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between border-b border-zinc-100 px-5 py-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Calendar URL Setup</p>
-                <h3 className="mt-1 text-lg font-bold text-zinc-900">How to Get a Public Calendar Link</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowCalendarInstructions(false)}
-                className="rounded-lg border border-zinc-200 p-1.5 text-zinc-500 transition hover:bg-zinc-50 hover:text-zinc-700"
-                aria-label="Close instructions"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="grid gap-4 p-5 md:grid-cols-3">
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Google Calendar</p>
-                <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-xs leading-relaxed text-zinc-700">
-                  <li>Open calendar settings, then choose your calendar.</li>
-                  <li>Enable public visibility if needed.</li>
-                  <li>Copy the public ICS link from “Integrate calendar”.</li>
-                </ol>
-              </div>
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Apple Calendar (iCloud)</p>
-                <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-xs leading-relaxed text-zinc-700">
-                  <li>Open iCloud Calendar and click the share icon.</li>
-                  <li>Enable “Public Calendar”.</li>
-                  <li>Copy the shared link and paste it here.</li>
-                </ol>
-              </div>
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Microsoft Calendar (Outlook)</p>
-                <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-xs leading-relaxed text-zinc-700">
-                  <li>Open Outlook calendar settings, then “Shared calendars”.</li>
-                  <li>Publish the calendar with can-view-all-details access.</li>
-                  <li>Copy the ICS link and paste it here.</li>
-                </ol>
-              </div>
-            </div>
-            <div className="border-t border-zinc-100 px-5 py-3 text-xs text-zinc-500">
-              Tip: if your link starts with <code>webcal://</code>, you can still paste it directly.
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -643,6 +584,9 @@ export default function AdminAboutControlPage() {
 
     const nextPages: Record<string, PageEditorState> = {};
     state.pages.forEach((ps) => {
+      if (ps.publishedDeleted) {
+        return;
+      }
       const fallback = nextDefaults[ps.slug] ?? nextDefaults['about'] ?? Object.values(nextDefaults)[0];
       const source = ps.draftPage ?? ps.publishedPage ?? (fallback ? cloneAboutPage(fallback) : null);
       if (!source) return;
@@ -1838,6 +1782,65 @@ export default function AdminAboutControlPage() {
 
         </div>
       </div>
+
+      {showCalendarInstructions && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 py-6 backdrop-blur-[2px]"
+          onClick={() => setShowCalendarInstructions(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Calendar URL setup instructions"
+        >
+          <div
+            className="w-full max-w-3xl overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between border-b border-zinc-100 px-5 py-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Calendar URL Setup</p>
+                <h3 className="mt-1 text-lg font-bold text-zinc-900">How to Get a Public Calendar Link</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCalendarInstructions(false)}
+                className="rounded-lg border border-zinc-200 p-1.5 text-zinc-500 transition hover:bg-zinc-50 hover:text-zinc-700"
+                aria-label="Close instructions"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="grid gap-4 p-5 md:grid-cols-3">
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Google Calendar</p>
+                <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-xs leading-relaxed text-zinc-700">
+                  <li>Open calendar settings, then choose your calendar.</li>
+                  <li>Enable public visibility if needed.</li>
+                  <li>Copy the public ICS link from Integrate calendar.</li>
+                </ol>
+              </div>
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Apple Calendar (iCloud)</p>
+                <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-xs leading-relaxed text-zinc-700">
+                  <li>Open iCloud Calendar and click the share icon.</li>
+                  <li>Enable Public Calendar.</li>
+                  <li>Copy the shared link and paste it here.</li>
+                </ol>
+              </div>
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Microsoft Calendar (Outlook)</p>
+                <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-xs leading-relaxed text-zinc-700">
+                  <li>Open Outlook calendar settings, then Shared calendars.</li>
+                  <li>Publish the calendar with can-view-all-details access.</li>
+                  <li>Copy the ICS link and paste it here.</li>
+                </ol>
+              </div>
+            </div>
+            <div className="border-t border-zinc-100 px-5 py-3 text-xs text-zinc-500">
+              Tip: if your link starts with <code>webcal://</code>, you can still paste it directly.
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
