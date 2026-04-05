@@ -53,12 +53,24 @@ export default function TheaterCalendar({ calendarUrl }: TheaterCalendarProps) {
         if (!res.ok || !Array.isArray(data)) {
           throw new Error(data?.error || 'Failed to fetch calendar');
         }
-        const parsedEvents = data.map((e: any) => ({
-          ...e,
-          date: new Date(e.date),
-          end: e.end ? new Date(e.end) : undefined,
-          time: new Date(e.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-        }));
+        const parsedEvents = data
+          .map((e: any) => {
+            const start = new Date(e?.date);
+            if (Number.isNaN(start.getTime())) {
+              return null;
+            }
+            const end = e?.end ? new Date(e.end) : undefined;
+            return {
+              title: typeof e?.title === 'string' && e.title.trim() ? e.title : 'Untitled Event',
+              date: start,
+              end: end && !Number.isNaN(end.getTime()) ? end : undefined,
+              description: typeof e?.description === 'string' ? e.description : undefined,
+              location: typeof e?.location === 'string' ? e.location : undefined,
+              type: typeof e?.type === 'string' && e.type.trim() ? e.type : 'event',
+              time: start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+            } satisfies CalendarEvent;
+          })
+          .filter((event): event is CalendarEvent => event !== null);
         setEvents(parsedEvents);
         setLoading(false);
       })

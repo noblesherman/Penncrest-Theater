@@ -1,40 +1,51 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { AboutHistoryItem } from '../lib/aboutContent';
 
 export default function ShowHistorySlideshow({ items }: { items: AboutHistoryItem[] }) {
+  const safeItems = useMemo(
+    () =>
+      items.filter(
+        (item) =>
+          !!item &&
+          !!item.image &&
+          typeof item.image.url === 'string' &&
+          item.image.url.trim().length > 0
+      ),
+    [items]
+  );
   const [currentIndex, setCurrentIndex] = useState(0);
 
   useEffect(() => {
-    if (items.length === 0) {
+    if (safeItems.length === 0) {
       setCurrentIndex(0);
       return;
     }
 
-    setCurrentIndex((prev) => (prev >= items.length ? 0 : prev));
-  }, [items]);
+    setCurrentIndex((prev) => (prev >= safeItems.length ? 0 : prev));
+  }, [safeItems]);
 
-  if (items.length === 0) {
+  if (safeItems.length === 0) {
     return null;
   }
 
   const nextSlide = () => {
-    setCurrentIndex((prev) => (prev + 1) % items.length);
+    setCurrentIndex((prev) => (prev + 1) % safeItems.length);
   };
 
   const prevSlide = () => {
-    setCurrentIndex((prev) => (prev - 1 + items.length) % items.length);
+    setCurrentIndex((prev) => (prev - 1 + safeItems.length) % safeItems.length);
   };
 
   // Auto-advance
   useEffect(() => {
-    if (items.length <= 1) {
+    if (safeItems.length <= 1) {
       return;
     }
     const timer = setInterval(nextSlide, 5000);
     return () => clearInterval(timer);
-  }, [items.length]);
+  }, [safeItems.length]);
 
   return (
     <div className="group relative mx-auto w-full max-w-5xl overflow-hidden rounded-3xl bg-stone-900 shadow-2xl aspect-[5/4] sm:aspect-[16/9] md:aspect-[21/9]">
@@ -48,8 +59,8 @@ export default function ShowHistorySlideshow({ items }: { items: AboutHistoryIte
           className="absolute inset-0"
         >
           <img 
-            src={items[currentIndex].image.url} 
-            alt={items[currentIndex].image.alt || items[currentIndex].title} 
+            src={safeItems[currentIndex].image.url} 
+            alt={safeItems[currentIndex].image.alt || safeItems[currentIndex].title} 
             className="w-full h-full object-cover opacity-60"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-stone-900 via-transparent to-transparent"></div>
@@ -60,9 +71,9 @@ export default function ShowHistorySlideshow({ items }: { items: AboutHistoryIte
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 0.3 }}
             >
-              <div className="mb-1 text-sm font-mono text-yellow-400 sm:mb-2 sm:text-xl">{items[currentIndex].year}</div>
-              <h3 className="mb-1 text-2xl font-black uppercase text-white sm:mb-2 sm:text-4xl md:text-6xl">{items[currentIndex].title}</h3>
-              <p className="text-sm text-stone-300 sm:text-lg md:text-xl">{items[currentIndex].description}</p>
+              <div className="mb-1 text-sm font-mono text-yellow-400 sm:mb-2 sm:text-xl">{safeItems[currentIndex].year}</div>
+              <h3 className="mb-1 text-2xl font-black uppercase text-white sm:mb-2 sm:text-4xl md:text-6xl">{safeItems[currentIndex].title}</h3>
+              <p className="text-sm text-stone-300 sm:text-lg md:text-xl">{safeItems[currentIndex].description}</p>
             </motion.div>
           </div>
         </motion.div>
@@ -84,7 +95,7 @@ export default function ShowHistorySlideshow({ items }: { items: AboutHistoryIte
 
       {/* Indicators */}
       <div className="absolute bottom-4 right-4 flex gap-2 sm:bottom-6 sm:right-8">
-        {items.map((_, index) => (
+        {safeItems.map((_, index) => (
           <button
             key={index}
             onClick={() => setCurrentIndex(index)}
