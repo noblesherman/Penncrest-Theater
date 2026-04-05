@@ -1114,7 +1114,7 @@ export default function AdminAboutControlPage() {
 
   const previewViewportClass =
     previewViewport === 'mobile'
-      ? 'mx-auto w-full max-w-[430px]'
+      ? 'mx-auto w-[413px] max-w-full'
       : previewViewport === 'tablet'
         ? 'mx-auto w-full max-w-[900px]'
         : 'w-full';
@@ -1804,10 +1804,10 @@ export default function AdminAboutControlPage() {
                   <div className={`${previewViewportClass} transition-all duration-200`}>
                     {previewPage && (
                       isMobilePreview ? (
-                        <div className="mx-auto rounded-[42px] bg-zinc-900 p-2.5 shadow-2xl ring-1 ring-zinc-700/60">
-                          <div className="relative h-[760px] max-h-[calc(100vh-220px)] overflow-hidden rounded-[34px] bg-white">
-                            <div className="pointer-events-none absolute left-1/2 top-0 z-20 h-6 w-36 -translate-x-1/2 rounded-b-2xl bg-zinc-900" />
-                            <div className="h-full overflow-y-auto pt-7">
+                        <div className="relative mx-auto h-[872px] w-[413px] rounded-[52px] bg-zinc-900 p-[10px] shadow-2xl ring-1 ring-zinc-700/60">
+                          <div className="absolute inset-[10px] overflow-hidden rounded-[42px] bg-white">
+                            <div className="pointer-events-none absolute left-1/2 top-2 z-20 h-8 w-[126px] -translate-x-1/2 rounded-[18px] bg-zinc-900" />
+                            <div className="h-[852px] w-[393px] overflow-y-auto overscroll-y-contain pt-11">
                               <AboutPageRenderer page={previewPage} previewMode="admin" />
                             </div>
                           </div>
