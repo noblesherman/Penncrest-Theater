@@ -1119,6 +1119,11 @@ export default function AdminAboutControlPage() {
         ? 'mx-auto w-full max-w-[900px]'
         : 'w-full';
   const isMobilePreview = previewViewport === 'mobile';
+  const iphoneFrameWidth = 413;
+  const iphoneFrameHeight = 872;
+  const iphoneFrameScale = 0.78;
+  const iphoneScaledWidth = Math.round(iphoneFrameWidth * iphoneFrameScale);
+  const iphoneScaledHeight = Math.round(iphoneFrameHeight * iphoneFrameScale);
 
   // ── Loading / error state ─────────────────────────────────────────────────
 
@@ -1800,20 +1805,29 @@ export default function AdminAboutControlPage() {
                     <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 ring-1 ring-emerald-200">Live</span>
                   </div>
                 </div>
-                <div className="max-h-[calc(100vh-160px)] overflow-y-auto bg-zinc-50 p-3">
+                <div className={isMobilePreview ? 'overflow-hidden bg-zinc-50 p-3' : 'max-h-[calc(100vh-160px)] overflow-y-auto bg-zinc-50 p-3'}>
                   <div className={`${previewViewportClass} transition-all duration-200`}>
                     {previewPage && (
                       isMobilePreview ? (
-                        <div className="relative mx-auto h-[872px] w-[413px] rounded-[52px] bg-zinc-900 p-[10px] shadow-2xl ring-1 ring-zinc-700/60">
-                          <div className="absolute inset-[10px] overflow-hidden rounded-[42px] bg-white">
-                            <div className="pointer-events-none absolute left-1/2 top-2 z-20 h-8 w-[126px] -translate-x-1/2 rounded-[18px] bg-zinc-900" />
-                            <iframe
-                              key={slug}
-                              title="iPhone 15 Pro Preview"
-                              src={publicPathForSlug(slug)}
-                              className="block h-[852px] w-[393px] border-0"
-                            />
-                            <div className="pointer-events-none absolute bottom-2 left-1/2 z-20 h-1.5 w-32 -translate-x-1/2 rounded-full bg-zinc-900/90" />
+                        <div className="relative mx-auto" style={{ width: iphoneScaledWidth, height: iphoneScaledHeight }}>
+                          <div
+                            className="absolute left-0 top-0 origin-top-left rounded-[52px] bg-zinc-900 p-[10px] shadow-2xl ring-1 ring-zinc-700/60"
+                            style={{
+                              width: iphoneFrameWidth,
+                              height: iphoneFrameHeight,
+                              transform: `scale(${iphoneFrameScale})`
+                            }}
+                          >
+                            <div className="absolute inset-[10px] overflow-hidden rounded-[42px] bg-white">
+                              <div className="pointer-events-none absolute left-1/2 top-2 z-20 h-8 w-[126px] -translate-x-1/2 rounded-[18px] bg-zinc-900" />
+                              <iframe
+                                key={slug}
+                                title="iPhone 15 Pro Preview"
+                                src={publicPathForSlug(slug)}
+                                className="block h-[852px] w-[393px] border-0"
+                              />
+                              <div className="pointer-events-none absolute bottom-2 left-1/2 z-20 h-1.5 w-32 -translate-x-1/2 rounded-full bg-zinc-900/90" />
+                            </div>
                           </div>
                         </div>
                       ) : (
