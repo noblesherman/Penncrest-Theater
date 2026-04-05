@@ -1807,9 +1807,13 @@ export default function AdminAboutControlPage() {
                         <div className="relative mx-auto h-[872px] w-[413px] rounded-[52px] bg-zinc-900 p-[10px] shadow-2xl ring-1 ring-zinc-700/60">
                           <div className="absolute inset-[10px] overflow-hidden rounded-[42px] bg-white">
                             <div className="pointer-events-none absolute left-1/2 top-2 z-20 h-8 w-[126px] -translate-x-1/2 rounded-[18px] bg-zinc-900" />
-                            <div className="h-[852px] w-[393px] overflow-y-auto overscroll-y-contain pt-11">
-                              <AboutPageRenderer page={previewPage} previewMode="admin" />
-                            </div>
+                            <iframe
+                              key={slug}
+                              title="iPhone 15 Pro Preview"
+                              src={publicPathForSlug(slug)}
+                              className="block h-[852px] w-[393px] border-0"
+                            />
+                            <div className="pointer-events-none absolute bottom-2 left-1/2 z-20 h-1.5 w-32 -translate-x-1/2 rounded-full bg-zinc-900/90" />
                           </div>
                         </div>
                       ) : (
