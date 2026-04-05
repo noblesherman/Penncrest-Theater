@@ -413,12 +413,12 @@ function StringList({
 
 function SectionShell({
   id, index, label, hidden, onToggleHidden,
-  onMoveUp, onMoveDown, onRemove, isFirst, isLast, children,
+  onMoveUp, onMoveDown, onRemove, isFirst, isLast, changed = false, children,
 }: {
   id: string; index: number; label: string;
   hidden: boolean; onToggleHidden: () => void;
   onMoveUp: () => void; onMoveDown: () => void; onRemove: () => void;
-  isFirst: boolean; isLast: boolean; children: ReactNode;
+  isFirst: boolean; isLast: boolean; changed?: boolean; children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -435,6 +435,12 @@ function SectionShell({
             {index}
           </span>
           <span className="flex-1 min-w-0 text-sm font-semibold text-zinc-900 truncate">{label}</span>
+          {changed && (
+            <span
+              title="Has unpublished changes"
+              className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-300 ring-1 ring-amber-200/80"
+            />
+          )}
           {hidden && (
             <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
               Hidden
@@ -1124,6 +1130,30 @@ export default function AdminAboutControlPage() {
   const iphoneFrameScale = 0.78;
   const iphoneScaledWidth = Math.round(iphoneFrameWidth * iphoneFrameScale);
   const iphoneScaledHeight = Math.round(iphoneFrameHeight * iphoneFrameScale);
+  const publishedPage = pageState?.published ?? null;
+  const headerChanged = useMemo(() => {
+    if (!draft) return false;
+    if (!publishedPage) return true;
+    return JSON.stringify({ navLabel: draft.navLabel, hero: draft.hero })
+      !== JSON.stringify({ navLabel: publishedPage.navLabel, hero: publishedPage.hero });
+  }, [draft, publishedPage]);
+  const changedSectionIds = useMemo(() => {
+    const changed = new Set<string>();
+    if (!draft) return changed;
+    const publishedSections = publishedPage?.sections ?? [];
+    const byId = new Map(publishedSections.map((section) => [section.id, section]));
+    for (const section of draft.sections) {
+      const publishedSection = byId.get(section.id);
+      if (!publishedSection || JSON.stringify(section) !== JSON.stringify(publishedSection)) {
+        changed.add(section.id);
+      }
+    }
+    return changed;
+  }, [draft, publishedPage]);
+  const catalogChanged = useMemo(() => {
+    if (!catalogState) return false;
+    return JSON.stringify(catalogState.local) !== JSON.stringify(catalogState.published);
+  }, [catalogState]);
 
   const pushMobilePreviewToFrame = () => {
     if (!isMobilePreview || !previewPage) return;
@@ -1165,6 +1195,7 @@ export default function AdminAboutControlPage() {
       id: section.id,
       index: si + 1,
       label,
+      changed: changedSectionIds.has(section.id),
       hidden: section.hidden === true,
       onToggleHidden: () => upSec(si, (s) => ({ ...s, hidden: s.hidden !== true })),
       isFirst: si === 0,
@@ -1676,7 +1707,15 @@ export default function AdminAboutControlPage() {
             {/* Catalog card metadata (non-about pages) */}
             {catalogState && slug !== 'about' && (
               <div className="space-y-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Get Involved Card</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Get Involved Card</p>
+                  {catalogChanged && (
+                    <span
+                      title="Has unpublished changes"
+                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-300 ring-1 ring-amber-200/80"
+                    />
+                  )}
+                </div>
                 <Field label="Card title">
                   <input value={catalogState.local.cardTitle} onChange={(e) => upCatalog((c) => ({ ...c, cardTitle: e.target.value, deleted: false }))} className={inputClass} />
                 </Field>
@@ -1749,7 +1788,15 @@ export default function AdminAboutControlPage() {
             {/* Hero */}
             <div className="rounded-xl border border-zinc-200 bg-white p-5">
               <div className="mb-4 border-b border-zinc-100 pb-4">
-                <h2 className="font-bold text-zinc-900">Page Header</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="font-bold text-zinc-900">Page Header</h2>
+                  {headerChanged && (
+                    <span
+                      title="Has unpublished changes"
+                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-300 ring-1 ring-amber-200/80"
+                    />
+                  )}
+                </div>
                 <p className="mt-0.5 text-xs text-zinc-400">Navigation label and hero shown at the top of the page.</p>
               </div>
               <div className="space-y-3">
