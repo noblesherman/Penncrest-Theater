@@ -160,16 +160,24 @@ const inputClass =
   'w-full rounded-xl border border-zinc-200 px-4 py-3 text-sm text-zinc-900 outline-none focus:border-red-300 focus:ring-2 focus:ring-red-100 placeholder:text-zinc-400 bg-white';
 const taClass = `${inputClass} min-h-[88px] resize-y`;
 
-function FieldLabel({ children }: { children: string }) {
+function FieldLabel({ children, changed = false }: { children: ReactNode; changed?: boolean }) {
   return (
-    <p className="mb-1.5 text-xs font-semibold uppercase tracking-widest text-zinc-500">{children}</p>
+    <p className="mb-1.5 inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-zinc-500">
+      <span>{children}</span>
+      {changed && (
+        <span
+          title="Has unpublished changes"
+          className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-300 ring-1 ring-amber-200/80"
+        />
+      )}
+    </p>
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ label, children, changed = false }: { label: string; children: ReactNode; changed?: boolean }) {
   return (
     <div>
-      <FieldLabel>{label}</FieldLabel>
+      <FieldLabel changed={changed}>{label}</FieldLabel>
       {children}
     </div>
   );
@@ -1137,6 +1145,33 @@ export default function AdminAboutControlPage() {
     return JSON.stringify({ navLabel: draft.navLabel, hero: draft.hero })
       !== JSON.stringify({ navLabel: publishedPage.navLabel, hero: publishedPage.hero });
   }, [draft, publishedPage]);
+  const headerFieldChanged = useMemo(() => {
+    if (!draft) {
+      return {
+        navLabel: false,
+        eyebrow: false,
+        title: false,
+        accent: false,
+        description: false
+      };
+    }
+    if (!publishedPage) {
+      return {
+        navLabel: true,
+        eyebrow: true,
+        title: true,
+        accent: true,
+        description: true
+      };
+    }
+    return {
+      navLabel: draft.navLabel !== publishedPage.navLabel,
+      eyebrow: draft.hero.eyebrow !== publishedPage.hero.eyebrow,
+      title: draft.hero.title !== publishedPage.hero.title,
+      accent: draft.hero.accent !== publishedPage.hero.accent,
+      description: draft.hero.description !== publishedPage.hero.description
+    };
+  }, [draft, publishedPage]);
   const changedSectionIds = useMemo(() => {
     const changed = new Set<string>();
     if (!draft) return changed;
@@ -1801,22 +1836,22 @@ export default function AdminAboutControlPage() {
               </div>
               <div className="space-y-3">
                 <Row2>
-                  <Field label="Navigation label">
+                  <Field label="Navigation label" changed={headerFieldChanged.navLabel}>
                     <input value={draft.navLabel} onChange={(e) => upPage((p) => ({ ...p, navLabel: e.target.value }))} className={inputClass} placeholder="Shown in nav menu" />
                   </Field>
-                  <Field label="Eyebrow">
+                  <Field label="Eyebrow" changed={headerFieldChanged.eyebrow}>
                     <input value={draft.hero.eyebrow} onChange={(e) => upHero('eyebrow', e.target.value)} className={inputClass} placeholder="Optional label above title" />
                   </Field>
                 </Row2>
                 <Row2>
-                  <Field label="Title">
+                  <Field label="Title" changed={headerFieldChanged.title}>
                     <input value={draft.hero.title} onChange={(e) => upHero('title', e.target.value)} className={inputClass} />
                   </Field>
-                  <Field label="Accent text">
+                  <Field label="Accent text" changed={headerFieldChanged.accent}>
                     <input value={draft.hero.accent} onChange={(e) => upHero('accent', e.target.value)} className={inputClass} placeholder="Highlighted word in title" />
                   </Field>
                 </Row2>
-                <Field label="Description">
+                <Field label="Description" changed={headerFieldChanged.description}>
                   <textarea value={draft.hero.description} onChange={(e) => upHero('description', e.target.value)} className={taClass} />
                 </Field>
               </div>
