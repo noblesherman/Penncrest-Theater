@@ -106,8 +106,7 @@ const linkGridSectionSchema = z.object({
         image: imageSchema.optional()
       })
     )
-    .min(1)
-    .max(12)
+    .max(40)
 });
 
 const peopleSectionSchema = z.object({

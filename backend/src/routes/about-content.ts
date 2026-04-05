@@ -20,36 +20,222 @@ import {
 const scope = 'about';
 const starterAboutSlugSet = new Set<string>(aboutPageSlugs as readonly string[]);
 const deletedStarterTombstoneKind = 'deleted_starter_about_page';
+const deletedAboutTombstoneKind = 'deleted_about_page';
+
+const STARTER_PUBLIC_PATHS: Record<string, string> = {
+  about: '/about',
+  performer: '/performer',
+  'stage-crew': '/stage-crew',
+  'musical-theater': '/musical-theater',
+  'tech-crew': '/tech-crew',
+  'costume-crew': '/costume-crew',
+  'set-design': '/set-design',
+};
+
+const STARTER_SLUG_BY_PATH = new Map(
+  Object.entries(STARTER_PUBLIC_PATHS).map(([slug, path]) => [path, slug])
+);
+
 const slugParamsSchema = z.object({
   slug: aboutSlugSchema
 });
 
+const createDraftPageSchema = z.object({
+  slug: aboutSlugSchema,
+  templateSlug: aboutSlugSchema.optional()
+});
+
+const resetDraftSchema = z
+  .object({
+    slug: aboutSlugSchema.optional()
+  })
+  .default({});
+
+const longCardTextSchema = z.string().trim().max(2_000).default('');
+const shortCardTextSchema = z.string().trim().min(1).max(160);
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function isRelativePath(value: string): boolean {
+  return value.startsWith('/');
+}
+
+const catalogImageSchema = z.object({
+  url: z
+    .string()
+    .trim()
+    .max(2_000_000)
+    .refine((value) => isHttpUrl(value) || isImageDataUrl(value) || isRelativePath(value), {
+      message: 'Card image must be an image URL, image data URL, or site-relative path'
+    }),
+  alt: z.string().trim().max(180).default('')
+});
+
+const catalogStateSchema = z.object({
+  enabled: z.boolean().default(true),
+  order: z.number().int().min(-1_000).max(100_000).default(0),
+  cardTitle: shortCardTextSchema,
+  cardDescription: longCardTextSchema,
+  cardImage: catalogImageSchema.optional(),
+  deleted: z.boolean().default(false)
+});
+
+const catalogPatchSchema = catalogStateSchema.partial();
+
+type AboutCatalogState = z.infer<typeof catalogStateSchema>;
+type AboutCatalogPatch = z.infer<typeof catalogPatchSchema>;
+type AboutImage = z.infer<typeof catalogImageSchema>;
+
 type ContentPageRow = {
   id: string;
   slug: string;
+  title: string;
   content: unknown;
+  draftContent: unknown | null;
+  publishedContent: unknown | null;
+  catalogDraft: unknown | null;
+  catalogPublished: unknown | null;
+  draftDeleted: boolean;
+  publishedDeleted: boolean;
   updatedAt: Date;
   updatedByAdminId: string | null;
 };
+
+type ResolvedAboutState = {
+  row: ContentPageRow | null;
+  slug: string;
+  isStarter: boolean;
+  draftPage: AboutPageContent | null;
+  publishedPage: AboutPageContent | null;
+  draftDeleted: boolean;
+  publishedDeleted: boolean;
+  draftCatalog: AboutCatalogState;
+  publishedCatalog: AboutCatalogState;
+  draftUpdatedAt: string | null;
+  publishedUpdatedAt: string | null;
+  pageChanged: boolean;
+  catalogChanged: boolean;
+  changed: boolean;
+};
+
+type AboutDraftDeltaSummary = {
+  totalChanged: number;
+  changedPages: number;
+  changedCatalog: number;
+  stagedDeletions: number;
+};
+
+type AdminAboutEditorState = {
+  pages: Array<{
+    slug: string;
+    isStarter: boolean;
+    draftPage: AboutPageContent | null;
+    publishedPage: AboutPageContent | null;
+    draftDeleted: boolean;
+    publishedDeleted: boolean;
+    draftUpdatedAt: string | null;
+    publishedUpdatedAt: string | null;
+    pageChanged: boolean;
+  }>;
+  catalog: Array<{
+    slug: string;
+    isStarter: boolean;
+    publicPath: string;
+    draft: AboutCatalogState;
+    published: AboutCatalogState;
+    changed: boolean;
+  }>;
+  defaults: AboutPageContent[];
+  draftDelta: AboutDraftDeltaSummary;
+};
+
+const aboutRowSelect = {
+  id: true,
+  slug: true,
+  title: true,
+  content: true,
+  draftContent: true,
+  publishedContent: true,
+  catalogDraft: true,
+  catalogPublished: true,
+  draftDeleted: true,
+  publishedDeleted: true,
+  updatedAt: true,
+  updatedByAdminId: true
+} satisfies Prisma.ContentPageSelect;
 
 function isMissingContentPageTableError(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2021';
 }
 
-function containsImageDataUrl(value: unknown): boolean {
-  if (typeof value === 'string') {
-    return isImageDataUrl(value);
+function toJson(value: unknown): Prisma.InputJsonValue {
+  return value as Prisma.InputJsonValue;
+}
+
+function parseStoredPage(value: unknown, slug: string): AboutPageContent | null {
+  try {
+    const parsed = parseAboutPageContent(value);
+    if (parsed.slug === slug) {
+      return parsed;
+    }
+
+    return {
+      ...parsed,
+      slug
+    };
+  } catch {
+    return null;
+  }
+}
+
+function normalizeInternalPath(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith('/')) {
+    return trimmed.replace(/[?#].*$/, '').replace(/\/+$/, '') || '/';
   }
 
-  if (Array.isArray(value)) {
-    return value.some((item) => containsImageDataUrl(item));
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return url.pathname.replace(/\/+$/, '') || '/';
+  } catch {
+    return null;
+  }
+}
+
+function publicPathForSlug(slug: string): string {
+  return STARTER_PUBLIC_PATHS[slug] ?? `/${slug}`;
+}
+
+function slugFromPath(path: string): string | null {
+  const starterSlug = STARTER_SLUG_BY_PATH.get(path);
+  if (starterSlug) {
+    return starterSlug;
   }
 
-  if (!value || typeof value !== 'object') {
-    return false;
+  if (!path.startsWith('/')) {
+    return null;
   }
 
-  return Object.values(value).some((item) => containsImageDataUrl(item));
+  const candidate = path.slice(1).trim().toLowerCase();
+  if (!candidate) {
+    return null;
+  }
+
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(candidate)) {
+    return null;
+  }
+
+  return candidate;
 }
 
 function titleFromSlug(slug: string): string {
@@ -93,6 +279,65 @@ function buildTemplatePageForSlug(slug: string): AboutPageContent {
       }
     ]
   };
+}
+
+function buildDeletedTombstone(slug: string, isStarter: boolean) {
+  return {
+    _meta: {
+      kind: isStarter ? deletedStarterTombstoneKind : deletedAboutTombstoneKind,
+      slug,
+      deletedAt: new Date().toISOString(),
+      version: 2
+    }
+  };
+}
+
+function isDeletedTombstone(content: unknown, slug: string): boolean {
+  if (!content || typeof content !== 'object' || Array.isArray(content)) {
+    return false;
+  }
+
+  const meta = (content as { _meta?: unknown })._meta;
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) {
+    return false;
+  }
+
+  const kind = (meta as { kind?: unknown }).kind;
+  const metaSlug = (meta as { slug?: unknown }).slug;
+  return (
+    (kind === deletedStarterTombstoneKind || kind === deletedAboutTombstoneKind) &&
+    metaSlug === slug
+  );
+}
+
+function getLegacyPublishedRaw(row: ContentPageRow): unknown {
+  if (row.publishedContent !== null) {
+    return row.publishedContent;
+  }
+  return row.content;
+}
+
+function getLegacyDraftRaw(row: ContentPageRow): unknown {
+  if (row.draftContent !== null) {
+    return row.draftContent;
+  }
+  return getLegacyPublishedRaw(row);
+}
+
+function containsImageDataUrl(value: unknown): boolean {
+  if (typeof value === 'string') {
+    return isImageDataUrl(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.some((item) => containsImageDataUrl(item));
+  }
+
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  return Object.values(value).some((item) => containsImageDataUrl(item));
 }
 
 function buildAboutImageFilenameBase(slug: string, path: string[], uploadIndex: number): string {
@@ -155,79 +400,506 @@ async function convertImageDataUrlsToR2(content: AboutPageContent, slug: string)
   return parseAboutPageContent(converted);
 }
 
-function serializeAdminPage(row: ContentPageRow | null, fallbackPage: AboutPageContent) {
-  if (row && isDeletedStarterTombstone(row.content, row.slug)) {
-    return {
-      page: fallbackPage,
-      isCustomized: false,
-      updatedAt: null,
-      updatedByAdminId: null
-    };
+async function convertCatalogImageDataUrlToR2(catalog: AboutCatalogState, slug: string): Promise<AboutCatalogState> {
+  if (!catalog.cardImage?.url || !isImageDataUrl(catalog.cardImage.url)) {
+    return catalog;
   }
 
-  if (!row) {
-    return {
-      page: fallbackPage,
-      isCustomized: false,
-      updatedAt: null,
-      updatedByAdminId: null
-    };
-  }
+  const uploaded = await uploadImageFromDataUrl({
+    dataUrl: catalog.cardImage.url,
+    scope: `about/${slug}/card`,
+    filenameBase: `${slug}-card-image`
+  });
 
-  try {
-    const parsed = parseAboutPageContent(row.content);
-    return {
-      page: parsed,
-      isCustomized: true,
-      updatedAt: row.updatedAt.toISOString(),
-      updatedByAdminId: row.updatedByAdminId
-    };
-  } catch {
-    return {
-      page: fallbackPage,
-      isCustomized: true,
-      updatedAt: row.updatedAt.toISOString(),
-      updatedByAdminId: row.updatedByAdminId
-    };
-  }
-}
-
-function parseStoredPageForPublic(row: ContentPageRow): AboutPageContent | null {
-  if (isDeletedStarterTombstone(row.content, row.slug)) {
-    return null;
-  }
-
-  try {
-    return parseAboutPageContent(row.content);
-  } catch {
-    return null;
-  }
-}
-
-function buildDeletedStarterTombstone(slug: string) {
   return {
-    _meta: {
-      kind: deletedStarterTombstoneKind,
-      slug,
-      deletedAt: new Date().toISOString(),
-      version: 1
+    ...catalog,
+    cardImage: {
+      url: uploaded.url,
+      alt: catalog.cardImage.alt
     }
   };
 }
 
-function isDeletedStarterTombstone(content: unknown, slug: string): boolean {
-  if (!content || typeof content !== 'object' || Array.isArray(content)) {
-    return false;
+function defaultOrderMap(slugs: Iterable<string>): Map<string, number> {
+  const map = new Map<string, number>();
+
+  aboutPageSlugs.forEach((slug, index) => {
+    map.set(slug, index * 10);
+  });
+
+  const customSlugs = [...new Set(Array.from(slugs).filter((slug) => !starterAboutSlugSet.has(slug)))].sort((a, b) =>
+    a.localeCompare(b)
+  );
+
+  customSlugs.forEach((slug, index) => {
+    map.set(slug, 100 + index * 10);
+  });
+
+  return map;
+}
+
+type CardSeed = {
+  title: string;
+  description: string;
+  image?: AboutImage;
+};
+
+function extractCardSeedBySlug(aboutPage: AboutPageContent | null): Map<string, CardSeed> {
+  const seed = new Map<string, CardSeed>();
+  if (!aboutPage) {
+    return seed;
   }
 
-  const meta = (content as { _meta?: unknown })._meta;
-  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) {
-    return false;
+  for (const section of aboutPage.sections) {
+    if (section.type !== 'linkGrid') {
+      continue;
+    }
+
+    for (const item of section.items) {
+      const normalizedPath = normalizeInternalPath(item.href);
+      if (!normalizedPath) {
+        continue;
+      }
+
+      const slug = slugFromPath(normalizedPath);
+      if (!slug || seed.has(slug)) {
+        continue;
+      }
+
+      seed.set(slug, {
+        title: item.title,
+        description: item.description,
+        image: item.image
+      });
+    }
   }
 
-  const kind = (meta as { kind?: unknown }).kind;
-  const metaSlug = (meta as { slug?: unknown }).slug;
-  return kind === deletedStarterTombstoneKind && metaSlug === slug;
+  return seed;
+}
+
+function normalizeCatalogState(raw: unknown, fallback: AboutCatalogState): AboutCatalogState {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return fallback;
+  }
+
+  const merged = {
+    ...fallback,
+    ...(raw as Record<string, unknown>)
+  };
+
+  const parsed = catalogStateSchema.safeParse(merged);
+  if (!parsed.success) {
+    return fallback;
+  }
+
+  if (parsed.data.deleted) {
+    return {
+      ...parsed.data,
+      enabled: false
+    };
+  }
+
+  return parsed.data;
+}
+
+function buildDefaultCatalogState(args: {
+  slug: string;
+  page: AboutPageContent;
+  seed: CardSeed | undefined;
+  order: number;
+}): AboutCatalogState {
+  const { slug, page, seed, order } = args;
+
+  return {
+    enabled: slug !== 'about',
+    order,
+    cardTitle: seed?.title?.trim() || page.navLabel || titleFromSlug(slug),
+    cardDescription: seed?.description?.trim() || page.hero.description || '',
+    cardImage: seed?.image,
+    deleted: false
+  };
+}
+
+function stableStringify(value: unknown): string {
+  return JSON.stringify(value);
+}
+
+function sortResolvedStates(states: ResolvedAboutState[]): ResolvedAboutState[] {
+  return [...states].sort((a, b) => {
+    if (a.slug === 'about' && b.slug !== 'about') return -1;
+    if (b.slug === 'about' && a.slug !== 'about') return 1;
+
+    const orderDelta = a.draftCatalog.order - b.draftCatalog.order;
+    if (orderDelta !== 0) {
+      return orderDelta;
+    }
+
+    return a.slug.localeCompare(b.slug);
+  });
+}
+
+function buildDraftDeltaSummary(states: ResolvedAboutState[]): AboutDraftDeltaSummary {
+  return {
+    totalChanged: states.filter((state) => state.changed).length,
+    changedPages: states.filter((state) => state.pageChanged).length,
+    changedCatalog: states.filter((state) => state.catalogChanged).length,
+    stagedDeletions: states.filter((state) => state.draftDeleted).length
+  };
+}
+
+function toEditorStatePayload(states: ResolvedAboutState[]): AdminAboutEditorState {
+  const sorted = sortResolvedStates(states);
+
+  return {
+    pages: sorted.map((state) => ({
+      slug: state.slug,
+      isStarter: state.isStarter,
+      draftPage: state.draftPage,
+      publishedPage: state.publishedPage,
+      draftDeleted: state.draftDeleted,
+      publishedDeleted: state.publishedDeleted,
+      draftUpdatedAt: state.draftUpdatedAt,
+      publishedUpdatedAt: state.publishedUpdatedAt,
+      pageChanged: state.pageChanged
+    })),
+    catalog: sorted.map((state) => ({
+      slug: state.slug,
+      isStarter: state.isStarter,
+      publicPath: publicPathForSlug(state.slug),
+      draft: state.draftCatalog,
+      published: state.publishedCatalog,
+      changed: state.catalogChanged
+    })),
+    defaults: listDefaultAboutPages(),
+    draftDelta: buildDraftDeltaSummary(sorted)
+  };
+}
+
+function resolveStateForMissingRow(
+  slug: string,
+  orderMap: Map<string, number>,
+  seedMap: Map<string, CardSeed>
+): ResolvedAboutState {
+  const fallbackPage = getDefaultAboutPage(slug) || buildTemplatePageForSlug(slug);
+  const catalog = buildDefaultCatalogState({
+    slug,
+    page: fallbackPage,
+    seed: seedMap.get(slug),
+    order: orderMap.get(slug) ?? 0
+  });
+
+  return {
+    row: null,
+    slug,
+    isStarter: starterAboutSlugSet.has(slug),
+    draftPage: fallbackPage,
+    publishedPage: fallbackPage,
+    draftDeleted: false,
+    publishedDeleted: false,
+    draftCatalog: catalog,
+    publishedCatalog: catalog,
+    draftUpdatedAt: null,
+    publishedUpdatedAt: null,
+    pageChanged: false,
+    catalogChanged: false,
+    changed: false
+  };
+}
+
+function resolveStateForRow(
+  row: ContentPageRow,
+  orderMap: Map<string, number>,
+  seedMap: Map<string, CardSeed>
+): ResolvedAboutState {
+  const slug = row.slug;
+  const isStarter = starterAboutSlugSet.has(slug);
+
+  const publishedRaw = getLegacyPublishedRaw(row);
+  const draftRaw = getLegacyDraftRaw(row);
+
+  const publishedDeleted = row.publishedDeleted || isDeletedTombstone(publishedRaw, slug);
+  const draftDeleted = row.draftDeleted || isDeletedTombstone(draftRaw, slug);
+
+  const parsedPublished = publishedDeleted ? null : parseStoredPage(publishedRaw, slug);
+  const parsedDraft = draftDeleted ? null : parseStoredPage(draftRaw, slug);
+
+  const fallbackPage = getDefaultAboutPage(slug) || buildTemplatePageForSlug(slug);
+
+  const publishedPage = publishedDeleted ? null : parsedPublished ?? fallbackPage;
+  const draftPage = draftDeleted ? null : parsedDraft ?? publishedPage ?? fallbackPage;
+
+  const sourcePageForCatalog = draftPage ?? publishedPage ?? fallbackPage;
+  const defaultCatalog = buildDefaultCatalogState({
+    slug,
+    page: sourcePageForCatalog,
+    seed: seedMap.get(slug),
+    order: orderMap.get(slug) ?? 0
+  });
+
+  const normalizedPublishedCatalog = normalizeCatalogState(row.catalogPublished, defaultCatalog);
+  const normalizedDraftCatalog = normalizeCatalogState(row.catalogDraft, normalizedPublishedCatalog);
+
+  const publishedCatalog = publishedDeleted
+    ? { ...normalizedPublishedCatalog, deleted: true, enabled: false }
+    : normalizedPublishedCatalog;
+
+  const draftCatalog = draftDeleted
+    ? { ...normalizedDraftCatalog, deleted: true, enabled: false }
+    : normalizedDraftCatalog;
+
+  const pageChanged =
+    draftDeleted !== publishedDeleted ||
+    stableStringify(draftPage) !== stableStringify(publishedPage);
+
+  const catalogChanged = stableStringify(draftCatalog) !== stableStringify(publishedCatalog);
+
+  return {
+    row,
+    slug,
+    isStarter,
+    draftPage,
+    publishedPage,
+    draftDeleted,
+    publishedDeleted,
+    draftCatalog,
+    publishedCatalog,
+    draftUpdatedAt: row.updatedAt.toISOString(),
+    publishedUpdatedAt: row.updatedAt.toISOString(),
+    pageChanged,
+    catalogChanged,
+    changed: pageChanged || catalogChanged
+  };
+}
+
+function buildLegacyContentFromPublished(state: {
+  slug: string;
+  isStarter: boolean;
+  publishedDeleted: boolean;
+  publishedPage: AboutPageContent | null;
+}): unknown {
+  if (state.publishedDeleted || !state.publishedPage) {
+    return buildDeletedTombstone(state.slug, state.isStarter);
+  }
+
+  return state.publishedPage;
+}
+
+async function ensureStarterRowsExist(rows: ContentPageRow[]): Promise<void> {
+  const existingSlugs = new Set(rows.map((row) => row.slug));
+  const orderMap = defaultOrderMap(existingSlugs);
+
+  const aboutCandidate = rows.find((row) => row.slug === 'about');
+  const aboutPage = aboutCandidate
+    ? parseStoredPage(getLegacyPublishedRaw(aboutCandidate), 'about')
+    : getDefaultAboutPage('about');
+  const seedMap = extractCardSeedBySlug(aboutPage ?? null);
+
+  for (const starterSlug of aboutPageSlugs) {
+    if (existingSlugs.has(starterSlug)) {
+      continue;
+    }
+
+    const fallbackPage = getDefaultAboutPage(starterSlug) || buildTemplatePageForSlug(starterSlug);
+    const catalog = buildDefaultCatalogState({
+      slug: starterSlug,
+      page: fallbackPage,
+      seed: seedMap.get(starterSlug),
+      order: orderMap.get(starterSlug) ?? 0
+    });
+
+    await prisma.contentPage.create({
+      data: {
+        scope,
+        slug: starterSlug,
+        title: buildAboutPageTitle(fallbackPage),
+        content: toJson(fallbackPage),
+        draftContent: toJson(fallbackPage),
+        publishedContent: toJson(fallbackPage),
+        catalogDraft: toJson(catalog),
+        catalogPublished: toJson(catalog),
+        draftDeleted: false,
+        publishedDeleted: false
+      }
+    });
+  }
+}
+
+async function hydrateAboutV2Rows(): Promise<void> {
+  const rows = await prisma.contentPage.findMany({
+    where: { scope },
+    select: aboutRowSelect,
+    orderBy: [{ slug: 'asc' }]
+  });
+
+  await ensureStarterRowsExist(rows as ContentPageRow[]);
+
+  const hydratedRows = (await prisma.contentPage.findMany({
+    where: { scope },
+    select: aboutRowSelect,
+    orderBy: [{ slug: 'asc' }]
+  })) as ContentPageRow[];
+
+  const allSlugs = new Set(hydratedRows.map((row) => row.slug));
+  const orderMap = defaultOrderMap(allSlugs);
+
+  const aboutRow = hydratedRows.find((row) => row.slug === 'about') || null;
+  const aboutPage = aboutRow
+    ? parseStoredPage(getLegacyPublishedRaw(aboutRow), 'about') || getDefaultAboutPage('about')
+    : getDefaultAboutPage('about');
+  const seedMap = extractCardSeedBySlug(aboutPage ?? null);
+
+  for (const row of hydratedRows) {
+    const resolved = resolveStateForRow(row, orderMap, seedMap);
+    const normalizedLegacy = buildLegacyContentFromPublished({
+      slug: resolved.slug,
+      isStarter: resolved.isStarter,
+      publishedDeleted: resolved.publishedDeleted,
+      publishedPage: resolved.publishedPage
+    });
+
+    const missingDraftContent = row.draftContent === null && !resolved.draftDeleted;
+    const missingPublishedContent = row.publishedContent === null && !resolved.publishedDeleted;
+    const missingCatalogDraft = row.catalogDraft === null;
+    const missingCatalogPublished = row.catalogPublished === null;
+
+    const needsLegacySync = stableStringify(row.content) !== stableStringify(normalizedLegacy);
+    const needsDeletedSync = row.draftDeleted !== resolved.draftDeleted || row.publishedDeleted !== resolved.publishedDeleted;
+    const needsCatalogDraftSync = stableStringify(row.catalogDraft) !== stableStringify(resolved.draftCatalog);
+    const needsCatalogPublishedSync = stableStringify(row.catalogPublished) !== stableStringify(resolved.publishedCatalog);
+
+    if (
+      missingDraftContent ||
+      missingPublishedContent ||
+      missingCatalogDraft ||
+      missingCatalogPublished ||
+      needsLegacySync ||
+      needsDeletedSync ||
+      needsCatalogDraftSync ||
+      needsCatalogPublishedSync
+    ) {
+      await prisma.contentPage.update({
+        where: { id: row.id },
+        data: {
+          draftContent: resolved.draftPage ? toJson(resolved.draftPage) : Prisma.JsonNull,
+          publishedContent: resolved.publishedPage ? toJson(resolved.publishedPage) : Prisma.JsonNull,
+          catalogDraft: toJson(resolved.draftCatalog),
+          catalogPublished: toJson(resolved.publishedCatalog),
+          draftDeleted: resolved.draftDeleted,
+          publishedDeleted: resolved.publishedDeleted,
+          content: toJson(normalizedLegacy)
+        }
+      });
+    }
+  }
+}
+
+async function loadResolvedAboutStates(): Promise<ResolvedAboutState[]> {
+  await hydrateAboutV2Rows();
+
+  const rows = (await prisma.contentPage.findMany({
+    where: { scope },
+    select: aboutRowSelect,
+    orderBy: [{ slug: 'asc' }]
+  })) as ContentPageRow[];
+
+  const slugSet = new Set<string>(rows.map((row) => row.slug));
+  for (const starterSlug of aboutPageSlugs) {
+    slugSet.add(starterSlug);
+  }
+
+  const orderMap = defaultOrderMap(slugSet);
+  const rowBySlug = new Map(rows.map((row) => [row.slug, row]));
+
+  const aboutRow = rowBySlug.get('about') || null;
+  const aboutPage = aboutRow
+    ? parseStoredPage(getLegacyPublishedRaw(aboutRow), 'about') || getDefaultAboutPage('about')
+    : getDefaultAboutPage('about');
+  const seedMap = extractCardSeedBySlug(aboutPage ?? null);
+
+  const states: ResolvedAboutState[] = [];
+  for (const slug of slugSet) {
+    const row = rowBySlug.get(slug) || null;
+    if (row) {
+      states.push(resolveStateForRow(row, orderMap, seedMap));
+      continue;
+    }
+
+    states.push(resolveStateForMissingRow(slug, orderMap, seedMap));
+  }
+
+  return sortResolvedStates(states);
+}
+
+function buildAutoCardItems(states: ResolvedAboutState[], mode: 'draft' | 'published') {
+  return states
+    .filter((state) => state.slug !== 'about')
+    .filter((state) => {
+      const catalog = mode === 'draft' ? state.draftCatalog : state.publishedCatalog;
+      return !catalog.deleted && catalog.enabled;
+    })
+    .sort((a, b) => {
+      const catalogA = mode === 'draft' ? a.draftCatalog : a.publishedCatalog;
+      const catalogB = mode === 'draft' ? b.draftCatalog : b.publishedCatalog;
+      const orderDelta = catalogA.order - catalogB.order;
+      if (orderDelta !== 0) return orderDelta;
+      return a.slug.localeCompare(b.slug);
+    })
+    .map((state) => {
+      const catalog = mode === 'draft' ? state.draftCatalog : state.publishedCatalog;
+      return {
+        hidden: false,
+        title: catalog.cardTitle,
+        description: catalog.cardDescription,
+        href: publicPathForSlug(state.slug),
+        image: catalog.cardImage
+      };
+    });
+}
+
+function syncAboutLandingCards(page: AboutPageContent, cards: ReturnType<typeof buildAutoCardItems>): AboutPageContent {
+  const next = structuredClone(page);
+
+  const firstLinkGridIndex = next.sections.findIndex((section) => section.type === 'linkGrid');
+  if (firstLinkGridIndex >= 0) {
+    const existing = next.sections[firstLinkGridIndex];
+    if (existing.type === 'linkGrid') {
+      next.sections[firstLinkGridIndex] = {
+        ...existing,
+        items: cards
+      };
+      return parseAboutPageContent(next);
+    }
+  }
+
+  next.sections.splice(1, 0, {
+    id: 'pathways',
+    type: 'linkGrid',
+    hidden: false,
+    eyebrow: 'Find Your Place',
+    heading: 'Get Involved',
+    items: cards
+  });
+
+  return parseAboutPageContent(next);
+}
+
+function serializeAdminPage(state: ResolvedAboutState) {
+  const fallbackPage = getDefaultAboutPage(state.slug) || buildTemplatePageForSlug(state.slug);
+  const page = state.draftPage ?? fallbackPage;
+  return {
+    page,
+    isCustomized: !state.isStarter || stableStringify(page) !== stableStringify(fallbackPage),
+    updatedAt: state.draftUpdatedAt,
+    updatedByAdminId: state.row?.updatedByAdminId ?? null
+  };
+}
+
+function requireSlugState(states: ResolvedAboutState[], slug: string): ResolvedAboutState {
+  const state = states.find((candidate) => candidate.slug === slug);
+  if (!state) {
+    throw new HttpError(404, 'About page not found');
+  }
+  return state;
 }
 
 export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
@@ -238,44 +910,39 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
     }
 
     try {
-      const row = await prisma.contentPage.findUnique({
+      const row = (await prisma.contentPage.findUnique({
         where: {
           scope_slug: {
             scope,
             slug: params.data.slug
           }
         },
-        select: {
-          id: true,
-          slug: true,
-          content: true,
-          updatedAt: true,
-          updatedByAdminId: true
-        }
-      });
+        select: aboutRowSelect
+      })) as ContentPageRow | null;
 
-      if (row) {
-        if (isDeletedStarterTombstone(row.content, params.data.slug)) {
-          return reply.status(404).send({ error: 'About page not found' });
+      if (!row) {
+        const defaultPage = getDefaultAboutPage(params.data.slug);
+        if (defaultPage) {
+          return reply.send(defaultPage);
         }
-
-        const parsed = parseStoredPageForPublic(row);
-        if (parsed) {
-          return reply.send(parsed);
-        }
-
-        const fallback = getDefaultAboutPage(params.data.slug);
-        if (fallback) {
-          request.log.warn({ scope, slug: params.data.slug }, 'Invalid stored About content encountered; serving defaults');
-          return reply.send(fallback);
-        }
-
-        throw new HttpError(500, 'Stored About page content is invalid.');
+        return reply.status(404).send({ error: 'About page not found' });
       }
 
-      const defaultPage = getDefaultAboutPage(params.data.slug);
-      if (defaultPage) {
-        return reply.send(defaultPage);
+      const rawPublished = getLegacyPublishedRaw(row);
+      const isPublishedDeleted = row.publishedDeleted || isDeletedTombstone(rawPublished, row.slug);
+      if (isPublishedDeleted) {
+        return reply.status(404).send({ error: 'About page not found' });
+      }
+
+      const parsedPublished = parseStoredPage(rawPublished, row.slug);
+      if (parsedPublished) {
+        return reply.send(parsedPublished);
+      }
+
+      const fallback = getDefaultAboutPage(params.data.slug);
+      if (fallback) {
+        request.log.warn({ scope, slug: params.data.slug }, 'Invalid stored About content encountered; serving defaults');
+        return reply.send(fallback);
       }
 
       return reply.status(404).send({ error: 'About page not found' });
@@ -291,50 +958,564 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.get('/api/admin/about/pages', { preHandler: app.requireAdminRole('SUPER_ADMIN') }, async (_request, reply) => {
+  app.get('/api/admin/about/v2/editor-state', { preHandler: app.requireAdminRole('SUPER_ADMIN') }, async (_request, reply) => {
     try {
-      const rows = await prisma.contentPage.findMany({
-        where: { scope },
-        orderBy: [{ updatedAt: 'desc' }, { slug: 'asc' }],
+      const states = await loadResolvedAboutStates();
+      reply.send(toEditorStatePayload(states));
+    } catch (err) {
+      if (isMissingContentPageTableError(err)) {
+        reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
+        return;
+      }
+      handleRouteError(reply, err, 'Failed to load About editor state');
+    }
+  });
+
+  app.put('/api/admin/about/v2/draft/pages/:slug', { preHandler: app.requireAdminRole('SUPER_ADMIN') }, async (request, reply) => {
+    const params = slugParamsSchema.safeParse(request.params);
+    if (!params.success) {
+      return reply.status(400).send({ error: 'Invalid about page slug' });
+    }
+
+    const parsedBody = z.unknown().safeParse(request.body);
+    if (!parsedBody.success) {
+      return reply.status(400).send({ error: 'Invalid page payload' });
+    }
+
+    let content: AboutPageContent;
+    try {
+      content = parseAboutPageContent(parsedBody.data);
+    } catch (err) {
+      return reply.status(400).send({
+        error: err instanceof Error ? err.message : 'Invalid About page content'
+      });
+    }
+
+    if (content.slug !== params.data.slug) {
+      return reply.status(400).send({ error: 'Page slug does not match the requested route' });
+    }
+
+    try {
+      const states = await loadResolvedAboutStates();
+      const current = requireSlugState(states, params.data.slug);
+
+      if (containsImageDataUrl(content)) {
+        if (!isR2Configured()) {
+          throw new HttpError(503, 'R2/CDN is not configured. Configure R2 before saving image data URLs.');
+        }
+        content = await convertImageDataUrlsToR2(content, params.data.slug);
+      }
+
+      const nextDraftCatalog = {
+        ...current.draftCatalog,
+        deleted: false
+      };
+
+      const fallbackLegacy = buildLegacyContentFromPublished({
+        slug: current.slug,
+        isStarter: current.isStarter,
+        publishedDeleted: current.publishedDeleted,
+        publishedPage: current.publishedPage
+      });
+
+      const saved = await prisma.contentPage.upsert({
+        where: {
+          scope_slug: {
+            scope,
+            slug: params.data.slug
+          }
+        },
+        update: {
+          title: buildAboutPageTitle(content),
+          draftContent: toJson(content),
+          draftDeleted: false,
+          catalogDraft: toJson(nextDraftCatalog),
+          content: toJson(fallbackLegacy),
+          updatedByAdminId: request.adminUser?.id ?? null
+        },
+        create: {
+          scope,
+          slug: params.data.slug,
+          title: buildAboutPageTitle(content),
+          content: toJson(fallbackLegacy),
+          draftContent: toJson(content),
+          publishedContent: current.publishedPage ? toJson(current.publishedPage) : Prisma.JsonNull,
+          catalogDraft: toJson(nextDraftCatalog),
+          catalogPublished: toJson(current.publishedCatalog),
+          draftDeleted: false,
+          publishedDeleted: current.publishedDeleted,
+          updatedByAdminId: request.adminUser?.id ?? null
+        },
         select: {
-          id: true,
           slug: true,
-          content: true,
-          updatedAt: true,
-          updatedByAdminId: true
+          updatedAt: true
         }
       });
 
-      const rowBySlug = new Map(rows.map((row) => [row.slug, row]));
-      const payload: Array<{
-        page: AboutPageContent;
-        isCustomized: boolean;
-        updatedAt: string | null;
-        updatedByAdminId: string | null;
-      }> = [];
+      reply.send({
+        slug: saved.slug,
+        draftPage: content,
+        draftUpdatedAt: saved.updatedAt.toISOString()
+      });
+    } catch (err) {
+      if (isMissingContentPageTableError(err)) {
+        return reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
+      }
+      handleRouteError(reply, err, 'Failed to save About draft page');
+    }
+  });
 
-      for (const starterSlug of aboutPageSlugs) {
-        const row = rowBySlug.get(starterSlug) || null;
-        if (row) {
-          rowBySlug.delete(starterSlug);
-        }
+  app.patch('/api/admin/about/v2/draft/catalog/:slug', { preHandler: app.requireAdminRole('SUPER_ADMIN') }, async (request, reply) => {
+    const params = slugParamsSchema.safeParse(request.params);
+    if (!params.success) {
+      return reply.status(400).send({ error: 'Invalid about page slug' });
+    }
 
-        if (row && isDeletedStarterTombstone(row.content, starterSlug)) {
-          continue;
-        }
+    const parsedPatch = catalogPatchSchema.safeParse(request.body ?? {});
+    if (!parsedPatch.success) {
+      return reply.status(400).send({ error: parsedPatch.error.issues[0]?.message ?? 'Invalid catalog patch' });
+    }
 
-        const fallback = getDefaultAboutPage(starterSlug) || buildTemplatePageForSlug(starterSlug);
-        payload.push(serializeAdminPage(row, fallback));
+    const patch = parsedPatch.data as AboutCatalogPatch;
+
+    try {
+      const states = await loadResolvedAboutStates();
+      const current = requireSlugState(states, params.data.slug);
+
+      let nextCatalog: AboutCatalogState = {
+        ...current.draftCatalog,
+        ...patch
+      };
+
+      nextCatalog = catalogStateSchema.parse(nextCatalog);
+      if (nextCatalog.deleted) {
+        nextCatalog.enabled = false;
       }
 
-      const customRows = [...rowBySlug.values()].sort((a, b) => a.slug.localeCompare(b.slug));
-      for (const row of customRows) {
-        if (isDeletedStarterTombstone(row.content, row.slug)) {
-          continue;
+      if (nextCatalog.cardImage?.url && isImageDataUrl(nextCatalog.cardImage.url)) {
+        if (!isR2Configured()) {
+          throw new HttpError(503, 'R2/CDN is not configured. Configure R2 before saving image data URLs.');
         }
-        payload.push(serializeAdminPage(row, buildTemplatePageForSlug(row.slug)));
+        nextCatalog = await convertCatalogImageDataUrlToR2(nextCatalog, params.data.slug);
       }
 
+      const fallbackLegacy = buildLegacyContentFromPublished({
+        slug: current.slug,
+        isStarter: current.isStarter,
+        publishedDeleted: current.publishedDeleted,
+        publishedPage: current.publishedPage
+      });
+
+      const saved = await prisma.contentPage.upsert({
+        where: {
+          scope_slug: {
+            scope,
+            slug: params.data.slug
+          }
+        },
+        update: {
+          catalogDraft: toJson(nextCatalog),
+          draftDeleted: nextCatalog.deleted,
+          content: toJson(fallbackLegacy),
+          updatedByAdminId: request.adminUser?.id ?? null
+        },
+        create: {
+          scope,
+          slug: params.data.slug,
+          title: current.draftPage ? buildAboutPageTitle(current.draftPage) : titleFromSlug(params.data.slug),
+          content: toJson(fallbackLegacy),
+          draftContent: current.draftPage ? toJson(current.draftPage) : Prisma.JsonNull,
+          publishedContent: current.publishedPage ? toJson(current.publishedPage) : Prisma.JsonNull,
+          catalogDraft: toJson(nextCatalog),
+          catalogPublished: toJson(current.publishedCatalog),
+          draftDeleted: nextCatalog.deleted,
+          publishedDeleted: current.publishedDeleted,
+          updatedByAdminId: request.adminUser?.id ?? null
+        },
+        select: {
+          slug: true,
+          updatedAt: true
+        }
+      });
+
+      reply.send({
+        slug: saved.slug,
+        draft: nextCatalog,
+        draftDeleted: nextCatalog.deleted,
+        draftUpdatedAt: saved.updatedAt.toISOString()
+      });
+    } catch (err) {
+      if (isMissingContentPageTableError(err)) {
+        return reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
+      }
+      handleRouteError(reply, err, 'Failed to save About catalog draft');
+    }
+  });
+
+  app.post('/api/admin/about/v2/draft/pages', { preHandler: app.requireAdminRole('SUPER_ADMIN') }, async (request, reply) => {
+    const parsed = createDraftPageSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid draft page payload' });
+    }
+
+    try {
+      const states = await loadResolvedAboutStates();
+      const existing = states.find((state) => state.slug === parsed.data.slug);
+      if (existing && !existing.draftDeleted) {
+        return reply.status(409).send({ error: 'A page with that slug already exists in draft state' });
+      }
+
+      const templateState = parsed.data.templateSlug
+        ? states.find((state) => state.slug === parsed.data.templateSlug)
+        : states.find((state) => state.slug === 'about');
+
+      const templatePage =
+        templateState?.draftPage ||
+        templateState?.publishedPage ||
+        getDefaultAboutPage(parsed.data.templateSlug ?? 'about') ||
+        getDefaultAboutPage('about') ||
+        listDefaultAboutPages()[0] ||
+        buildTemplatePageForSlug(parsed.data.slug);
+
+      const nextPage = structuredClone(templatePage);
+      nextPage.slug = parsed.data.slug;
+      nextPage.navLabel = titleFromSlug(parsed.data.slug);
+
+      const maxOrder = Math.max(
+        ...states
+          .filter((state) => state.slug !== 'about')
+          .map((state) => state.draftCatalog.order),
+        0
+      );
+
+      const nextCatalog: AboutCatalogState = {
+        enabled: true,
+        order: maxOrder + 10,
+        cardTitle: nextPage.navLabel,
+        cardDescription: nextPage.hero.description,
+        cardImage: undefined,
+        deleted: false
+      };
+
+      const fallbackLegacy = existing
+        ? buildLegacyContentFromPublished({
+            slug: existing.slug,
+            isStarter: existing.isStarter,
+            publishedDeleted: existing.publishedDeleted,
+            publishedPage: existing.publishedPage
+          })
+        : buildDeletedTombstone(parsed.data.slug, starterAboutSlugSet.has(parsed.data.slug));
+
+      const saved = await prisma.contentPage.upsert({
+        where: {
+          scope_slug: {
+            scope,
+            slug: parsed.data.slug
+          }
+        },
+        update: {
+          title: buildAboutPageTitle(nextPage),
+          draftContent: toJson(nextPage),
+          catalogDraft: toJson(nextCatalog),
+          draftDeleted: false,
+          content: toJson(fallbackLegacy),
+          updatedByAdminId: request.adminUser?.id ?? null
+        },
+        create: {
+          scope,
+          slug: parsed.data.slug,
+          title: buildAboutPageTitle(nextPage),
+          content: toJson(fallbackLegacy),
+          draftContent: toJson(nextPage),
+          publishedContent: Prisma.JsonNull,
+          catalogDraft: toJson(nextCatalog),
+          catalogPublished: toJson({
+            ...nextCatalog,
+            enabled: false,
+            deleted: true
+          }),
+          draftDeleted: false,
+          publishedDeleted: true,
+          updatedByAdminId: request.adminUser?.id ?? null
+        },
+        select: {
+          slug: true,
+          updatedAt: true
+        }
+      });
+
+      reply.status(201).send({
+        slug: saved.slug,
+        draftPage: nextPage,
+        draftCatalog: nextCatalog,
+        draftUpdatedAt: saved.updatedAt.toISOString()
+      });
+    } catch (err) {
+      if (isMissingContentPageTableError(err)) {
+        return reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
+      }
+      handleRouteError(reply, err, 'Failed to create About draft page');
+    }
+  });
+
+  app.delete('/api/admin/about/v2/draft/pages/:slug', { preHandler: app.requireAdminRole('SUPER_ADMIN') }, async (request, reply) => {
+    const params = slugParamsSchema.safeParse(request.params);
+    if (!params.success) {
+      return reply.status(400).send({ error: 'Invalid about page slug' });
+    }
+
+    try {
+      const states = await loadResolvedAboutStates();
+      const current = requireSlugState(states, params.data.slug);
+
+      const nextCatalog: AboutCatalogState = {
+        ...current.draftCatalog,
+        enabled: false,
+        deleted: true
+      };
+
+      const fallbackLegacy = buildLegacyContentFromPublished({
+        slug: current.slug,
+        isStarter: current.isStarter,
+        publishedDeleted: current.publishedDeleted,
+        publishedPage: current.publishedPage
+      });
+
+      await prisma.contentPage.upsert({
+        where: {
+          scope_slug: {
+            scope,
+            slug: params.data.slug
+          }
+        },
+        update: {
+          draftDeleted: true,
+          catalogDraft: toJson(nextCatalog),
+          content: toJson(fallbackLegacy),
+          updatedByAdminId: request.adminUser?.id ?? null
+        },
+        create: {
+          scope,
+          slug: params.data.slug,
+          title: current.publishedPage ? buildAboutPageTitle(current.publishedPage) : titleFromSlug(params.data.slug),
+          content: toJson(fallbackLegacy),
+          draftContent: current.draftPage ? toJson(current.draftPage) : Prisma.JsonNull,
+          publishedContent: current.publishedPage ? toJson(current.publishedPage) : Prisma.JsonNull,
+          catalogDraft: toJson(nextCatalog),
+          catalogPublished: toJson(current.publishedCatalog),
+          draftDeleted: true,
+          publishedDeleted: current.publishedDeleted,
+          updatedByAdminId: request.adminUser?.id ?? null
+        }
+      });
+
+      reply.send({
+        success: true,
+        slug: params.data.slug,
+        draftDeleted: true
+      });
+    } catch (err) {
+      if (isMissingContentPageTableError(err)) {
+        return reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
+      }
+      handleRouteError(reply, err, 'Failed to stage About draft deletion');
+    }
+  });
+
+  app.post('/api/admin/about/v2/publish', { preHandler: app.requireAdminRole('SUPER_ADMIN') }, async (request, reply) => {
+    try {
+      const states = await loadResolvedAboutStates();
+
+      await prisma.$transaction(async (tx) => {
+        const draftBasedStates = states.map((state) => {
+          const nextPublishedDeleted = state.draftDeleted || state.draftCatalog.deleted;
+          const nextPublishedCatalog: AboutCatalogState = {
+            ...state.draftCatalog,
+            deleted: nextPublishedDeleted,
+            enabled: nextPublishedDeleted ? false : state.draftCatalog.enabled
+          };
+
+          const fallbackPage = getDefaultAboutPage(state.slug) || buildTemplatePageForSlug(state.slug);
+          const nextPublishedPage = nextPublishedDeleted
+            ? null
+            : state.draftPage || state.publishedPage || fallbackPage;
+
+          return {
+            ...state,
+            nextPublishedDeleted,
+            nextPublishedCatalog,
+            nextPublishedPage
+          };
+        });
+
+        const cards = buildAutoCardItems(
+          draftBasedStates.map((state) => ({
+            ...state,
+            draftCatalog: state.nextPublishedCatalog,
+            publishedCatalog: state.nextPublishedCatalog
+          })),
+          'draft'
+        );
+
+        const normalizedStates = draftBasedStates.map((state) => {
+          if (state.slug !== 'about' || !state.nextPublishedPage || state.nextPublishedDeleted) {
+            return state;
+          }
+
+          return {
+            ...state,
+            nextPublishedPage: syncAboutLandingCards(state.nextPublishedPage, cards)
+          };
+        });
+
+        for (const state of normalizedStates) {
+          const nextLegacy = buildLegacyContentFromPublished({
+            slug: state.slug,
+            isStarter: state.isStarter,
+            publishedDeleted: state.nextPublishedDeleted,
+            publishedPage: state.nextPublishedPage
+          });
+
+          await tx.contentPage.upsert({
+            where: {
+              scope_slug: {
+                scope,
+                slug: state.slug
+              }
+            },
+            update: {
+              title: state.nextPublishedPage
+                ? buildAboutPageTitle(state.nextPublishedPage)
+                : `Deleted About page: ${state.slug}`,
+              content: toJson(nextLegacy),
+              draftContent: state.nextPublishedPage ? toJson(state.nextPublishedPage) : Prisma.JsonNull,
+              publishedContent: state.nextPublishedPage ? toJson(state.nextPublishedPage) : Prisma.JsonNull,
+              catalogDraft: toJson(state.nextPublishedCatalog),
+              catalogPublished: toJson(state.nextPublishedCatalog),
+              draftDeleted: state.nextPublishedDeleted,
+              publishedDeleted: state.nextPublishedDeleted,
+              updatedByAdminId: request.adminUser?.id ?? null
+            },
+            create: {
+              scope,
+              slug: state.slug,
+              title: state.nextPublishedPage
+                ? buildAboutPageTitle(state.nextPublishedPage)
+                : `Deleted About page: ${state.slug}`,
+              content: toJson(nextLegacy),
+              draftContent: state.nextPublishedPage ? toJson(state.nextPublishedPage) : Prisma.JsonNull,
+              publishedContent: state.nextPublishedPage ? toJson(state.nextPublishedPage) : Prisma.JsonNull,
+              catalogDraft: toJson(state.nextPublishedCatalog),
+              catalogPublished: toJson(state.nextPublishedCatalog),
+              draftDeleted: state.nextPublishedDeleted,
+              publishedDeleted: state.nextPublishedDeleted,
+              updatedByAdminId: request.adminUser?.id ?? null
+            }
+          });
+        }
+      });
+
+      await logAudit({
+        actor: request.adminUser?.username || 'super-admin',
+        actorAdminId: request.adminUser?.id || null,
+        action: 'ABOUT_CONTENT_PUBLISHED_ALL',
+        entityType: 'ContentPage',
+        entityId: scope,
+        metadata: {
+          scope,
+          publishedAt: new Date().toISOString()
+        }
+      });
+
+      const nextStates = await loadResolvedAboutStates();
+      reply.send({
+        success: true,
+        editorState: toEditorStatePayload(nextStates)
+      });
+    } catch (err) {
+      if (isMissingContentPageTableError(err)) {
+        return reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
+      }
+      handleRouteError(reply, err, 'Failed to publish About drafts');
+    }
+  });
+
+  app.post('/api/admin/about/v2/draft/reset', { preHandler: app.requireAdminRole('SUPER_ADMIN') }, async (request, reply) => {
+    const parsed = resetDraftSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid reset payload' });
+    }
+
+    try {
+      const states = await loadResolvedAboutStates();
+      const targetSlugs = parsed.data.slug ? [parsed.data.slug] : states.map((state) => state.slug);
+
+      await prisma.$transaction(async (tx) => {
+        for (const slug of targetSlugs) {
+          const state = requireSlugState(states, slug);
+          const fallbackPage = getDefaultAboutPage(slug) || buildTemplatePageForSlug(slug);
+          const nextDraftPage = state.publishedDeleted ? null : state.publishedPage || fallbackPage;
+          const nextDraftCatalog = state.publishedCatalog;
+
+          const legacy = buildLegacyContentFromPublished({
+            slug,
+            isStarter: state.isStarter,
+            publishedDeleted: state.publishedDeleted,
+            publishedPage: state.publishedPage
+          });
+
+          await tx.contentPage.upsert({
+            where: {
+              scope_slug: {
+                scope,
+                slug
+              }
+            },
+            update: {
+              title: nextDraftPage ? buildAboutPageTitle(nextDraftPage) : `Deleted About page: ${slug}`,
+              draftContent: nextDraftPage ? toJson(nextDraftPage) : Prisma.JsonNull,
+              draftDeleted: state.publishedDeleted,
+              catalogDraft: toJson(nextDraftCatalog),
+              content: toJson(legacy),
+              updatedByAdminId: request.adminUser?.id ?? null
+            },
+            create: {
+              scope,
+              slug,
+              title: nextDraftPage ? buildAboutPageTitle(nextDraftPage) : `Deleted About page: ${slug}`,
+              content: toJson(legacy),
+              draftContent: nextDraftPage ? toJson(nextDraftPage) : Prisma.JsonNull,
+              publishedContent: state.publishedPage ? toJson(state.publishedPage) : Prisma.JsonNull,
+              catalogDraft: toJson(nextDraftCatalog),
+              catalogPublished: toJson(state.publishedCatalog),
+              draftDeleted: state.publishedDeleted,
+              publishedDeleted: state.publishedDeleted,
+              updatedByAdminId: request.adminUser?.id ?? null
+            }
+          });
+        }
+      });
+
+      const nextStates = await loadResolvedAboutStates();
+      reply.send({
+        success: true,
+        editorState: toEditorStatePayload(nextStates)
+      });
+    } catch (err) {
+      if (isMissingContentPageTableError(err)) {
+        return reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
+      }
+      handleRouteError(reply, err, 'Failed to reset About drafts');
+    }
+  });
+
+  // v1 compatibility wrappers during rollout
+  app.get('/api/admin/about/pages', { preHandler: app.requireAdminRole('SUPER_ADMIN') }, async (_request, reply) => {
+    try {
+      const states = await loadResolvedAboutStates();
+      const payload = states
+        .filter((state) => !state.draftDeleted)
+        .map((state) => serializeAdminPage(state));
       reply.send(payload);
     } catch (err) {
       if (isMissingContentPageTableError(err)) {
@@ -386,6 +1567,13 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
         content = await convertImageDataUrlsToR2(content, params.data.slug);
       }
 
+      const states = await loadResolvedAboutStates();
+      const current = requireSlugState(states, params.data.slug);
+      const nextCatalog: AboutCatalogState = {
+        ...current.draftCatalog,
+        deleted: false
+      };
+
       const saved = await prisma.contentPage.upsert({
         where: {
           scope_slug: {
@@ -395,20 +1583,39 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
         },
         update: {
           title: buildAboutPageTitle(content),
-          content: content as any,
+          content: toJson(content),
+          draftContent: toJson(content),
+          publishedContent: toJson(content),
+          catalogDraft: toJson(nextCatalog),
+          catalogPublished: toJson(nextCatalog),
+          draftDeleted: false,
+          publishedDeleted: false,
           updatedByAdminId: request.adminUser?.id ?? null
         },
         create: {
           scope,
           slug: params.data.slug,
           title: buildAboutPageTitle(content),
-          content: content as any,
+          content: toJson(content),
+          draftContent: toJson(content),
+          publishedContent: toJson(content),
+          catalogDraft: toJson(nextCatalog),
+          catalogPublished: toJson(nextCatalog),
+          draftDeleted: false,
+          publishedDeleted: false,
           updatedByAdminId: request.adminUser?.id ?? null
         },
         select: {
           id: true,
           slug: true,
+          title: true,
           content: true,
+          draftContent: true,
+          publishedContent: true,
+          catalogDraft: true,
+          catalogPublished: true,
+          draftDeleted: true,
+          publishedDeleted: true,
           updatedAt: true,
           updatedByAdminId: true
         }
@@ -427,7 +1634,8 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
         }
       });
 
-      reply.send(serializeAdminPage(saved, buildTemplatePageForSlug(params.data.slug)));
+      const resolved = resolveStateForRow(saved as ContentPageRow, defaultOrderMap([saved.slug]), new Map());
+      reply.send(serializeAdminPage(resolved));
     } catch (err) {
       if (isMissingContentPageTableError(err)) {
         return reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
@@ -442,80 +1650,48 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'Invalid about page slug' });
     }
 
-    const isStarterSlug = starterAboutSlugSet.has(params.data.slug);
-
     try {
-      const existing = await prisma.contentPage.findUnique({
+      const states = await loadResolvedAboutStates();
+      const current = requireSlugState(states, params.data.slug);
+
+      const nextCatalog: AboutCatalogState = {
+        ...current.publishedCatalog,
+        enabled: false,
+        deleted: true
+      };
+
+      const tombstone = buildDeletedTombstone(params.data.slug, current.isStarter);
+
+      await prisma.contentPage.upsert({
         where: {
           scope_slug: {
             scope,
             slug: params.data.slug
           }
         },
-        select: {
-          id: true,
-          title: true,
-          content: true
-        }
-      });
-
-      if (isStarterSlug) {
-        const tombstone = buildDeletedStarterTombstone(params.data.slug);
-        const saved = await prisma.contentPage.upsert({
-          where: {
-            scope_slug: {
-              scope,
-              slug: params.data.slug
-            }
-          },
-          update: {
-            title: `Deleted starter About page: ${params.data.slug}`,
-            content: tombstone as any,
-            updatedByAdminId: request.adminUser?.id ?? null
-          },
-          create: {
-            scope,
-            slug: params.data.slug,
-            title: `Deleted starter About page: ${params.data.slug}`,
-            content: tombstone as any,
-            updatedByAdminId: request.adminUser?.id ?? null
-          },
-          select: {
-            id: true
-          }
-        });
-
-        await logAudit({
-          actor: request.adminUser?.username || 'super-admin',
-          actorAdminId: request.adminUser?.id || null,
-          action: 'ABOUT_CONTENT_DELETED',
-          entityType: 'ContentPage',
-          entityId: existing?.id ?? saved.id,
-          metadata: {
-            scope,
-            slug: params.data.slug,
-            title: existing?.title ?? null,
-            deletedStarterPage: true
-          }
-        });
-
-        return reply.send({
-          success: true,
-          deleted: true,
-          restoredDefault: false
-        });
-      }
-
-      if (!existing) {
-        throw new HttpError(404, 'About page not found');
-      }
-
-      await prisma.contentPage.delete({
-        where: {
-          scope_slug: {
-            scope,
-            slug: params.data.slug
-          }
+        update: {
+          title: `Deleted About page: ${params.data.slug}`,
+          content: toJson(tombstone),
+          draftContent: Prisma.JsonNull,
+          publishedContent: Prisma.JsonNull,
+          catalogDraft: toJson(nextCatalog),
+          catalogPublished: toJson(nextCatalog),
+          draftDeleted: true,
+          publishedDeleted: true,
+          updatedByAdminId: request.adminUser?.id ?? null
+        },
+        create: {
+          scope,
+          slug: params.data.slug,
+          title: `Deleted About page: ${params.data.slug}`,
+          content: toJson(tombstone),
+          draftContent: Prisma.JsonNull,
+          publishedContent: Prisma.JsonNull,
+          catalogDraft: toJson(nextCatalog),
+          catalogPublished: toJson(nextCatalog),
+          draftDeleted: true,
+          publishedDeleted: true,
+          updatedByAdminId: request.adminUser?.id ?? null
         }
       });
 
@@ -524,11 +1700,10 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
         actorAdminId: request.adminUser?.id || null,
         action: 'ABOUT_CONTENT_DELETED',
         entityType: 'ContentPage',
-        entityId: existing.id,
+        entityId: `${scope}:${params.data.slug}`,
         metadata: {
           scope,
-          slug: params.data.slug,
-          title: existing.title
+          slug: params.data.slug
         }
       });
 

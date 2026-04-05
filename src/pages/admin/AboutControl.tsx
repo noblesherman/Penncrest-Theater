@@ -8,12 +8,14 @@ import AboutPageRenderer from '../../components/about/AboutPageRenderer';
 import { adminFetch } from '../../lib/adminAuth';
 import {
   ABOUT_PAGE_LABELS, ABOUT_PAGE_SLUGS, cloneAboutPage,
+  type AboutCatalogState,
+  type AdminAboutEditorPageState,
+  type AdminAboutEditorState,
   type AboutAction, type AboutCtaSection, type AboutFeatureGridSection,
   type AboutHistoryItem, type AboutHistorySection, type AboutImage,
   type AboutLinkGridSection, type AboutListPanelSection, type AboutPageContent,
   type AboutPageSlug, type AboutPeopleSection, type AboutSection,
   type AboutSplitFeatureSection, type AboutStorySection, type AboutTestimonialSection,
-  type AdminAboutPageRecord,
 } from '../../lib/aboutContent';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -103,27 +105,6 @@ function reorder<T>(items: T[], index: number, direction: -1 | 1) {
   const [item] = copy.splice(index, 1);
   copy.splice(next, 0, item);
   return copy;
-}
-
-function normalizeInternalPath(value: string): string | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-
-  if (trimmed.startsWith('/')) {
-    return trimmed.replace(/[?#].*$/, '').replace(/\/+$/, '') || '/';
-  }
-
-  try {
-    const url = new URL(trimmed);
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
-    return url.pathname.replace(/\/+$/, '') || '/';
-  } catch {
-    return null;
-  }
-}
-
-function isAboutPageEnabled(page: AboutPageContent): boolean {
-  return page.sections.some((section) => section.hidden !== true);
 }
 
 // ─── Shared field styles (consistent with site editor) ───────────────────────
@@ -360,39 +341,84 @@ function SubItem({ title, index, length, onMove, onRemove, children }: {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function AdminAboutControlPage() {
-  const [records, setRecords] = useState<Record<AboutPageSlug, AdminAboutPageRecord> | null>(null);
+  const [pageStateBySlug, setPageStateBySlug] = useState<Record<AboutPageSlug, AdminAboutEditorPageState> | null>(null);
   const [defaults, setDefaults] = useState<Record<AboutPageSlug, AboutPageContent> | null>(null);
   const [drafts, setDrafts] = useState<Record<AboutPageSlug, AboutPageContent> | null>(null);
+  const [savedDrafts, setSavedDrafts] = useState<Record<AboutPageSlug, AboutPageContent> | null>(null);
+  const [publishedPages, setPublishedPages] = useState<Record<AboutPageSlug, AboutPageContent | null> | null>(null);
+  const [catalogDrafts, setCatalogDrafts] = useState<Record<AboutPageSlug, AboutCatalogState> | null>(null);
+  const [savedCatalogDrafts, setSavedCatalogDrafts] = useState<Record<AboutPageSlug, AboutCatalogState> | null>(null);
+  const [catalogPublished, setCatalogPublished] = useState<Record<AboutPageSlug, AboutCatalogState> | null>(null);
   const [slug, setSlug] = useState<AboutPageSlug>('about');
   const [newPageSlug, setNewPageSlug] = useState('');
   const [renameSlugInput, setRenameSlugInput] = useState('about');
   const [newPageTemplateSlug, setNewPageTemplateSlug] = useState<AboutPageSlug>('about');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [autosavingDraft, setAutosavingDraft] = useState(false);
+  const [autosavingCatalog, setAutosavingCatalog] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
 
+  const applyEditorState = (editorState: AdminAboutEditorState) => {
+    const nextDefaults = Object.fromEntries(editorState.defaults.map((p) => [p.slug, cloneAboutPage(p)])) as Record<AboutPageSlug, AboutPageContent>;
+    const nextDrafts: Record<AboutPageSlug, AboutPageContent> = {};
+    const nextSavedDrafts: Record<AboutPageSlug, AboutPageContent> = {};
+    const nextPublishedPages: Record<AboutPageSlug, AboutPageContent | null> = {};
+    const nextPageStates: Record<AboutPageSlug, AdminAboutEditorPageState> = {};
+
+    const fallbackTemplate = editorState.defaults[0] ? cloneAboutPage(editorState.defaults[0]) : null;
+
+    editorState.pages.forEach((pageState) => {
+      const fallback = nextDefaults[pageState.slug] ?? (fallbackTemplate ? cloneAboutPage(fallbackTemplate) : null);
+      const source = pageState.draftPage ?? pageState.publishedPage ?? fallback;
+      if (!source) {
+        return;
+      }
+      const normalized = cloneAboutPage(source);
+      normalized.slug = pageState.slug;
+      if (!normalized.navLabel.trim()) {
+        normalized.navLabel = labelFromSlug(pageState.slug);
+      }
+      nextDrafts[pageState.slug] = cloneAboutPage(normalized);
+      nextSavedDrafts[pageState.slug] = cloneAboutPage(normalized);
+      nextPublishedPages[pageState.slug] = pageState.publishedPage ? cloneAboutPage(pageState.publishedPage) : null;
+      nextPageStates[pageState.slug] = pageState;
+    });
+
+    const nextCatalogDrafts: Record<AboutPageSlug, AboutCatalogState> = {};
+    const nextSavedCatalogDrafts: Record<AboutPageSlug, AboutCatalogState> = {};
+    const nextCatalogPublished: Record<AboutPageSlug, AboutCatalogState> = {};
+    editorState.catalog.forEach((entry) => {
+      nextCatalogDrafts[entry.slug] = { ...entry.draft };
+      nextSavedCatalogDrafts[entry.slug] = { ...entry.draft };
+      nextCatalogPublished[entry.slug] = { ...entry.published };
+    });
+
+    setDefaults(nextDefaults);
+    setDrafts(nextDrafts);
+    setSavedDrafts(nextSavedDrafts);
+    setPublishedPages(nextPublishedPages);
+    setPageStateBySlug(nextPageStates);
+    setCatalogDrafts(nextCatalogDrafts);
+    setSavedCatalogDrafts(nextSavedCatalogDrafts);
+    setCatalogPublished(nextCatalogPublished);
+
+    const availableSlugs = Object.keys(nextDrafts);
+    if (!availableSlugs.includes(slug)) {
+      setSlug(availableSlugs.includes('about') ? 'about' : (availableSlugs[0] ?? 'about'));
+    }
+    if (!(newPageTemplateSlug in nextDrafts)) {
+      setNewPageTemplateSlug(nextDrafts.about ? 'about' : (Object.keys(nextDrafts)[0] ?? 'about'));
+    }
+  };
+
   const load = async () => {
     setLoading(true); setError(null);
     try {
-      const [pages, defs] = await Promise.all([
-        adminFetch<AdminAboutPageRecord[]>('/api/admin/about/pages'),
-        adminFetch<AboutPageContent[]>('/api/admin/about/pages/defaults'),
-      ]);
-      const nextRecords = Object.fromEntries(pages.map((r) => [r.page.slug, r])) as Record<AboutPageSlug, AdminAboutPageRecord>;
-      const nextDrafts = Object.fromEntries(pages.map((r) => [r.page.slug, cloneAboutPage(r.page)])) as Record<AboutPageSlug, AboutPageContent>;
-      const nextDefaults = Object.fromEntries(defs.map((p) => [p.slug, p])) as Record<AboutPageSlug, AboutPageContent>;
-      setRecords(nextRecords);
-      setDrafts(nextDrafts);
-      setDefaults(nextDefaults);
-      const availableSlugs = Object.keys(nextDrafts);
-      if (!availableSlugs.includes(slug)) {
-        setSlug(availableSlugs.includes('about') ? 'about' : (availableSlugs[0] ?? 'about'));
-      }
-      if (!(newPageTemplateSlug in nextDrafts)) {
-        setNewPageTemplateSlug(nextDrafts.about ? 'about' : (Object.keys(nextDrafts)[0] ?? 'about'));
-      }
+      const state = await adminFetch<AdminAboutEditorState>('/api/admin/about/v2/editor-state');
+      applyEditorState(state);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
@@ -403,38 +429,65 @@ export default function AdminAboutControlPage() {
   useEffect(() => { void load(); }, []);
   useEffect(() => { setRenameSlugInput(slug); }, [slug]);
 
-  const record = records?.[slug] ?? null;
   const draft = drafts?.[slug] ?? null;
   const deferred = useDeferredValue(draft);
+  const draftCatalog = catalogDrafts?.[slug] ?? null;
+  const pageState = pageStateBySlug?.[slug] ?? null;
 
   const pageSlugs = useMemo(() => {
-    const fromDrafts = drafts ? Object.keys(drafts) : [];
-    return [...new Set<string>(fromDrafts)].sort((a, b) => {
-      const aStarterIndex = ABOUT_PAGE_SLUGS.indexOf(a as any);
-      const bStarterIndex = ABOUT_PAGE_SLUGS.indexOf(b as any);
-      const aIsStarter = aStarterIndex >= 0;
-      const bIsStarter = bStarterIndex >= 0;
-      if (aIsStarter && bIsStarter) return aStarterIndex - bStarterIndex;
-      if (aIsStarter) return -1;
-      if (bIsStarter) return 1;
+    const allSlugs = new Set<string>();
+    Object.keys(drafts ?? {}).forEach((key) => allSlugs.add(key));
+    Object.keys(catalogDrafts ?? {}).forEach((key) => allSlugs.add(key));
+    return [...allSlugs].sort((a, b) => {
+      if (a === 'about' && b !== 'about') return -1;
+      if (b === 'about' && a !== 'about') return 1;
+      const aOrder = catalogDrafts?.[a]?.order ?? 0;
+      const bOrder = catalogDrafts?.[b]?.order ?? 0;
+      if (aOrder !== bOrder) return aOrder - bOrder;
       return a.localeCompare(b);
     });
-  }, [drafts]);
+  }, [drafts, catalogDrafts]);
 
   const dirtySet = useMemo(() => {
-    if (!drafts) return new Set<AboutPageSlug>();
     const next = new Set<AboutPageSlug>();
-    Object.keys(drafts).forEach((pageSlug) => {
-      const draftPage = drafts[pageSlug];
-      const recordPage = records?.[pageSlug]?.page;
-      if (!recordPage || JSON.stringify(recordPage) !== JSON.stringify(draftPage)) {
+    const allSlugs = new Set<string>();
+    Object.keys(drafts ?? {}).forEach((key) => allSlugs.add(key));
+    Object.keys(savedDrafts ?? {}).forEach((key) => allSlugs.add(key));
+    Object.keys(catalogDrafts ?? {}).forEach((key) => allSlugs.add(key));
+    Object.keys(savedCatalogDrafts ?? {}).forEach((key) => allSlugs.add(key));
+    Object.keys(catalogPublished ?? {}).forEach((key) => allSlugs.add(key));
+    Object.keys(publishedPages ?? {}).forEach((key) => allSlugs.add(key));
+    Object.keys(pageStateBySlug ?? {}).forEach((key) => allSlugs.add(key));
+
+    if (allSlugs.size === 0) return next;
+
+    allSlugs.forEach((pageSlug) => {
+      const localDraft = drafts?.[pageSlug];
+      const savedDraft = savedDrafts?.[pageSlug];
+      const publishedPage = publishedPages?.[pageSlug] ?? null;
+      const localCatalog = catalogDrafts?.[pageSlug];
+      const savedCatalog = savedCatalogDrafts?.[pageSlug];
+      const publishedCatalogState = catalogPublished?.[pageSlug];
+      const state = pageStateBySlug?.[pageSlug];
+
+      const hasUnsyncedDraft = JSON.stringify(localDraft) !== JSON.stringify(savedDraft);
+      const hasUnsyncedCatalog = JSON.stringify(localCatalog) !== JSON.stringify(savedCatalog);
+
+      const hasPublishedDiff =
+        JSON.stringify(savedDraft ?? null) !== JSON.stringify(publishedPage) ||
+        Boolean(state?.draftDeleted) !== Boolean(state?.publishedDeleted) ||
+        JSON.stringify(savedCatalog ?? null) !== JSON.stringify(publishedCatalogState ?? null);
+
+      if (hasUnsyncedDraft || hasUnsyncedCatalog || hasPublishedDiff) {
         next.add(pageSlug);
       }
     });
+
     return next;
-  }, [records, drafts]);
+  }, [drafts, savedDrafts, publishedPages, pageStateBySlug, catalogDrafts, savedCatalogDrafts, catalogPublished]);
 
   const dirty = dirtySet.has(slug);
+  const globalChangedCount = dirtySet.size;
 
   const upPage = (fn: (p: AboutPageContent) => AboutPageContent) =>
     setDrafts((d) => d ? { ...d, [slug]: fn(cloneAboutPage(d[slug])) } : d);
@@ -447,114 +500,240 @@ export default function AdminAboutControlPage() {
   const removeSec = (i: number) =>
     upPage((p) => ({ ...p, sections: p.sections.filter((_, j) => j !== i) }));
 
-  const setPageEnabled = (targetSlug: AboutPageSlug, enabled: boolean) => {
-    setDrafts((current) => {
+  const upCatalog = (fn: (c: AboutCatalogState) => AboutCatalogState) =>
+    setCatalogDrafts((current) => {
       if (!current) return current;
+      const entry = current[slug];
+      if (!entry) return current;
+      return { ...current, [slug]: fn({ ...entry }) };
+    });
 
-      const next = { ...current };
-      const targetPage = cloneAboutPage(next[targetSlug]);
-      targetPage.sections = targetPage.sections.map((section) => ({ ...section, hidden: !enabled }));
-      next[targetSlug] = targetPage;
+  useEffect(() => {
+    if (!draft || !savedDrafts) return;
+    const saved = savedDrafts[slug];
+    if (!saved || JSON.stringify(saved) === JSON.stringify(draft)) return;
 
-      if (targetSlug !== 'about') {
-        const targetPath = publicPathForSlug(targetSlug);
-        const aboutCurrent = next.about;
-        if (!aboutCurrent) {
-          return next;
-        }
-
-        const aboutPage = cloneAboutPage(aboutCurrent);
-        aboutPage.sections = aboutPage.sections.map((section) => {
-          if (section.type !== 'linkGrid') {
-            return section;
+    const timer = window.setTimeout(async () => {
+      setAutosavingDraft(true);
+      try {
+        const payload = cloneAboutPage(draft);
+        payload.slug = slug;
+        const savedResponse = await adminFetch<{ slug: string; draftPage: AboutPageContent; draftUpdatedAt: string }>(
+          `/api/admin/about/v2/draft/pages/${slug}`,
+          { method: 'PUT', body: JSON.stringify(payload) }
+        );
+        setSavedDrafts((prev) => prev ? { ...prev, [slug]: cloneAboutPage(savedResponse.draftPage) } : prev);
+        setPageStateBySlug((prev) => prev ? {
+          ...prev,
+          [slug]: {
+            ...(prev[slug] ?? {
+              slug,
+              isStarter: ABOUT_PAGE_SLUGS.includes(slug as any),
+              draftPage: savedResponse.draftPage,
+              publishedPage: publishedPages?.[slug] ?? null,
+              draftDeleted: false,
+              publishedDeleted: false,
+              draftUpdatedAt: savedResponse.draftUpdatedAt,
+              publishedUpdatedAt: null,
+              pageChanged: true
+            }),
+            draftDeleted: false,
+            draftUpdatedAt: savedResponse.draftUpdatedAt
           }
-
-          return {
-            ...section,
-            items: section.items.map((item) => {
-              const normalizedPath = normalizeInternalPath(item.href);
-              if (normalizedPath !== targetPath) {
-                return item;
-              }
-              return { ...item, hidden: !enabled };
-            })
-          };
-        });
-        next.about = aboutPage;
+        } : prev);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to auto-save draft');
+      } finally {
+        setAutosavingDraft(false);
       }
+    }, 450);
 
-      return next;
-    });
+    return () => window.clearTimeout(timer);
+  }, [slug, draft, savedDrafts, publishedPages]);
 
-    const label = ABOUT_PAGE_LABELS[targetSlug] ?? drafts?.[targetSlug]?.navLabel ?? labelFromSlug(targetSlug);
-    setNotice(enabled ? `${label} turned on.` : `${label} turned off.`);
+  useEffect(() => {
+    if (!draftCatalog || !savedCatalogDrafts) return;
+    const saved = savedCatalogDrafts[slug];
+    if (!saved || JSON.stringify(saved) === JSON.stringify(draftCatalog)) return;
+
+    const timer = window.setTimeout(async () => {
+      setAutosavingCatalog(true);
+      try {
+        const savedResponse = await adminFetch<{ slug: string; draft: AboutCatalogState; draftDeleted: boolean }>(
+          `/api/admin/about/v2/draft/catalog/${slug}`,
+          { method: 'PATCH', body: JSON.stringify(draftCatalog) }
+        );
+        setSavedCatalogDrafts((prev) => prev ? { ...prev, [slug]: { ...savedResponse.draft } } : prev);
+        setCatalogDrafts((prev) => prev ? { ...prev, [slug]: { ...savedResponse.draft } } : prev);
+        setPageStateBySlug((prev) => prev ? {
+          ...prev,
+          [slug]: {
+            ...(prev[slug] ?? {
+              slug,
+              isStarter: ABOUT_PAGE_SLUGS.includes(slug as any),
+              draftPage: drafts?.[slug] ?? null,
+              publishedPage: publishedPages?.[slug] ?? null,
+              draftDeleted: savedResponse.draftDeleted,
+              publishedDeleted: false,
+              draftUpdatedAt: null,
+              publishedUpdatedAt: null,
+              pageChanged: true
+            }),
+            draftDeleted: savedResponse.draftDeleted
+          }
+        } : prev);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to auto-save catalog');
+      } finally {
+        setAutosavingCatalog(false);
+      }
+    }, 450);
+
+    return () => window.clearTimeout(timer);
+  }, [slug, draftCatalog, savedCatalogDrafts, drafts, publishedPages]);
+
+  const flushCurrentDraft = async () => {
+    if (!draft || !savedDrafts) return;
+    const saved = savedDrafts[slug];
+    if (saved && JSON.stringify(saved) === JSON.stringify(draft)) return;
+    const payload = cloneAboutPage(draft);
+    payload.slug = slug;
+    const response = await adminFetch<{ slug: string; draftPage: AboutPageContent; draftUpdatedAt: string }>(
+      `/api/admin/about/v2/draft/pages/${slug}`,
+      { method: 'PUT', body: JSON.stringify(payload) }
+    );
+    setSavedDrafts((prev) => prev ? { ...prev, [slug]: cloneAboutPage(response.draftPage) } : prev);
+    setPageStateBySlug((prev) => prev ? {
+      ...prev,
+      [slug]: {
+        ...(prev[slug] ?? {
+          slug,
+          isStarter: ABOUT_PAGE_SLUGS.includes(slug as any),
+          draftPage: response.draftPage,
+          publishedPage: publishedPages?.[slug] ?? null,
+          draftDeleted: false,
+          publishedDeleted: false,
+          draftUpdatedAt: response.draftUpdatedAt,
+          publishedUpdatedAt: null,
+          pageChanged: true
+        }),
+        draftDeleted: false,
+        draftUpdatedAt: response.draftUpdatedAt
+      }
+    } : prev);
   };
 
-  const setAllGetInvolvedCardsVisible = (visible: boolean) => {
-    setDrafts((current) => {
-      if (!current) return current;
-
-      const next = { ...current };
-      const aboutCurrent = next.about;
-      if (!aboutCurrent) {
-        return next;
+  const flushCurrentCatalog = async () => {
+    if (!draftCatalog || !savedCatalogDrafts) return;
+    const saved = savedCatalogDrafts[slug];
+    if (saved && JSON.stringify(saved) === JSON.stringify(draftCatalog)) return;
+    const response = await adminFetch<{ slug: string; draft: AboutCatalogState; draftDeleted: boolean }>(
+      `/api/admin/about/v2/draft/catalog/${slug}`,
+      { method: 'PATCH', body: JSON.stringify(draftCatalog) }
+    );
+    setSavedCatalogDrafts((prev) => prev ? { ...prev, [slug]: { ...response.draft } } : prev);
+    setCatalogDrafts((prev) => prev ? { ...prev, [slug]: { ...response.draft } } : prev);
+    setPageStateBySlug((prev) => prev ? {
+      ...prev,
+      [slug]: {
+        ...(prev[slug] ?? {
+          slug,
+          isStarter: ABOUT_PAGE_SLUGS.includes(slug as any),
+          draftPage: drafts?.[slug] ?? null,
+          publishedPage: publishedPages?.[slug] ?? null,
+          draftDeleted: response.draftDeleted,
+          publishedDeleted: false,
+          draftUpdatedAt: null,
+          publishedUpdatedAt: null,
+          pageChanged: true
+        }),
+        draftDeleted: response.draftDeleted
       }
+    } : prev);
+  };
 
-      const aboutPage = cloneAboutPage(aboutCurrent);
-      aboutPage.sections = aboutPage.sections.map((section) => {
-        if (section.type !== 'linkGrid') {
-          return section;
-        }
-        return {
-          ...section,
-          items: section.items.map((item) => ({ ...item, hidden: !visible }))
-        };
+  const setPageEnabled = async (targetSlug: AboutPageSlug, enabled: boolean) => {
+    const current = catalogDrafts?.[targetSlug];
+    if (!current) return;
+    const next = { ...current, enabled, deleted: false };
+    setCatalogDrafts((prev) => prev ? { ...prev, [targetSlug]: next } : prev);
+    setSavedCatalogDrafts((prev) => prev ? { ...prev, [targetSlug]: next } : prev);
+    try {
+      await adminFetch(`/api/admin/about/v2/draft/catalog/${targetSlug}`, {
+        method: 'PATCH',
+        body: JSON.stringify(next)
       });
-      next.about = aboutPage;
-
-      return next;
-    });
-
-    setNotice(visible ? 'All Get Involved cards turned on.' : 'All Get Involved cards turned off.');
+      setNotice(enabled ? `${labelFromSlug(targetSlug)} enabled.` : `${labelFromSlug(targetSlug)} disabled.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update page visibility');
+      await load();
+    }
   };
 
-  const save = async () => {
+  const movePageOrder = async (targetSlug: AboutPageSlug, direction: -1 | 1) => {
+    if (!catalogDrafts || targetSlug === 'about') return;
+    const movable = pageSlugs.filter((candidate) => candidate !== 'about');
+    const index = movable.indexOf(targetSlug);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= movable.length) return;
+    const swapSlug = movable[nextIndex];
+    const current = catalogDrafts[targetSlug];
+    const swap = catalogDrafts[swapSlug];
+    if (!current || !swap) return;
+
+    const nextTarget = { ...current, order: swap.order };
+    const nextSwap = { ...swap, order: current.order };
+    setCatalogDrafts((prev) => prev ? { ...prev, [targetSlug]: nextTarget, [swapSlug]: nextSwap } : prev);
+    setSavedCatalogDrafts((prev) => prev ? { ...prev, [targetSlug]: nextTarget, [swapSlug]: nextSwap } : prev);
+
+    try {
+      await Promise.all([
+        adminFetch(`/api/admin/about/v2/draft/catalog/${targetSlug}`, { method: 'PATCH', body: JSON.stringify(nextTarget) }),
+        adminFetch(`/api/admin/about/v2/draft/catalog/${swapSlug}`, { method: 'PATCH', body: JSON.stringify(nextSwap) })
+      ]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to reorder pages');
+      await load();
+    }
+  };
+
+  const publishAll = async () => {
     if (!draft) return;
     setSaving(true); setError(null); setNotice(null);
     try {
-      const saved = await adminFetch<AdminAboutPageRecord>(`/api/admin/about/pages/${slug}`, {
-        method: 'PUT', body: JSON.stringify(draft),
+      await flushCurrentDraft();
+      await flushCurrentCatalog();
+      const result = await adminFetch<{ success: boolean; editorState: AdminAboutEditorState }>('/api/admin/about/v2/publish', {
+        method: 'POST'
       });
-      setRecords((r) => r ? { ...r, [slug]: saved } : r);
-      setDrafts((d) => d ? { ...d, [slug]: cloneAboutPage(saved.page) } : d);
-      setNotice('Published successfully.');
+      applyEditorState(result.editorState);
+      setNotice('All draft changes published.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save');
+      setError(e instanceof Error ? e.message : 'Failed to publish all changes');
     } finally {
       setSaving(false);
     }
   };
 
-  const revert = () => {
-    if (!drafts) return;
-    const stored = records?.[slug];
-    if (stored) {
-      setDrafts((d) => d ? { ...d, [slug]: cloneAboutPage(stored.page) } : d);
-      setNotice('Changes reverted.');
-      return;
+  const revert = async () => {
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await adminFetch<{ success: boolean; editorState: AdminAboutEditorState }>('/api/admin/about/v2/draft/reset', {
+        method: 'POST',
+        body: JSON.stringify({ slug })
+      });
+      applyEditorState(result.editorState);
+      setNotice('Draft reset to published.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to reset draft');
+    } finally {
+      setSaving(false);
     }
-
-    setDrafts((current) => {
-      if (!current) return current;
-      const { [slug]: _discarded, ...rest } = current;
-      return rest;
-    });
-    const fallbackSlug = pageSlugs.find((candidate) => candidate !== slug) ?? 'about';
-    setSlug(fallbackSlug);
-    setNotice('Draft page discarded.');
   };
 
-  const loadDefaults = () => {
+  const loadDefaults = async () => {
     if (!defaults) return;
     const source = defaults[slug] ?? defaults.about ?? Object.values(defaults)[0];
     if (!source) return;
@@ -563,11 +742,29 @@ export default function AdminAboutControlPage() {
     if (!defaults[slug]) {
       nextPage.navLabel = labelFromSlug(slug);
     }
-    setDrafts((d) => d ? { ...d, [slug]: nextPage } : d);
-    setNotice('Default content loaded. Save to publish.');
+    setSaving(true);
+    setError(null);
+    try {
+      await adminFetch(`/api/admin/about/v2/draft/pages/${slug}`, {
+        method: 'PUT',
+        body: JSON.stringify(nextPage)
+      });
+      if (catalogDrafts?.[slug]) {
+        await adminFetch(`/api/admin/about/v2/draft/catalog/${slug}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ ...catalogDrafts[slug], deleted: false, enabled: slug !== 'about' })
+        });
+      }
+      await load();
+      setNotice('Default content restored to draft.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load defaults');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const createPageDraft = () => {
+  const createPageDraft = async () => {
     if (!drafts || !defaults) return;
     const normalizedSlug = normalizeSlugInput(newPageSlug);
     if (!normalizedSlug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(normalizedSlug)) {
@@ -579,90 +776,65 @@ export default function AdminAboutControlPage() {
       return;
     }
 
-    const template = drafts[newPageTemplateSlug] ?? defaults[newPageTemplateSlug] ?? defaults.about ?? Object.values(defaults)[0];
-    if (!template) {
-      setError('Could not find a template page to clone.');
-      return;
-    }
-
-    const page = cloneAboutPage(template);
-    page.slug = normalizedSlug;
-    page.navLabel = labelFromSlug(normalizedSlug);
-
-    setDrafts((current) => current ? { ...current, [normalizedSlug]: page } : current);
-    setSlug(normalizedSlug);
-    setRenameSlugInput(normalizedSlug);
-    setNewPageSlug('');
+    setSaving(true);
     setError(null);
-    setNotice(`Created draft page "${normalizedSlug}". Publish to make it live.`);
+    try {
+      await adminFetch('/api/admin/about/v2/draft/pages', {
+        method: 'POST',
+        body: JSON.stringify({ slug: normalizedSlug, templateSlug: newPageTemplateSlug })
+      });
+      await load();
+      setSlug(normalizedSlug);
+      setRenameSlugInput(normalizedSlug);
+      setNewPageSlug('');
+      setNotice(`Draft page "${normalizedSlug}" created.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to create draft page');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const renamePageSlug = async () => {
-    if (!drafts || !draft) return;
-
+    if (!draft || !draftCatalog || !drafts) return;
     const nextSlug = normalizeSlugInput(renameSlugInput);
     if (!nextSlug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(nextSlug)) {
       setError('Slug must use lowercase letters, numbers, and hyphens only.');
       return;
     }
-
     if (nextSlug === slug) {
       setNotice('Slug is unchanged.');
       return;
     }
-
     if (drafts[nextSlug]) {
       setError('A page with that slug already exists.');
       return;
     }
 
+    setSaving(true);
     setError(null);
     setNotice(null);
-
-    const hasStoredVersion = Boolean(records?.[slug]);
-    const isStarterSlug = ABOUT_PAGE_SLUGS.includes(slug as any);
-
-    if (!hasStoredVersion && !isStarterSlug) {
-      setDrafts((current) => {
-        if (!current) return current;
-        const currentPage = current[slug];
-        if (!currentPage) return current;
-
-        const next = { ...current };
-        delete next[slug];
-
-        const renamed = cloneAboutPage(currentPage);
-        renamed.slug = nextSlug;
-        if (!renamed.navLabel.trim()) {
-          renamed.navLabel = labelFromSlug(nextSlug);
-        }
-        next[nextSlug] = renamed;
-        return next;
-      });
-
-      setSlug(nextSlug);
-      setRenameSlugInput(nextSlug);
-      setNotice(`Draft slug changed to "${nextSlug}". Publish to make it live.`);
-      return;
-    }
-
-    setSaving(true);
     try {
+      await flushCurrentDraft();
+      await flushCurrentCatalog();
+
       const renamed = cloneAboutPage(draft);
       renamed.slug = nextSlug;
-      if (!renamed.navLabel.trim()) {
-        renamed.navLabel = labelFromSlug(nextSlug);
-      }
+      if (!renamed.navLabel.trim()) renamed.navLabel = labelFromSlug(nextSlug);
 
-      await adminFetch<AdminAboutPageRecord>(`/api/admin/about/pages/${nextSlug}`, {
+      await adminFetch(`/api/admin/about/v2/draft/pages/${nextSlug}`, {
         method: 'PUT',
-        body: JSON.stringify(renamed),
+        body: JSON.stringify(renamed)
       });
 
-      await adminFetch<{ success: boolean; deleted: boolean; restoredDefault: boolean }>(
-        `/api/admin/about/pages/${slug}`,
-        { method: 'DELETE' }
-      );
+      await adminFetch(`/api/admin/about/v2/draft/catalog/${nextSlug}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ ...draftCatalog, deleted: false })
+      });
+
+      await adminFetch(`/api/admin/about/v2/draft/pages/${slug}`, {
+        method: 'DELETE'
+      });
 
       await load();
       setSlug(nextSlug);
@@ -677,58 +849,29 @@ export default function AdminAboutControlPage() {
 
   const deletePage = async () => {
     if (!drafts) return;
-    setError(null);
-    setNotice(null);
-
     const isStarterSlug = ABOUT_PAGE_SLUGS.includes(slug as any);
-    const stored = records?.[slug];
-
-    if (!stored) {
-      if (isStarterSlug) {
-        setNotice('Page was already removed.');
-        return;
-      }
-
-      setDrafts((current) => {
-        if (!current) return current;
-        const { [slug]: _removed, ...rest } = current;
-        return rest;
-      });
-      const fallbackSlug = pageSlugs.find((candidate) => candidate !== slug) ?? 'about';
-      setSlug(fallbackSlug);
-      setNotice(`Draft page "${slug}" deleted.`);
-      return;
-    }
-
     const confirmed = confirm(
       isStarterSlug
-        ? `Delete starter page "${ABOUT_PAGE_LABELS[slug] ?? labelFromSlug(slug)}"? This removes the page from the site.`
-        : `Delete page "${slug}"? This will remove it from the site.`
+        ? `Stage delete for starter page "${ABOUT_PAGE_LABELS[slug] ?? labelFromSlug(slug)}"?`
+        : `Stage delete for page "${slug}"?`
     );
     if (!confirmed) return;
 
     setSaving(true);
+    setError(null);
+    setNotice(null);
     try {
-      const result = await adminFetch<{ success: boolean; deleted: boolean; restoredDefault: boolean }>(
-        `/api/admin/about/pages/${slug}`,
-        { method: 'DELETE' }
-      );
-
+      await adminFetch(`/api/admin/about/v2/draft/pages/${slug}`, { method: 'DELETE' });
       await load();
-
-      if (!result.deleted) {
-        setNotice('Page was already removed.');
-      } else {
-        setNotice(`Page "${slug}" deleted.`);
-      }
+      setNotice(`Delete staged for "${slug}". Publish all to apply publicly.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to delete page');
+      setError(e instanceof Error ? e.message : 'Failed to stage page deletion');
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading || !drafts || !defaults || !draft) {
+  if (loading || !drafts || !defaults || !draft || !pageStateBySlug || !catalogDrafts || !savedDrafts || !savedCatalogDrafts || !catalogPublished) {
     return (
       <div className="flex h-64 items-center justify-center gap-3 text-stone-400">
         {error
@@ -738,7 +881,43 @@ export default function AdminAboutControlPage() {
     );
   }
 
-  const published = formatUpdatedAt(record?.updatedAt ?? null);
+  const published = formatUpdatedAt(pageState?.publishedUpdatedAt ?? null);
+  const draftDeleted = pageState?.draftDeleted ?? false;
+  const publishedDeleted = pageState?.publishedDeleted ?? false;
+
+  const autoCardItems = pageSlugs
+    .filter((pageSlug) => pageSlug !== 'about')
+    .map((pageSlug) => ({ slug: pageSlug, catalog: catalogDrafts[pageSlug] }))
+    .filter((entry): entry is { slug: string; catalog: AboutCatalogState } => Boolean(entry.catalog))
+    .filter((entry) => !entry.catalog.deleted && entry.catalog.enabled)
+    .sort((a, b) => (a.catalog.order - b.catalog.order) || a.slug.localeCompare(b.slug))
+    .map((entry) => ({
+      hidden: false,
+      title: entry.catalog.cardTitle,
+      description: entry.catalog.cardDescription,
+      href: publicPathForSlug(entry.slug),
+      image: entry.catalog.cardImage
+    }));
+
+  const previewDraft = (() => {
+    if (!draft || slug !== 'about') return draft;
+    const next = cloneAboutPage(draft);
+    const linkGridIndex = next.sections.findIndex((section) => section.type === 'linkGrid');
+    if (linkGridIndex >= 0 && next.sections[linkGridIndex]?.type === 'linkGrid') {
+      const linkGrid = next.sections[linkGridIndex] as AboutLinkGridSection;
+      next.sections[linkGridIndex] = { ...linkGrid, items: autoCardItems };
+      return next;
+    }
+    next.sections.splice(1, 0, {
+      id: 'pathways',
+      type: 'linkGrid',
+      hidden: false,
+      eyebrow: 'Find Your Place',
+      heading: 'Get Involved',
+      items: autoCardItems
+    });
+    return next;
+  })();
 
   // ─── Section renderers ──────────────────────────────────────────────────────
 
@@ -774,84 +953,65 @@ export default function AdminAboutControlPage() {
         </SectionShell>
       );
 
-      case 'linkGrid': return (
-        <SectionShell key={section.id} {...shellProps}>
-          {header}
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-stone-200 bg-stone-50 p-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
-              Cards visible: {section.items.filter((item) => item.hidden !== true).length}/{section.items.length}
-            </p>
-            <button
-              type="button"
-              onClick={() =>
-                upSec(si, (s) => ({
-                  ...(s as AboutLinkGridSection),
-                  items: (s as AboutLinkGridSection).items.map((item) => ({ ...item, hidden: false }))
-                }))
-              }
-              className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
-            >
-              <Eye className="h-3.5 w-3.5" /> Show all cards
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                upSec(si, (s) => ({
-                  ...(s as AboutLinkGridSection),
-                  items: (s as AboutLinkGridSection).items.map((item) => ({ ...item, hidden: true }))
-                }))
-              }
-              className="inline-flex items-center gap-1 rounded-lg border border-stone-300 bg-white px-2.5 py-1 text-xs font-semibold text-stone-600 hover:bg-stone-100"
-            >
-              <EyeOff className="h-3.5 w-3.5" /> Hide all cards
-            </button>
-          </div>
-          <div className="space-y-3">
-            {section.items.map((item, ii) => (
-              <SubItem
-                key={`${section.id}-link-${ii}`}
-                title={`Card ${ii + 1}${item.title ? ` — ${item.title}` : ''}${item.hidden ? ' (hidden)' : ''}`}
-                index={ii}
-                length={section.items.length}
-                onMove={(d) => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: reorder((s as AboutLinkGridSection).items, ii, d) }))}
-                onRemove={() => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: (s as AboutLinkGridSection).items.filter((_, j) => j !== ii) }))}
-              >
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      upSec(si, (s) => ({
-                        ...(s as AboutLinkGridSection),
-                        items: (s as AboutLinkGridSection).items.map((x, j) =>
-                          j === ii ? { ...x, hidden: x.hidden !== true } : x
-                        )
-                      }))
-                    }
-                    className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold transition ${
-                      item.hidden
-                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                        : 'border-stone-300 bg-white text-stone-600 hover:bg-stone-100'
-                    }`}
-                  >
-                    {item.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-                    {item.hidden ? 'Show card' : 'Hide card'}
-                  </button>
-                </div>
-                <Row2>
-                  <Field label="Title"><input value={item.title} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: (s as AboutLinkGridSection).items.map((x, j) => j === ii ? { ...x, title: e.target.value } : x) }))} className={inputClass} /></Field>
-                  <Field label="URL"><input value={item.href} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: (s as AboutLinkGridSection).items.map((x, j) => j === ii ? { ...x, href: e.target.value } : x) }))} placeholder="/tech-crew" className={inputClass} /></Field>
-                </Row2>
-                <Field label="Description"><textarea value={item.description} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: (s as AboutLinkGridSection).items.map((x, j) => j === ii ? { ...x, description: e.target.value } : x) }))} className={taClass} /></Field>
-                <ImageField label="Card image" value={item.image} optional
-                  onChange={(img) => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: (s as AboutLinkGridSection).items.map((x, j) => j === ii ? { ...x, image: img } : x) }))} />
-              </SubItem>
-            ))}
-            <AddBtn onClick={() => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: [...(s as AboutLinkGridSection).items, { hidden: false, title: '', description: '', href: '/about' }] }))}>
-              <Link2 className="h-3.5 w-3.5" /> Add card
-            </AddBtn>
-          </div>
-        </SectionShell>
-      );
+      case 'linkGrid': {
+        if (slug === 'about') {
+          return (
+            <SectionShell key={section.id} {...shellProps}>
+              {header}
+              <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                Get Involved cards are auto-synced from page catalog metadata (title, description, image, order, enabled).
+              </div>
+              <div className="space-y-3">
+                {autoCardItems.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-stone-200 py-3 text-center text-xs text-stone-400">
+                    No enabled pages to show yet.
+                  </p>
+                ) : (
+                  autoCardItems.map((item, ii) => (
+                    <div key={`${section.id}-auto-link-${ii}`} className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
+                      <p className="mb-3 text-xs font-semibold text-stone-500">Card {ii + 1}{item.title ? ` — ${item.title}` : ''}</p>
+                      <Row2>
+                        <Field label="Title"><input value={item.title} readOnly className={inputClass} /></Field>
+                        <Field label="URL"><input value={item.href} readOnly className={inputClass} /></Field>
+                      </Row2>
+                      <Field label="Description"><textarea value={item.description} readOnly className={taClass} /></Field>
+                    </div>
+                  ))
+                )}
+              </div>
+            </SectionShell>
+          );
+        }
+
+        return (
+          <SectionShell key={section.id} {...shellProps}>
+            {header}
+            <div className="space-y-3">
+              {section.items.map((item, ii) => (
+                <SubItem
+                  key={`${section.id}-link-${ii}`}
+                  title={`Card ${ii + 1}${item.title ? ` — ${item.title}` : ''}${item.hidden ? ' (hidden)' : ''}`}
+                  index={ii}
+                  length={section.items.length}
+                  onMove={(d) => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: reorder((s as AboutLinkGridSection).items, ii, d) }))}
+                  onRemove={() => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: (s as AboutLinkGridSection).items.filter((_, j) => j !== ii) }))}
+                >
+                  <Row2>
+                    <Field label="Title"><input value={item.title} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: (s as AboutLinkGridSection).items.map((x, j) => j === ii ? { ...x, title: e.target.value } : x) }))} className={inputClass} /></Field>
+                    <Field label="URL"><input value={item.href} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: (s as AboutLinkGridSection).items.map((x, j) => j === ii ? { ...x, href: e.target.value } : x) }))} placeholder="/tech-crew" className={inputClass} /></Field>
+                  </Row2>
+                  <Field label="Description"><textarea value={item.description} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: (s as AboutLinkGridSection).items.map((x, j) => j === ii ? { ...x, description: e.target.value } : x) }))} className={taClass} /></Field>
+                  <ImageField label="Card image" value={item.image} optional
+                    onChange={(img) => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: (s as AboutLinkGridSection).items.map((x, j) => j === ii ? { ...x, image: img } : x) }))} />
+                </SubItem>
+              ))}
+              <AddBtn onClick={() => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: [...(s as AboutLinkGridSection).items, { hidden: false, title: '', description: '', href: '/about' }] }))}>
+                <Link2 className="h-3.5 w-3.5" /> Add card
+              </AddBtn>
+            </div>
+          </SectionShell>
+        );
+      }
 
       case 'people': return (
         <SectionShell key={section.id} {...shellProps}>
@@ -1024,10 +1184,18 @@ export default function AdminAboutControlPage() {
             About Pages
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-stone-600">
-            Edit content for each public-facing about page. Changes are saved as drafts until you publish.
+            Drafts are persisted to the server. Publish All Changes applies content, catalog metadata, and staged deletions together.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
+            {globalChangedCount} changed
+          </span>
+          {(autosavingDraft || autosavingCatalog) && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-200">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving draft
+            </span>
+          )}
           <a href={publicPathForSlug(slug)} target="_blank" rel="noreferrer"
             className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold text-stone-700 hover:bg-stone-50">
             <ExternalLink className="h-4 w-4" /> View live
@@ -1053,7 +1221,9 @@ export default function AdminAboutControlPage() {
               {pageSlugs.map((s) => {
                 const active = s === slug;
                 const d = dirtySet.has(s);
-                const enabled = drafts ? isAboutPageEnabled(drafts[s]) : true;
+                const enabled = catalogDrafts?.[s]?.enabled ?? (s !== 'about');
+                const stagedDelete = pageStateBySlug?.[s]?.draftDeleted ?? false;
+                const publishedGone = pageStateBySlug?.[s]?.publishedDeleted ?? false;
                 return (
                   <div
                     key={s}
@@ -1074,20 +1244,41 @@ export default function AdminAboutControlPage() {
                     </button>
                     <div className="mt-3 flex items-center justify-between border-t border-stone-200/70 pt-3">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">
-                        {enabled ? 'Page On' : 'Page Off'}
+                        {stagedDelete
+                          ? 'Draft Deleted'
+                          : enabled ? 'Page On' : 'Page Off'}
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => setPageEnabled(s, !enabled)}
-                        className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold transition ${
-                          enabled
-                            ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
-                            : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                        }`}
-                      >
-                        {enabled ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                        {enabled ? 'Turn Off' : 'Turn On'}
-                      </button>
+                      <div className="flex items-center gap-1">
+                        {s !== 'about' && (
+                          <>
+                            <IconBtn onClick={() => void movePageOrder(s, -1)} title="Move up">
+                              <ArrowUp className="h-3.5 w-3.5" />
+                            </IconBtn>
+                            <IconBtn onClick={() => void movePageOrder(s, 1)} title="Move down">
+                              <ArrowDown className="h-3.5 w-3.5" />
+                            </IconBtn>
+                          </>
+                        )}
+                        {s !== 'about' && (
+                          <button
+                            type="button"
+                            onClick={() => void setPageEnabled(s, !enabled)}
+                            className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold transition ${
+                              enabled
+                                ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                                : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                            }`}
+                          >
+                            {enabled ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            {enabled ? 'Turn Off' : 'Turn On'}
+                          </button>
+                        )}
+                        {publishedGone && (
+                          <span className="rounded-full bg-stone-200 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-stone-600">
+                            Live Deleted
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -1132,12 +1323,13 @@ export default function AdminAboutControlPage() {
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Page status</p>
               <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${dirty ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200' : 'bg-stone-100 text-stone-500'}`}>
-                {dirty ? 'Unsaved changes' : 'Up to date'}
+                {dirty ? 'Changed' : 'Up to date'}
               </span>
             </div>
             <p className="text-xs text-stone-400">
-              {record?.isCustomized ? '✦ Custom content' : '◦ Using default content'}
-              {published ? ` · Published ${published}` : ' · Never published'}
+              {draftDeleted ? 'Draft state: Deleted' : 'Draft state: Active'}
+              {` · `}
+              {publishedDeleted ? 'Published state: Deleted' : (published ? `Published ${published}` : 'Never published')}
             </p>
             <div className="space-y-2 rounded-2xl border border-stone-200 bg-stone-50 p-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">Page slug</p>
@@ -1156,18 +1348,35 @@ export default function AdminAboutControlPage() {
                 <FilePenLine className="h-3.5 w-3.5" /> Change slug
               </button>
             </div>
+            {draftCatalog && slug !== 'about' && (
+              <div className="space-y-2 rounded-2xl border border-stone-200 bg-stone-50 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">Get Involved Card</p>
+                <Field label="Card title">
+                  <input value={draftCatalog.cardTitle} onChange={(e) => upCatalog((c) => ({ ...c, cardTitle: e.target.value, deleted: false }))} className={inputClass} />
+                </Field>
+                <Field label="Card description">
+                  <textarea value={draftCatalog.cardDescription} onChange={(e) => upCatalog((c) => ({ ...c, cardDescription: e.target.value, deleted: false }))} className={taClass} />
+                </Field>
+                <ImageField
+                  label="Card image"
+                  value={draftCatalog.cardImage}
+                  optional
+                  onChange={(img) => upCatalog((c) => ({ ...c, cardImage: img, deleted: false }))}
+                />
+              </div>
+            )}
             <div className="space-y-2 pt-1">
-              <button type="button" onClick={() => void save()} disabled={!dirty || saving}
+              <button type="button" onClick={() => void publishAll()} disabled={saving || globalChangedCount === 0}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-4 py-3 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-50">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                {saving ? 'Publishing…' : 'Publish changes'}
+                {saving ? 'Publishing…' : 'Publish All Changes'}
               </button>
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={revert} disabled={!dirty || saving}
+                <button type="button" onClick={() => void revert()} disabled={saving}
                   className="flex items-center justify-center gap-1.5 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-xs font-semibold text-stone-600 hover:bg-stone-50 disabled:opacity-40">
                   <RotateCcw className="h-3.5 w-3.5" /> Revert
                 </button>
-                <button type="button" onClick={loadDefaults} disabled={saving}
+                <button type="button" onClick={() => void loadDefaults()} disabled={saving}
                   className="flex items-center justify-center gap-1.5 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-xs font-semibold text-stone-600 hover:bg-stone-50 disabled:opacity-40">
                   <RefreshCw className="h-3.5 w-3.5" /> Defaults
                 </button>
@@ -1180,26 +1389,6 @@ export default function AdminAboutControlPage() {
               >
                 <Trash2 className="h-3.5 w-3.5" /> Delete page
               </button>
-              {slug === 'about' && (
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setAllGetInvolvedCardsVisible(true)}
-                    disabled={saving}
-                    className="flex items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-40"
-                  >
-                    <Eye className="h-3.5 w-3.5" /> Show All
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAllGetInvolvedCardsVisible(false)}
-                    disabled={saving}
-                    className="flex items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-40"
-                  >
-                    <EyeOff className="h-3.5 w-3.5" /> Hide All
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         </aside>
@@ -1245,10 +1434,10 @@ export default function AdminAboutControlPage() {
             {/* Unsaved nudge */}
             {dirty && (
               <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-amber-700">You have unsaved changes on this page.</p>
-                <button type="button" onClick={() => void save()} disabled={saving}
+                <p className="text-sm text-amber-700">This page has draft changes.</p>
+                <button type="button" onClick={() => void publishAll()} disabled={saving}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-50">
-                  <Save className="h-4 w-4" /> Publish now
+                  <Save className="h-4 w-4" /> Publish all
                 </button>
               </div>
             )}
@@ -1263,7 +1452,7 @@ export default function AdminAboutControlPage() {
                   <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-600 ring-1 ring-emerald-200">Rendering</span>
                 </div>
                 <div className="max-h-[calc(100vh-160px)] overflow-y-auto">
-                  {deferred ? <AboutPageRenderer page={deferred} preview /> : null}
+                  {previewDraft ? <AboutPageRenderer page={previewDraft} preview previewMode="admin" /> : (deferred ? <AboutPageRenderer page={deferred} preview previewMode="admin" /> : null)}
                 </div>
               </div>
             </div>

@@ -21,12 +21,21 @@ import type {
 
 // ─── Motion ───────────────────────────────────────────────────────────────────
 
-const fadeUp = (delay = 0) => ({
-  initial: { opacity: 0, y: 18 },
-  whileInView: { opacity: 1, y: 0 },
-  viewport: { once: true, margin: '-50px' },
-  transition: { duration: 0.55, delay, ease: [0.22, 1, 0.36, 1] },
-});
+type AboutRendererMode = 'public' | 'admin';
+
+const fadeUp = (delay = 0, previewMode: AboutRendererMode = 'public') =>
+  previewMode === 'admin'
+    ? {
+        initial: false,
+        animate: { opacity: 1, y: 0 },
+        transition: { duration: 0 },
+      }
+    : {
+        initial: { opacity: 0, y: 18 },
+        whileInView: { opacity: 1, y: 0 },
+        viewport: { once: true, margin: '-50px' },
+        transition: { duration: 0.55, delay, ease: [0.22, 1, 0.36, 1] },
+      };
 
 // ─── Per-slug gradient strip (matches site nav strip) ─────────────────────────
 
@@ -118,9 +127,11 @@ function SectionHeading({
 function ActionBtn({
   action,
   variant = 'solid',
+  previewMode = 'public',
 }: {
   action: AboutAction;
   variant?: 'solid' | 'ghost';
+  previewMode?: AboutRendererMode;
 }) {
   const isEmail = action.href.startsWith('mailto:');
   const isInternal = action.href.startsWith('/') && !action.href.startsWith('//');
@@ -142,6 +153,10 @@ function ActionBtn({
     </>
   );
 
+  if (previewMode === 'admin') {
+    return <span className={`${cls} pointer-events-none`}>{inner}</span>;
+  }
+
   return isInternal
     ? <Link to={action.href} className={cls}>{inner}</Link>
     : <a href={action.href} className={cls}>{inner}</a>;
@@ -149,7 +164,7 @@ function ActionBtn({
 
 // ─── Story ────────────────────────────────────────────────────────────────────
 
-function renderStory(section: AboutStorySection) {
+function renderStory(section: AboutStorySection, previewMode: AboutRendererMode) {
   const hasQuote = Boolean(section.quote?.trim());
 
   return (
@@ -160,7 +175,7 @@ function renderStory(section: AboutStorySection) {
         <div className={`mt-10 grid gap-10 ${hasQuote ? 'lg:grid-cols-[1fr_1fr] lg:gap-16' : 'max-w-3xl'}`}>
 
           {hasQuote && (
-            <motion.div {...fadeUp(0)}>
+            <motion.div {...fadeUp(0, previewMode)}>
               {/* Left-border quote block — matches site callout style */}
               <div className="border-l-4 border-red-700 pl-6">
                 <p
@@ -181,7 +196,7 @@ function renderStory(section: AboutStorySection) {
             </motion.div>
           )}
 
-          <motion.div {...fadeUp(hasQuote ? 0.08 : 0)} className="space-y-4 text-[0.9375rem] leading-relaxed text-stone-600">
+          <motion.div {...fadeUp(hasQuote ? 0.08 : 0, previewMode)} className="space-y-4 text-[0.9375rem] leading-relaxed text-stone-600">
             {section.lead && (
               <p className="text-[1.05rem] font-semibold text-stone-800" style={{ fontFamily: 'Georgia, serif' }}>
                 {section.lead}
@@ -198,7 +213,7 @@ function renderStory(section: AboutStorySection) {
 
 // ─── Link Grid ────────────────────────────────────────────────────────────────
 
-function renderLinkGrid(section: AboutLinkGridSection) {
+function renderLinkGrid(section: AboutLinkGridSection, previewMode: AboutRendererMode) {
   const visibleItems = section.items.filter((item) => item.hidden !== true);
   if (visibleItems.length === 0) {
     return null;
@@ -210,11 +225,39 @@ function renderLinkGrid(section: AboutLinkGridSection) {
         <SectionHeading eyebrow={section.eyebrow} heading={section.heading} />
         <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
           {visibleItems.map((item, i) => (
-            <motion.div key={i} {...fadeUp(i * 0.06)}>
-              <Link
-                to={item.href}
-                className="group flex h-full flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white transition duration-200 hover:-translate-y-0.5 hover:shadow-lg"
-              >
+            <motion.div key={i} {...fadeUp(i * 0.06, previewMode)}>
+              {previewMode === 'admin' ? (
+                <div className="group flex h-full flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white transition duration-200">
+                  <div className="overflow-hidden bg-stone-100">
+                    {item.image?.url ? (
+                      <img
+                        src={item.image.url}
+                        alt={item.image.alt}
+                        className="aspect-[4/3] w-full object-cover"
+                      />
+                    ) : (
+                      <div className="aspect-[4/3] w-full bg-gradient-to-br from-red-50 to-stone-100" />
+                    )}
+                  </div>
+                  <div className="flex flex-1 flex-col p-5">
+                    <h3
+                      className="mb-1.5 font-bold text-stone-900"
+                      style={{ fontFamily: 'Georgia, serif', fontSize: '1.1rem' }}
+                    >
+                      {item.title}
+                    </h3>
+                    <p className="flex-1 text-sm leading-relaxed text-stone-500">{item.description}</p>
+                    <span className="mt-4 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-red-600">
+                      Learn more
+                      <ArrowRight className="h-3 w-3" />
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <Link
+                  to={item.href}
+                  className="group flex h-full flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white transition duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+                >
                 <div className="overflow-hidden bg-stone-100">
                   {item.image?.url ? (
                     <img
@@ -239,7 +282,8 @@ function renderLinkGrid(section: AboutLinkGridSection) {
                     <ArrowRight className="h-3 w-3 transition-transform duration-150 group-hover:translate-x-0.5" />
                   </span>
                 </div>
-              </Link>
+                </Link>
+              )}
             </motion.div>
           ))}
         </div>
@@ -250,7 +294,7 @@ function renderLinkGrid(section: AboutLinkGridSection) {
 
 // ─── People ───────────────────────────────────────────────────────────────────
 
-function renderPeople(section: AboutPeopleSection) {
+function renderPeople(section: AboutPeopleSection, previewMode: AboutRendererMode) {
   return (
     <section className="bg-stone-50 py-16 sm:py-20">
       <div className="mx-auto max-w-7xl px-6 sm:px-10">
@@ -259,7 +303,7 @@ function renderPeople(section: AboutPeopleSection) {
           {section.items.map((person, i) => (
             <motion.article
               key={i}
-              {...fadeUp(i * 0.07)}
+              {...fadeUp(i * 0.07, previewMode)}
               className="overflow-hidden rounded-2xl border border-stone-200 bg-white"
             >
               <div className="aspect-[4/3] overflow-hidden bg-stone-200">
@@ -293,7 +337,7 @@ function renderPeople(section: AboutPeopleSection) {
 
 // ─── Calendar ─────────────────────────────────────────────────────────────────
 
-function renderCalendar(section: AboutCalendarSection) {
+function renderCalendar(section: AboutCalendarSection, previewMode: AboutRendererMode) {
   return (
     <section className="bg-white py-16 sm:py-20">
       <div className="mx-auto max-w-6xl px-6 sm:px-10">
@@ -301,7 +345,7 @@ function renderCalendar(section: AboutCalendarSection) {
         {section.description && (
           <p className="mt-3 max-w-2xl text-[0.9375rem] text-stone-500">{section.description}</p>
         )}
-        <motion.div {...fadeUp(0.07)} className="mt-10">
+        <motion.div {...fadeUp(0.07, previewMode)} className="mt-10">
           <TheaterCalendar />
         </motion.div>
       </div>
@@ -311,7 +355,7 @@ function renderCalendar(section: AboutCalendarSection) {
 
 // ─── History ──────────────────────────────────────────────────────────────────
 
-function renderHistory(section: AboutHistorySection) {
+function renderHistory(section: AboutHistorySection, previewMode: AboutRendererMode) {
   return (
     <section className="relative overflow-hidden border-t border-stone-800 bg-stone-900 py-16 text-white sm:py-20">
       {/* Subtle ambient glow — same as site's dark sections */}
@@ -322,7 +366,7 @@ function renderHistory(section: AboutHistorySection) {
         {section.description && (
           <p className="mt-3 max-w-2xl text-[0.9375rem] text-stone-300">{section.description}</p>
         )}
-        <motion.div {...fadeUp(0.07)} className="mt-10">
+        <motion.div {...fadeUp(0.07, previewMode)} className="mt-10">
           <ShowHistorySlideshow items={section.items} />
         </motion.div>
       </div>
@@ -332,7 +376,7 @@ function renderHistory(section: AboutHistorySection) {
 
 // ─── Feature Grid ─────────────────────────────────────────────────────────────
 
-function renderFeatureGrid(section: AboutFeatureGridSection) {
+function renderFeatureGrid(section: AboutFeatureGridSection, previewMode: AboutRendererMode) {
   return (
     <section className="bg-white py-16 sm:py-20">
       <div className="mx-auto max-w-7xl px-6 sm:px-10">
@@ -346,7 +390,7 @@ function renderFeatureGrid(section: AboutFeatureGridSection) {
           {section.items.map((item, i) => (
             <motion.div
               key={i}
-              {...fadeUp(i * 0.065)}
+              {...fadeUp(i * 0.065, previewMode)}
               className="rounded-2xl border border-stone-200 bg-stone-50 p-6 transition hover:border-red-100 hover:bg-white hover:shadow-md"
             >
               {/* Number — editorial detail that matches the site's playbill feel */}
@@ -374,7 +418,7 @@ function renderFeatureGrid(section: AboutFeatureGridSection) {
 
 // ─── Split Feature ────────────────────────────────────────────────────────────
 
-function renderSplitFeature(section: AboutSplitFeatureSection) {
+function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: AboutRendererMode) {
   return (
     <section className="bg-stone-50 py-16 sm:py-20">
       <div className="mx-auto max-w-7xl px-6 sm:px-10">
@@ -382,7 +426,7 @@ function renderSplitFeature(section: AboutSplitFeatureSection) {
 
           {/* Images */}
           <motion.div
-            {...fadeUp(0)}
+            {...fadeUp(0, previewMode)}
             className={`grid gap-4 ${section.images.length > 1 ? 'grid-cols-2' : ''}`}
           >
             {section.images.map((img, i) => (
@@ -398,7 +442,7 @@ function renderSplitFeature(section: AboutSplitFeatureSection) {
           </motion.div>
 
           {/* Text */}
-          <motion.div {...fadeUp(0.08)}>
+          <motion.div {...fadeUp(0.08, previewMode)}>
             <SectionHeading eyebrow={section.eyebrow} heading={section.heading} />
             {section.lead && (
               <p
@@ -446,14 +490,14 @@ function renderSplitFeature(section: AboutSplitFeatureSection) {
 
 // ─── Testimonial ──────────────────────────────────────────────────────────────
 
-function renderTestimonial(section: AboutTestimonialSection) {
+function renderTestimonial(section: AboutTestimonialSection, previewMode: AboutRendererMode) {
   return (
     <section className="relative overflow-hidden bg-stone-900 py-16 text-white sm:py-20">
       <div className="pointer-events-none absolute left-1/3 top-0 h-80 w-80 rounded-full bg-red-900/20 blur-3xl" aria-hidden />
       <div className="pointer-events-none absolute bottom-0 right-1/4 h-72 w-72 rounded-full bg-amber-500/10 blur-3xl" aria-hidden />
       <div className="relative z-10 mx-auto flex max-w-7xl flex-col gap-10 px-6 sm:px-10 lg:flex-row lg:items-center lg:gap-16">
 
-        <motion.div {...fadeUp(0)} className="flex-1">
+        <motion.div {...fadeUp(0, previewMode)} className="flex-1">
           <SectionHeading eyebrow={section.eyebrow} heading={section.heading} light />
           <div className="mt-6 border-l-4 border-red-700 pl-5">
             <p className="text-[1.05rem] leading-relaxed text-stone-300">
@@ -465,7 +509,7 @@ function renderTestimonial(section: AboutTestimonialSection) {
           </div>
         </motion.div>
 
-        <motion.div {...fadeUp(0.09)} className="mx-auto w-full max-w-xs flex-shrink-0 lg:w-64">
+        <motion.div {...fadeUp(0.09, previewMode)} className="mx-auto w-full max-w-xs flex-shrink-0 lg:w-64">
           <img
             src={section.image.url}
             alt={section.image.alt}
@@ -480,14 +524,14 @@ function renderTestimonial(section: AboutTestimonialSection) {
 
 // ─── List Panel ───────────────────────────────────────────────────────────────
 
-function renderListPanel(section: AboutListPanelSection) {
+function renderListPanel(section: AboutListPanelSection, previewMode: AboutRendererMode) {
   return (
     <section className="bg-stone-100 py-16 sm:py-20">
       <div className="mx-auto max-w-6xl px-6 sm:px-10">
         <div className="rounded-2xl border border-stone-200 bg-white p-8 sm:p-10">
           <div className="grid gap-10 lg:grid-cols-2 lg:items-start">
 
-            <motion.div {...fadeUp(0)}>
+            <motion.div {...fadeUp(0, previewMode)}>
               <SectionHeading eyebrow={section.eyebrow} heading={section.heading} />
               {section.body && (
                 <p className="mt-4 text-[0.9375rem] leading-relaxed text-stone-600">{section.body}</p>
@@ -495,7 +539,7 @@ function renderListPanel(section: AboutListPanelSection) {
             </motion.div>
 
             <motion.div
-              {...fadeUp(0.07)}
+              {...fadeUp(0.07, previewMode)}
               className="rounded-2xl border border-red-100 bg-red-50 p-6"
             >
               <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white text-red-700 shadow-sm">
@@ -529,12 +573,12 @@ function renderListPanel(section: AboutListPanelSection) {
 
 // ─── CTA ──────────────────────────────────────────────────────────────────────
 
-function renderCta(section: AboutCtaSection) {
+function renderCta(section: AboutCtaSection, previewMode: AboutRendererMode) {
   return (
     <section className="border-t border-stone-100 bg-white py-16 sm:py-20">
       <div className="mx-auto max-w-6xl px-6 sm:px-10">
         <motion.div
-          {...fadeUp(0)}
+          {...fadeUp(0, previewMode)}
           className="rounded-2xl border border-stone-200 bg-gradient-to-br from-orange-50 via-white to-red-50 p-8 sm:p-10"
         >
           <Eyebrow>{section.eyebrow}</Eyebrow>
@@ -554,8 +598,8 @@ function renderCta(section: AboutCtaSection) {
             </p>
           )}
           <div className="mt-6 flex flex-wrap gap-3">
-            <ActionBtn action={section.primary} variant="solid" />
-            {section.secondary && <ActionBtn action={section.secondary} variant="ghost" />}
+            <ActionBtn action={section.primary} variant="solid" previewMode={previewMode} />
+            {section.secondary && <ActionBtn action={section.secondary} variant="ghost" previewMode={previewMode} />}
           </div>
           {(section.contactLabel || section.contactValue) && (
             <p className="mt-5 text-sm text-stone-500">
@@ -573,18 +617,18 @@ function renderCta(section: AboutCtaSection) {
 
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
 
-function renderSection(section: AboutSection) {
+function renderSection(section: AboutSection, previewMode: AboutRendererMode) {
   switch (section.type) {
-    case 'story':        return renderStory(section);
-    case 'linkGrid':     return renderLinkGrid(section);
-    case 'people':       return renderPeople(section);
-    case 'calendar':     return renderCalendar(section);
-    case 'history':      return renderHistory(section);
-    case 'featureGrid':  return renderFeatureGrid(section);
-    case 'splitFeature': return renderSplitFeature(section);
-    case 'testimonial':  return renderTestimonial(section);
-    case 'listPanel':    return renderListPanel(section);
-    case 'cta':          return renderCta(section);
+    case 'story':        return renderStory(section, previewMode);
+    case 'linkGrid':     return renderLinkGrid(section, previewMode);
+    case 'people':       return renderPeople(section, previewMode);
+    case 'calendar':     return renderCalendar(section, previewMode);
+    case 'history':      return renderHistory(section, previewMode);
+    case 'featureGrid':  return renderFeatureGrid(section, previewMode);
+    case 'splitFeature': return renderSplitFeature(section, previewMode);
+    case 'testimonial':  return renderTestimonial(section, previewMode);
+    case 'listPanel':    return renderListPanel(section, previewMode);
+    case 'cta':          return renderCta(section, previewMode);
   }
 }
 
@@ -593,10 +637,13 @@ function renderSection(section: AboutSection) {
 export default function AboutPageRenderer({
   page,
   preview = false,
+  previewMode,
 }: {
   page: AboutPageContent;
   preview?: boolean;
+  previewMode?: AboutRendererMode;
 }) {
+  const mode: AboutRendererMode = previewMode ?? (preview ? 'admin' : 'public');
   const strip = slugStrip[page.slug] ?? slugStrip.about;
 
   return (
@@ -609,7 +656,7 @@ export default function AboutPageRenderer({
 
         <div className="mx-auto max-w-7xl px-6 pb-12 pt-12 sm:px-10 sm:pb-14 sm:pt-14">
           <motion.p
-            {...fadeUp(0)}
+            {...fadeUp(0, mode)}
             className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-red-600"
           >
             {page.hero.eyebrow}
@@ -617,7 +664,7 @@ export default function AboutPageRenderer({
 
           {/* Title split across two lines with red accent — matches site */}
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <motion.div {...fadeUp(0.05)}>
+            <motion.div {...fadeUp(0.05, mode)}>
               <h1
                 className="font-bold leading-[0.97] text-stone-900"
                 style={{
@@ -637,7 +684,7 @@ export default function AboutPageRenderer({
 
             {page.hero.description && (
               <motion.p
-                {...fadeUp(0.1)}
+                {...fadeUp(0.1, mode)}
                 className="max-w-lg text-[0.9375rem] leading-relaxed text-stone-500 lg:text-right"
               >
                 {page.hero.description}
@@ -651,7 +698,7 @@ export default function AboutPageRenderer({
       {page.sections
         .filter((section) => section.hidden !== true)
         .map((section) => (
-          <div key={section.id}>{renderSection(section)}</div>
+          <div key={section.id}>{renderSection(section, mode)}</div>
         ))}
 
     </div>

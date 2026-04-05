@@ -183,6 +183,50 @@ export type AdminAboutPageRecord = {
   updatedByAdminId: string | null;
 };
 
+export type AboutCatalogState = {
+  enabled: boolean;
+  order: number;
+  cardTitle: string;
+  cardDescription: string;
+  cardImage?: AboutImage;
+  deleted: boolean;
+};
+
+export type AboutCatalogEntry = {
+  slug: AboutPageSlug;
+  isStarter: boolean;
+  publicPath: string;
+  draft: AboutCatalogState;
+  published: AboutCatalogState;
+  changed: boolean;
+};
+
+export type AboutDraftDeltaSummary = {
+  totalChanged: number;
+  changedPages: number;
+  changedCatalog: number;
+  stagedDeletions: number;
+};
+
+export type AdminAboutEditorPageState = {
+  slug: AboutPageSlug;
+  isStarter: boolean;
+  draftPage: AboutPageContent | null;
+  publishedPage: AboutPageContent | null;
+  draftDeleted: boolean;
+  publishedDeleted: boolean;
+  draftUpdatedAt: string | null;
+  publishedUpdatedAt: string | null;
+  pageChanged: boolean;
+};
+
+export type AdminAboutEditorState = {
+  pages: AdminAboutEditorPageState[];
+  catalog: AboutCatalogEntry[];
+  defaults: AboutPageContent[];
+  draftDelta: AboutDraftDeltaSummary;
+};
+
 export const ABOUT_PAGE_LABELS: Record<AboutPageSlug, string> = {
   about: 'About Landing',
   performer: 'Performer',

@@ -749,6 +749,12 @@ model ContentPage {
   slug            String
   title           String
   content         Json
+  draftContent    Json?
+  publishedContent Json?
+  catalogDraft    Json?
+  catalogPublished Json?
+  draftDeleted    Boolean  @default(false)
+  publishedDeleted Boolean @default(false)
   updatedByAdminId String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
