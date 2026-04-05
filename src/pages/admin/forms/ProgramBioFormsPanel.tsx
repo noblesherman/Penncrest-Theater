@@ -435,8 +435,7 @@ export default function ProgramBioFormsPanel() {
   ] as const;
 
   return (
-    <div className="min-h-screen bg-stone-50 p-6 font-sans">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <div className="space-y-6 font-sans">
 
         {/* ── Page header ── */}
         <div className="flex flex-wrap items-end justify-between gap-4">
@@ -936,7 +935,6 @@ export default function ProgramBioFormsPanel() {
             )}
           </div>
         </div>
-      </div>
 
       {/* ── Submission detail drawer ── */}
       {selectedSubmission && (

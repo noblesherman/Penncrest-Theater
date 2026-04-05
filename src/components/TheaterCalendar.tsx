@@ -22,14 +22,32 @@ const EVENT_STYLES: Record<string, string> = {
   workshop: 'bg-blue-200 text-blue-800 border-blue-300',
 };
 
-export default function TheaterCalendar() {
+type TheaterCalendarProps = {
+  calendarUrl?: string;
+};
+
+function normalizeCalendarUrlForApi(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('webcal://')) {
+    return `https://${trimmed.slice('webcal://'.length)}`;
+  }
+  return trimmed;
+}
+
+export default function TheaterCalendar({ calendarUrl }: TheaterCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(apiUrl('/api/calendar'))
+    const normalizedCalendarUrl = normalizeCalendarUrlForApi(calendarUrl ?? '');
+    const endpoint = normalizedCalendarUrl
+      ? apiUrl(`/api/calendar?url=${encodeURIComponent(normalizedCalendarUrl)}`)
+      : apiUrl('/api/calendar');
+
+    fetch(endpoint)
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok || !Array.isArray(data)) {
@@ -48,7 +66,7 @@ export default function TheaterCalendar() {
         console.error("Failed to fetch calendar", err);
         setLoading(false);
       });
-  }, []);
+  }, [calendarUrl]);
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(monthStart);
@@ -62,7 +80,7 @@ export default function TheaterCalendar() {
 
   const getDayEvents = (date: Date) => events.filter(e => isSameDay(e.date, date));
 
-  const googleCalendarUrl = "https://calendar.google.com/calendar/u/0?cid=bm9ibGVzaGVybWFuN0BnbWFpbC5jb20";
+  const externalCalendarUrl = normalizeCalendarUrlForApi(calendarUrl ?? '');
 
   // Generate a simple .ics file content
   const generateIcs = () => {
@@ -89,14 +107,16 @@ export default function TheaterCalendar() {
         </div>
         
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-          <a 
-            href={googleCalendarUrl} 
-            target="_blank" 
-            rel="noreferrer"
-            className="flex items-center justify-center gap-2 rounded-lg bg-stone-800 px-4 py-2 text-sm font-bold transition-colors hover:bg-stone-700"
-          >
-            <ExternalLink className="w-4 h-4" /> Calendar
-          </a>
+          {externalCalendarUrl ? (
+            <a
+              href={externalCalendarUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center justify-center gap-2 rounded-lg bg-stone-800 px-4 py-2 text-sm font-bold transition-colors hover:bg-stone-700"
+            >
+              <ExternalLink className="w-4 h-4" /> Calendar
+            </a>
+          ) : null}
           <a 
             href={generateIcs()}
             download="theater-schedule.ics"

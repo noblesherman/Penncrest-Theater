@@ -34,6 +34,13 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
+function isCalendarUrl(value: string): boolean {
+  if (value.startsWith('webcal://')) {
+    return isHttpUrl(`https://${value.slice('webcal://'.length)}`);
+  }
+  return isHttpUrl(value);
+}
+
 function isRelativePath(value: string): boolean {
   return value.startsWith('/');
 }
@@ -132,7 +139,15 @@ const calendarSectionSchema = z.object({
   type: z.literal('calendar'),
   eyebrow: shortText,
   heading: shortText,
-  description: z.string().trim().max(300).default('')
+  description: z.string().trim().max(300).default(''),
+  calendarUrl: z
+    .string()
+    .trim()
+    .max(2_000)
+    .default('')
+    .refine((value) => value === '' || isCalendarUrl(value), {
+      message: 'Calendar URL must be an http(s) or webcal link'
+    })
 });
 
 const defaultHistoryItems = [
@@ -395,7 +410,8 @@ export const defaultAboutPages: Record<string, AboutPageContent> = {
         hidden: false,
         eyebrow: 'Stay in the Loop',
         heading: 'Upcoming Events',
-        description: 'Rehearsals, meetings, and performances all live here.'
+        description: 'Rehearsals, meetings, and performances all live here.',
+        calendarUrl: ''
       },
       {
         id: 'history',

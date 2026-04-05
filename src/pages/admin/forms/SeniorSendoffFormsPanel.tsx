@@ -507,8 +507,7 @@ export default function SeniorSendoffFormsPanel() {
   const usedShowIds = useMemo(() => new Set(forms.map((form) => form.showId)), [forms]);
 
   return (
-    <div className="min-h-screen bg-stone-50 p-6 font-sans">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <div className="space-y-6 font-sans">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-red-700">Admin</p>
@@ -1010,7 +1009,6 @@ export default function SeniorSendoffFormsPanel() {
             )}
           </div>
         </div>
-      </div>
 
       {selectedSubmission && (
         <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setSelectedSubmission(null)}>

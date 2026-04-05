@@ -75,6 +75,7 @@ export type AboutCalendarSection = {
   eyebrow: string;
   heading: string;
   description: string;
+  calendarUrl: string;
 };
 
 export type AboutHistoryItem = {

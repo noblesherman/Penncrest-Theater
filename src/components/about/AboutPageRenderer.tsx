@@ -346,7 +346,7 @@ function renderCalendar(section: AboutCalendarSection, previewMode: AboutRendere
           <p className="mt-3 max-w-2xl text-[0.9375rem] text-stone-500">{section.description}</p>
         )}
         <motion.div {...fadeUp(0.07, previewMode)} className="mt-10">
-          <TheaterCalendar />
+          <TheaterCalendar calendarUrl={section.calendarUrl} />
         </motion.div>
       </div>
     </section>

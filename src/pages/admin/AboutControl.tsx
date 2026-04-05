@@ -13,7 +13,7 @@ import { adminFetch } from '../../lib/adminAuth';
 import {
   ABOUT_PAGE_LABELS, ABOUT_PAGE_SLUGS, cloneAboutPage,
   type AboutCatalogState, type AdminAboutEditorPageState,
-  type AdminAboutEditorState, type AboutAction, type AboutCtaSection,
+  type AdminAboutEditorState, type AboutAction, type AboutCalendarSection, type AboutCtaSection,
   type AboutFeatureGridSection, type AboutHistoryItem, type AboutHistorySection,
   type AboutImage, type AboutLinkGridSection, type AboutListPanelSection,
   type AboutPageContent, type AboutPageSlug, type AboutPeopleSection,
@@ -88,7 +88,7 @@ function makeBlankSection(type: string): AboutSection {
     case 'people':
       return { ...base, type: 'people', items: [] };
     case 'calendar':
-      return { ...base, type: 'calendar', description: '' };
+      return { ...base, type: 'calendar', description: '', calendarUrl: '' };
     case 'history':
       return { ...base, type: 'history', description: '', items: [] };
     case 'featureGrid':
@@ -305,6 +305,65 @@ function ImageField({
           </div>
         </div>
       </div>
+
+      {showCalendarInstructions && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 py-6 backdrop-blur-[2px]"
+          onClick={() => setShowCalendarInstructions(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Calendar URL setup instructions"
+        >
+          <div
+            className="w-full max-w-3xl overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between border-b border-zinc-100 px-5 py-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Calendar URL Setup</p>
+                <h3 className="mt-1 text-lg font-bold text-zinc-900">How to Get a Public Calendar Link</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCalendarInstructions(false)}
+                className="rounded-lg border border-zinc-200 p-1.5 text-zinc-500 transition hover:bg-zinc-50 hover:text-zinc-700"
+                aria-label="Close instructions"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="grid gap-4 p-5 md:grid-cols-3">
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Google Calendar</p>
+                <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-xs leading-relaxed text-zinc-700">
+                  <li>Open calendar settings, then choose your calendar.</li>
+                  <li>Enable public visibility if needed.</li>
+                  <li>Copy the public ICS link from “Integrate calendar”.</li>
+                </ol>
+              </div>
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Apple Calendar (iCloud)</p>
+                <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-xs leading-relaxed text-zinc-700">
+                  <li>Open iCloud Calendar and click the share icon.</li>
+                  <li>Enable “Public Calendar”.</li>
+                  <li>Copy the shared link and paste it here.</li>
+                </ol>
+              </div>
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Microsoft Calendar (Outlook)</p>
+                <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-xs leading-relaxed text-zinc-700">
+                  <li>Open Outlook calendar settings, then “Shared calendars”.</li>
+                  <li>Publish the calendar with can-view-all-details access.</li>
+                  <li>Copy the ICS link and paste it here.</li>
+                </ol>
+              </div>
+            </div>
+            <div className="border-t border-zinc-100 px-5 py-3 text-xs text-zinc-500">
+              Tip: if your link starts with <code>webcal://</code>, you can still paste it directly.
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -537,7 +596,7 @@ type PageEditorState = {
   local: AboutPageContent;
   /** Last version successfully auto-saved to the server */
   serverDraft: AboutPageContent;
-  /** Last published version (null = never published or staged delete) */
+  /** Last published version (null = never published or deleted live) */
   published: AboutPageContent | null;
   /** Whether a staged-delete draft exists */
   draftDeleted: boolean;
@@ -571,6 +630,7 @@ export default function AdminAboutControlPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [showCalendarInstructions, setShowCalendarInstructions] = useState(false);
 
   // Track which slugs are currently being auto-saved so we don't double-fire
   const autosaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -583,9 +643,6 @@ export default function AdminAboutControlPage() {
 
     const nextPages: Record<string, PageEditorState> = {};
     state.pages.forEach((ps) => {
-      if (ps.draftDeleted) {
-        return;
-      }
       const fallback = nextDefaults[ps.slug] ?? nextDefaults['about'] ?? Object.values(nextDefaults)[0];
       const source = ps.draftPage ?? ps.publishedPage ?? (fallback ? cloneAboutPage(fallback) : null);
       if (!source) return;
@@ -874,6 +931,25 @@ export default function AdminAboutControlPage() {
     }
   };
 
+  const undoStagedDelete = async () => {
+    if (!pageState?.draftDeleted || pageState.publishedDeleted) return;
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await adminFetch<{ success: boolean; editorState: AdminAboutEditorState }>(
+        '/api/admin/about/v2/draft/reset',
+        { method: 'POST', body: JSON.stringify({ slug }) }
+      );
+      applyEditorState(result.editorState);
+      setNotice(`Staged delete removed for "${labelFromSlug(slug)}".`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to undo staged delete');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // ── Load defaults ─────────────────────────────────────────────────────────
 
   const loadDefaults = async () => {
@@ -1054,7 +1130,7 @@ export default function AdminAboutControlPage() {
     try {
       await adminFetch(`/api/admin/about/v2/draft/pages/${slug}`, { method: 'DELETE' });
       await load();
-      setNotice(`"${slug}" removed from the list. Publish to apply live.`);
+      setNotice(`"${slug}" staged for deletion. Click Publish All to remove it from the live site.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to stage deletion');
     } finally {
@@ -1270,15 +1346,45 @@ export default function AdminAboutControlPage() {
         );
       }
 
-      case 'calendar':
+      case 'calendar': {
+        const calendarSection = section as AboutCalendarSection;
         return (
           <SectionShell key={section.id} {...shellProps}>
             {headerFields}
             <Field label="Description">
-              <textarea value={(section as any).description ?? ''} onChange={(e) => upSec(si, (s) => ({ ...s, description: e.target.value } as AboutSection))} className={taClass} placeholder="Text shown above the embedded calendar" />
+              <textarea
+                value={calendarSection.description}
+                onChange={(e) =>
+                  upSec(si, (s) => ({ ...(s as AboutCalendarSection), description: e.target.value }))
+                }
+                className={taClass}
+                placeholder="Text shown above the embedded calendar"
+              />
             </Field>
+            <Field label="Calendar URL">
+              <input
+                value={calendarSection.calendarUrl ?? ''}
+                onChange={(e) =>
+                  upSec(si, (s) => ({ ...(s as AboutCalendarSection), calendarUrl: e.target.value }))
+                }
+                className={inputClass}
+                placeholder="https://calendar.google.com/calendar/ical/.../public/basic.ics"
+              />
+            </Field>
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs text-zinc-600">
+              Need help getting the right link?{' '}
+              <button
+                type="button"
+                onClick={() => setShowCalendarInstructions(true)}
+                className="font-semibold text-red-700 underline decoration-red-300 underline-offset-2 hover:text-red-800"
+              >
+                Click here for instructions
+              </button>
+              .
+            </div>
           </SectionShell>
         );
+      }
 
       case 'featureGrid':
         return (
@@ -1535,7 +1641,9 @@ export default function AdminAboutControlPage() {
               onChange={(e) => setNewPageTemplate(e.target.value)}
               className={inputClass}
             >
-              {pageSlugs.map((s) => (
+              {pageSlugs
+                .filter((s) => !pages[s]?.draftDeleted)
+                .map((s) => (
                 <option key={s} value={s}>
                   Template: {ABOUT_PAGE_LABELS[s] ?? labelFromSlug(s)}
                 </option>
@@ -1633,14 +1741,25 @@ export default function AdminAboutControlPage() {
                   <RefreshCw className="h-3.5 w-3.5" /> Defaults
                 </button>
               </div>
-              <button
-                type="button"
-                onClick={() => void deletePage()}
-                disabled={saving}
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-40"
-              >
-                <Trash2 className="h-3.5 w-3.5" /> Stage delete
-              </button>
+              {pageState.draftDeleted && !pageState.publishedDeleted ? (
+                <button
+                  type="button"
+                  onClick={() => void undoStagedDelete()}
+                  disabled={saving}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-40"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" /> Undo staged delete
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void deletePage()}
+                  disabled={saving}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-40"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Stage delete
+                </button>
+              )}
             </div>
           </div>
         </aside>
