@@ -199,12 +199,17 @@ function renderStory(section: AboutStorySection) {
 // ─── Link Grid ────────────────────────────────────────────────────────────────
 
 function renderLinkGrid(section: AboutLinkGridSection) {
+  const visibleItems = section.items.filter((item) => item.hidden !== true);
+  if (visibleItems.length === 0) {
+    return null;
+  }
+
   return (
     <section className="bg-white py-16 sm:py-20">
       <div className="mx-auto max-w-7xl px-6 sm:px-10">
         <SectionHeading eyebrow={section.eyebrow} heading={section.heading} />
         <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
-          {section.items.map((item, i) => (
+          {visibleItems.map((item, i) => (
             <motion.div key={i} {...fadeUp(i * 0.06)}>
               <Link
                 to={item.href}

@@ -1,7 +1,7 @@
 import { type ChangeEvent, type ReactNode, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import {
   ArrowDown, ArrowUp, Check, ChevronDown, ChevronUp,
-  ExternalLink, FilePenLine, ImagePlus, Link2, Loader2,
+  ExternalLink, Eye, EyeOff, FilePenLine, ImagePlus, Link2, Loader2,
   RefreshCw, RotateCcw, Save, Trash2, Upload, X, AlertCircle, CheckCircle2,
 } from 'lucide-react';
 import AboutPageRenderer from '../../components/about/AboutPageRenderer';
@@ -73,6 +73,27 @@ function reorder<T>(items: T[], index: number, direction: -1 | 1) {
   const [item] = copy.splice(index, 1);
   copy.splice(next, 0, item);
   return copy;
+}
+
+function normalizeInternalPath(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith('/')) {
+    return trimmed.replace(/[?#].*$/, '').replace(/\/+$/, '') || '/';
+  }
+
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return url.pathname.replace(/\/+$/, '') || '/';
+  } catch {
+    return null;
+  }
+}
+
+function isAboutPageEnabled(page: AboutPageContent): boolean {
+  return page.sections.some((section) => section.hidden !== true);
 }
 
 // ─── Shared field styles (consistent with site editor) ───────────────────────
@@ -238,8 +259,10 @@ function StringList({ label, values, onChange, addLabel, disabled }: {
 
 // ─── Collapsible section shell ────────────────────────────────────────────────
 
-function SectionShell({ id, index, label, onMoveUp, onMoveDown, onRemove, isFirst, isLast, children }: {
+function SectionShell({ id, index, label, hidden, onToggleHidden, onMoveUp, onMoveDown, onRemove, isFirst, isLast, children }: {
   id: string; index: number; label: string;
+  hidden: boolean;
+  onToggleHidden: () => void;
   onMoveUp: () => void; onMoveDown: () => void; onRemove: () => void;
   isFirst: boolean; isLast: boolean;
   children: ReactNode;
@@ -255,9 +278,26 @@ function SectionShell({ id, index, label, onMoveUp, onMoveDown, onRemove, isFirs
             {index}
           </span>
           <span className="flex-1 text-sm font-semibold text-stone-900">{label}</span>
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+            hidden ? 'bg-stone-200 text-stone-600' : 'bg-emerald-100 text-emerald-700'
+          }`}>
+            {hidden ? 'Hidden' : 'Visible'}
+          </span>
           {open ? <ChevronUp className="h-4 w-4 text-stone-400" /> : <ChevronDown className="h-4 w-4 text-stone-400" />}
         </button>
         <div className="flex items-center gap-1 pl-2">
+          <button
+            type="button"
+            onClick={onToggleHidden}
+            className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition ${
+              hidden
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'
+            }`}
+          >
+            {hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+            {hidden ? 'Show' : 'Hide'}
+          </button>
           <IconBtn onClick={onMoveUp} disabled={isFirst} title="Move up"><ArrowUp className="h-3.5 w-3.5" /></IconBtn>
           <IconBtn onClick={onMoveDown} disabled={isLast} title="Move down"><ArrowDown className="h-3.5 w-3.5" /></IconBtn>
           <IconBtn onClick={onRemove} variant="danger" title="Remove section"><Trash2 className="h-3.5 w-3.5" /></IconBtn>
@@ -341,6 +381,66 @@ export default function AdminAboutControlPage() {
   const removeSec = (i: number) =>
     upPage((p) => ({ ...p, sections: p.sections.filter((_, j) => j !== i) }));
 
+  const setPageEnabled = (targetSlug: AboutPageSlug, enabled: boolean) => {
+    setDrafts((current) => {
+      if (!current) return current;
+
+      const next = { ...current };
+      const targetPage = cloneAboutPage(next[targetSlug]);
+      targetPage.sections = targetPage.sections.map((section) => ({ ...section, hidden: !enabled }));
+      next[targetSlug] = targetPage;
+
+      if (targetSlug !== 'about') {
+        const targetPath = PUBLIC_PATHS[targetSlug];
+        const aboutPage = cloneAboutPage(next.about);
+        aboutPage.sections = aboutPage.sections.map((section) => {
+          if (section.type !== 'linkGrid') {
+            return section;
+          }
+
+          return {
+            ...section,
+            items: section.items.map((item) => {
+              const normalizedPath = normalizeInternalPath(item.href);
+              if (normalizedPath !== targetPath) {
+                return item;
+              }
+              return { ...item, hidden: !enabled };
+            })
+          };
+        });
+        next.about = aboutPage;
+      }
+
+      return next;
+    });
+
+    setNotice(enabled ? `${ABOUT_PAGE_LABELS[targetSlug]} turned on.` : `${ABOUT_PAGE_LABELS[targetSlug]} turned off.`);
+  };
+
+  const setAllGetInvolvedCardsVisible = (visible: boolean) => {
+    setDrafts((current) => {
+      if (!current) return current;
+
+      const next = { ...current };
+      const aboutPage = cloneAboutPage(next.about);
+      aboutPage.sections = aboutPage.sections.map((section) => {
+        if (section.type !== 'linkGrid') {
+          return section;
+        }
+        return {
+          ...section,
+          items: section.items.map((item) => ({ ...item, hidden: !visible }))
+        };
+      });
+      next.about = aboutPage;
+
+      return next;
+    });
+
+    setNotice(visible ? 'All Get Involved cards turned on.' : 'All Get Involved cards turned off.');
+  };
+
   const save = async () => {
     if (!draft) return;
     setSaving(true); setError(null); setNotice(null);
@@ -388,6 +488,8 @@ export default function AdminAboutControlPage() {
     const label = SECTION_TYPE_LABELS[section.type] ?? section.type;
     const shellProps = {
       id: section.id, index: si + 1, label,
+      hidden: section.hidden === true,
+      onToggleHidden: () => upSec(si, (s) => ({ ...s, hidden: s.hidden !== true })),
       isFirst: si === 0, isLast: si === draft.sections.length - 1,
       onMoveUp: () => moveSec(si, -1),
       onMoveDown: () => moveSec(si, 1),
@@ -417,11 +519,66 @@ export default function AdminAboutControlPage() {
       case 'linkGrid': return (
         <SectionShell key={section.id} {...shellProps}>
           {header}
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-stone-200 bg-stone-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
+              Cards visible: {section.items.filter((item) => item.hidden !== true).length}/{section.items.length}
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                upSec(si, (s) => ({
+                  ...(s as AboutLinkGridSection),
+                  items: (s as AboutLinkGridSection).items.map((item) => ({ ...item, hidden: false }))
+                }))
+              }
+              className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+            >
+              <Eye className="h-3.5 w-3.5" /> Show all cards
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                upSec(si, (s) => ({
+                  ...(s as AboutLinkGridSection),
+                  items: (s as AboutLinkGridSection).items.map((item) => ({ ...item, hidden: true }))
+                }))
+              }
+              className="inline-flex items-center gap-1 rounded-lg border border-stone-300 bg-white px-2.5 py-1 text-xs font-semibold text-stone-600 hover:bg-stone-100"
+            >
+              <EyeOff className="h-3.5 w-3.5" /> Hide all cards
+            </button>
+          </div>
           <div className="space-y-3">
             {section.items.map((item, ii) => (
-              <SubItem key={`${section.id}-link-${ii}`} title={`Card ${ii + 1}${item.title ? ` — ${item.title}` : ''}`} index={ii} length={section.items.length}
+              <SubItem
+                key={`${section.id}-link-${ii}`}
+                title={`Card ${ii + 1}${item.title ? ` — ${item.title}` : ''}${item.hidden ? ' (hidden)' : ''}`}
+                index={ii}
+                length={section.items.length}
                 onMove={(d) => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: reorder((s as AboutLinkGridSection).items, ii, d) }))}
-                onRemove={() => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: (s as AboutLinkGridSection).items.filter((_, j) => j !== ii) }))}>
+                onRemove={() => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: (s as AboutLinkGridSection).items.filter((_, j) => j !== ii) }))}
+              >
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      upSec(si, (s) => ({
+                        ...(s as AboutLinkGridSection),
+                        items: (s as AboutLinkGridSection).items.map((x, j) =>
+                          j === ii ? { ...x, hidden: x.hidden !== true } : x
+                        )
+                      }))
+                    }
+                    className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold transition ${
+                      item.hidden
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                        : 'border-stone-300 bg-white text-stone-600 hover:bg-stone-100'
+                    }`}
+                  >
+                    {item.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                    {item.hidden ? 'Show card' : 'Hide card'}
+                  </button>
+                </div>
                 <Row2>
                   <Field label="Title"><input value={item.title} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: (s as AboutLinkGridSection).items.map((x, j) => j === ii ? { ...x, title: e.target.value } : x) }))} className={inputClass} /></Field>
                   <Field label="URL"><input value={item.href} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: (s as AboutLinkGridSection).items.map((x, j) => j === ii ? { ...x, href: e.target.value } : x) }))} placeholder="/tech-crew" className={inputClass} /></Field>
@@ -431,7 +588,7 @@ export default function AdminAboutControlPage() {
                   onChange={(img) => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: (s as AboutLinkGridSection).items.map((x, j) => j === ii ? { ...x, image: img } : x) }))} />
               </SubItem>
             ))}
-            <AddBtn onClick={() => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: [...(s as AboutLinkGridSection).items, { title: '', description: '', href: '/about' }] }))}>
+            <AddBtn onClick={() => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: [...(s as AboutLinkGridSection).items, { hidden: false, title: '', description: '', href: '/about' }] }))}>
               <Link2 className="h-3.5 w-3.5" /> Add card
             </AddBtn>
           </div>
@@ -638,17 +795,43 @@ export default function AdminAboutControlPage() {
               {ABOUT_PAGE_SLUGS.map((s) => {
                 const active = s === slug;
                 const d = dirtySet.has(s);
+                const enabled = drafts ? isAboutPageEnabled(drafts[s]) : true;
                 return (
-                  <button key={s} type="button" onClick={() => { setSlug(s); setNotice(null); setError(null); }}
-                    className={`w-full rounded-2xl border px-4 py-4 text-left transition ${active ? 'border-red-300 bg-red-50' : 'border-stone-200 bg-white hover:bg-stone-50'}`}>
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-stone-900">{ABOUT_PAGE_LABELS[s]}</p>
-                        <p className="mt-1 text-xs uppercase tracking-[0.15em] text-stone-500">{PUBLIC_PATHS[s]}</p>
+                  <div
+                    key={s}
+                    className={`w-full rounded-2xl border px-4 py-4 transition ${active ? 'border-red-300 bg-red-50' : 'border-stone-200 bg-white hover:bg-stone-50'}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => { setSlug(s); setNotice(null); setError(null); }}
+                      className="w-full text-left"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-stone-900">{ABOUT_PAGE_LABELS[s]}</p>
+                          <p className="mt-1 text-xs uppercase tracking-[0.15em] text-stone-500">{PUBLIC_PATHS[s]}</p>
+                        </div>
+                        {d && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" title="Unsaved changes" />}
                       </div>
-                      {d && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" title="Unsaved changes" />}
+                    </button>
+                    <div className="mt-3 flex items-center justify-between border-t border-stone-200/70 pt-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">
+                        {enabled ? 'Page On' : 'Page Off'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setPageEnabled(s, !enabled)}
+                        className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold transition ${
+                          enabled
+                            ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                            : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                        }`}
+                      >
+                        {enabled ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                        {enabled ? 'Turn Off' : 'Turn On'}
+                      </button>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -682,6 +865,26 @@ export default function AdminAboutControlPage() {
                   <RefreshCw className="h-3.5 w-3.5" /> Defaults
                 </button>
               </div>
+              {slug === 'about' && (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAllGetInvolvedCardsVisible(true)}
+                    disabled={saving}
+                    className="flex items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-40"
+                  >
+                    <Eye className="h-3.5 w-3.5" /> Show All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAllGetInvolvedCardsVisible(false)}
+                    disabled={saving}
+                    className="flex items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-40"
+                  >
+                    <EyeOff className="h-3.5 w-3.5" /> Hide All
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </aside>

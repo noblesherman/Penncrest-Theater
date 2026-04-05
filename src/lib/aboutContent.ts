@@ -43,6 +43,7 @@ export type AboutLinkGridSection = {
   eyebrow: string;
   heading: string;
   items: Array<{
+    hidden?: boolean;
     title: string;
     description: string;
     href: string;

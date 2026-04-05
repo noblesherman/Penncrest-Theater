@@ -87,6 +87,7 @@ const linkGridSectionSchema = z.object({
   items: z
     .array(
       z.object({
+        hidden: z.boolean().optional().default(false),
         title: shortText,
         description: longText,
         href: hrefSchema,
@@ -316,16 +317,19 @@ export const defaultAboutPages: Record<AboutPageSlug, AboutPageContent> = {
         heading: 'Get Involved',
         items: [
           {
+            hidden: false,
             title: 'Musical Theater',
             description: 'Sing, dance, and act in our fall play and spring musical. All skill levels are welcome.',
             href: '/musical-theater'
           },
           {
+            hidden: false,
             title: 'Tech Crew',
             description: 'Run lights, sound, and stage management. The magic behind every performance.',
             href: '/tech-crew'
           },
           {
+            hidden: false,
             title: 'Set Design',
             description: 'Build and paint the worlds our actors inhabit through carpentry, props, and scenic art.',
             href: '/set-design'
