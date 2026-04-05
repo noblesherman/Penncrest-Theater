@@ -571,6 +571,7 @@ export default function AdminAboutControlPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [previewViewport, setPreviewViewport] = useState<'desktop' | 'tablet' | 'mobile'>('mobile');
   const [showCalendarInstructions, setShowCalendarInstructions] = useState(false);
 
   // Track which slugs are currently being auto-saved so we don't double-fire
@@ -1110,6 +1111,14 @@ export default function AdminAboutControlPage() {
     }
     return next;
   }, [deferred, draft, slug, autoCardItems]);
+
+  const previewViewportClass =
+    previewViewport === 'mobile'
+      ? 'mx-auto w-full max-w-[430px]'
+      : previewViewport === 'tablet'
+        ? 'mx-auto w-full max-w-[900px]'
+        : 'w-full';
+  const isMobilePreview = previewViewport === 'mobile';
 
   // ── Loading / error state ─────────────────────────────────────────────────
 
@@ -1709,7 +1718,7 @@ export default function AdminAboutControlPage() {
         </aside>
 
         {/* ── Main area ── */}
-        <div className={showPreview ? 'grid gap-6 xl:grid-cols-2' : undefined}>
+        <div className={showPreview ? 'grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]' : undefined}>
 
           {/* Editor */}
           <div className="space-y-3">
@@ -1771,10 +1780,43 @@ export default function AdminAboutControlPage() {
               <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
                 <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Preview</p>
-                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 ring-1 ring-emerald-200">Live</span>
+                  <div className="flex items-center gap-2">
+                    <div className="inline-flex rounded-lg border border-zinc-200 bg-zinc-50 p-0.5">
+                      {(['desktop', 'tablet', 'mobile'] as const).map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => setPreviewViewport(v)}
+                          className={`rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wider transition ${
+                            previewViewport === v
+                              ? 'bg-white text-zinc-800 shadow-sm'
+                              : 'text-zinc-500 hover:text-zinc-700'
+                          }`}
+                        >
+                          {v}
+                        </button>
+                      ))}
+                    </div>
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 ring-1 ring-emerald-200">Live</span>
+                  </div>
                 </div>
-                <div className="max-h-[calc(100vh-160px)] overflow-y-auto">
-                  {previewPage && <AboutPageRenderer page={previewPage} preview previewMode="admin" />}
+                <div className="max-h-[calc(100vh-160px)] overflow-y-auto bg-zinc-50 p-3">
+                  <div className={`${previewViewportClass} transition-all duration-200`}>
+                    {previewPage && (
+                      isMobilePreview ? (
+                        <div className="mx-auto rounded-[42px] bg-zinc-900 p-2.5 shadow-2xl ring-1 ring-zinc-700/60">
+                          <div className="relative h-[760px] max-h-[calc(100vh-220px)] overflow-hidden rounded-[34px] bg-white">
+                            <div className="pointer-events-none absolute left-1/2 top-0 z-20 h-6 w-36 -translate-x-1/2 rounded-b-2xl bg-zinc-900" />
+                            <div className="h-full overflow-y-auto pt-7">
+                              <AboutPageRenderer page={previewPage} previewMode="admin" />
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <AboutPageRenderer page={previewPage} preview previewMode="admin" />
+                      )
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
