@@ -8,6 +8,8 @@ import { logAudit } from '../lib/audit-log.js';
 import { getPenncrestSeatTemplate } from '../lib/penncrest-seating.js';
 import { normalizeStudentVerificationCode } from '../services/student-ticket-credit-service.js';
 import { isImageDataUrl } from '../lib/image-data-url.js';
+import { isR2Configured, uploadImageFromDataUrl } from '../lib/r2.js';
+import { backfillLegacyShowAndCastImagesToR2 } from '../lib/legacy-image-backfill.js';
 
 const tierSchema = z.object({
   name: z.string().min(1),
@@ -138,6 +140,107 @@ function buildStudentCodeFromName(name: string): string {
 
 function normalizeName(name: string): string {
   return name.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+type PerformanceImagePayload = {
+  title?: string;
+  posterUrl?: string;
+  castMembers?: Array<{
+    name: string;
+    photoUrl?: string;
+  }>;
+};
+
+function normalizeImageSourceValue(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function hasPerformanceImageDataUrls(payload: PerformanceImagePayload): boolean {
+  const posterUrl = normalizeImageSourceValue(payload.posterUrl);
+  if (posterUrl && isImageDataUrl(posterUrl)) {
+    return true;
+  }
+
+  if (!payload.castMembers || payload.castMembers.length === 0) {
+    return false;
+  }
+
+  return payload.castMembers.some((castMember) => {
+    const photoUrl = normalizeImageSourceValue(castMember.photoUrl);
+    return Boolean(photoUrl && isImageDataUrl(photoUrl));
+  });
+}
+
+function buildImageFilenameBase(raw: string | undefined, fallback: string): string {
+  const value = (raw || '').trim();
+  if (!value) return fallback;
+
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+
+  return normalized || fallback;
+}
+
+async function convertPerformanceImageDataUrlsToR2<T extends PerformanceImagePayload>(payload: T): Promise<T> {
+  const convertedBySource = new Map<string, string>();
+
+  const convertDataUrl = async (dataUrl: string, scope: string, filenameBase: string): Promise<string> => {
+    const cached = convertedBySource.get(dataUrl);
+    if (cached) {
+      return cached;
+    }
+
+    const uploaded = await uploadImageFromDataUrl({
+      dataUrl,
+      scope,
+      filenameBase
+    });
+
+    convertedBySource.set(dataUrl, uploaded.url);
+    return uploaded.url;
+  };
+
+  const nextPayload = { ...payload } as T;
+
+  const posterUrl = normalizeImageSourceValue(payload.posterUrl);
+  if (posterUrl && isImageDataUrl(posterUrl)) {
+    (nextPayload as PerformanceImagePayload).posterUrl = await convertDataUrl(
+      posterUrl,
+      'show-posters',
+      buildImageFilenameBase(payload.title, 'show-poster')
+    );
+  }
+
+  if (payload.castMembers && payload.castMembers.length > 0) {
+    const convertedCastMembers = await Promise.all(
+      payload.castMembers.map(async (castMember, index) => {
+        const photoUrl = normalizeImageSourceValue(castMember.photoUrl);
+        if (!photoUrl || !isImageDataUrl(photoUrl)) {
+          return castMember;
+        }
+
+        const convertedPhotoUrl = await convertDataUrl(
+          photoUrl,
+          'cast-photos',
+          buildImageFilenameBase(castMember.name, `cast-member-${index + 1}`)
+        );
+
+        return {
+          ...castMember,
+          photoUrl: convertedPhotoUrl
+        };
+      })
+    );
+
+    (nextPayload as PerformanceImagePayload).castMembers = convertedCastMembers as any;
+  }
+
+  return nextPayload;
 }
 
 async function syncCastMembersToStudentCompsTx(
@@ -288,6 +391,8 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
         }
       });
 
+      await backfillLegacyShowAndCastImagesToR2(performances.map((performance) => performance.show));
+
       reply.send(
         performances.map((performance) => ({
           id: performance.id,
@@ -398,6 +503,8 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
             }
           });
 
+          await backfillLegacyShowAndCastImagesToR2(legacyPerformances.map((performance) => performance.show));
+
           reply.send(
             legacyPerformances.map((performance) => ({
               id: performance.id,
@@ -476,15 +583,24 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
       parsed.data.studentCompTicketsEnabled ?? parsed.data.familyFreeTicketEnabled ?? false;
 
     try {
+      const hasImageDataUrls = hasPerformanceImageDataUrls(parsed.data);
+      if (hasImageDataUrls && !isR2Configured()) {
+        return reply.status(503).send({ error: 'Image uploads are unavailable because R2/CDN is not configured.' });
+      }
+
+      const payload = hasImageDataUrls
+        ? await convertPerformanceImageDataUrlsToR2(parsed.data)
+        : parsed.data;
+
       const created = await prisma.$transaction(async (tx) => {
         const show = await tx.show.create({
           data: {
-            title: parsed.data.title,
-            description: parsed.data.description,
-            posterUrl: parsed.data.posterUrl,
-            type: parsed.data.type,
-            year: parsed.data.year,
-            accentColor: parsed.data.accentColor
+            title: payload.title,
+            description: payload.description,
+            posterUrl: payload.posterUrl,
+            type: payload.type,
+            year: payload.year,
+            accentColor: payload.accentColor
           }
         });
 
@@ -493,23 +609,23 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
           const performance = await tx.performance.create({
             data: {
               showId: show.id,
-              title: scheduleEntry.title || parsed.data.title,
+              title: scheduleEntry.title || payload.title,
               startsAt: new Date(scheduleEntry.startsAt),
               salesCutoffAt: scheduleEntry.salesCutoffAt ? new Date(scheduleEntry.salesCutoffAt) : null,
-              isFundraiser: parsed.data.isFundraiser ?? false,
-              staffCompsEnabled: parsed.data.staffCompsEnabled ?? true,
-              staffCompLimitPerUser: parsed.data.staffCompLimitPerUser ?? 1,
-              staffTicketLimit: parsed.data.staffTicketLimit ?? 2,
+              isFundraiser: payload.isFundraiser ?? false,
+              staffCompsEnabled: payload.staffCompsEnabled ?? true,
+              staffCompLimitPerUser: payload.staffCompLimitPerUser ?? 1,
+              staffTicketLimit: payload.staffTicketLimit ?? 2,
               familyFreeTicketEnabled: studentCompTicketsEnabled,
-              seatSelectionEnabled: parsed.data.seatSelectionEnabled ?? true,
-              venue: parsed.data.venue,
-              notes: parsed.data.notes
+              seatSelectionEnabled: payload.seatSelectionEnabled ?? true,
+              venue: payload.venue,
+              notes: payload.notes
             }
           });
           performanceIds.push(performance.id);
 
           await tx.pricingTier.createMany({
-            data: parsed.data.pricingTiers.map((tier) => ({
+            data: payload.pricingTiers.map((tier) => ({
               performanceId: performance.id,
               name: tier.name,
               priceCents: tier.priceCents
@@ -521,9 +637,9 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
           });
         }
 
-        if (parsed.data.castMembers && parsed.data.castMembers.length > 0) {
+        if (payload.castMembers && payload.castMembers.length > 0) {
           await tx.castMember.createMany({
-            data: parsed.data.castMembers.map((castMember, position) => ({
+            data: payload.castMembers.map((castMember, position) => ({
               showId: show.id,
               name: castMember.name,
               role: castMember.role,
@@ -537,11 +653,11 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
         }
 
         let studentCompSync: { created: number; updated: number; skipped: number } | null = null;
-        if (parsed.data.pushCastToStudentComps) {
+        if (payload.pushCastToStudentComps) {
           studentCompSync = await syncCastMembersToStudentCompsTx(
             tx,
             show.id,
-            parsed.data.castMembers || []
+            payload.castMembers || []
           );
         }
 
@@ -554,7 +670,7 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
         entityType: 'Performance',
         entityId: created.performanceIds[0],
         metadata: {
-          ...parsed.data,
+          ...payload,
           performanceCount: created.performanceIds.length,
           studentCompSync: created.studentCompSync
         }
@@ -585,45 +701,54 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
       if (!existing) {
         throw new HttpError(404, 'Performance not found');
       }
+      const hasImageDataUrls = hasPerformanceImageDataUrls(parsed.data);
+      if (hasImageDataUrls && !isR2Configured()) {
+        return reply.status(503).send({ error: 'Image uploads are unavailable because R2/CDN is not configured.' });
+      }
+
+      const payload = hasImageDataUrls
+        ? await convertPerformanceImageDataUrlsToR2(parsed.data)
+        : parsed.data;
+
       const studentCompTicketsEnabled =
-        parsed.data.studentCompTicketsEnabled ?? parsed.data.familyFreeTicketEnabled;
+        payload.studentCompTicketsEnabled ?? payload.familyFreeTicketEnabled;
 
       const studentCompSync = await prisma.$transaction(async (tx) => {
         await tx.performance.update({
           where: { id: params.id },
           data: {
-            title: parsed.data.title,
-            startsAt: parsed.data.startsAt ? new Date(parsed.data.startsAt) : undefined,
+            title: payload.title,
+            startsAt: payload.startsAt ? new Date(payload.startsAt) : undefined,
             salesCutoffAt:
-              parsed.data.salesCutoffAt === undefined
+              payload.salesCutoffAt === undefined
                 ? undefined
-                : parsed.data.salesCutoffAt
-                  ? new Date(parsed.data.salesCutoffAt)
+                : payload.salesCutoffAt
+                  ? new Date(payload.salesCutoffAt)
                   : null,
-            isFundraiser: parsed.data.isFundraiser,
-            staffCompsEnabled: parsed.data.staffCompsEnabled,
-            staffCompLimitPerUser: parsed.data.staffCompLimitPerUser,
-            staffTicketLimit: parsed.data.staffTicketLimit,
+            isFundraiser: payload.isFundraiser,
+            staffCompsEnabled: payload.staffCompsEnabled,
+            staffCompLimitPerUser: payload.staffCompLimitPerUser,
+            staffTicketLimit: payload.staffTicketLimit,
             familyFreeTicketEnabled: studentCompTicketsEnabled,
-            seatSelectionEnabled: parsed.data.seatSelectionEnabled,
-            venue: parsed.data.venue,
-            notes: parsed.data.notes
+            seatSelectionEnabled: payload.seatSelectionEnabled,
+            venue: payload.venue,
+            notes: payload.notes
           }
         });
 
         await tx.show.update({
           where: { id: existing.showId },
           data: {
-            title: parsed.data.title,
-            description: parsed.data.description,
-            posterUrl: parsed.data.posterUrl,
-            type: parsed.data.type,
-            year: parsed.data.year,
-            accentColor: parsed.data.accentColor
+            title: payload.title,
+            description: payload.description,
+            posterUrl: payload.posterUrl,
+            type: payload.type,
+            year: payload.year,
+            accentColor: payload.accentColor
           }
         });
 
-        if (parsed.data.castMembers !== undefined) {
+        if (payload.castMembers !== undefined) {
           const existingCastMembers = await tx.castMember.findMany({
             where: { showId: existing.showId },
             orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
@@ -648,8 +773,8 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
             where: { showId: existing.showId }
           });
 
-          if (parsed.data.castMembers.length > 0) {
-            const castRows = parsed.data.castMembers.map((castMember, position) => {
+          if (payload.castMembers.length > 0) {
+            const castRows = payload.castMembers.map((castMember, position) => {
               const existingCastMember =
                 (castMember.id ? existingById.get(castMember.id) : undefined) ||
                 existingByName.get(normalizeName(castMember.name));
@@ -684,9 +809,9 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
         }
 
         let castSource: Array<{ name: string; role: string }> = [];
-        if (parsed.data.castMembers !== undefined) {
-          castSource = parsed.data.castMembers.map((member) => ({ name: member.name, role: member.role }));
-        } else if (parsed.data.pushCastToStudentComps) {
+        if (payload.castMembers !== undefined) {
+          castSource = payload.castMembers.map((member) => ({ name: member.name, role: member.role }));
+        } else if (payload.pushCastToStudentComps) {
           const currentCast = await tx.castMember.findMany({
             where: { showId: existing.showId },
             orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
@@ -695,10 +820,10 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
           castSource = currentCast;
         }
 
-        if (parsed.data.pricingTiers) {
+        if (payload.pricingTiers) {
           await tx.pricingTier.deleteMany({ where: { performanceId: params.id } });
           await tx.pricingTier.createMany({
-            data: parsed.data.pricingTiers.map((tier) => ({
+            data: payload.pricingTiers.map((tier) => ({
               performanceId: params.id,
               name: tier.name,
               priceCents: tier.priceCents
@@ -706,7 +831,7 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
           });
         }
 
-        if (parsed.data.pushCastToStudentComps) {
+        if (payload.pushCastToStudentComps) {
           return syncCastMembersToStudentCompsTx(tx, existing.showId, castSource);
         }
 
@@ -719,7 +844,7 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
         entityType: 'Performance',
         entityId: params.id,
         metadata: {
-          ...parsed.data,
+          ...payload,
           studentCompSync
         }
       });

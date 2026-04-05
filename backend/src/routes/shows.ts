@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { handleRouteError } from '../lib/route-error.js';
 import { HttpError } from '../lib/http-error.js';
+import { backfillLegacyShowAndCastImagesToR2 } from '../lib/legacy-image-backfill.js';
 
 export const showRoutes: FastifyPluginAsync = async (app) => {
   app.get('/api/shows', async (_request, reply) => {
@@ -25,6 +26,8 @@ export const showRoutes: FastifyPluginAsync = async (app) => {
         },
         orderBy: { year: 'desc' }
       });
+
+      await backfillLegacyShowAndCastImagesToR2(shows);
 
       reply.send(shows);
     } catch (err) {
@@ -55,6 +58,8 @@ export const showRoutes: FastifyPluginAsync = async (app) => {
       if (!show) {
         throw new HttpError(404, 'Show not found');
       }
+
+      await backfillLegacyShowAndCastImagesToR2([show]);
 
       reply.send({
         id: show.id,

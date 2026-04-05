@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { handleRouteError } from '../lib/route-error.js';
 import { HttpError } from '../lib/http-error.js';
 import { env } from '../lib/env.js';
+import { backfillLegacyShowAndCastImagesToR2 } from '../lib/legacy-image-backfill.js';
 
 type CacheEntry<T> = {
   value: T;
@@ -104,6 +105,8 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
           }
         }
       });
+
+      await backfillLegacyShowAndCastImagesToR2(performances.map((performance) => performance.show));
 
       const performanceIds = performances.map((performance) => performance.id);
       const now = new Date();
@@ -226,6 +229,8 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
       if (!performance) {
         throw new HttpError(404, 'Performance not found');
       }
+
+      await backfillLegacyShowAndCastImagesToR2([performance.show]);
 
       const sectionsMap = new Map<
         string,
