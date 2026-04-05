@@ -18,6 +18,7 @@ import {
 } from '../lib/about-content.js';
 
 const scope = 'about';
+const starterAboutSlugSet = new Set<string>(aboutPageSlugs as readonly string[]);
 const slugParamsSchema = z.object({
   slug: aboutSlugSchema
 });
@@ -381,6 +382,74 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
       }
       handleRouteError(reply, err, 'Failed to save About content');
+    }
+  });
+
+  app.delete('/api/admin/about/pages/:slug', { preHandler: app.requireAdminRole('SUPER_ADMIN') }, async (request, reply) => {
+    const params = slugParamsSchema.safeParse(request.params);
+    if (!params.success) {
+      return reply.status(400).send({ error: 'Invalid about page slug' });
+    }
+
+    const isStarterSlug = starterAboutSlugSet.has(params.data.slug);
+
+    try {
+      const existing = await prisma.contentPage.findUnique({
+        where: {
+          scope_slug: {
+            scope,
+            slug: params.data.slug
+          }
+        },
+        select: {
+          id: true,
+          title: true
+        }
+      });
+
+      if (!existing) {
+        if (isStarterSlug) {
+          return reply.send({
+            success: true,
+            deleted: false,
+            restoredDefault: true
+          });
+        }
+        throw new HttpError(404, 'About page not found');
+      }
+
+      await prisma.contentPage.delete({
+        where: {
+          scope_slug: {
+            scope,
+            slug: params.data.slug
+          }
+        }
+      });
+
+      await logAudit({
+        actor: request.adminUser?.username || 'super-admin',
+        actorAdminId: request.adminUser?.id || null,
+        action: isStarterSlug ? 'ABOUT_CONTENT_RESET' : 'ABOUT_CONTENT_DELETED',
+        entityType: 'ContentPage',
+        entityId: existing.id,
+        metadata: {
+          scope,
+          slug: params.data.slug,
+          title: existing.title
+        }
+      });
+
+      reply.send({
+        success: true,
+        deleted: true,
+        restoredDefault: isStarterSlug
+      });
+    } catch (err) {
+      if (isMissingContentPageTableError(err)) {
+        return reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
+      }
+      handleRouteError(reply, err, 'Failed to delete About content');
     }
   });
 };

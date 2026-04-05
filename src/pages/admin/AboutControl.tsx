@@ -585,6 +585,61 @@ export default function AdminAboutControlPage() {
     setNotice(`Created draft page "${normalizedSlug}". Publish to make it live.`);
   };
 
+  const deletePage = async () => {
+    if (!drafts) return;
+    setError(null);
+    setNotice(null);
+
+    const isStarterSlug = ABOUT_PAGE_SLUGS.includes(slug as any);
+    const stored = records?.[slug];
+
+    if (!stored) {
+      if (isStarterSlug) {
+        setNotice('Starter pages cannot be deleted. You can turn them off or keep defaults.');
+        return;
+      }
+
+      setDrafts((current) => {
+        if (!current) return current;
+        const { [slug]: _removed, ...rest } = current;
+        return rest;
+      });
+      const fallbackSlug = pageSlugs.find((candidate) => candidate !== slug) ?? 'about';
+      setSlug(fallbackSlug);
+      setNotice(`Draft page "${slug}" deleted.`);
+      return;
+    }
+
+    const confirmed = confirm(
+      isStarterSlug
+        ? `Delete the custom version of "${ABOUT_PAGE_LABELS[slug] ?? labelFromSlug(slug)}" and restore defaults?`
+        : `Delete page "${slug}"? This will remove it from the site.`
+    );
+    if (!confirmed) return;
+
+    setSaving(true);
+    try {
+      const result = await adminFetch<{ success: boolean; deleted: boolean; restoredDefault: boolean }>(
+        `/api/admin/about/pages/${slug}`,
+        { method: 'DELETE' }
+      );
+
+      await load();
+
+      if (!result.deleted && result.restoredDefault) {
+        setNotice('Page already had no custom content.');
+      } else if (result.restoredDefault) {
+        setNotice('Custom content deleted. Starter page restored to defaults.');
+      } else {
+        setNotice(`Page "${slug}" deleted.`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete page');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading || !drafts || !defaults || !draft) {
     return (
       <div className="flex h-64 items-center justify-center gap-3 text-stone-400">
@@ -1012,6 +1067,14 @@ export default function AdminAboutControlPage() {
                   <RefreshCw className="h-3.5 w-3.5" /> Defaults
                 </button>
               </div>
+              <button
+                type="button"
+                onClick={() => void deletePage()}
+                disabled={saving}
+                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-40"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Delete page
+              </button>
               {slug === 'about' && (
                 <div className="grid grid-cols-2 gap-2">
                   <button
