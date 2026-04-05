@@ -6,20 +6,48 @@ import type { AboutPageContent, AboutPageSlug } from '../lib/aboutContent';
 export default function AboutContentPage({ slug }: { slug: AboutPageSlug }) {
   const [page, setPage] = useState<AboutPageContent | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [usingLivePreview, setUsingLivePreview] = useState(false);
+
+  useEffect(() => {
+    setUsingLivePreview(false);
+  }, [slug]);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data as {
+        type?: unknown;
+        slug?: unknown;
+        page?: unknown;
+      };
+      if (data?.type !== 'ADMIN_ABOUT_PREVIEW') return;
+      if (typeof data.slug !== 'string' || data.slug !== slug) return;
+      if (!data.page || typeof data.page !== 'object') return;
+
+      setPage(data.page as AboutPageContent);
+      setError(null);
+      setUsingLivePreview(true);
+    };
+
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [slug]);
 
   useEffect(() => {
     let active = true;
     setError(null);
-    setPage(null);
+    if (!usingLivePreview) {
+      setPage(null);
+    }
 
     apiFetch<AboutPageContent>(`/api/content/about/pages/${slug}`)
       .then((result) => {
-        if (active) {
+        if (active && !usingLivePreview) {
           setPage(result);
         }
       })
       .catch((err) => {
-        if (active) {
+        if (active && !usingLivePreview) {
           setError(err instanceof Error ? err.message : 'Failed to load page');
         }
       });
@@ -27,7 +55,7 @@ export default function AboutContentPage({ slug }: { slug: AboutPageSlug }) {
     return () => {
       active = false;
     };
-  }, [slug]);
+  }, [slug, usingLivePreview]);
 
   if (error) {
     return (

@@ -1,6 +1,6 @@
 import {
   type ChangeEvent, type ReactNode,
-  useDeferredValue, useEffect, useMemo, useRef, useState,
+  useEffect, useMemo, useRef, useState,
 } from 'react';
 import {
   Activity, AlertCircle, ArrowDown, ArrowUp, Check,
@@ -573,6 +573,7 @@ export default function AdminAboutControlPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewViewport, setPreviewViewport] = useState<'desktop' | 'tablet' | 'mobile'>('mobile');
   const [showCalendarInstructions, setShowCalendarInstructions] = useState(false);
+  const mobilePreviewIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // Track which slugs are currently being auto-saved so we don't double-fire
   const autosaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -686,7 +687,6 @@ export default function AdminAboutControlPage() {
   const pageState = pages?.[slug] ?? null;
   const catalogState = catalogs?.[slug] ?? null;
   const draft = pageState?.local ?? null;
-  const deferred = useDeferredValue(draft);
   const dirty = dirtySet.has(slug);
   const globalChangedCount = dirtySet.size;
 
@@ -1102,7 +1102,7 @@ export default function AdminAboutControlPage() {
   }, [catalogs, pageSlugs]);
 
   const previewPage = useMemo(() => {
-    const source = deferred ?? draft;
+    const source = draft;
     if (!source || slug !== 'about') return source;
     const next = cloneAboutPage(source);
     const idx = next.sections.findIndex((s) => s.type === 'linkGrid');
@@ -1110,7 +1110,7 @@ export default function AdminAboutControlPage() {
       next.sections[idx] = { ...(next.sections[idx] as AboutLinkGridSection), items: autoCardItems };
     }
     return next;
-  }, [deferred, draft, slug, autoCardItems]);
+  }, [draft, slug, autoCardItems]);
 
   const previewViewportClass =
     previewViewport === 'mobile'
@@ -1124,6 +1124,24 @@ export default function AdminAboutControlPage() {
   const iphoneFrameScale = 0.78;
   const iphoneScaledWidth = Math.round(iphoneFrameWidth * iphoneFrameScale);
   const iphoneScaledHeight = Math.round(iphoneFrameHeight * iphoneFrameScale);
+
+  const pushMobilePreviewToFrame = () => {
+    if (!isMobilePreview || !previewPage) return;
+    const win = mobilePreviewIframeRef.current?.contentWindow;
+    if (!win) return;
+    win.postMessage(
+      {
+        type: 'ADMIN_ABOUT_PREVIEW',
+        slug,
+        page: previewPage,
+      },
+      window.location.origin
+    );
+  };
+
+  useEffect(() => {
+    pushMobilePreviewToFrame();
+  }, [isMobilePreview, slug, previewPage]);
 
   // ── Loading / error state ─────────────────────────────────────────────────
 
@@ -1822,8 +1840,10 @@ export default function AdminAboutControlPage() {
                               <div className="pointer-events-none absolute left-1/2 top-2 z-20 h-8 w-[126px] -translate-x-1/2 rounded-[18px] bg-zinc-900" />
                               <iframe
                                 key={slug}
+                                ref={mobilePreviewIframeRef}
                                 title="iPhone 15 Pro Preview"
                                 src={publicPathForSlug(slug)}
+                                onLoad={pushMobilePreviewToFrame}
                                 className="block h-[852px] w-[393px] border-0"
                               />
                               <div className="pointer-events-none absolute bottom-2 left-1/2 z-20 h-1.5 w-32 -translate-x-1/2 rounded-full bg-zinc-900/90" />
