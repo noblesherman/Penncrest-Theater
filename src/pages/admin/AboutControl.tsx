@@ -583,6 +583,9 @@ export default function AdminAboutControlPage() {
 
     const nextPages: Record<string, PageEditorState> = {};
     state.pages.forEach((ps) => {
+      if (ps.draftDeleted) {
+        return;
+      }
       const fallback = nextDefaults[ps.slug] ?? nextDefaults['about'] ?? Object.values(nextDefaults)[0];
       const source = ps.draftPage ?? ps.publishedPage ?? (fallback ? cloneAboutPage(fallback) : null);
       if (!source) return;
@@ -604,6 +607,9 @@ export default function AdminAboutControlPage() {
 
     const nextCatalogs: Record<string, CatalogEditorState> = {};
     state.catalog.forEach((entry) => {
+      if (!nextPages[entry.slug]) {
+        return;
+      }
       nextCatalogs[entry.slug] = {
         local: { ...entry.draft },
         server: { ...entry.draft },
@@ -1048,7 +1054,7 @@ export default function AdminAboutControlPage() {
     try {
       await adminFetch(`/api/admin/about/v2/draft/pages/${slug}`, { method: 'DELETE' });
       await load();
-      setNotice(`Delete staged for "${slug}". Publish to apply.`);
+      setNotice(`"${slug}" removed from the list. Publish to apply live.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to stage deletion');
     } finally {
@@ -1478,7 +1484,7 @@ export default function AdminAboutControlPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <span className={`text-sm font-semibold truncate ${active ? 'text-red-700' : 'text-zinc-900'}`}>
-                            {ABOUT_PAGE_LABELS[s] ?? draft?.navLabel ?? labelFromSlug(s)}
+                            {ABOUT_PAGE_LABELS[s] ?? pages[s]?.local.navLabel ?? labelFromSlug(s)}
                           </span>
                           {d && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" title="Unsaved changes" />}
                         </div>
