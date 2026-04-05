@@ -4,6 +4,9 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { logAudit } from '../lib/audit-log.js';
 import { handleRouteError } from '../lib/route-error.js';
+import { HttpError } from '../lib/http-error.js';
+import { isImageDataUrl } from '../lib/image-data-url.js';
+import { isR2Configured, uploadImageFromDataUrl } from '../lib/r2.js';
 import {
   aboutPageSlugs,
   buildAboutPageTitle,
@@ -21,6 +24,82 @@ const slugParamsSchema = z.object({
 
 function isMissingContentPageTableError(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2021';
+}
+
+function containsImageDataUrl(value: unknown): boolean {
+  if (typeof value === 'string') {
+    return isImageDataUrl(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.some((item) => containsImageDataUrl(item));
+  }
+
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  return Object.values(value).some((item) => containsImageDataUrl(item));
+}
+
+function buildAboutImageFilenameBase(slug: AboutPageSlug, path: string[], uploadIndex: number): string {
+  const safePath = path
+    .join('-')
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+
+  return safePath ? `${slug}-${safePath}-${uploadIndex}` : `${slug}-image-${uploadIndex}`;
+}
+
+async function convertImageDataUrlsToR2(content: AboutPageContent, slug: AboutPageSlug): Promise<AboutPageContent> {
+  const convertedBySource = new Map<string, string>();
+  let uploadIndex = 0;
+
+  const visit = async (value: unknown, path: string[]): Promise<unknown> => {
+    if (typeof value === 'string') {
+      if (!isImageDataUrl(value)) {
+        return value;
+      }
+
+      const cached = convertedBySource.get(value);
+      if (cached) {
+        return cached;
+      }
+
+      uploadIndex += 1;
+      const uploaded = await uploadImageFromDataUrl({
+        dataUrl: value,
+        scope: `about/${slug}`,
+        filenameBase: buildAboutImageFilenameBase(slug, path, uploadIndex)
+      });
+
+      convertedBySource.set(value, uploaded.url);
+      return uploaded.url;
+    }
+
+    if (Array.isArray(value)) {
+      const nextArray: unknown[] = [];
+      for (let index = 0; index < value.length; index += 1) {
+        nextArray.push(await visit(value[index], [...path, String(index)]));
+      }
+      return nextArray;
+    }
+
+    if (value && typeof value === 'object') {
+      const nextObject: Record<string, unknown> = {};
+      for (const [key, child] of Object.entries(value)) {
+        nextObject[key] = await visit(child, [...path, key]);
+      }
+      return nextObject;
+    }
+
+    return value;
+  };
+
+  const converted = await visit(content, []);
+  return parseAboutPageContent(converted);
 }
 
 function serializeAdminPage(row: {
@@ -152,6 +231,13 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
     }
 
     try {
+      if (containsImageDataUrl(content)) {
+        if (!isR2Configured()) {
+          throw new HttpError(503, 'R2/CDN is not configured. Configure R2 before saving image data URLs.');
+        }
+        content = await convertImageDataUrlsToR2(content, params.data.slug);
+      }
+
       const saved = await prisma.contentPage.upsert({
         where: {
           scope_slug: {
