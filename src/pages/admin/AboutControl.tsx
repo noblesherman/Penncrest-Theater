@@ -1466,6 +1466,7 @@ export default function AdminAboutControlPage() {
                 const cat = catalogs[s];
                 const enabled = cat?.local.enabled ?? (s !== 'about');
                 const stagedDelete = pages[s]?.draftDeleted ?? false;
+                const publishedDelete = pages[s]?.publishedDeleted ?? false;
 
                 return (
                   <div key={s} className={`transition ${active ? 'bg-red-50' : 'hover:bg-zinc-50'}`}>
@@ -1483,8 +1484,11 @@ export default function AdminAboutControlPage() {
                         </div>
                         <div className="text-xs text-zinc-400 truncate">{publicPathForSlug(s)}</div>
                       </div>
-                      {stagedDelete && (
-                        <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-600">Deleting</span>
+                      {stagedDelete && !publishedDelete && (
+                        <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">Staged delete</span>
+                      )}
+                      {publishedDelete && (
+                        <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-600">Deleted live</span>
                       )}
                     </button>
                     {s !== 'about' && (
@@ -1555,8 +1559,8 @@ export default function AdminAboutControlPage() {
             </div>
 
             <p className="text-xs text-zinc-400">
-              {pageState.draftDeleted ? 'Draft: Staged for deletion · ' : ''}
-              {published ? `Published ${published}` : 'Never published'}
+              {pageState.draftDeleted && !pageState.publishedDeleted ? 'Draft: Staged for deletion (not live yet) · ' : ''}
+              {pageState.publishedDeleted ? 'Published: Deleted live' : (published ? `Published ${published}` : 'Never published')}
             </p>
 
             {/* Slug rename */}
