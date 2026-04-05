@@ -99,6 +99,7 @@ function SectionHeading({
   light = false,
   centered = false,
   className = '',
+  previewMode = 'public',
 }: {
   eyebrow: string;
   heading: string;
@@ -106,6 +107,7 @@ function SectionHeading({
   light?: boolean;
   centered?: boolean;
   className?: string;
+  previewMode?: AboutRendererMode;
 }) {
   return (
     <div className={`${centered ? 'text-center' : ''} ${className}`}>
@@ -114,7 +116,10 @@ function SectionHeading({
         className={`font-bold leading-[1.08] ${light ? 'text-white' : 'text-stone-900'}`}
         style={{
           fontFamily: 'Georgia, "Times New Roman", serif',
-          fontSize: 'clamp(1.6rem, 3vw, 2.5rem)',
+          fontSize:
+            previewMode === 'admin'
+              ? '2rem'
+              : 'clamp(1.6rem, 3vw, 2.5rem)',
         }}
       >
         {accentHeading ? <span className="text-red-700">{heading}</span> : heading}
@@ -170,7 +175,7 @@ function renderStory(section: AboutStorySection, previewMode: AboutRendererMode)
   return (
     <section className="bg-stone-50 py-16 sm:py-20">
       <div className="mx-auto max-w-7xl px-6 sm:px-10">
-        <SectionHeading eyebrow={section.eyebrow} heading={section.heading} />
+        <SectionHeading eyebrow={section.eyebrow} heading={section.heading} previewMode={previewMode} />
 
         <div className={`mt-10 grid gap-10 ${hasQuote ? 'lg:grid-cols-[1fr_1fr] lg:gap-16' : 'max-w-3xl'}`}>
 
@@ -222,7 +227,7 @@ function renderLinkGrid(section: AboutLinkGridSection, previewMode: AboutRendere
   return (
     <section className="bg-white py-16 sm:py-20">
       <div className="mx-auto max-w-7xl px-6 sm:px-10">
-        <SectionHeading eyebrow={section.eyebrow} heading={section.heading} />
+        <SectionHeading eyebrow={section.eyebrow} heading={section.heading} previewMode={previewMode} />
         <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
           {visibleItems.map((item, i) => (
             <motion.div key={i} {...fadeUp(i * 0.06, previewMode)}>
@@ -298,7 +303,7 @@ function renderPeople(section: AboutPeopleSection, previewMode: AboutRendererMod
   return (
     <section className="bg-stone-50 py-16 sm:py-20">
       <div className="mx-auto max-w-7xl px-6 sm:px-10">
-        <SectionHeading eyebrow={section.eyebrow} heading={section.heading} />
+        <SectionHeading eyebrow={section.eyebrow} heading={section.heading} previewMode={previewMode} />
         <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
           {section.items.map((person, i) => (
             <motion.article
@@ -341,7 +346,7 @@ function renderCalendar(section: AboutCalendarSection, previewMode: AboutRendere
   return (
     <section className="bg-white py-16 sm:py-20">
       <div className="mx-auto max-w-6xl px-6 sm:px-10">
-        <SectionHeading eyebrow={section.eyebrow} heading={section.heading} />
+        <SectionHeading eyebrow={section.eyebrow} heading={section.heading} previewMode={previewMode} />
         {section.description && (
           <p className="mt-3 max-w-2xl text-[0.9375rem] text-stone-500">{section.description}</p>
         )}
@@ -362,7 +367,7 @@ function renderHistory(section: AboutHistorySection, previewMode: AboutRendererM
       <div className="pointer-events-none absolute right-0 top-0 h-64 w-64 rounded-full bg-red-900/20 blur-3xl" aria-hidden />
       <div className="pointer-events-none absolute bottom-0 left-0 h-56 w-56 rounded-full bg-amber-500/10 blur-3xl" aria-hidden />
       <div className="relative z-10 mx-auto max-w-7xl px-6 sm:px-10">
-        <SectionHeading eyebrow={section.eyebrow} heading={section.heading} light />
+        <SectionHeading eyebrow={section.eyebrow} heading={section.heading} light previewMode={previewMode} />
         {section.description && (
           <p className="mt-3 max-w-2xl text-[0.9375rem] text-stone-300">{section.description}</p>
         )}
@@ -380,7 +385,7 @@ function renderFeatureGrid(section: AboutFeatureGridSection, previewMode: AboutR
   return (
     <section className="bg-white py-16 sm:py-20">
       <div className="mx-auto max-w-7xl px-6 sm:px-10">
-        <SectionHeading eyebrow={section.eyebrow} heading={section.heading} centered />
+        <SectionHeading eyebrow={section.eyebrow} heading={section.heading} centered previewMode={previewMode} />
         {section.intro && (
           <p className="mx-auto mt-4 max-w-3xl text-center text-[0.9375rem] text-stone-500">
             {section.intro}
@@ -443,7 +448,7 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
 
           {/* Text */}
           <motion.div {...fadeUp(0.08, previewMode)}>
-            <SectionHeading eyebrow={section.eyebrow} heading={section.heading} />
+            <SectionHeading eyebrow={section.eyebrow} heading={section.heading} previewMode={previewMode} />
             {section.lead && (
               <p
                 className="mt-4 font-semibold text-stone-800"
@@ -498,7 +503,7 @@ function renderTestimonial(section: AboutTestimonialSection, previewMode: AboutR
       <div className="relative z-10 mx-auto flex max-w-7xl flex-col gap-10 px-6 sm:px-10 lg:flex-row lg:items-center lg:gap-16">
 
         <motion.div {...fadeUp(0, previewMode)} className="flex-1">
-          <SectionHeading eyebrow={section.eyebrow} heading={section.heading} light />
+          <SectionHeading eyebrow={section.eyebrow} heading={section.heading} light previewMode={previewMode} />
           <div className="mt-6 border-l-4 border-red-700 pl-5">
             <p className="text-[1.05rem] leading-relaxed text-stone-300">
               &ldquo;{section.quote}&rdquo;
@@ -532,7 +537,7 @@ function renderListPanel(section: AboutListPanelSection, previewMode: AboutRende
           <div className="grid gap-10 lg:grid-cols-2 lg:items-start">
 
             <motion.div {...fadeUp(0, previewMode)}>
-              <SectionHeading eyebrow={section.eyebrow} heading={section.heading} />
+              <SectionHeading eyebrow={section.eyebrow} heading={section.heading} previewMode={previewMode} />
               {section.body && (
                 <p className="mt-4 text-[0.9375rem] leading-relaxed text-stone-600">{section.body}</p>
               )}
@@ -666,10 +671,13 @@ export default function AboutPageRenderer({
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <motion.div {...fadeUp(0.05, mode)}>
               <h1
-                className="font-bold leading-[0.97] text-stone-900"
+                className={`font-bold leading-[0.97] text-stone-900 ${mode === 'admin' ? 'break-words' : ''}`}
                 style={{
                   fontFamily: 'Georgia, "Times New Roman", serif',
-                  fontSize: 'clamp(2.8rem, 6.5vw, 5.5rem)',
+                  fontSize:
+                    mode === 'admin'
+                      ? '4rem'
+                      : 'clamp(2.8rem, 6.5vw, 5.5rem)',
                 }}
               >
                 {page.hero.title}
