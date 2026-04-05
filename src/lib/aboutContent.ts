@@ -8,7 +8,7 @@ export const ABOUT_PAGE_SLUGS = [
   'set-design'
 ] as const;
 
-export type AboutPageSlug = (typeof ABOUT_PAGE_SLUGS)[number];
+export type AboutPageSlug = string;
 
 export type AboutImage = {
   url: string;

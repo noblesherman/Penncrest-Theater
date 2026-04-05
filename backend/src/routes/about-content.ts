@@ -9,18 +9,26 @@ import { isImageDataUrl } from '../lib/image-data-url.js';
 import { isR2Configured, uploadImageFromDataUrl } from '../lib/r2.js';
 import {
   aboutPageSlugs,
+  aboutSlugSchema,
   buildAboutPageTitle,
   getDefaultAboutPage,
   listDefaultAboutPages,
   parseAboutPageContent,
   type AboutPageContent,
-  type AboutPageSlug
 } from '../lib/about-content.js';
 
 const scope = 'about';
 const slugParamsSchema = z.object({
-  slug: z.enum(aboutPageSlugs)
+  slug: aboutSlugSchema
 });
+
+type ContentPageRow = {
+  id: string;
+  slug: string;
+  content: unknown;
+  updatedAt: Date;
+  updatedByAdminId: string | null;
+};
 
 function isMissingContentPageTableError(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2021';
@@ -42,7 +50,50 @@ function containsImageDataUrl(value: unknown): boolean {
   return Object.values(value).some((item) => containsImageDataUrl(item));
 }
 
-function buildAboutImageFilenameBase(slug: AboutPageSlug, path: string[], uploadIndex: number): string {
+function titleFromSlug(slug: string): string {
+  return slug
+    .split('-')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+    .trim() || 'About Page';
+}
+
+function buildTemplatePageForSlug(slug: string): AboutPageContent {
+  const starter = getDefaultAboutPage('about') || listDefaultAboutPages()[0];
+  if (starter) {
+    const next = structuredClone(starter);
+    next.slug = slug;
+    next.navLabel = titleFromSlug(slug);
+    return next;
+  }
+
+  return {
+    slug,
+    navLabel: titleFromSlug(slug),
+    hero: {
+      eyebrow: 'Penncrest Theater',
+      title: titleFromSlug(slug),
+      accent: 'Page',
+      description: 'Edit this page in Admin > About.'
+    },
+    sections: [
+      {
+        id: 'intro',
+        type: 'story',
+        hidden: false,
+        eyebrow: 'Welcome',
+        heading: titleFromSlug(slug),
+        lead: '',
+        paragraphs: ['Update this content in the About editor.'],
+        quote: '',
+        quoteAttribution: ''
+      }
+    ]
+  };
+}
+
+function buildAboutImageFilenameBase(slug: string, path: string[], uploadIndex: number): string {
   const safePath = path
     .join('-')
     .toLowerCase()
@@ -53,7 +104,7 @@ function buildAboutImageFilenameBase(slug: AboutPageSlug, path: string[], upload
   return safePath ? `${slug}-${safePath}-${uploadIndex}` : `${slug}-image-${uploadIndex}`;
 }
 
-async function convertImageDataUrlsToR2(content: AboutPageContent, slug: AboutPageSlug): Promise<AboutPageContent> {
+async function convertImageDataUrlsToR2(content: AboutPageContent, slug: string): Promise<AboutPageContent> {
   const convertedBySource = new Map<string, string>();
   let uploadIndex = 0;
 
@@ -102,49 +153,40 @@ async function convertImageDataUrlsToR2(content: AboutPageContent, slug: AboutPa
   return parseAboutPageContent(converted);
 }
 
-function serializeAdminPage(row: {
-  content: unknown;
-  updatedAt: Date | null;
-  updatedByAdminId: string | null;
-} | null, slug: AboutPageSlug) {
-  let content = getDefaultAboutPage(slug);
-  let isCustomized = false;
-
-  if (row) {
-    isCustomized = true;
-    try {
-      content = parseAboutPageContent(row.content);
-    } catch {
-      // Keep the editor functional even if previously stored content is invalid.
-      isCustomized = false;
-    }
+function serializeAdminPage(row: ContentPageRow | null, fallbackPage: AboutPageContent) {
+  if (!row) {
+    return {
+      page: fallbackPage,
+      isCustomized: false,
+      updatedAt: null,
+      updatedByAdminId: null
+    };
   }
 
-  return {
-    page: content,
-    isCustomized,
-    updatedAt: row?.updatedAt?.toISOString() ?? null,
-    updatedByAdminId: row?.updatedByAdminId ?? null
-  };
+  try {
+    const parsed = parseAboutPageContent(row.content);
+    return {
+      page: parsed,
+      isCustomized: true,
+      updatedAt: row.updatedAt.toISOString(),
+      updatedByAdminId: row.updatedByAdminId
+    };
+  } catch {
+    return {
+      page: fallbackPage,
+      isCustomized: true,
+      updatedAt: row.updatedAt.toISOString(),
+      updatedByAdminId: row.updatedByAdminId
+    };
+  }
 }
 
-async function loadStoredPages(): Promise<Map<AboutPageSlug, { content: unknown; updatedAt: Date; updatedByAdminId: string | null }>> {
-  const rows = await prisma.contentPage.findMany({
-    where: { scope }
-  });
-
-  const bySlug = new Map<AboutPageSlug, { content: unknown; updatedAt: Date; updatedByAdminId: string | null }>();
-  rows.forEach((row) => {
-    if ((aboutPageSlugs as readonly string[]).includes(row.slug)) {
-      bySlug.set(row.slug as AboutPageSlug, {
-        content: row.content,
-        updatedAt: row.updatedAt,
-        updatedByAdminId: row.updatedByAdminId
-      });
-    }
-  });
-
-  return bySlug;
+function parseStoredPageForPublic(row: ContentPageRow): AboutPageContent | null {
+  try {
+    return parseAboutPageContent(row.content);
+  } catch {
+    return null;
+  }
 }
 
 export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
@@ -161,25 +203,44 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
             scope,
             slug: params.data.slug
           }
+        },
+        select: {
+          id: true,
+          slug: true,
+          content: true,
+          updatedAt: true,
+          updatedByAdminId: true
         }
       });
 
-      let page = getDefaultAboutPage(params.data.slug);
       if (row) {
-        try {
-          page = parseAboutPageContent(row.content);
-        } catch {
-          request.log.warn(
-            { scope, slug: params.data.slug },
-            'Invalid stored About content encountered; serving defaults'
-          );
+        const parsed = parseStoredPageForPublic(row);
+        if (parsed) {
+          return reply.send(parsed);
         }
+
+        const fallback = getDefaultAboutPage(params.data.slug);
+        if (fallback) {
+          request.log.warn({ scope, slug: params.data.slug }, 'Invalid stored About content encountered; serving defaults');
+          return reply.send(fallback);
+        }
+
+        throw new HttpError(500, 'Stored About page content is invalid.');
       }
-      reply.send(page);
+
+      const defaultPage = getDefaultAboutPage(params.data.slug);
+      if (defaultPage) {
+        return reply.send(defaultPage);
+      }
+
+      return reply.status(404).send({ error: 'About page not found' });
     } catch (err) {
       if (isMissingContentPageTableError(err)) {
-        reply.send(getDefaultAboutPage(params.data.slug));
-        return;
+        const defaultPage = getDefaultAboutPage(params.data.slug);
+        if (defaultPage) {
+          return reply.send(defaultPage);
+        }
+        return reply.status(404).send({ error: 'About page not found' });
       }
       handleRouteError(reply, err, 'Failed to load About content');
     }
@@ -187,15 +248,50 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/api/admin/about/pages', { preHandler: app.requireAdminRole('SUPER_ADMIN') }, async (_request, reply) => {
     try {
-      const storedPages = await loadStoredPages();
-      reply.send(
-        aboutPageSlugs.map((slug) => serializeAdminPage(storedPages.get(slug) ?? null, slug))
-      );
+      const rows = await prisma.contentPage.findMany({
+        where: { scope },
+        orderBy: [{ updatedAt: 'desc' }, { slug: 'asc' }],
+        select: {
+          id: true,
+          slug: true,
+          content: true,
+          updatedAt: true,
+          updatedByAdminId: true
+        }
+      });
+
+      const rowBySlug = new Map(rows.map((row) => [row.slug, row]));
+      const payload: Array<{
+        page: AboutPageContent;
+        isCustomized: boolean;
+        updatedAt: string | null;
+        updatedByAdminId: string | null;
+      }> = [];
+
+      for (const starterSlug of aboutPageSlugs) {
+        const row = rowBySlug.get(starterSlug) || null;
+        if (row) {
+          rowBySlug.delete(starterSlug);
+        }
+
+        const fallback = getDefaultAboutPage(starterSlug) || buildTemplatePageForSlug(starterSlug);
+        payload.push(serializeAdminPage(row, fallback));
+      }
+
+      const customRows = [...rowBySlug.values()].sort((a, b) => a.slug.localeCompare(b.slug));
+      for (const row of customRows) {
+        payload.push(serializeAdminPage(row, buildTemplatePageForSlug(row.slug)));
+      }
+
+      reply.send(payload);
     } catch (err) {
       if (isMissingContentPageTableError(err)) {
-        reply.send(
-          aboutPageSlugs.map((slug) => serializeAdminPage(null, slug))
-        );
+        reply.send(listDefaultAboutPages().map((page) => ({
+          page,
+          isCustomized: false,
+          updatedAt: null,
+          updatedByAdminId: null
+        })));
         return;
       }
       handleRouteError(reply, err, 'Failed to load About editor');
@@ -256,6 +352,13 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
           title: buildAboutPageTitle(content),
           content: content as any,
           updatedByAdminId: request.adminUser?.id ?? null
+        },
+        select: {
+          id: true,
+          slug: true,
+          content: true,
+          updatedAt: true,
+          updatedByAdminId: true
         }
       });
 
@@ -268,11 +371,11 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
         metadata: {
           scope,
           slug: params.data.slug,
-          title: saved.title
+          title: buildAboutPageTitle(content)
         }
       });
 
-      reply.send(serializeAdminPage(saved, params.data.slug));
+      reply.send(serializeAdminPage(saved, buildTemplatePageForSlug(params.data.slug)));
     } catch (err) {
       if (isMissingContentPageTableError(err)) {
         return reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });

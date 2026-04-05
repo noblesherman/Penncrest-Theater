@@ -11,7 +11,16 @@ export const aboutPageSlugs = [
   'set-design'
 ] as const;
 
-export type AboutPageSlug = (typeof aboutPageSlugs)[number];
+export type AboutPageSlug = string;
+
+export const aboutSlugSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(80)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
+    message: 'Slug must use lowercase letters, numbers, and hyphens only'
+  });
 
 const longText = z.string().trim().min(1).max(2_000);
 const shortText = z.string().trim().min(1).max(160);
@@ -277,7 +286,7 @@ export const aboutSectionSchema = z.discriminatedUnion('type', [
 ]);
 
 export const aboutPageSchema = z.object({
-  slug: z.enum(aboutPageSlugs),
+  slug: aboutSlugSchema,
   navLabel: shortText,
   hero: heroSchema,
   sections: z.array(aboutSectionSchema).min(1).max(12)
@@ -286,7 +295,7 @@ export const aboutPageSchema = z.object({
 export type AboutPageContent = z.infer<typeof aboutPageSchema>;
 export type AboutSection = z.infer<typeof aboutSectionSchema>;
 
-export const defaultAboutPages: Record<AboutPageSlug, AboutPageContent> = {
+export const defaultAboutPages: Record<string, AboutPageContent> = {
   about: {
     slug: 'about',
     navLabel: 'About',
@@ -786,12 +795,18 @@ export function parseAboutPageContent(value: unknown): AboutPageContent {
   return aboutPageSchema.parse(value);
 }
 
-export function getDefaultAboutPage(slug: AboutPageSlug): AboutPageContent {
-  return structuredClone(defaultAboutPages[slug]);
+export function getDefaultAboutPage(slug: string): AboutPageContent | null {
+  const page = defaultAboutPages[slug];
+  if (!page) {
+    return null;
+  }
+  return structuredClone(page);
 }
 
 export function listDefaultAboutPages(): AboutPageContent[] {
-  return aboutPageSlugs.map((slug) => getDefaultAboutPage(slug));
+  return aboutPageSlugs
+    .map((slug) => getDefaultAboutPage(slug))
+    .filter((page): page is AboutPageContent => Boolean(page));
 }
 
 export function buildAboutPageTitle(page: AboutPageContent): string {

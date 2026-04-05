@@ -18,7 +18,7 @@ import {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const PUBLIC_PATHS: Record<AboutPageSlug, string> = {
+const STARTER_PUBLIC_PATHS: Record<string, string> = {
   about: '/about',
   performer: '/performer',
   'stage-crew': '/stage-crew',
@@ -33,6 +33,33 @@ const SECTION_TYPE_LABELS: Record<string, string> = {
   calendar: 'Calendar Embed', history: 'History Timeline', featureGrid: 'Feature Grid',
   splitFeature: 'Split Feature', testimonial: 'Testimonial', listPanel: 'List Panel', cta: 'Call to Action',
 };
+
+function publicPathForSlug(slug: string): string {
+  const starterPath = STARTER_PUBLIC_PATHS[slug];
+  if (starterPath) {
+    return starterPath;
+  }
+  return `/${slug}`;
+}
+
+function labelFromSlug(slug: string): string {
+  return slug
+    .split('-')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+    .trim() || 'About Page';
+}
+
+function normalizeSlugInput(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+}
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -337,6 +364,8 @@ export default function AdminAboutControlPage() {
   const [defaults, setDefaults] = useState<Record<AboutPageSlug, AboutPageContent> | null>(null);
   const [drafts, setDrafts] = useState<Record<AboutPageSlug, AboutPageContent> | null>(null);
   const [slug, setSlug] = useState<AboutPageSlug>('about');
+  const [newPageSlug, setNewPageSlug] = useState('');
+  const [newPageTemplateSlug, setNewPageTemplateSlug] = useState<AboutPageSlug>('about');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -350,9 +379,19 @@ export default function AdminAboutControlPage() {
         adminFetch<AdminAboutPageRecord[]>('/api/admin/about/pages'),
         adminFetch<AboutPageContent[]>('/api/admin/about/pages/defaults'),
       ]);
-      setRecords(Object.fromEntries(pages.map((r) => [r.page.slug, r])) as Record<AboutPageSlug, AdminAboutPageRecord>);
-      setDrafts(Object.fromEntries(pages.map((r) => [r.page.slug, cloneAboutPage(r.page)])) as Record<AboutPageSlug, AboutPageContent>);
-      setDefaults(Object.fromEntries(defs.map((p) => [p.slug, p])) as Record<AboutPageSlug, AboutPageContent>);
+      const nextRecords = Object.fromEntries(pages.map((r) => [r.page.slug, r])) as Record<AboutPageSlug, AdminAboutPageRecord>;
+      const nextDrafts = Object.fromEntries(pages.map((r) => [r.page.slug, cloneAboutPage(r.page)])) as Record<AboutPageSlug, AboutPageContent>;
+      const nextDefaults = Object.fromEntries(defs.map((p) => [p.slug, p])) as Record<AboutPageSlug, AboutPageContent>;
+      setRecords(nextRecords);
+      setDrafts(nextDrafts);
+      setDefaults(nextDefaults);
+      const availableSlugs = Object.keys(nextDrafts);
+      if (!availableSlugs.includes(slug)) {
+        setSlug(availableSlugs.includes('about') ? 'about' : (availableSlugs[0] ?? 'about'));
+      }
+      if (!(newPageTemplateSlug in nextDrafts)) {
+        setNewPageTemplateSlug(nextDrafts.about ? 'about' : (Object.keys(nextDrafts)[0] ?? 'about'));
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
@@ -366,9 +405,32 @@ export default function AdminAboutControlPage() {
   const draft = drafts?.[slug] ?? null;
   const deferred = useDeferredValue(draft);
 
+  const pageSlugs = useMemo(() => {
+    const fromDrafts = drafts ? Object.keys(drafts) : [];
+    const combined = new Set<string>([...ABOUT_PAGE_SLUGS, ...fromDrafts]);
+    return [...combined].sort((a, b) => {
+      const aStarterIndex = ABOUT_PAGE_SLUGS.indexOf(a as any);
+      const bStarterIndex = ABOUT_PAGE_SLUGS.indexOf(b as any);
+      const aIsStarter = aStarterIndex >= 0;
+      const bIsStarter = bStarterIndex >= 0;
+      if (aIsStarter && bIsStarter) return aStarterIndex - bStarterIndex;
+      if (aIsStarter) return -1;
+      if (bIsStarter) return 1;
+      return a.localeCompare(b);
+    });
+  }, [drafts]);
+
   const dirtySet = useMemo(() => {
-    if (!records || !drafts) return new Set<AboutPageSlug>();
-    return new Set(ABOUT_PAGE_SLUGS.filter((s) => JSON.stringify(records[s].page) !== JSON.stringify(drafts[s])));
+    if (!drafts) return new Set<AboutPageSlug>();
+    const next = new Set<AboutPageSlug>();
+    Object.keys(drafts).forEach((pageSlug) => {
+      const draftPage = drafts[pageSlug];
+      const recordPage = records?.[pageSlug]?.page;
+      if (!recordPage || JSON.stringify(recordPage) !== JSON.stringify(draftPage)) {
+        next.add(pageSlug);
+      }
+    });
+    return next;
   }, [records, drafts]);
 
   const dirty = dirtySet.has(slug);
@@ -394,7 +456,7 @@ export default function AdminAboutControlPage() {
       next[targetSlug] = targetPage;
 
       if (targetSlug !== 'about') {
-        const targetPath = PUBLIC_PATHS[targetSlug];
+        const targetPath = publicPathForSlug(targetSlug);
         const aboutPage = cloneAboutPage(next.about);
         aboutPage.sections = aboutPage.sections.map((section) => {
           if (section.type !== 'linkGrid') {
@@ -418,7 +480,8 @@ export default function AdminAboutControlPage() {
       return next;
     });
 
-    setNotice(enabled ? `${ABOUT_PAGE_LABELS[targetSlug]} turned on.` : `${ABOUT_PAGE_LABELS[targetSlug]} turned off.`);
+    const label = ABOUT_PAGE_LABELS[targetSlug] ?? drafts?.[targetSlug]?.navLabel ?? labelFromSlug(targetSlug);
+    setNotice(enabled ? `${label} turned on.` : `${label} turned off.`);
   };
 
   const setAllGetInvolvedCardsVisible = (visible: boolean) => {
@@ -462,18 +525,67 @@ export default function AdminAboutControlPage() {
   };
 
   const revert = () => {
-    if (!records) return;
-    setDrafts((d) => d ? { ...d, [slug]: cloneAboutPage(records[slug].page) } : d);
-    setNotice('Changes reverted.');
+    if (!drafts) return;
+    const stored = records?.[slug];
+    if (stored) {
+      setDrafts((d) => d ? { ...d, [slug]: cloneAboutPage(stored.page) } : d);
+      setNotice('Changes reverted.');
+      return;
+    }
+
+    setDrafts((current) => {
+      if (!current) return current;
+      const { [slug]: _discarded, ...rest } = current;
+      return rest;
+    });
+    const fallbackSlug = pageSlugs.find((candidate) => candidate !== slug) ?? 'about';
+    setSlug(fallbackSlug);
+    setNotice('Draft page discarded.');
   };
 
   const loadDefaults = () => {
     if (!defaults) return;
-    setDrafts((d) => d ? { ...d, [slug]: cloneAboutPage(defaults[slug]) } : d);
+    const source = defaults[slug] ?? defaults.about ?? Object.values(defaults)[0];
+    if (!source) return;
+    const nextPage = cloneAboutPage(source);
+    nextPage.slug = slug;
+    if (!defaults[slug]) {
+      nextPage.navLabel = labelFromSlug(slug);
+    }
+    setDrafts((d) => d ? { ...d, [slug]: nextPage } : d);
     setNotice('Default content loaded. Save to publish.');
   };
 
-  if (loading || !records || !drafts || !defaults || !draft || !record) {
+  const createPageDraft = () => {
+    if (!drafts || !defaults) return;
+    const normalizedSlug = normalizeSlugInput(newPageSlug);
+    if (!normalizedSlug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(normalizedSlug)) {
+      setError('Slug must use lowercase letters, numbers, and hyphens only.');
+      return;
+    }
+    if (drafts[normalizedSlug]) {
+      setError('A page with that slug already exists.');
+      return;
+    }
+
+    const template = drafts[newPageTemplateSlug] ?? defaults[newPageTemplateSlug] ?? defaults.about ?? Object.values(defaults)[0];
+    if (!template) {
+      setError('Could not find a template page to clone.');
+      return;
+    }
+
+    const page = cloneAboutPage(template);
+    page.slug = normalizedSlug;
+    page.navLabel = labelFromSlug(normalizedSlug);
+
+    setDrafts((current) => current ? { ...current, [normalizedSlug]: page } : current);
+    setSlug(normalizedSlug);
+    setNewPageSlug('');
+    setError(null);
+    setNotice(`Created draft page "${normalizedSlug}". Publish to make it live.`);
+  };
+
+  if (loading || !drafts || !defaults || !draft) {
     return (
       <div className="flex h-64 items-center justify-center gap-3 text-stone-400">
         {error
@@ -483,7 +595,7 @@ export default function AdminAboutControlPage() {
     );
   }
 
-  const published = formatUpdatedAt(record.updatedAt);
+  const published = formatUpdatedAt(record?.updatedAt ?? null);
 
   // ─── Section renderers ──────────────────────────────────────────────────────
 
@@ -773,7 +885,7 @@ export default function AdminAboutControlPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <a href={PUBLIC_PATHS[slug]} target="_blank" rel="noreferrer"
+          <a href={publicPathForSlug(slug)} target="_blank" rel="noreferrer"
             className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold text-stone-700 hover:bg-stone-50">
             <ExternalLink className="h-4 w-4" /> View live
           </a>
@@ -795,7 +907,7 @@ export default function AdminAboutControlPage() {
         <aside className="space-y-4">
           <div className="rounded-3xl border border-stone-200 bg-white p-4 shadow-sm">
             <div className="space-y-2">
-              {ABOUT_PAGE_SLUGS.map((s) => {
+              {pageSlugs.map((s) => {
                 const active = s === slug;
                 const d = dirtySet.has(s);
                 const enabled = drafts ? isAboutPageEnabled(drafts[s]) : true;
@@ -811,8 +923,8 @@ export default function AdminAboutControlPage() {
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <p className="font-semibold text-stone-900">{ABOUT_PAGE_LABELS[s]}</p>
-                          <p className="mt-1 text-xs uppercase tracking-[0.15em] text-stone-500">{PUBLIC_PATHS[s]}</p>
+                          <p className="font-semibold text-stone-900">{ABOUT_PAGE_LABELS[s] ?? drafts?.[s]?.navLabel ?? labelFromSlug(s)}</p>
+                          <p className="mt-1 text-xs uppercase tracking-[0.15em] text-stone-500">{publicPathForSlug(s)}</p>
                         </div>
                         {d && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" title="Unsaved changes" />}
                       </div>
@@ -840,6 +952,38 @@ export default function AdminAboutControlPage() {
             </div>
           </div>
 
+          <div className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Add Page</p>
+            <div className="space-y-2">
+              <input
+                value={newPageSlug}
+                onChange={(event) => setNewPageSlug(normalizeSlugInput(event.target.value))}
+                placeholder="new-page-slug"
+                className={inputClass}
+              />
+              <select
+                value={newPageTemplateSlug}
+                onChange={(event) => setNewPageTemplateSlug(event.target.value)}
+                className={inputClass}
+              >
+                {(pageSlugs.length > 0 ? pageSlugs : ['about']).map((templateSlug) => (
+                  <option key={templateSlug} value={templateSlug}>
+                    Template: {ABOUT_PAGE_LABELS[templateSlug] ?? defaults?.[templateSlug]?.navLabel ?? labelFromSlug(templateSlug)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              onClick={createPageDraft}
+              disabled={saving || !newPageSlug}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+            >
+              <FilePenLine className="h-4 w-4" /> Create draft page
+            </button>
+            <p className="text-xs text-stone-500">Publish to make it live at <span className="font-semibold">{newPageSlug ? `/${newPageSlug}` : '/your-slug'}</span>.</p>
+          </div>
+
           {/* Action card */}
           <div className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
@@ -849,7 +993,7 @@ export default function AdminAboutControlPage() {
               </span>
             </div>
             <p className="text-xs text-stone-400">
-              {record.isCustomized ? '✦ Custom content' : '◦ Using default content'}
+              {record?.isCustomized ? '✦ Custom content' : '◦ Using default content'}
               {published ? ` · Published ${published}` : ' · Never published'}
             </p>
             <div className="space-y-2 pt-1">

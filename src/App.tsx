@@ -18,6 +18,7 @@ const MusicalTheater = lazy(() => import('./pages/MusicalTheater'));
 const InterestMeeting = lazy(() => import('./pages/InterestMeeting'));
 const Fundraising = lazy(() => import('./pages/Fundraising'));
 const FundraisingEventDetail = lazy(() => import('./pages/FundraisingEventDetail'));
+const DynamicAboutPage = lazy(() => import('./pages/DynamicAboutPage'));
 const ProgramBioFormPage = lazy(() => import('./pages/ProgramBioForm'));
 const SeniorSendoffFormPage = lazy(() => import('./pages/SeniorSendoffForm'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
@@ -133,6 +134,7 @@ export default function App() {
                   <Route path="privacy-policy" element={<PrivacyPolicy />} />
                   <Route path="terms-of-service" element={<TermsOfService />} />
                   <Route path="refund-policy" element={<RefundPolicy />} />
+                  <Route path=":aboutSlug" element={<DynamicAboutPage />} />
                   <Route path="*" element={<NotFoundPage />} />
                 </Route>
               </Route>
