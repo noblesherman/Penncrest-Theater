@@ -9,7 +9,10 @@ const Shows = lazy(() => import('./pages/Shows'));
 const CommunityEvents = lazy(() => import('./pages/CommunityEvents'));
 const ShowDetails = lazy(() => import('./pages/ShowDetails'));
 const About = lazy(() => import('./pages/About'));
+const Performer = lazy(() => import('./pages/Performer'));
+const StageCrew = lazy(() => import('./pages/StageCrew'));
 const TechCrew = lazy(() => import('./pages/TechCrew'));
+const CostumeCrew = lazy(() => import('./pages/CostumeCrew'));
 const SetDesign = lazy(() => import('./pages/SetDesign'));
 const MusicalTheater = lazy(() => import('./pages/MusicalTheater'));
 const InterestMeeting = lazy(() => import('./pages/InterestMeeting'));
@@ -115,7 +118,10 @@ export default function App() {
                   <Route path="teacher-tickets" element={<StaffTicketsPage />} />
                   <Route path="staff-tickets" element={<StaffTicketsPage />} />
                   <Route path="about" element={<About />} />
+                  <Route path="performer" element={<Performer />} />
+                  <Route path="stage-crew" element={<StageCrew />} />
                   <Route path="tech-crew" element={<TechCrew />} />
+                  <Route path="costume-crew" element={<CostumeCrew />} />
                   <Route path="set-design" element={<SetDesign />} />
                   <Route path="musical-theater" element={<MusicalTheater />} />
                   <Route path="interest-meeting" element={<InterestMeeting />} />

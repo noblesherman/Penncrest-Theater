@@ -3,8 +3,11 @@ import { isImageDataUrl } from './image-data-url.js';
 
 export const aboutPageSlugs = [
   'about',
+  'performer',
+  'stage-crew',
   'musical-theater',
   'tech-crew',
+  'costume-crew',
   'set-design'
 ] as const;
 
@@ -318,21 +321,27 @@ export const defaultAboutPages: Record<AboutPageSlug, AboutPageContent> = {
         items: [
           {
             hidden: false,
-            title: 'Musical Theater',
+            title: 'Performer',
             description: 'Sing, dance, and act in our fall play and spring musical. All skill levels are welcome.',
-            href: '/musical-theater'
+            href: '/performer'
+          },
+          {
+            hidden: false,
+            title: 'Stage Crew',
+            description: 'Build the worlds our actors inhabit through carpentry, painting, props, scenic design, and art.',
+            href: '/stage-crew'
           },
           {
             hidden: false,
             title: 'Tech Crew',
-            description: 'Run lights, sound, and stage management. The magic behind every performance.',
+            description: 'The magic behind every production, Tech Crew runs lights, sound, and show effects.',
             href: '/tech-crew'
           },
           {
             hidden: false,
-            title: 'Set Design',
-            description: 'Build and paint the worlds our actors inhabit through carpentry, props, and scenic art.',
-            href: '/set-design'
+            title: 'Costume Crew',
+            description: 'Design, fit, and maintain costumes that bring each character and scene to life.',
+            href: '/costume-crew'
           }
         ]
       },
@@ -406,6 +415,108 @@ export const defaultAboutPages: Record<AboutPageSlug, AboutPageContent> = {
         },
         contactLabel: 'Program Contact',
         contactValue: 'Jennifer Smith · Director, Penncrest Theater'
+      }
+    ]
+  },
+  performer: {
+    slug: 'performer',
+    navLabel: 'Performer',
+    hero: {
+      eyebrow: 'Center Stage',
+      title: 'Performer',
+      accent: 'Pathway',
+      description: 'Sing, dance, and act in productions that challenge your skills and build your confidence.'
+    },
+    sections: [
+      {
+        id: 'performer-overview',
+        type: 'featureGrid',
+        hidden: false,
+        eyebrow: 'On Stage',
+        heading: 'What You Will Grow',
+        intro:
+          'Performers in our program build vocal, acting, movement, and collaboration skills while working in a supportive ensemble.',
+        items: [
+          {
+            title: 'Voice',
+            description: 'Strengthen vocal technique through rehearsals, ensemble work, and musical storytelling.'
+          },
+          {
+            title: 'Acting',
+            description: 'Develop character and scene work with clear direction and practical feedback.'
+          },
+          {
+            title: 'Movement',
+            description: 'Learn choreography and stage movement that supports story, energy, and confidence.'
+          }
+        ]
+      },
+      {
+        id: 'performer-cta',
+        type: 'cta',
+        hidden: false,
+        eyebrow: 'Get Started',
+        heading: 'Ready to Audition?',
+        body: 'If you are interested in joining the cast, connect with the program team and watch for audition announcements.',
+        primary: {
+          label: 'Contact the Program',
+          href: '/about'
+        },
+        secondary: {
+          label: 'View Shows',
+          href: '/shows'
+        },
+        contactLabel: 'Questions',
+        contactValue: 'Penncrest Theater Staff'
+      }
+    ]
+  },
+  'stage-crew': {
+    slug: 'stage-crew',
+    navLabel: 'Stage Crew',
+    hero: {
+      eyebrow: 'Build Team',
+      title: 'Stage',
+      accent: 'Crew',
+      description: 'Construct sets, organize props, and keep backstage operations moving with precision and teamwork.'
+    },
+    sections: [
+      {
+        id: 'stage-crew-roles',
+        type: 'featureGrid',
+        hidden: false,
+        eyebrow: 'Backstage Craft',
+        heading: 'What Stage Crew Does',
+        intro:
+          'Stage Crew members help transform plans into physical spaces and keep every scene transition clean and safe.',
+        items: [
+          {
+            title: 'Scenery Build',
+            description: 'Assist with scenic construction, assembly, and safe tool use in the workshop.'
+          },
+          {
+            title: 'Props & Dressing',
+            description: 'Track, prep, and place props and set dressing so each scene is performance-ready.'
+          },
+          {
+            title: 'Scene Changes',
+            description: 'Coordinate transitions during rehearsals and shows with timing and consistency.'
+          }
+        ]
+      },
+      {
+        id: 'stage-crew-cta',
+        type: 'cta',
+        hidden: false,
+        eyebrow: 'Join In',
+        heading: 'Want to Work Backstage?',
+        body: 'Stage Crew welcomes students who enjoy building, organizing, and solving practical problems under pressure.',
+        primary: {
+          label: 'Contact the Program',
+          href: '/about'
+        },
+        contactLabel: 'Program Contact',
+        contactValue: 'Penncrest Theater Staff'
       }
     ]
   },
@@ -543,6 +654,55 @@ export const defaultAboutPages: Record<AboutPageSlug, AboutPageContent> = {
         },
         contactLabel: '',
         contactValue: ''
+      }
+    ]
+  },
+  'costume-crew': {
+    slug: 'costume-crew',
+    navLabel: 'Costume Crew',
+    hero: {
+      eyebrow: 'Design & Detail',
+      title: 'Costume',
+      accent: 'Crew',
+      description: 'Help shape each production through wardrobe planning, fittings, quick changes, and character styling.'
+    },
+    sections: [
+      {
+        id: 'costume-crew-work',
+        type: 'featureGrid',
+        hidden: false,
+        eyebrow: 'Wardrobe Team',
+        heading: 'What Costume Crew Handles',
+        intro:
+          'Costume Crew supports every performer with practical, durable, and story-accurate wardrobe choices.',
+        items: [
+          {
+            title: 'Design & Selection',
+            description: 'Pull and coordinate costume pieces that reflect time period, character, and movement needs.'
+          },
+          {
+            title: 'Fittings & Alterations',
+            description: 'Support fittings and simple adjustments so costumes are safe, comfortable, and stage-ready.'
+          },
+          {
+            title: 'Show Run Support',
+            description: 'Manage costume tracking, repairs, and quick changes during rehearsal and performance.'
+          }
+        ]
+      },
+      {
+        id: 'costume-crew-cta',
+        type: 'cta',
+        hidden: false,
+        eyebrow: 'Get Involved',
+        heading: 'Join Costume Crew',
+        body: 'If you enjoy fashion, cosplay, styling, or detail work, Costume Crew is a great place to contribute.',
+        primary: {
+          label: 'Contact the Program',
+          href: '/about'
+        },
+        contactLabel: 'Program Contact',
+        contactValue: 'Penncrest Theater Staff'
       }
     ]
   },

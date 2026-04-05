@@ -20,8 +20,11 @@ import {
 
 const PUBLIC_PATHS: Record<AboutPageSlug, string> = {
   about: '/about',
+  performer: '/performer',
+  'stage-crew': '/stage-crew',
   'musical-theater': '/musical-theater',
   'tech-crew': '/tech-crew',
+  'costume-crew': '/costume-crew',
   'set-design': '/set-design',
 };
 

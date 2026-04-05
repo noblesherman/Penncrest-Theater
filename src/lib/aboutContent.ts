@@ -1,7 +1,10 @@
 export const ABOUT_PAGE_SLUGS = [
   'about',
+  'performer',
+  'stage-crew',
   'musical-theater',
   'tech-crew',
+  'costume-crew',
   'set-design'
 ] as const;
 
@@ -182,8 +185,11 @@ export type AdminAboutPageRecord = {
 
 export const ABOUT_PAGE_LABELS: Record<AboutPageSlug, string> = {
   about: 'About Landing',
+  performer: 'Performer',
+  'stage-crew': 'Stage Crew',
   'musical-theater': 'Musical Theater',
   'tech-crew': 'Tech Crew',
+  'costume-crew': 'Costume Crew',
   'set-design': 'Set Design'
 };
 
