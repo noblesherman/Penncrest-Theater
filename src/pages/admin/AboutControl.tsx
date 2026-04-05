@@ -458,7 +458,12 @@ export default function AdminAboutControlPage() {
 
       if (targetSlug !== 'about') {
         const targetPath = publicPathForSlug(targetSlug);
-        const aboutPage = cloneAboutPage(next.about);
+        const aboutCurrent = next.about;
+        if (!aboutCurrent) {
+          return next;
+        }
+
+        const aboutPage = cloneAboutPage(aboutCurrent);
         aboutPage.sections = aboutPage.sections.map((section) => {
           if (section.type !== 'linkGrid') {
             return section;
@@ -490,7 +495,12 @@ export default function AdminAboutControlPage() {
       if (!current) return current;
 
       const next = { ...current };
-      const aboutPage = cloneAboutPage(next.about);
+      const aboutCurrent = next.about;
+      if (!aboutCurrent) {
+        return next;
+      }
+
+      const aboutPage = cloneAboutPage(aboutCurrent);
       aboutPage.sections = aboutPage.sections.map((section) => {
         if (section.type !== 'linkGrid') {
           return section;
@@ -675,7 +685,7 @@ export default function AdminAboutControlPage() {
 
     if (!stored) {
       if (isStarterSlug) {
-        setNotice('Starter pages cannot be deleted. You can turn them off or keep defaults.');
+        setNotice('Page was already removed.');
         return;
       }
 
@@ -692,7 +702,7 @@ export default function AdminAboutControlPage() {
 
     const confirmed = confirm(
       isStarterSlug
-        ? `Delete the custom version of "${ABOUT_PAGE_LABELS[slug] ?? labelFromSlug(slug)}" and restore defaults?`
+        ? `Delete starter page "${ABOUT_PAGE_LABELS[slug] ?? labelFromSlug(slug)}"? This removes the page from the site.`
         : `Delete page "${slug}"? This will remove it from the site.`
     );
     if (!confirmed) return;
