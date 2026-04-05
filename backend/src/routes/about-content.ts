@@ -19,6 +19,7 @@ import {
 
 const scope = 'about';
 const starterAboutSlugSet = new Set<string>(aboutPageSlugs as readonly string[]);
+const deletedStarterTombstoneKind = 'deleted_starter_about_page';
 const slugParamsSchema = z.object({
   slug: aboutSlugSchema
 });
@@ -155,6 +156,15 @@ async function convertImageDataUrlsToR2(content: AboutPageContent, slug: string)
 }
 
 function serializeAdminPage(row: ContentPageRow | null, fallbackPage: AboutPageContent) {
+  if (row && isDeletedStarterTombstone(row.content, row.slug)) {
+    return {
+      page: fallbackPage,
+      isCustomized: false,
+      updatedAt: null,
+      updatedByAdminId: null
+    };
+  }
+
   if (!row) {
     return {
       page: fallbackPage,
@@ -183,11 +193,41 @@ function serializeAdminPage(row: ContentPageRow | null, fallbackPage: AboutPageC
 }
 
 function parseStoredPageForPublic(row: ContentPageRow): AboutPageContent | null {
+  if (isDeletedStarterTombstone(row.content, row.slug)) {
+    return null;
+  }
+
   try {
     return parseAboutPageContent(row.content);
   } catch {
     return null;
   }
+}
+
+function buildDeletedStarterTombstone(slug: string) {
+  return {
+    _meta: {
+      kind: deletedStarterTombstoneKind,
+      slug,
+      deletedAt: new Date().toISOString(),
+      version: 1
+    }
+  };
+}
+
+function isDeletedStarterTombstone(content: unknown, slug: string): boolean {
+  if (!content || typeof content !== 'object' || Array.isArray(content)) {
+    return false;
+  }
+
+  const meta = (content as { _meta?: unknown })._meta;
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) {
+    return false;
+  }
+
+  const kind = (meta as { kind?: unknown }).kind;
+  const metaSlug = (meta as { slug?: unknown }).slug;
+  return kind === deletedStarterTombstoneKind && metaSlug === slug;
 }
 
 export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
@@ -215,6 +255,10 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
       });
 
       if (row) {
+        if (isDeletedStarterTombstone(row.content, params.data.slug)) {
+          return reply.status(404).send({ error: 'About page not found' });
+        }
+
         const parsed = parseStoredPageForPublic(row);
         if (parsed) {
           return reply.send(parsed);
@@ -275,12 +319,19 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
           rowBySlug.delete(starterSlug);
         }
 
+        if (row && isDeletedStarterTombstone(row.content, starterSlug)) {
+          continue;
+        }
+
         const fallback = getDefaultAboutPage(starterSlug) || buildTemplatePageForSlug(starterSlug);
         payload.push(serializeAdminPage(row, fallback));
       }
 
       const customRows = [...rowBySlug.values()].sort((a, b) => a.slug.localeCompare(b.slug));
       for (const row of customRows) {
+        if (isDeletedStarterTombstone(row.content, row.slug)) {
+          continue;
+        }
         payload.push(serializeAdminPage(row, buildTemplatePageForSlug(row.slug)));
       }
 
@@ -403,18 +454,59 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
         },
         select: {
           id: true,
-          title: true
+          title: true,
+          content: true
         }
       });
 
+      if (isStarterSlug) {
+        const tombstone = buildDeletedStarterTombstone(params.data.slug);
+        const saved = await prisma.contentPage.upsert({
+          where: {
+            scope_slug: {
+              scope,
+              slug: params.data.slug
+            }
+          },
+          update: {
+            title: `Deleted starter About page: ${params.data.slug}`,
+            content: tombstone as any,
+            updatedByAdminId: request.adminUser?.id ?? null
+          },
+          create: {
+            scope,
+            slug: params.data.slug,
+            title: `Deleted starter About page: ${params.data.slug}`,
+            content: tombstone as any,
+            updatedByAdminId: request.adminUser?.id ?? null
+          },
+          select: {
+            id: true
+          }
+        });
+
+        await logAudit({
+          actor: request.adminUser?.username || 'super-admin',
+          actorAdminId: request.adminUser?.id || null,
+          action: 'ABOUT_CONTENT_DELETED',
+          entityType: 'ContentPage',
+          entityId: existing?.id ?? saved.id,
+          metadata: {
+            scope,
+            slug: params.data.slug,
+            title: existing?.title ?? null,
+            deletedStarterPage: true
+          }
+        });
+
+        return reply.send({
+          success: true,
+          deleted: true,
+          restoredDefault: false
+        });
+      }
+
       if (!existing) {
-        if (isStarterSlug) {
-          return reply.send({
-            success: true,
-            deleted: false,
-            restoredDefault: true
-          });
-        }
         throw new HttpError(404, 'About page not found');
       }
 
@@ -430,7 +522,7 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
       await logAudit({
         actor: request.adminUser?.username || 'super-admin',
         actorAdminId: request.adminUser?.id || null,
-        action: isStarterSlug ? 'ABOUT_CONTENT_RESET' : 'ABOUT_CONTENT_DELETED',
+        action: 'ABOUT_CONTENT_DELETED',
         entityType: 'ContentPage',
         entityId: existing.id,
         metadata: {
@@ -443,7 +535,7 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
       reply.send({
         success: true,
         deleted: true,
-        restoredDefault: isStarterSlug
+        restoredDefault: false
       });
     } catch (err) {
       if (isMissingContentPageTableError(err)) {

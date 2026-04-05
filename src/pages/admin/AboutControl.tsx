@@ -365,6 +365,7 @@ export default function AdminAboutControlPage() {
   const [drafts, setDrafts] = useState<Record<AboutPageSlug, AboutPageContent> | null>(null);
   const [slug, setSlug] = useState<AboutPageSlug>('about');
   const [newPageSlug, setNewPageSlug] = useState('');
+  const [renameSlugInput, setRenameSlugInput] = useState('about');
   const [newPageTemplateSlug, setNewPageTemplateSlug] = useState<AboutPageSlug>('about');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -400,6 +401,7 @@ export default function AdminAboutControlPage() {
   };
 
   useEffect(() => { void load(); }, []);
+  useEffect(() => { setRenameSlugInput(slug); }, [slug]);
 
   const record = records?.[slug] ?? null;
   const draft = drafts?.[slug] ?? null;
@@ -407,8 +409,7 @@ export default function AdminAboutControlPage() {
 
   const pageSlugs = useMemo(() => {
     const fromDrafts = drafts ? Object.keys(drafts) : [];
-    const combined = new Set<string>([...ABOUT_PAGE_SLUGS, ...fromDrafts]);
-    return [...combined].sort((a, b) => {
+    return [...new Set<string>(fromDrafts)].sort((a, b) => {
       const aStarterIndex = ABOUT_PAGE_SLUGS.indexOf(a as any);
       const bStarterIndex = ABOUT_PAGE_SLUGS.indexOf(b as any);
       const aIsStarter = aStarterIndex >= 0;
@@ -580,9 +581,88 @@ export default function AdminAboutControlPage() {
 
     setDrafts((current) => current ? { ...current, [normalizedSlug]: page } : current);
     setSlug(normalizedSlug);
+    setRenameSlugInput(normalizedSlug);
     setNewPageSlug('');
     setError(null);
     setNotice(`Created draft page "${normalizedSlug}". Publish to make it live.`);
+  };
+
+  const renamePageSlug = async () => {
+    if (!drafts || !draft) return;
+
+    const nextSlug = normalizeSlugInput(renameSlugInput);
+    if (!nextSlug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(nextSlug)) {
+      setError('Slug must use lowercase letters, numbers, and hyphens only.');
+      return;
+    }
+
+    if (nextSlug === slug) {
+      setNotice('Slug is unchanged.');
+      return;
+    }
+
+    if (drafts[nextSlug]) {
+      setError('A page with that slug already exists.');
+      return;
+    }
+
+    setError(null);
+    setNotice(null);
+
+    const hasStoredVersion = Boolean(records?.[slug]);
+    const isStarterSlug = ABOUT_PAGE_SLUGS.includes(slug as any);
+
+    if (!hasStoredVersion && !isStarterSlug) {
+      setDrafts((current) => {
+        if (!current) return current;
+        const currentPage = current[slug];
+        if (!currentPage) return current;
+
+        const next = { ...current };
+        delete next[slug];
+
+        const renamed = cloneAboutPage(currentPage);
+        renamed.slug = nextSlug;
+        if (!renamed.navLabel.trim()) {
+          renamed.navLabel = labelFromSlug(nextSlug);
+        }
+        next[nextSlug] = renamed;
+        return next;
+      });
+
+      setSlug(nextSlug);
+      setRenameSlugInput(nextSlug);
+      setNotice(`Draft slug changed to "${nextSlug}". Publish to make it live.`);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const renamed = cloneAboutPage(draft);
+      renamed.slug = nextSlug;
+      if (!renamed.navLabel.trim()) {
+        renamed.navLabel = labelFromSlug(nextSlug);
+      }
+
+      await adminFetch<AdminAboutPageRecord>(`/api/admin/about/pages/${nextSlug}`, {
+        method: 'PUT',
+        body: JSON.stringify(renamed),
+      });
+
+      await adminFetch<{ success: boolean; deleted: boolean; restoredDefault: boolean }>(
+        `/api/admin/about/pages/${slug}`,
+        { method: 'DELETE' }
+      );
+
+      await load();
+      setSlug(nextSlug);
+      setRenameSlugInput(nextSlug);
+      setNotice(`Slug changed from "${slug}" to "${nextSlug}".`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to rename page slug');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const deletePage = async () => {
@@ -626,10 +706,8 @@ export default function AdminAboutControlPage() {
 
       await load();
 
-      if (!result.deleted && result.restoredDefault) {
-        setNotice('Page already had no custom content.');
-      } else if (result.restoredDefault) {
-        setNotice('Custom content deleted. Starter page restored to defaults.');
+      if (!result.deleted) {
+        setNotice('Page was already removed.');
       } else {
         setNotice(`Page "${slug}" deleted.`);
       }
@@ -1051,6 +1129,23 @@ export default function AdminAboutControlPage() {
               {record?.isCustomized ? '✦ Custom content' : '◦ Using default content'}
               {published ? ` · Published ${published}` : ' · Never published'}
             </p>
+            <div className="space-y-2 rounded-2xl border border-stone-200 bg-stone-50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">Page slug</p>
+              <input
+                value={renameSlugInput}
+                onChange={(event) => setRenameSlugInput(normalizeSlugInput(event.target.value))}
+                className={inputClass}
+                placeholder="page-slug"
+              />
+              <button
+                type="button"
+                onClick={() => void renamePageSlug()}
+                disabled={saving || !renameSlugInput}
+                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-xs font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-40"
+              >
+                <FilePenLine className="h-3.5 w-3.5" /> Change slug
+              </button>
+            </div>
             <div className="space-y-2 pt-1">
               <button type="button" onClick={() => void save()} disabled={!dirty || saving}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-4 py-3 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-50">
