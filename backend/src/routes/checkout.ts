@@ -57,8 +57,13 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
     {
       config: {
         rateLimit: {
-          max: 180,
-          timeWindow: '1 minute'
+          max: env.CHECKOUT_QUEUE_STATUS_ROUTE_RATE_LIMIT_MAX,
+          timeWindow: '1 minute',
+          keyGenerator: (request) => {
+            const params = (request.params || {}) as { queueId?: string };
+            const query = (request.query || {}) as { clientToken?: string };
+            return `${request.ip}:${params.queueId || 'unknown'}:${query.clientToken || 'unknown'}`;
+          }
         }
       }
     },

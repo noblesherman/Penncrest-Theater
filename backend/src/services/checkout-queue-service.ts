@@ -603,6 +603,20 @@ export function classifyQueueProcessingError(err: unknown): QueueFailureReason {
   }
 
   if (err instanceof Error) {
+    const lowerMessage = err.message.toLowerCase();
+    const rawCode = String((err as { code?: unknown }).code || '').toLowerCase();
+
+    if (
+      rawCode.includes('rate_limit') ||
+      lowerMessage.includes('rate limit exceeded') ||
+      lowerMessage.includes('too many requests')
+    ) {
+      return {
+        code: 'PAYMENT_PROVIDER_TEMPORARY_ERROR',
+        message: 'Payment provider is temporarily unavailable. Retrying your checkout...'
+      };
+    }
+
     if (/StripeRateLimitError|StripeAPIError|StripeConnectionError|APIConnectionError/i.test(err.name)) {
       return {
         code: 'PAYMENT_PROVIDER_TEMPORARY_ERROR',
