@@ -6,6 +6,7 @@ import { handleRouteError } from '../lib/route-error.js';
 import { executeCheckoutRequest } from '../services/checkout-execution-service.js';
 import { enqueuePaidCheckout, getCheckoutQueueStatus } from '../services/checkout-queue-service.js';
 import { env } from '../lib/env.js';
+import { getClientIp } from '../lib/client-ip.js';
 
 const queueStatusParamsSchema = z.object({
   queueId: z.string().min(1)
@@ -62,7 +63,7 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
           keyGenerator: (request) => {
             const params = (request.params || {}) as { queueId?: string };
             const query = (request.query || {}) as { clientToken?: string };
-            return `${request.ip}:${params.queueId || 'unknown'}:${query.clientToken || 'unknown'}`;
+            return `${getClientIp(request)}:${params.queueId || 'unknown'}:${query.clientToken || 'unknown'}`;
           }
         }
       }

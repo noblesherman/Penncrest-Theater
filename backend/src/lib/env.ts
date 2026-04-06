@@ -1,13 +1,28 @@
 import { z } from 'zod';
 
+const isProductionEnv = process.env.NODE_ENV === 'production';
+
+const booleanFromEnv = (defaultValue: boolean) =>
+  z.preprocess((raw) => {
+    if (typeof raw === 'boolean') return raw;
+    if (typeof raw !== 'string') return raw;
+
+    const value = raw.trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(value)) return true;
+    if (['0', 'false', 'no', 'off', ''].includes(value)) return false;
+    return raw;
+  }, z.boolean()).default(defaultValue);
+
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(4000),
-  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(process.env.NODE_ENV === 'production' ? 1 : 0),
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(isProductionEnv ? 1 : 0),
+  ENABLE_IN_PROCESS_CHECKOUT_QUEUE_WORKER: booleanFromEnv(!isProductionEnv),
+  ENABLE_IN_PROCESS_HOLD_CLEANUP_SCHEDULER: booleanFromEnv(!isProductionEnv),
   DATABASE_URL: z.string().min(1),
   APP_BASE_URL: z.string().url(),
   FRONTEND_ORIGIN: z.string().min(1).default('http://localhost:5173'),
-  CORS_ALLOW_DEV_TUNNEL_ORIGINS: z.coerce.boolean().default(false),
+  CORS_ALLOW_DEV_TUNNEL_ORIGINS: booleanFromEnv(false),
 
   STRIPE_SECRET_KEY: z.string().min(1).transform((value) => value.trim()),
   STRIPE_WEBHOOK_SECRET: z.string().min(1).transform((value) => value.trim()),
@@ -29,7 +44,7 @@ const EnvSchema = z.object({
   CHECKOUT_QUEUE_POLL_MAX_MS: z.coerce.number().int().min(250).max(15_000).default(4000),
   PERFORMANCE_CACHE_TTL_SECONDS: z.coerce.number().int().min(0).max(60).default(10),
   TERMINAL_DISPATCH_HOLD_TTL_MINUTES: z.coerce.number().int().min(1).max(30).default(5),
-  TERMINAL_DISPATCH_ALLOW_MOCK_PAYMENTS: z.coerce.boolean().default(false),
+  TERMINAL_DISPATCH_ALLOW_MOCK_PAYMENTS: booleanFromEnv(false),
   HOLD_CLEANUP_INTERVAL_SECONDS: z.coerce.number().int().min(10).max(3600).default(60),
 
   SMTP_HOST: z.string().optional(),

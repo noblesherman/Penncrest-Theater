@@ -47,8 +47,8 @@ import { tripAuthRoutes } from './routes/trip-auth.js';
 import { tripPortalRoutes } from './routes/trips-portal.js';
 import { adminTripRoutes } from './routes/admin-trips.js';
 import { adminDriveRoutes } from './routes/admin-drive.js';
-import { releaseExpiredHolds } from './services/hold-service.js';
 import { startCheckoutQueueWorker } from './services/checkout-queue-worker.js';
+import { startHoldCleanupScheduler } from './services/hold-cleanup-scheduler.js';
 
 export async function createServer() {
   const uploadBodyLimitBytes = Math.max(16 * 1024 * 1024, Math.ceil(env.R2_MAX_UPLOAD_BYTES * 1.5));
@@ -58,6 +58,12 @@ export async function createServer() {
     bodyLimit: uploadBodyLimitBytes,
     trustProxy: env.TRUST_PROXY_HOPS > 0 ? env.TRUST_PROXY_HOPS : false
   });
+
+  if (env.NODE_ENV === 'production' && env.TRUST_PROXY_HOPS === 0) {
+    app.log.warn(
+      'TRUST_PROXY_HOPS is 0 in production; client IP attribution and rate limiting may be incorrect behind a proxy.'
+    );
+  }
 
   await app.register(helmetPlugin);
   await app.register(corsPlugin);
@@ -127,10 +133,31 @@ export async function createServer() {
   await app.register(adminTripRoutes);
   await app.register(adminDriveRoutes);
 
-  const checkoutQueueWorker = startCheckoutQueueWorker(app.log);
-  app.addHook('onClose', async () => {
-    await checkoutQueueWorker.stop();
-  });
+  const backgroundControllers: Array<{ stop: () => void | Promise<void> }> = [];
+
+  if (env.ENABLE_IN_PROCESS_CHECKOUT_QUEUE_WORKER) {
+    const checkoutQueueWorker = startCheckoutQueueWorker(app.log);
+    backgroundControllers.push({
+      stop: () => checkoutQueueWorker.stop()
+    });
+    app.log.info({ maxActiveWorkers: env.CHECKOUT_MAX_ACTIVE }, 'in-process checkout queue worker enabled');
+  }
+
+  if (env.ENABLE_IN_PROCESS_HOLD_CLEANUP_SCHEDULER) {
+    const holdCleanupScheduler = startHoldCleanupScheduler(app.log);
+    backgroundControllers.push({
+      stop: () => holdCleanupScheduler.stop()
+    });
+    app.log.info('in-process hold cleanup scheduler enabled');
+  }
+
+  if (backgroundControllers.length > 0) {
+    app.addHook('onClose', async () => {
+      for (const controller of backgroundControllers) {
+        await controller.stop();
+      }
+    });
+  }
 
   app.setErrorHandler((error, _request, reply) => {
     app.log.error(error);
@@ -154,17 +181,6 @@ export async function createServer() {
 async function start() {
   const app = await createServer();
 
-  const cleanupIntervalMs = env.HOLD_CLEANUP_INTERVAL_SECONDS * 1000;
-  const interval = setInterval(async () => {
-    try {
-      await releaseExpiredHolds();
-    } catch (err) {
-      app.log.error(err);
-    }
-  }, cleanupIntervalMs);
-
-  interval.unref();
-
   try {
     await app.listen({
       host: '0.0.0.0',
@@ -176,7 +192,6 @@ async function start() {
   }
 
   const shutdown = async () => {
-    clearInterval(interval);
     await app.close();
     await prisma.$disconnect();
     process.exit(0);

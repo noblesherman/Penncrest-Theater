@@ -64,9 +64,7 @@ export const adminAuthRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(401).send({ error: 'Invalid credentials' });
       }
 
-      // Temporary bypass: require OTP only when explicitly enabled via env.
-      const enforceAdminTwoFactor = process.env.ADMIN_REQUIRE_2FA === 'true';
-      if (admin.twoFactorEnabled && enforceAdminTwoFactor) {
+      if (admin.twoFactorEnabled) {
         if (!admin.twoFactorSecretEncrypted) {
           return reply.status(500).send({ error: 'Two-factor authentication is not configured correctly' });
         }

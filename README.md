@@ -205,6 +205,8 @@ This migrates:
    npm install -g pm2
    cp cloudflared/config.example.yml cloudflared/config.yml
    # edit cloudflared/config.yml with your tunnel id, credentials path, and hostname
+   # optional: set checkout worker replicas (defaults to 2)
+   export CHECKOUT_WORKER_INSTANCES=3
    pm2 start ecosystem.config.cjs
    pm2 save
    pm2 startup
@@ -217,9 +219,13 @@ This migrates:
    You can inspect/restart it with:
    ```bash
    pm2 status
-    pm2 logs theater-backend
+   pm2 logs theater-backend
+   pm2 logs theater-checkout-worker
+   pm2 logs theater-hold-cleanup
    pm2 logs theater-tunnel
    pm2 restart theater-backend
+   pm2 restart theater-checkout-worker
+   pm2 restart theater-hold-cleanup
    pm2 restart theater-tunnel
    ```
    Quick tunnel logs:
@@ -236,4 +242,7 @@ This migrates:
 7. Configure Stripe webhook endpoint:
    - `https://<backend-domain>/api/webhooks/stripe`
 8. Set all backend env vars in your host.
-9. Ensure hold cleanup runs continuously (in-process interval) or via scheduled job using `cron:release-holds`.
+9. Keep queue and cleanup workers running separately from the API process:
+   - `theater-checkout-worker` can run multiple instances (set `CHECKOUT_WORKER_INSTANCES`).
+   - `theater-hold-cleanup` should run as a single scheduler process.
+   - If needed, you can still run manual/scheduled cleanup with `npm --prefix backend run cron:release-holds`.

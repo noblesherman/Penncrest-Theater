@@ -41,6 +41,30 @@ export async function releaseExpiredHolds(): Promise<number> {
   return prisma.$transaction(async (tx) => releaseExpiredHoldsInTx(tx));
 }
 
+export async function releaseExpiredHoldsWithAdvisoryLock(lockKey: bigint): Promise<{
+  lockAcquired: boolean;
+  releasedCount: number;
+}> {
+  return prisma.$transaction(async (tx) => {
+    const [lockRow] = await tx.$queryRaw<Array<{ lock_acquired: boolean }>>`
+      SELECT pg_try_advisory_xact_lock(${lockKey}) AS lock_acquired
+    `;
+
+    if (!lockRow?.lock_acquired) {
+      return {
+        lockAcquired: false,
+        releasedCount: 0
+      };
+    }
+
+    const releasedCount = await releaseExpiredHoldsInTx(tx);
+    return {
+      lockAcquired: true,
+      releasedCount
+    };
+  });
+}
+
 function isStaleHeldSeat(
   seat: {
     status: 'AVAILABLE' | 'HELD' | 'SOLD' | 'BLOCKED';
@@ -69,30 +93,16 @@ async function releaseStaleHoldSessionsInTx(
     return;
   }
 
-  const sessions = await tx.holdSession.findMany({
-    where: {
-      id: {
-        in: uniqueHoldSessionIds
-      }
-    },
-    select: {
-      id: true,
-      status: true,
-      expiresAt: true
-    }
-  });
-
-  if (sessions.length === 0) {
-    return;
-  }
-
-  const sessionIds = sessions.map((session) => session.id);
+  const now = new Date();
+  const staleSessionWhere: Prisma.HoldSessionWhereInput = {
+    id: { in: uniqueHoldSessionIds },
+    OR: [{ status: { not: 'ACTIVE' } }, { expiresAt: { lt: now } }]
+  };
 
   await tx.seat.updateMany({
     where: {
-      holdSessionId: {
-        in: sessionIds
-      },
+      holdSessionId: { in: uniqueHoldSessionIds },
+      holdSession: staleSessionWhere,
       status: 'HELD'
     },
     data: {
@@ -103,28 +113,21 @@ async function releaseStaleHoldSessionsInTx(
 
   await tx.seatHold.deleteMany({
     where: {
-      holdSessionId: {
-        in: sessionIds
-      }
+      holdSessionId: { in: uniqueHoldSessionIds },
+      holdSession: staleSessionWhere
     }
   });
 
-  const expiredIds = sessions
-    .filter((session) => session.status === 'ACTIVE' && session.expiresAt < new Date())
-    .map((session) => session.id);
-
-  if (expiredIds.length > 0) {
-    await tx.holdSession.updateMany({
-      where: {
-        id: {
-          in: expiredIds
-        }
-      },
-      data: {
-        status: 'EXPIRED'
-      }
-    });
-  }
+  await tx.holdSession.updateMany({
+    where: {
+      id: { in: uniqueHoldSessionIds },
+      status: 'ACTIVE',
+      expiresAt: { lt: now }
+    },
+    data: {
+      status: 'EXPIRED'
+    }
+  });
 }
 
 async function getOrCreateHoldSession(tx: Prisma.TransactionClient, performanceId: string, clientToken: string): Promise<HoldSession> {

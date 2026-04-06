@@ -5,7 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/server.ts",
+    "dev:checkout-worker": "tsx src/checkout-worker.ts",
+    "dev:hold-cleanup-worker": "tsx src/hold-cleanup-worker.ts",
     "start": "node dist/src/server.js",
+    "start:checkout-worker": "node dist/src/checkout-worker.js",
+    "start:hold-cleanup-worker": "node dist/src/hold-cleanup-worker.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test:smoke": "vitest run src/tests/critical-lifecycle.smoke.test.ts",
