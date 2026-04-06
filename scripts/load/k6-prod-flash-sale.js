@@ -1,5 +1,5 @@
 import http from 'k6/http';
-import { check, fail } from 'k6';
+import { check, fail, sleep } from 'k6';
 import exec from 'k6/execution';
 import { Rate, Trend, Counter } from 'k6/metrics';
 
@@ -8,6 +8,9 @@ const BASE_URL = (__ENV.BASE_URL || '').trim();
 const PERFORMANCE_ID = (__ENV.PERFORMANCE_ID || '').trim();
 const ENABLE_CHECKOUT = String(__ENV.ENABLE_CHECKOUT || 'false').toLowerCase() === 'true';
 const SPIKE_MODE = String(__ENV.SPIKE_MODE || 'false').toLowerCase() === 'true';
+const QUEUE_POLL_TIMEOUT_SECONDS = Number(__ENV.QUEUE_POLL_TIMEOUT_SECONDS || 120);
+const QUEUE_POLL_MIN_MS = Number(__ENV.QUEUE_POLL_MIN_MS || 1500);
+const QUEUE_POLL_MAX_MS = Number(__ENV.QUEUE_POLL_MAX_MS || 4000);
 
 const holdOk = new Rate('hold_ok');
 const checkoutOk = new Rate('checkout_ok');
@@ -19,6 +22,25 @@ const buyersAttempted = new Counter('buyers_attempted');
 const buyersCompletedCheckout = new Counter('buyers_completed_checkout');
 const holdDuration = new Trend('hold_duration_ms');
 const checkoutDuration = new Trend('checkout_duration_ms');
+const checkoutQueuePollDuration = new Trend('checkout_queue_poll_duration_ms');
+const checkoutQueued = new Rate('checkout_queued');
+const checkoutQueueReady = new Rate('checkout_queue_ready');
+const checkoutQueueTerminal = new Rate('checkout_queue_terminal');
+
+function safeJson(res) {
+  try {
+    return res.json();
+  } catch (_) {
+    return null;
+  }
+}
+
+function clampPollMs(valueMs) {
+  const minMs = Math.max(250, QUEUE_POLL_MIN_MS);
+  const maxMs = Math.max(minMs, QUEUE_POLL_MAX_MS);
+  if (!Number.isFinite(valueMs)) return minMs;
+  return Math.max(minMs, Math.min(maxMs, Math.floor(valueMs)));
+}
 
 function buildScenarios(targetBuyers, spikeMode) {
   if (spikeMode) {
@@ -180,16 +202,85 @@ export default function (data) {
   checkoutDuration.add(checkoutRes.timings.duration);
 
   const status = checkoutRes.status;
-  checkoutOk.add(status === 200);
   checkoutConflict.add(status === 409);
   checkoutRateLimited.add(status === 429);
   checkoutServerError.add(status >= 500 && status <= 599);
 
   if (status === 200) {
-    buyersCompletedCheckout.add(1);
+    const checkoutBody = safeJson(checkoutRes);
+    const isQueued = checkoutBody && checkoutBody.status === 'QUEUED' && typeof checkoutBody.queueId === 'string';
+    checkoutQueued.add(isQueued);
+
+    if (isQueued) {
+      const queueDeadlineMs = Date.now() + QUEUE_POLL_TIMEOUT_SECONDS * 1000;
+      let isReady = false;
+      let hitTerminal = false;
+
+      while (Date.now() < queueDeadlineMs) {
+        const queueRes = http.get(
+          `${data.baseUrl}/api/checkout/queue/${checkoutBody.queueId}?holdToken=${encodeURIComponent(
+            holdBody.holdToken
+          )}&clientToken=${encodeURIComponent(clientToken)}`,
+          { tags: { endpoint: 'checkout_queue_status' } }
+        );
+        checkoutQueuePollDuration.add(queueRes.timings.duration);
+        checkoutRateLimited.add(queueRes.status === 429);
+        checkoutServerError.add(queueRes.status >= 500 && queueRes.status <= 599);
+
+        if (queueRes.status !== 200) {
+          console.error(
+            `queue_status_http_error status=${queueRes.status} queueId=${checkoutBody.queueId} body=${String(queueRes.body || '')}`
+          );
+          break;
+        }
+
+        const queueBody = safeJson(queueRes);
+        if (!queueBody || typeof queueBody.status !== 'string') {
+          console.error(`queue_status_parse_error queueId=${checkoutBody.queueId} body=${String(queueRes.body || '')}`);
+          break;
+        }
+
+        if (queueBody.status === 'READY') {
+          isReady = true;
+          break;
+        }
+
+        if (queueBody.status === 'FAILED' || queueBody.status === 'EXPIRED') {
+          hitTerminal = true;
+          console.error(
+            `queue_terminal status=${queueBody.status} reason=${String(queueBody.reason || '')} message=${String(queueBody.message || '')}`
+          );
+          break;
+        }
+
+        const pollAfterMs = clampPollMs(Number(queueBody.refreshAfterMs));
+        sleep(pollAfterMs / 1000);
+      }
+
+      checkoutQueueReady.add(isReady);
+      checkoutQueueTerminal.add(hitTerminal);
+      checkoutOk.add(isReady);
+
+      if (isReady) {
+        buyersCompletedCheckout.add(1);
+      } else if (!hitTerminal) {
+        console.error(`queue_timeout queueId=${checkoutBody.queueId} timeoutSeconds=${QUEUE_POLL_TIMEOUT_SECONDS}`);
+      }
+    } else {
+      // Backward-compatible direct checkout success payload.
+      checkoutOk.add(true);
+      buyersCompletedCheckout.add(1);
+    }
+  } else {
+    checkoutOk.add(false);
+    if (status !== 409 && status !== 429) {
+      console.error(`checkout_http_error status=${status} body=${String(checkoutRes.body || '')}`);
+    }
   }
 
-  check(checkoutRes, { 'checkout status is 200/409/429': (r) => r.status === 200 || r.status === 409 || r.status === 429 });
+  check(checkoutRes, {
+    'checkout status is 200/409/429': (r) => r.status === 200 || r.status === 409 || r.status === 429
+  });
 }
 
 export function handleSummary(data) {
