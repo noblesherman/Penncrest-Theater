@@ -1,4 +1,5 @@
 import '../lib/load-env.js';
+import type { SeatStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 
 const CONFIRMATION_TOKEN = 'WIPE_PERFORMANCE_SALES';
@@ -93,7 +94,7 @@ async function main() {
     return;
   }
 
-  const resetStatuses = flags.includeBlocked ? (['HELD', 'SOLD', 'BLOCKED'] as const) : (['HELD', 'SOLD'] as const);
+  const resetStatuses: SeatStatus[] = flags.includeBlocked ? ['HELD', 'SOLD', 'BLOCKED'] : ['HELD', 'SOLD'];
 
   const result = await prisma.$transaction(async (tx) => {
     const queueDeleted = await tx.checkoutQueueItem.deleteMany({ where: { performanceId } });
@@ -151,4 +152,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-
