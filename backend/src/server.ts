@@ -144,7 +144,8 @@ export async function createServer() {
       return;
     }
 
-    reply.status(statusCode).send({ error: error.message || 'Request failed' });
+    const errorMessage = error instanceof Error ? error.message : 'Request failed';
+    reply.status(statusCode).send({ error: errorMessage || 'Request failed' });
   });
 
   return app;
