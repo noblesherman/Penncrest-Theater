@@ -19,7 +19,9 @@ const EnvSchema = z.object({
   STAFF_ALLOWED_DOMAIN: z.string().min(1).default('rtmsd.org'),
 
   HOLD_TTL_MINUTES: z.coerce.number().int().min(1).max(60).default(10),
+  HOLD_ROUTE_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(5000).default(180),
   CHECKOUT_ATTEMPT_TTL_MINUTES: z.coerce.number().int().min(1).max(120).default(20),
+  CHECKOUT_ROUTE_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(5000).default(120),
   CHECKOUT_MAX_ACTIVE: z.coerce.number().int().min(1).max(200).default(40),
   CHECKOUT_QUEUE_MAX_WAIT_SECONDS: z.coerce.number().int().min(30).max(60 * 30).default(480),
   CHECKOUT_QUEUE_POLL_MIN_MS: z.coerce.number().int().min(250).max(10_000).default(1500),

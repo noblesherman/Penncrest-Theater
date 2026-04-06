@@ -5,6 +5,7 @@ import { checkoutRequestSchema } from '../schemas/checkout.js';
 import { handleRouteError } from '../lib/route-error.js';
 import { executeCheckoutRequest } from '../services/checkout-execution-service.js';
 import { enqueuePaidCheckout, getCheckoutQueueStatus } from '../services/checkout-queue-service.js';
+import { env } from '../lib/env.js';
 
 const queueStatusParamsSchema = z.object({
   queueId: z.string().min(1)
@@ -21,7 +22,7 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
     {
       config: {
         rateLimit: {
-          max: 120,
+          max: env.CHECKOUT_ROUTE_RATE_LIMIT_MAX,
           timeWindow: '1 minute'
         }
       }

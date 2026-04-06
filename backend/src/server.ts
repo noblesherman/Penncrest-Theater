@@ -134,7 +134,17 @@ export async function createServer() {
 
   app.setErrorHandler((error, _request, reply) => {
     app.log.error(error);
-    reply.status(500).send({ error: 'Internal server error' });
+    const statusCode =
+      typeof (error as { statusCode?: unknown }).statusCode === 'number'
+        ? (error as { statusCode: number }).statusCode
+        : 500;
+
+    if (statusCode >= 500) {
+      reply.status(statusCode).send({ error: 'Internal server error' });
+      return;
+    }
+
+    reply.status(statusCode).send({ error: error.message || 'Request failed' });
   });
 
   return app;

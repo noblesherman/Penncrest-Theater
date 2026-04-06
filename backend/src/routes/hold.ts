@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { holdRequestSchema } from '../schemas/hold.js';
 import { syncSeatHold } from '../services/hold-service.js';
 import { handleRouteError } from '../lib/route-error.js';
+import { env } from '../lib/env.js';
 
 export const holdRoutes: FastifyPluginAsync = async (app) => {
   app.post(
@@ -9,7 +10,7 @@ export const holdRoutes: FastifyPluginAsync = async (app) => {
     {
       config: {
         rateLimit: {
-          max: 180,
+          max: env.HOLD_ROUTE_RATE_LIMIT_MAX,
           timeWindow: '1 minute'
         }
       }
