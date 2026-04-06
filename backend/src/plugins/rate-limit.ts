@@ -50,8 +50,12 @@ export const rateLimitPlugin = fp(async (app) => {
       return `${ip}:${request.method}:${path}`;
     },
     skipOnError: true,
-    errorResponseBuilder: (_request, context) => ({
-      error: `Rate limit exceeded. Try again in ${Math.max(1, Math.ceil(context.ttl / 1000))} seconds.`
-    })
+    errorResponseBuilder: (_request, context) => {
+      const error = new Error(`Rate limit exceeded. Try again in ${Math.max(1, Math.ceil(context.ttl / 1000))} seconds.`) as Error & {
+        statusCode?: number
+      };
+      error.statusCode = context.statusCode;
+      return error;
+    }
   });
 });
