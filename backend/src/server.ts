@@ -48,6 +48,7 @@ import { tripPortalRoutes } from './routes/trips-portal.js';
 import { adminTripRoutes } from './routes/admin-trips.js';
 import { adminDriveRoutes } from './routes/admin-drive.js';
 import { releaseExpiredHolds } from './services/hold-service.js';
+import { startCheckoutQueueWorker } from './services/checkout-queue-worker.js';
 
 export async function createServer() {
   const uploadBodyLimitBytes = Math.max(16 * 1024 * 1024, Math.ceil(env.R2_MAX_UPLOAD_BYTES * 1.5));
@@ -125,6 +126,11 @@ export async function createServer() {
   await app.register(adminUploadRoutes);
   await app.register(adminTripRoutes);
   await app.register(adminDriveRoutes);
+
+  const checkoutQueueWorker = startCheckoutQueueWorker(app.log);
+  app.addHook('onClose', async () => {
+    await checkoutQueueWorker.stop();
+  });
 
   app.setErrorHandler((error, _request, reply) => {
     app.log.error(error);

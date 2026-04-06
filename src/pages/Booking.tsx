@@ -76,12 +76,55 @@ type SelectedSeatPricing = {
   isStudentComplimentary: boolean;
 };
 
-type CheckoutResponse = {
+type DirectCheckoutResponse = {
   url?: string;
   orderId?: string;
   orderAccessToken?: string;
   clientSecret?: string;
   publishableKey?: string;
+  mode?: 'PAID' | 'TEACHER_COMP' | 'STUDENT_COMP';
+};
+
+type QueuedCheckoutResponse = {
+  status: 'QUEUED';
+  queueId: string;
+  position: number;
+  estimatedWaitSeconds: number;
+  refreshAfterMs: number;
+};
+
+type CheckoutResponse = DirectCheckoutResponse | QueuedCheckoutResponse;
+
+type QueueStatusResponse =
+  | {
+      status: 'WAITING';
+      queueId: string;
+      position: number;
+      estimatedWaitSeconds: number;
+      refreshAfterMs: number;
+    }
+  | {
+      status: 'READY';
+      queueId: string;
+      orderId: string;
+      orderAccessToken: string;
+      clientSecret?: string;
+      publishableKey?: string;
+      mode: 'PAID' | 'TEACHER_COMP' | 'STUDENT_COMP';
+    }
+  | {
+      status: 'FAILED' | 'EXPIRED';
+      queueId: string;
+      reason: string;
+      message: string;
+    };
+
+type CheckoutQueueState = {
+  queueId: string;
+  holdToken: string;
+  position: number;
+  estimatedWaitSeconds: number;
+  refreshAfterMs: number;
 };
 
 type PendingStripePayment = {
@@ -118,6 +161,19 @@ function stringArrayEqual(a: string[], b: string[]): boolean {
     if (a[i] !== b[i]) return false;
   }
   return true;
+}
+
+function isQueuedCheckoutResponse(response: CheckoutResponse): response is QueuedCheckoutResponse {
+  return (response as QueuedCheckoutResponse).status === 'QUEUED';
+}
+
+function formatWaitEstimate(seconds: number): string {
+  if (seconds <= 0) return 'Less than a minute';
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  if (minutes <= 0) return `${Math.max(1, remainder)} sec`;
+  if (remainder === 0) return `${minutes} min`;
+  return `${minutes}m ${remainder}s`;
 }
 
 function InlineStripePaymentForm({
@@ -250,6 +306,7 @@ export default function Booking() {
   const [currentStep, setCurrentStep] = useState<CheckoutStep>(1);
   const [teacherPromoCode, setTeacherPromoCode] = useState('');
   const [pendingStripePayment, setPendingStripePayment] = useState<PendingStripePayment | null>(null);
+  const [checkoutQueue, setCheckoutQueue] = useState<CheckoutQueueState | null>(null);
 
   const fetchSeats = useCallback(async () => {
     if (!performanceId) return;
@@ -446,6 +503,12 @@ export default function Booking() {
     setPendingStripePayment(null);
   }, [currentStep, pendingStripePayment]);
 
+  useEffect(() => {
+    if (currentStep === 3) return;
+    if (!checkoutQueue) return;
+    setCheckoutQueue(null);
+  }, [checkoutQueue, currentStep]);
+
   const handleSeatClick = (seat: Seat) => {
     if (!seatSelectionEnabled) {
       return;
@@ -453,6 +516,9 @@ export default function Booking() {
 
     if (pendingStripePayment) {
       setPendingStripePayment(null);
+    }
+    if (checkoutQueue) {
+      setCheckoutQueue(null);
     }
 
     const isSelected = selectedSeatIds.includes(seat.id);
@@ -481,6 +547,9 @@ export default function Booking() {
   const handleSeatOptionChange = (seatId: string, optionId: string) => {
     if (pendingStripePayment) {
       setPendingStripePayment(null);
+    }
+    if (checkoutQueue) {
+      setCheckoutQueue(null);
     }
 
     setTicketOptionBySeatId((prev) => ({
@@ -518,6 +587,95 @@ export default function Booking() {
     navigate(buildConfirmationPath(pendingStripePayment.orderId, pendingStripePayment.orderAccessToken));
   }, [navigate, pendingStripePayment]);
 
+  useEffect(() => {
+    if (!checkoutQueue) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleNext = (delayMs: number) => {
+      if (cancelled) return;
+      timer = setTimeout(() => {
+        void pollQueueStatus();
+      }, Math.max(500, delayMs));
+    };
+
+    const pollQueueStatus = async () => {
+      try {
+        const status = await apiFetch<QueueStatusResponse>(
+          `/api/checkout/queue/${encodeURIComponent(checkoutQueue.queueId)}?holdToken=${encodeURIComponent(checkoutQueue.holdToken)}&clientToken=${encodeURIComponent(clientTokenRef.current)}`
+        );
+
+        if (cancelled) return;
+
+        if (status.status === 'WAITING') {
+          setCheckoutQueue((prev) =>
+            prev && prev.queueId === status.queueId
+              ? {
+                  ...prev,
+                  position: status.position,
+                  estimatedWaitSeconds: status.estimatedWaitSeconds,
+                  refreshAfterMs: status.refreshAfterMs
+                }
+              : prev
+          );
+          scheduleNext(status.refreshAfterMs);
+          return;
+        }
+
+        if (status.status === 'READY') {
+          setCheckoutQueue(null);
+          setProcessing(false);
+
+          if (status.clientSecret && status.orderId) {
+            const publishableKey = (status.publishableKey || FALLBACK_STRIPE_PUBLISHABLE_KEY || '').trim();
+            if (!publishableKey) {
+              throw new Error('Stripe publishable key is not configured.');
+            }
+
+            rememberOrderAccessToken(status.orderId, status.orderAccessToken);
+            setPendingStripePayment({
+              clientSecret: status.clientSecret,
+              publishableKey,
+              orderId: status.orderId,
+              orderAccessToken: status.orderAccessToken
+            });
+            return;
+          }
+
+          if (status.orderId) {
+            rememberOrderAccessToken(status.orderId, status.orderAccessToken);
+            navigate(buildConfirmationPath(status.orderId, status.orderAccessToken));
+            return;
+          }
+
+          throw new Error('Queued checkout completed without order details.');
+        }
+
+        setCheckoutQueue(null);
+        setPendingStripePayment(null);
+        setProcessing(false);
+        setStepError(status.message || 'Checkout could not be completed.');
+        setCurrentStep(1);
+        setSelectedSeatIds([]);
+        setHeldByMeSeatIds([]);
+        setHoldToken('');
+        await fetchSeats();
+      } catch (err) {
+        if (cancelled) return;
+        setStepError(err instanceof Error ? err.message : 'Failed to refresh checkout queue status');
+        scheduleNext(Math.max(2500, checkoutQueue.refreshAfterMs));
+      }
+    };
+
+    void pollQueueStatus();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [checkoutQueue, fetchSeats, navigate]);
+
   const handleCheckout = async () => {
     if (!performanceId) return;
     if (selectedSeatIds.length === 0) {
@@ -554,6 +712,7 @@ export default function Booking() {
     setProcessing(true);
     setStepError(null);
     setPendingStripePayment(null);
+    setCheckoutQueue(null);
 
     try {
       const holdResult = await syncHolds(selectedSeatIds);
@@ -676,6 +835,17 @@ export default function Booking() {
         });
       }
 
+      if (isQueuedCheckoutResponse(checkout)) {
+        setCheckoutQueue({
+          queueId: checkout.queueId,
+          holdToken: holdResult.holdToken,
+          position: checkout.position,
+          estimatedWaitSeconds: checkout.estimatedWaitSeconds,
+          refreshAfterMs: checkout.refreshAfterMs
+        });
+        return;
+      }
+
       if (checkout.clientSecret && checkout.orderId) {
         const publishableKey = (checkout.publishableKey || FALLBACK_STRIPE_PUBLISHABLE_KEY || '').trim();
         if (!publishableKey) {
@@ -702,6 +872,7 @@ export default function Booking() {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Checkout failed';
       setStepError(message);
+      setCheckoutQueue(null);
       await fetchSeats();
     } finally {
       setProcessing(false);
@@ -1532,7 +1703,39 @@ export default function Booking() {
             >
               <div className="max-w-6xl mx-auto pt-6 md:pt-8 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6">
                 <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
-                  {isTeacherCheckout ? (
+                  {checkoutQueue ? (
+                    <>
+                      <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-800">
+                        <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+                        Checkout Queue
+                      </div>
+                      <h2 className="mt-4 text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
+                        You're in line
+                      </h2>
+                      <p className="text-sm md:text-base text-stone-600 mt-2">
+                        Keep this page open while we prepare your payment session.
+                      </p>
+
+                      <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Position</p>
+                          <p className="mt-1 text-3xl font-black text-stone-900">{checkoutQueue.position}</p>
+                        </div>
+                        <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Est. Wait</p>
+                          <p className="mt-1 text-2xl font-black text-stone-900">{formatWaitEstimate(checkoutQueue.estimatedWaitSeconds)}</p>
+                        </div>
+                        <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Refresh</p>
+                          <p className="mt-1 text-2xl font-black text-stone-900">{Math.ceil(checkoutQueue.refreshAfterMs / 1000)}s</p>
+                        </div>
+                      </div>
+
+                      <p className="mt-5 text-sm text-stone-600">
+                        If your hold expires or checkout cannot be prepared, you’ll be returned to seat selection automatically.
+                      </p>
+                    </>
+                  ) : isTeacherCheckout ? (
                     <>
                       <h2 className="text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>Teacher Verification</h2>
                       <p className="text-sm md:text-base text-stone-600 mt-2">
@@ -1610,6 +1813,7 @@ export default function Booking() {
                           onClick={() => {
                             setStepError(null);
                             resetPendingPayment();
+                            setCheckoutQueue(null);
                             setCurrentStep(2);
                           }}
                           className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 sm:w-auto"
@@ -1741,6 +1945,7 @@ export default function Booking() {
                           onClick={() => {
                             setStepError(null);
                             resetPendingPayment();
+                            setCheckoutQueue(null);
                             setCurrentStep(2);
                           }}
                           className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 sm:w-auto"

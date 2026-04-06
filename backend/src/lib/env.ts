@@ -20,6 +20,10 @@ const EnvSchema = z.object({
 
   HOLD_TTL_MINUTES: z.coerce.number().int().min(1).max(60).default(10),
   CHECKOUT_ATTEMPT_TTL_MINUTES: z.coerce.number().int().min(1).max(120).default(20),
+  CHECKOUT_MAX_ACTIVE: z.coerce.number().int().min(1).max(200).default(40),
+  CHECKOUT_QUEUE_MAX_WAIT_SECONDS: z.coerce.number().int().min(30).max(60 * 30).default(480),
+  CHECKOUT_QUEUE_POLL_MIN_MS: z.coerce.number().int().min(250).max(10_000).default(1500),
+  CHECKOUT_QUEUE_POLL_MAX_MS: z.coerce.number().int().min(250).max(15_000).default(4000),
   PERFORMANCE_CACHE_TTL_SECONDS: z.coerce.number().int().min(0).max(60).default(10),
   TERMINAL_DISPATCH_HOLD_TTL_MINUTES: z.coerce.number().int().min(1).max(30).default(5),
   TERMINAL_DISPATCH_ALLOW_MOCK_PAYMENTS: z.coerce.boolean().default(false),

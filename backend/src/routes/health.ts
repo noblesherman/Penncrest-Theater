@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { env, isSmtpConfigured } from '../lib/env.js';
+import { getCheckoutQueueMetrics } from '../services/checkout-queue-service.js';
 
 export const healthRoutes: FastifyPluginAsync = async (app) => {
   app.get('/health', async () => ({ status: 'ok' }));
@@ -10,10 +11,11 @@ export const healthRoutes: FastifyPluginAsync = async (app) => {
     const emailStatus = isSmtpConfigured() ? 'configured' : 'not_configured';
 
     try {
-      await prisma.$queryRaw`SELECT 1`;
-      const schemaCheck = await prisma.$queryRaw<
-        Array<{ accessTokenColumn: boolean; stripeRefundIdColumn: boolean; finalizationFailedEnum: boolean }>
-      >`
+      const [_, schemaCheck, queueMetrics] = await Promise.all([
+        prisma.$queryRaw`SELECT 1`,
+        prisma.$queryRaw<
+          Array<{ accessTokenColumn: boolean; stripeRefundIdColumn: boolean; finalizationFailedEnum: boolean }>
+        >`
         SELECT
           EXISTS (
             SELECT 1
@@ -36,7 +38,9 @@ export const healthRoutes: FastifyPluginAsync = async (app) => {
             WHERE type.typname = 'OrderStatus'
               AND enum.enumlabel = 'FINALIZATION_FAILED'
           ) AS "finalizationFailedEnum"
-      `;
+      `,
+        getCheckoutQueueMetrics()
+      ]);
 
       const schemaReady =
         schemaCheck[0]?.accessTokenColumn &&
@@ -52,6 +56,13 @@ export const healthRoutes: FastifyPluginAsync = async (app) => {
             database: 'schema_mismatch',
             stripe: stripeStatus,
             email: emailStatus
+          },
+          queue: {
+            waitingCount: queueMetrics.waitingCount,
+            processingCount: queueMetrics.processingCount,
+            oldestWaitingAgeSeconds: queueMetrics.oldestWaitingAgeSeconds,
+            readyCountLastFiveMinutes: queueMetrics.readyCountLastFiveMinutes,
+            failedCountLastFiveMinutes: queueMetrics.failedCountLastFiveMinutes
           }
         });
       }
@@ -62,6 +73,13 @@ export const healthRoutes: FastifyPluginAsync = async (app) => {
           database: 'ok',
           stripe: stripeStatus,
           email: emailStatus
+        },
+        queue: {
+          waitingCount: queueMetrics.waitingCount,
+          processingCount: queueMetrics.processingCount,
+          oldestWaitingAgeSeconds: queueMetrics.oldestWaitingAgeSeconds,
+          readyCountLastFiveMinutes: queueMetrics.readyCountLastFiveMinutes,
+          failedCountLastFiveMinutes: queueMetrics.failedCountLastFiveMinutes
         }
       };
     } catch (err) {
@@ -72,6 +90,13 @@ export const healthRoutes: FastifyPluginAsync = async (app) => {
           database: 'unavailable',
           stripe: stripeStatus,
           email: emailStatus
+        },
+        queue: {
+          waitingCount: 0,
+          processingCount: 0,
+          oldestWaitingAgeSeconds: 0,
+          readyCountLastFiveMinutes: 0,
+          failedCountLastFiveMinutes: 0
         }
       });
     }

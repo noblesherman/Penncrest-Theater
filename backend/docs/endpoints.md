@@ -103,13 +103,61 @@ Request:
   }
 }
 ```
-Response:
+Paid checkout response (queue entry):
+```json
+{
+  "status": "QUEUED",
+  "queueId": "cq_123",
+  "position": 12,
+  "estimatedWaitSeconds": 35,
+  "refreshAfterMs": 2000
+}
+```
+
+Complimentary / no-payment response:
 ```json
 {
   "orderId": "order_123",
   "orderAccessToken": "access_token_abc",
   "clientSecret": "pi_123_secret_abc",
   "publishableKey": "pk_live_..."
+}
+```
+
+### `GET /api/checkout/queue/:queueId?holdToken=...&clientToken=...`
+Queue status for checkout wait screen.
+
+`WAITING` response:
+```json
+{
+  "status": "WAITING",
+  "queueId": "cq_123",
+  "position": 8,
+  "estimatedWaitSeconds": 24,
+  "refreshAfterMs": 1800
+}
+```
+
+`READY` response:
+```json
+{
+  "status": "READY",
+  "queueId": "cq_123",
+  "orderId": "order_123",
+  "orderAccessToken": "access_token_abc",
+  "clientSecret": "pi_123_secret_abc",
+  "publishableKey": "pk_live_...",
+  "mode": "PAID"
+}
+```
+
+Terminal response:
+```json
+{
+  "status": "FAILED",
+  "queueId": "cq_123",
+  "reason": "QUEUE_TIMEOUT",
+  "message": "Checkout wait time expired. Please reselect your seats and try again."
 }
 ```
 

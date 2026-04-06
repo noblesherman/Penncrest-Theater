@@ -37,6 +37,15 @@ enum CheckoutAttemptState {
   EXPIRED
 }
 
+enum CheckoutQueueStatus {
+  WAITING
+  PROCESSING
+  READY
+  FAILED
+  EXPIRED
+  CANCELED
+}
+
 enum OrderSource {
   ONLINE
   DOOR
@@ -343,6 +352,7 @@ model Performance {
   staffCompRedemptions StaffCompRedemption[]
   studentTicketCreditTransactions StudentTicketCreditTransaction[]
   terminalPaymentDispatches TerminalPaymentDispatch[]
+  checkoutQueueItems CheckoutQueueItem[]
 
   @@index([showId])
   @@index([startsAt])
@@ -464,6 +474,7 @@ model Order {
   tickets               Ticket[]
   studentTicketCreditTransactions StudentTicketCreditTransaction[]
   terminalDispatchFinalizations TerminalPaymentDispatch[] @relation("TerminalDispatchFinalOrder")
+  checkoutQueueItems CheckoutQueueItem[]
 
   @@index([performanceId])
   @@index([userId])
@@ -473,6 +484,33 @@ model Order {
   @@index([source, inPersonPaymentMethod, createdAt])
   @@index([studentTicketCreditId])
   @@index([accessToken])
+}
+
+model CheckoutQueueItem {
+  id                  String              @id @default(cuid())
+  performanceId       String
+  performance         Performance         @relation(fields: [performanceId], references: [id], onDelete: Cascade)
+  holdToken           String
+  clientToken         String
+  requestPayloadJson  Json
+  status              CheckoutQueueStatus @default(WAITING)
+  expiresAt           DateTime
+  processingStartedAt DateTime?
+  readyAt             DateTime?
+  failedReason        String?
+  orderId             String?
+  order               Order?              @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  paymentIntentId     String?
+  clientSecret        String?
+  attemptCount        Int                 @default(0)
+  nextAttemptAt       DateTime?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@unique([holdToken, clientToken])
+  @@index([status, createdAt])
+  @@index([performanceId, status, createdAt])
+  @@index([expiresAt])
 }
 
 model TerminalDeviceSession {
