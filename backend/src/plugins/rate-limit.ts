@@ -42,7 +42,7 @@ export const rateLimitPlugin = fp(async (app) => {
   await app.register(rateLimit, {
     global: true,
     hook: 'onRequest',
-    max: 120,
+    max: 240,
     timeWindow: '1 minute',
     keyGenerator: (request) => {
       const ip = getClientIp(request);

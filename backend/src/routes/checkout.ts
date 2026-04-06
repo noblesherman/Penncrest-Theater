@@ -102,7 +102,7 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
     {
       config: {
         rateLimit: {
-          max: 25,
+          max: 40,
           timeWindow: '1 minute'
         }
       }
