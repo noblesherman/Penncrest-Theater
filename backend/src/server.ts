@@ -54,7 +54,8 @@ export async function createServer() {
 
   const app = Fastify({
     logger: env.NODE_ENV === 'development',
-    bodyLimit: uploadBodyLimitBytes
+    bodyLimit: uploadBodyLimitBytes,
+    trustProxy: env.TRUST_PROXY_HOPS > 0 ? env.TRUST_PROXY_HOPS : false
   });
 
   await app.register(helmetPlugin);

@@ -153,6 +153,7 @@ See:
 
 ### Backend (`backend/.env`)
 - `PORT`
+- `TRUST_PROXY_HOPS` (optional, default `1` in production and `0` otherwise)
 - `DATABASE_URL`
 - `APP_BASE_URL`
 - `FRONTEND_ORIGIN`

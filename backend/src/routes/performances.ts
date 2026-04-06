@@ -293,48 +293,59 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.get('/api/performances/:performanceId/seats', async (request, reply) => {
-    const params = request.params as { performanceId: string };
-
-    try {
-      const performance = await prisma.performance.findFirst({
-        where: { id: params.performanceId, isArchived: false },
-        select: { id: true }
-      });
-      if (!performance) {
-        throw new HttpError(404, 'Performance not found');
+  app.get(
+    '/api/performances/:performanceId/seats',
+    {
+      config: {
+        rateLimit: {
+          max: 180,
+          timeWindow: '1 minute'
+        }
       }
+    },
+    async (request, reply) => {
+      const params = request.params as { performanceId: string };
 
-      const seats = await prisma.seat.findMany({
-        where: { performanceId: params.performanceId },
-        include: {
-          holdSession: {
-            select: {
-              status: true,
-              expiresAt: true
+      try {
+        const performance = await prisma.performance.findFirst({
+          where: { id: params.performanceId, isArchived: false },
+          select: { id: true }
+        });
+        if (!performance) {
+          throw new HttpError(404, 'Performance not found');
+        }
+
+        const seats = await prisma.seat.findMany({
+          where: { performanceId: params.performanceId },
+          include: {
+            holdSession: {
+              select: {
+                status: true,
+                expiresAt: true
+              }
             }
-          }
-        },
-        orderBy: [{ sectionName: 'asc' }, { row: 'asc' }, { number: 'asc' }]
-      });
+          },
+          orderBy: [{ sectionName: 'asc' }, { row: 'asc' }, { number: 'asc' }]
+        });
 
-      reply.send(
-        seats.map((seat) => ({
-          id: seat.id,
-          row: seat.row,
-          number: seat.number,
-          x: seat.x,
-          y: seat.y,
-          status: getReadableSeatStatus(seat),
-          isAccessible: seat.isAccessible,
-          isCompanion: seat.isCompanion,
-          companionForSeatId: seat.companionForSeatId,
-          sectionName: seat.sectionName,
-          price: seat.price
-        }))
-      );
-    } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch seats');
+        reply.send(
+          seats.map((seat) => ({
+            id: seat.id,
+            row: seat.row,
+            number: seat.number,
+            x: seat.x,
+            y: seat.y,
+            status: getReadableSeatStatus(seat),
+            isAccessible: seat.isAccessible,
+            isCompanion: seat.isCompanion,
+            companionForSeatId: seat.companionForSeatId,
+            sectionName: seat.sectionName,
+            price: seat.price
+          }))
+        );
+      } catch (err) {
+        handleRouteError(reply, err, 'Failed to fetch seats');
+      }
     }
-  });
+  );
 };

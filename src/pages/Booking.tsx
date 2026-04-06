@@ -105,6 +105,12 @@ const naturalSort = (a: string, b: string) => a.localeCompare(b, undefined, { nu
 const SEAT_X_STEP = 40;
 const MAX_ADJACENT_X_GAP = SEAT_X_STEP * 1.5;
 const FALLBACK_STRIPE_PUBLISHABLE_KEY = (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '').trim();
+const SEAT_POLL_BASE_INTERVAL_MS = 45_000;
+const SEAT_POLL_JITTER_MS = 5_000;
+
+function getSeatPollDelayMs(): number {
+  return SEAT_POLL_BASE_INTERVAL_MS + Math.floor(Math.random() * SEAT_POLL_JITTER_MS);
+}
 
 function stringArrayEqual(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
@@ -313,6 +319,21 @@ export default function Booking() {
     void fetchSeats();
     void fetchPerformanceDetails();
 
+    let stopped = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleSeatRefresh = () => {
+      if (stopped) return;
+
+      pollTimer = setTimeout(() => {
+        if (document.visibilityState === 'visible') {
+          void fetchSeats();
+        }
+
+        scheduleSeatRefresh();
+      }, getSeatPollDelayMs());
+    };
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         void fetchSeats();
@@ -320,11 +341,12 @@ export default function Booking() {
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    const interval = setInterval(() => void fetchSeats(), 30000);
+    scheduleSeatRefresh();
 
     return () => {
+      stopped = true;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      clearInterval(interval);
+      if (pollTimer) clearTimeout(pollTimer);
     };
   }, [fetchPerformanceDetails, fetchSeats]);
 

@@ -9,7 +9,7 @@ export const holdRoutes: FastifyPluginAsync = async (app) => {
     {
       config: {
         rateLimit: {
-          max: 90,
+          max: 120,
           timeWindow: '1 minute'
         }
       }

@@ -3,6 +3,7 @@ import { z } from 'zod';
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(4000),
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(process.env.NODE_ENV === 'production' ? 1 : 0),
   DATABASE_URL: z.string().min(1),
   APP_BASE_URL: z.string().url(),
   FRONTEND_ORIGIN: z.string().min(1).default('http://localhost:5173'),

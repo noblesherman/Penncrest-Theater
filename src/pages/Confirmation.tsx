@@ -41,6 +41,17 @@ type OrderResponse = {
   }>;
 };
 
+const MIN_PENDING_POLL_DELAY_MS = 2_500;
+const MAX_PENDING_POLL_DELAY_MS = 15_000;
+const HIDDEN_PENDING_POLL_DELAY_MS = 20_000;
+const PENDING_POLL_JITTER_MS = 600;
+const MAX_PENDING_POLL_ATTEMPTS = 20;
+
+function getPendingPollDelayMs(attemptNumber: number): number {
+  const exponentialDelay = Math.round(MIN_PENDING_POLL_DELAY_MS * Math.pow(1.35, attemptNumber));
+  return Math.min(MAX_PENDING_POLL_DELAY_MS, exponentialDelay);
+}
+
 export default function Confirmation() {
   const [searchParams] = useSearchParams();
   const orderId = searchParams.get('orderId');
@@ -64,6 +75,7 @@ export default function Confirmation() {
 
     let cancelled = false;
     let attempts = 0;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
     const fetchOrder = async () => {
       try {
@@ -71,9 +83,12 @@ export default function Confirmation() {
         if (cancelled) return;
         setOrderData(result);
 
-        attempts += 1;
-        if (result.order.status === 'PENDING' && attempts < 20) {
-          setTimeout(fetchOrder, 2500);
+        if (result.order.status === 'PENDING' && attempts < MAX_PENDING_POLL_ATTEMPTS) {
+          attempts += 1;
+          const isHidden = document.visibilityState !== 'visible';
+          const baseDelay = isHidden ? HIDDEN_PENDING_POLL_DELAY_MS : getPendingPollDelayMs(attempts - 1);
+          const jitter = Math.floor(Math.random() * PENDING_POLL_JITTER_MS);
+          pollTimer = setTimeout(fetchOrder, baseDelay + jitter);
         }
       } catch (err) {
         if (cancelled) return;
@@ -85,6 +100,7 @@ export default function Confirmation() {
 
     return () => {
       cancelled = true;
+      if (pollTimer) clearTimeout(pollTimer);
     };
   }, [orderId, tokenFromUrl]);
 

@@ -121,7 +121,7 @@ export const orderRoutes: FastifyPluginAsync = async (app) => {
     {
       config: {
         rateLimit: {
-          max: 30,
+          max: 90,
           timeWindow: '5 minutes'
         }
       }
@@ -176,7 +176,7 @@ export const orderRoutes: FastifyPluginAsync = async (app) => {
     {
       config: {
         rateLimit: {
-          max: 12,
+          max: 20,
           timeWindow: '5 minutes'
         }
       }
