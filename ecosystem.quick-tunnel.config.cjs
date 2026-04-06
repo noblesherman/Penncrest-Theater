@@ -12,8 +12,8 @@ module.exports = {
     {
       name: 'theater-backend',
       cwd: path.join(rootDir, 'backend'),
-      script: 'node',
-      args: 'dist/src/server.js',
+      script: 'dist/src/server.js',
+      interpreter: 'node',
       autorestart: true,
       watch: false,
       max_restarts: 10,
@@ -28,8 +28,8 @@ module.exports = {
     {
       name: 'theater-checkout-worker',
       cwd: path.join(rootDir, 'backend'),
-      script: 'node',
-      args: 'dist/src/checkout-worker.js',
+      script: 'dist/src/checkout-worker.js',
+      interpreter: 'node',
       instances: checkoutWorkerInstances,
       exec_mode: checkoutWorkerInstances > 1 ? 'cluster' : 'fork',
       autorestart: true,
@@ -43,8 +43,8 @@ module.exports = {
     {
       name: 'theater-hold-cleanup',
       cwd: path.join(rootDir, 'backend'),
-      script: 'node',
-      args: 'dist/src/hold-cleanup-worker.js',
+      script: 'dist/src/hold-cleanup-worker.js',
+      interpreter: 'node',
       autorestart: true,
       watch: false,
       max_restarts: 10,

@@ -9,7 +9,7 @@ export async function startCheckoutWorker(): Promise<void> {
   const app = Fastify({
     logger: env.NODE_ENV === 'development'
   });
-  const worker = startCheckoutQueueWorker(app.log);
+  const worker = startCheckoutQueueWorker(app.log, { unrefTimers: false });
 
   app.log.info({ maxActiveWorkers: env.CHECKOUT_MAX_ACTIVE }, 'checkout queue worker process started');
 

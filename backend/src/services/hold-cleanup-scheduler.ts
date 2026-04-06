@@ -8,7 +8,15 @@ export type HoldCleanupSchedulerController = {
   stop: () => void;
 };
 
-export function startHoldCleanupScheduler(logger: FastifyBaseLogger): HoldCleanupSchedulerController {
+export type StartHoldCleanupSchedulerOptions = {
+  unrefTimer?: boolean;
+};
+
+export function startHoldCleanupScheduler(
+  logger: FastifyBaseLogger,
+  options: StartHoldCleanupSchedulerOptions = {}
+): HoldCleanupSchedulerController {
+  const unrefTimer = options.unrefTimer ?? true;
   let stopped = false;
   let timer: NodeJS.Timeout | null = null;
 
@@ -31,7 +39,9 @@ export function startHoldCleanupScheduler(logger: FastifyBaseLogger): HoldCleanu
   timer = setInterval(() => {
     void runTick();
   }, cleanupIntervalMs);
-  timer.unref();
+  if (unrefTimer) {
+    timer.unref();
+  }
 
   void runTick();
 

@@ -25,7 +25,15 @@ export type CheckoutQueueWorkerController = {
   stop: () => Promise<void>;
 };
 
-export function startCheckoutQueueWorker(logger: FastifyBaseLogger): CheckoutQueueWorkerController {
+export type StartCheckoutQueueWorkerOptions = {
+  unrefTimers?: boolean;
+};
+
+export function startCheckoutQueueWorker(
+  logger: FastifyBaseLogger,
+  options: StartCheckoutQueueWorkerOptions = {}
+): CheckoutQueueWorkerController {
+  const unrefTimers = options.unrefTimers ?? true;
   let stopped = false;
   let activeCount = 0;
   let dispatchTimer: NodeJS.Timeout | null = null;
@@ -40,7 +48,9 @@ export function startCheckoutQueueWorker(logger: FastifyBaseLogger): CheckoutQue
       dispatchTimer = null;
       void dispatchLoop();
     }, delayMs);
-    dispatchTimer.unref();
+    if (unrefTimers) {
+      dispatchTimer.unref();
+    }
   };
 
   const logQueueMetrics = async () => {
@@ -178,12 +188,16 @@ export function startCheckoutQueueWorker(logger: FastifyBaseLogger): CheckoutQue
       logger.error({ err }, 'failed to expire timed out checkout queue items');
     });
   }, EXPIRY_SWEEP_INTERVAL_MS);
-  expirySweepTimer.unref();
+  if (unrefTimers) {
+    expirySweepTimer.unref();
+  }
 
   metricsTimer = setInterval(() => {
     void logQueueMetrics();
   }, METRICS_LOG_INTERVAL_MS);
-  metricsTimer.unref();
+  if (unrefTimers) {
+    metricsTimer.unref();
+  }
 
   return {
     stop: async () => {

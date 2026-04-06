@@ -9,7 +9,7 @@ export async function startHoldCleanupWorker(): Promise<void> {
   const app = Fastify({
     logger: env.NODE_ENV === 'development'
   });
-  const scheduler = startHoldCleanupScheduler(app.log);
+  const scheduler = startHoldCleanupScheduler(app.log, { unrefTimer: false });
   app.log.info('hold cleanup worker process started');
 
   let shuttingDown = false;
