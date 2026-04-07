@@ -575,27 +575,30 @@ export default function AdminPerformancesPage() {
       <div className="space-y-3">
         {form.schedules.map((s, i) => (
           <motion.div key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-            className="rounded-xl border border-stone-100 bg-stone-50 p-4 space-y-3">
+            className="rounded-xl border border-stone-100 bg-stone-50 p-5 space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-widest text-stone-400">Show {i + 1}</span>
               {form.schedules.length > 1 && (
                 <button type="button" onClick={() => removeSched(i)} className="text-stone-300 hover:text-red-500 transition"><Trash2 className="w-4 h-4" /></button>
               )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label className="block text-xs text-stone-400 mb-1">Date & time</label>
                 <input type="datetime-local" value={s.startsAt} onChange={e => setSched(i, { startsAt: e.target.value })} className={inp} />
               </div>
               <div>
-                <label className="block text-xs text-stone-400 mb-1">Online sales start <span className="text-stone-300">(optional)</span></label>
+                <label className="block text-xs text-stone-400 mb-1">Online sales start <span className="text-stone-300">optional</span></label>
                 <input type="datetime-local" value={s.onlineSalesStartsAt} onChange={e => setSched(i, { onlineSalesStartsAt: e.target.value })} className={inp} />
               </div>
-              <div>
-                <label className="block text-xs text-stone-400 mb-1">Sales cutoff <span className="text-stone-300">(optional)</span></label>
+              <div className="md:col-span-2">
+                <label className="block text-xs text-stone-400 mb-1">Sales cutoff <span className="text-stone-300">optional</span></label>
                 <input type="datetime-local" value={s.salesCutoffAt} onChange={e => setSched(i, { salesCutoffAt: e.target.value })} className={inp} />
               </div>
             </div>
+            <p className="text-xs text-stone-400">
+              Leave Online sales start empty to go live immediately when published.
+            </p>
           </motion.div>
         ))}
       </div>

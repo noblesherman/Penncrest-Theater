@@ -757,6 +757,15 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
           }
         });
 
+        // Publishing is managed at the show level in the admin wizard.
+        // Keep all sibling performance dates in sync to avoid partial live/draft states.
+        if (payload.isPublished !== undefined) {
+          await tx.performance.updateMany({
+            where: { showId: existing.showId },
+            data: { isPublished: payload.isPublished }
+          });
+        }
+
         await tx.show.update({
           where: { id: existing.showId },
           data: {
