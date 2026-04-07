@@ -362,7 +362,7 @@ function renderCalendar(section: AboutCalendarSection, previewMode: AboutRendere
 
 function renderHistory(section: AboutHistorySection, previewMode: AboutRendererMode) {
   return (
-    <section className="relative overflow-hidden border-t border-stone-800 bg-stone-900 py-16 text-white sm:py-20">
+    <section id={section.id} className="relative overflow-hidden border-t border-stone-800 bg-stone-900 py-16 text-white sm:py-20">
       {/* Subtle ambient glow — same as site's dark sections */}
       <div className="pointer-events-none absolute right-0 top-0 h-64 w-64 rounded-full bg-red-900/20 blur-3xl" aria-hidden />
       <div className="pointer-events-none absolute bottom-0 left-0 h-56 w-56 rounded-full bg-amber-500/10 blur-3xl" aria-hidden />

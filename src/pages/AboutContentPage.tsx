@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import AboutPageRenderer from '../components/about/AboutPageRenderer';
 import { apiFetch } from '../lib/api';
 import type { AboutPageContent, AboutPageSlug } from '../lib/aboutContent';
@@ -7,6 +8,7 @@ export default function AboutContentPage({ slug }: { slug: AboutPageSlug }) {
   const [page, setPage] = useState<AboutPageContent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [usingLivePreview, setUsingLivePreview] = useState(false);
+  const location = useLocation();
 
   useEffect(() => {
     setUsingLivePreview(false);
@@ -56,6 +58,28 @@ export default function AboutContentPage({ slug }: { slug: AboutPageSlug }) {
       active = false;
     };
   }, [slug, usingLivePreview]);
+
+  useEffect(() => {
+    if (!page || !location.hash) return;
+
+    const targetId = decodeURIComponent(location.hash.slice(1));
+    if (!targetId) return;
+
+    const scrollToAnchor = () => {
+      const section = document.getElementById(targetId);
+      if (!section) return false;
+      section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return true;
+    };
+
+    if (scrollToAnchor()) return;
+
+    const retryTimer = window.setTimeout(() => {
+      scrollToAnchor();
+    }, 120);
+
+    return () => window.clearTimeout(retryTimer);
+  }, [location.hash, page]);
 
   if (error) {
     return (

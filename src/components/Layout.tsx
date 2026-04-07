@@ -201,7 +201,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 <li><Link to="/shows" className="hover:text-amber-400 transition-colors">Our Season</Link></li>
                 <li><Link to="/shows/community-events" className="hover:text-amber-400 transition-colors">Community Events</Link></li>
                 <li><Link to="/fundraising" className="hover:text-amber-400 transition-colors">Fundraising</Link></li>
-                <li><Link to="/about" className="hover:text-amber-400 transition-colors">Our History</Link></li>
+                <li><Link to="/about#history" className="hover:text-amber-400 transition-colors">Our History</Link></li>
               </ul>
             </div>
 
@@ -233,9 +233,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   >
                     IG
                   </a>
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-stone-800 text-xs font-bold text-stone-300 transition-all hover:-translate-y-0.5 hover:bg-red-700 hover:text-white">
-                    FB
-                  </span>
                 </li>
               </ul>
             </div>
