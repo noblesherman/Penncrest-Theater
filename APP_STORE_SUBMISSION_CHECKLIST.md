@@ -9,7 +9,7 @@
 - [ ] `EXPO_PUBLIC_API_BASE_URL` resolves to production API.
 - [ ] `EXPO_PUBLIC_TERMINAL_MOCK_MODE=false` for submission build.
 - [ ] Privacy/Terms/Support URLs configured if overriding defaults.
-
+fdg
 ## Xcode Archive
 - [ ] Open `mobile/ios/TheaterMobile.xcworkspace`.
 - [ ] Select `TheaterMobile` target + `Any iOS Device`.
