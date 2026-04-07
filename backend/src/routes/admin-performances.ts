@@ -46,6 +46,7 @@ const castMemberSchema = z
 const performanceScheduleSchema = z.object({
   title: z.string().min(1).optional(),
   startsAt: z.string().datetime(),
+  onlineSalesStartsAt: z.string().datetime().nullable().optional(),
   salesCutoffAt: z.string().datetime().nullable().optional()
 });
 
@@ -57,7 +58,9 @@ const createPerformanceSchema = z.object({
   year: z.number().int().optional(),
   accentColor: z.string().optional(),
   startsAt: z.string().datetime().optional(),
+  onlineSalesStartsAt: z.string().datetime().nullable().optional(),
   salesCutoffAt: z.string().datetime().nullable().optional(),
+  isPublished: z.boolean().optional(),
   performances: z.array(performanceScheduleSchema).min(1).optional(),
   staffCompsEnabled: z.boolean().optional(),
   staffCompLimitPerUser: z.number().int().min(1).max(1).optional(),
@@ -405,7 +408,9 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
           showYear: performance.show.year,
           showAccentColor: performance.show.accentColor,
           startsAt: performance.startsAt,
+          onlineSalesStartsAt: performance.onlineSalesStartsAt,
           salesCutoffAt: performance.salesCutoffAt,
+          isPublished: performance.isPublished,
           isArchived: performance.isArchived,
           isFundraiser: performance.isFundraiser,
           archivedAt: performance.archivedAt,
@@ -517,7 +522,9 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
               showYear: performance.show.year,
               showAccentColor: performance.show.accentColor,
               startsAt: performance.startsAt,
+              onlineSalesStartsAt: null,
               salesCutoffAt: performance.salesCutoffAt,
+              isPublished: true,
               isArchived: performance.isArchived,
               isFundraiser: false,
               archivedAt: performance.archivedAt,
@@ -572,6 +579,7 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
               {
                 title: parsed.data.title,
                 startsAt: parsed.data.startsAt,
+                onlineSalesStartsAt: parsed.data.onlineSalesStartsAt ?? null,
                 salesCutoffAt: parsed.data.salesCutoffAt ?? null
               }
             ]
@@ -611,7 +619,13 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
               showId: show.id,
               title: scheduleEntry.title || payload.title,
               startsAt: new Date(scheduleEntry.startsAt),
+              onlineSalesStartsAt: scheduleEntry.onlineSalesStartsAt
+                ? new Date(scheduleEntry.onlineSalesStartsAt)
+                : payload.onlineSalesStartsAt
+                  ? new Date(payload.onlineSalesStartsAt)
+                  : null,
               salesCutoffAt: scheduleEntry.salesCutoffAt ? new Date(scheduleEntry.salesCutoffAt) : null,
+              isPublished: payload.isPublished ?? true,
               isFundraiser: payload.isFundraiser ?? false,
               staffCompsEnabled: payload.staffCompsEnabled ?? true,
               staffCompLimitPerUser: payload.staffCompLimitPerUser ?? 1,
@@ -719,12 +733,19 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
           data: {
             title: payload.title,
             startsAt: payload.startsAt ? new Date(payload.startsAt) : undefined,
+            onlineSalesStartsAt:
+              payload.onlineSalesStartsAt === undefined
+                ? undefined
+                : payload.onlineSalesStartsAt
+                  ? new Date(payload.onlineSalesStartsAt)
+                  : null,
             salesCutoffAt:
               payload.salesCutoffAt === undefined
                 ? undefined
                 : payload.salesCutoffAt
                   ? new Date(payload.salesCutoffAt)
                   : null,
+            isPublished: payload.isPublished,
             isFundraiser: payload.isFundraiser,
             staffCompsEnabled: payload.staffCompsEnabled,
             staffCompLimitPerUser: payload.staffCompLimitPerUser,

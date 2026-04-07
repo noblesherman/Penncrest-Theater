@@ -25,7 +25,10 @@ type Performance = {
   showDescription?: string | null;
   showPosterUrl?: string | null;
   showType?: string | null;
-  startsAt: string; salesCutoffAt: string | null;
+  startsAt: string;
+  onlineSalesStartsAt: string | null;
+  salesCutoffAt: string | null;
+  isPublished: boolean;
   staffCompsEnabled: boolean; staffCompLimitPerUser: number; staffTicketLimit: number;
   studentCompTicketsEnabled: boolean;
   seatSelectionEnabled: boolean;
@@ -43,10 +46,11 @@ type FormCastMember = {
   gradeLevel?: number | null;
   bio?: string;
 };
-type FormSchedule   = { startsAt: string; salesCutoffAt: string };
+type FormSchedule   = { startsAt: string; onlineSalesStartsAt: string; salesCutoffAt: string };
 type FormState = {
   title: string; type: string; description: string; posterUrl: string;
   schedules: FormSchedule[];
+  isDraft: boolean;
   venue: string; notes: string; tiersText: string;
   studentCompTicketsEnabled: boolean;
   seatSelectionEnabled: boolean;
@@ -57,12 +61,13 @@ type FormState = {
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 const emptyCastMember = (): FormCastMember => ({ name: '', role: '', photoUrl: '', schoolEmail: '', gradeLevel: null, bio: '' });
-const emptySchedule   = (): FormSchedule   => ({ startsAt: '', salesCutoffAt: '' });
+const emptySchedule   = (): FormSchedule   => ({ startsAt: '', onlineSalesStartsAt: '', salesCutoffAt: '' });
 
 function createInitialForm(): FormState {
   return {
     title: '', type: '', description: '', posterUrl: '',
     schedules: [emptySchedule()],
+    isDraft: false,
     venue: 'Penncrest High School Auditorium', notes: '',
     tiersText: 'Adult:1800\nStudent:1200\nChild:1000\nSenior:1400',
     studentCompTicketsEnabled: false,
@@ -271,8 +276,13 @@ export default function AdminPerformancesPage() {
   const submit = async () => {
     setError(null);
     if (tiers.length === 0) { setError('Add at least one pricing tier (Name:Price).'); return; }
-    const schedules = form.schedules.map(s => ({ startsAt: s.startsAt.trim(), salesCutoffAt: s.salesCutoffAt.trim() }));
+    const schedules = form.schedules.map(s => ({
+      startsAt: s.startsAt.trim(),
+      onlineSalesStartsAt: s.onlineSalesStartsAt.trim(),
+      salesCutoffAt: s.salesCutoffAt.trim()
+    }));
     if (schedules.some(s => !s.startsAt && s.salesCutoffAt)) { setError('Sales cutoff requires a date.'); return; }
+    if (schedules.some(s => !s.startsAt && s.onlineSalesStartsAt)) { setError('Online sales start requires a date.'); return; }
     const perfs = schedules.filter(s => s.startsAt);
     if (!perfs.length) { setError('Add at least one performance date.'); return; }
     const cast = form.castMembers.reduce<
@@ -310,6 +320,7 @@ export default function AdminPerformancesPage() {
       type: form.type.trim() || undefined,
       description: form.description.trim() || undefined,
       posterUrl: form.posterUrl.trim() || undefined,
+      isPublished: !form.isDraft,
       staffCompsEnabled: true,
       staffCompLimitPerUser: 1,
       studentCompTicketsEnabled: form.studentCompTicketsEnabled,
@@ -320,9 +331,27 @@ export default function AdminPerformancesPage() {
     try {
       if (editingId) {
         const f = perfs[0];
-        await adminFetch(`/api/admin/performances/${editingId}`, { method: 'PATCH', body: JSON.stringify({ ...payload, startsAt: new Date(f.startsAt).toISOString(), salesCutoffAt: f.salesCutoffAt ? new Date(f.salesCutoffAt).toISOString() : null }) });
+        await adminFetch(`/api/admin/performances/${editingId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            ...payload,
+            startsAt: new Date(f.startsAt).toISOString(),
+            onlineSalesStartsAt: f.onlineSalesStartsAt ? new Date(f.onlineSalesStartsAt).toISOString() : null,
+            salesCutoffAt: f.salesCutoffAt ? new Date(f.salesCutoffAt).toISOString() : null
+          })
+        });
       } else {
-        await adminFetch('/api/admin/performances', { method: 'POST', body: JSON.stringify({ ...payload, performances: perfs.map(s => ({ startsAt: new Date(s.startsAt).toISOString(), salesCutoffAt: s.salesCutoffAt ? new Date(s.salesCutoffAt).toISOString() : null })) }) });
+        await adminFetch('/api/admin/performances', {
+          method: 'POST',
+          body: JSON.stringify({
+            ...payload,
+            performances: perfs.map(s => ({
+              startsAt: new Date(s.startsAt).toISOString(),
+              onlineSalesStartsAt: s.onlineSalesStartsAt ? new Date(s.onlineSalesStartsAt).toISOString() : null,
+              salesCutoffAt: s.salesCutoffAt ? new Date(s.salesCutoffAt).toISOString() : null
+            }))
+          })
+        });
       }
       closeWizard(); load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Save failed'); }
@@ -345,7 +374,12 @@ export default function AdminPerformancesPage() {
       type: item.showType || '',
       description: item.showDescription || '',
       posterUrl: item.showPosterUrl || '',
-      schedules: [{ startsAt: item.startsAt.slice(0, 16), salesCutoffAt: item.salesCutoffAt ? item.salesCutoffAt.slice(0, 16) : '' }],
+      schedules: [{
+        startsAt: item.startsAt.slice(0, 16),
+        onlineSalesStartsAt: item.onlineSalesStartsAt ? item.onlineSalesStartsAt.slice(0, 16) : '',
+        salesCutoffAt: item.salesCutoffAt ? item.salesCutoffAt.slice(0, 16) : ''
+      }],
+      isDraft: !item.isPublished,
       venue: item.venue, notes: item.notes || '',
       tiersText: item.pricingTiers.map(t => `${t.name}:${t.priceCents}`).join('\n'),
       studentCompTicketsEnabled: Boolean(item.studentCompTicketsEnabled),
@@ -467,6 +501,38 @@ export default function AdminPerformancesPage() {
           placeholder="e.g. Musical" className={inp} />
       </div>
       <div>
+        <label className="block text-xs font-bold uppercase tracking-widest text-stone-400 mb-2">Publishing</label>
+        <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setForm((prev) => ({ ...prev, isDraft: true }))}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                form.isDraft
+                  ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                  : 'bg-white text-stone-500 border border-stone-200 hover:bg-stone-50'
+              }`}
+            >
+              Draft (hidden)
+            </button>
+            <button
+              type="button"
+              onClick={() => setForm((prev) => ({ ...prev, isDraft: false }))}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                !form.isDraft
+                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                  : 'bg-white text-stone-500 border border-stone-200 hover:bg-stone-50'
+              }`}
+            >
+              Published
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-stone-500">
+            Use Online sales start in the Dates step to schedule a go-live time.
+          </p>
+        </div>
+      </div>
+      <div>
         <label className="block text-xs font-bold uppercase tracking-widest text-stone-400 mb-2">Description</label>
         <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
           rows={4} placeholder="A short description shown on the public show page and season card."
@@ -516,10 +582,14 @@ export default function AdminPerformancesPage() {
                 <button type="button" onClick={() => removeSched(i)} className="text-stone-300 hover:text-red-500 transition"><Trash2 className="w-4 h-4" /></button>
               )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs text-stone-400 mb-1">Date & time</label>
                 <input type="datetime-local" value={s.startsAt} onChange={e => setSched(i, { startsAt: e.target.value })} className={inp} />
+              </div>
+              <div>
+                <label className="block text-xs text-stone-400 mb-1">Online sales start <span className="text-stone-300">(optional)</span></label>
+                <input type="datetime-local" value={s.onlineSalesStartsAt} onChange={e => setSched(i, { onlineSalesStartsAt: e.target.value })} className={inp} />
               </div>
               <div>
                 <label className="block text-xs text-stone-400 mb-1">Sales cutoff <span className="text-stone-300">(optional)</span></label>
@@ -693,7 +763,9 @@ export default function AdminPerformancesPage() {
           { label: 'Tag',          value: form.type || <span className="text-stone-300">None</span> },
           { label: 'Description',  value: form.description || <span className="text-stone-300">None</span> },
           { label: 'Venue',        value: form.venue },
+          { label: 'Publishing',   value: form.isDraft ? 'Draft (hidden)' : 'Published' },
           { label: 'Dates',        value: `${form.schedules.filter(s => s.startsAt).length} date(s)` },
+          { label: 'Online sales start', value: `${form.schedules.filter(s => s.onlineSalesStartsAt).length} date(s)` },
           { label: 'Pricing',      value: tiers.length > 0 ? tiers.map(t => `${t.name} $${(t.priceCents/100).toFixed(2)}`).join(' · ') : <span className="text-red-400 font-semibold">Missing!</span> },
           { label: 'Student comps', value: form.studentCompTicketsEnabled ? '✓ Enabled' : 'Disabled' },
           { label: 'Seat selection', value: form.seatSelectionEnabled ? 'Enabled' : 'Auto-assign mode' },
@@ -875,6 +947,12 @@ export default function AdminPerformancesPage() {
                     </div>
                     <p className="text-xs text-stone-400 mt-0.5 flex items-center gap-1 flex-wrap">
                       <Calendar className="w-3 h-3" />{new Date(item.startsAt).toLocaleString()}
+                      {item.onlineSalesStartsAt && (
+                        <>
+                          <span className="text-stone-200">·</span>
+                          <span>Sales live {new Date(item.onlineSalesStartsAt).toLocaleString()}</span>
+                        </>
+                      )}
                       <span className="text-stone-200">·</span>
                       <MapPin className="w-3 h-3" />{item.venue}
                     </p>
@@ -890,6 +968,9 @@ export default function AdminPerformancesPage() {
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-1.5 mt-2">
+                      <span className={`rounded-full px-2 py-0.5 text-xs ${item.isPublished ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                        {item.isPublished ? 'Published' : 'Draft'}
+                      </span>
                       <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">{item.paidOrders} orders</span>
                       <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">{item.castMembers.length} cast</span>
                       <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">

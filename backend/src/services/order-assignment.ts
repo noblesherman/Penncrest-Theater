@@ -151,6 +151,9 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
     }
 
     if (enforceSalesCutoff) {
+      if (!performance.isPublished || (performance.onlineSalesStartsAt && performance.onlineSalesStartsAt > new Date())) {
+        throw new HttpError(400, 'Online sales are not live for this performance yet');
+      }
       const salesCutoffAt = performance.salesCutoffAt || performance.startsAt;
       if (salesCutoffAt <= new Date()) {
         throw new HttpError(400, 'Online sales are closed for this performance');

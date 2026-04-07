@@ -78,12 +78,18 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const performances = await prisma.performance.findMany({
-        where: { isArchived: false, isFundraiser: false },
+        where: {
+          isArchived: false,
+          isFundraiser: false,
+          isPublished: true,
+          OR: [{ onlineSalesStartsAt: null }, { onlineSalesStartsAt: { lte: new Date() } }]
+        },
         orderBy: { startsAt: 'asc' },
         select: {
           id: true,
           title: true,
           startsAt: true,
+          onlineSalesStartsAt: true,
           salesCutoffAt: true,
           staffCompsEnabled: true,
           staffCompLimitPerUser: true,
@@ -157,14 +163,17 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
       );
 
       const payload = performances.map((performance) => {
+        const goLiveAt = performance.onlineSalesStartsAt || null;
+        const isLiveNow = !goLiveAt || goLiveAt <= now;
         const cutoff = performance.salesCutoffAt || performance.startsAt;
-        const salesOpen = cutoff > now;
+        const salesOpen = isLiveNow && cutoff > now;
         const priceStatsForPerformance = priceStatsByPerformanceId.get(performance.id);
         const availableSeats = availableStatsByPerformanceId.get(performance.id) ?? 0;
         return {
           id: performance.id,
           title: performance.title || performance.show.title,
           startsAt: performance.startsAt.toISOString(),
+          onlineSalesStartsAt: performance.onlineSalesStartsAt?.toISOString() || null,
           salesCutoffAt: performance.salesCutoffAt?.toISOString() || null,
           salesOpen,
           staffCompsEnabled: performance.staffCompsEnabled,
@@ -206,7 +215,12 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const performance = await prisma.performance.findFirst({
-        where: { id: params.id, isArchived: false },
+        where: {
+          id: params.id,
+          isArchived: false,
+          isPublished: true,
+          OR: [{ onlineSalesStartsAt: null }, { onlineSalesStartsAt: { lte: new Date() } }]
+        },
         include: {
           show: true,
           pricingTiers: true,
@@ -260,8 +274,11 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
         id: performance.id,
         title: performance.title || performance.show.title,
         startsAt: performance.startsAt.toISOString(),
+        onlineSalesStartsAt: performance.onlineSalesStartsAt?.toISOString() || null,
         salesCutoffAt: performance.salesCutoffAt?.toISOString() || null,
-        salesOpen: (performance.salesCutoffAt || performance.startsAt) > new Date(),
+        salesOpen:
+          (!performance.onlineSalesStartsAt || performance.onlineSalesStartsAt <= new Date()) &&
+          (performance.salesCutoffAt || performance.startsAt) > new Date(),
         staffCompsEnabled: performance.staffCompsEnabled,
         staffCompLimitPerUser: performance.staffCompLimitPerUser,
         staffTicketLimit: performance.staffTicketLimit,
@@ -308,7 +325,12 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
 
       try {
         const performance = await prisma.performance.findFirst({
-          where: { id: params.performanceId, isArchived: false },
+          where: {
+            id: params.performanceId,
+            isArchived: false,
+            isPublished: true,
+            OR: [{ onlineSalesStartsAt: null }, { onlineSalesStartsAt: { lte: new Date() } }]
+          },
           select: { id: true }
         });
         if (!performance) {

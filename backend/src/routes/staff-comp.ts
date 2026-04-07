@@ -47,7 +47,9 @@ export const staffCompRoutes: FastifyPluginAsync = async (app) => {
           select: {
             id: true,
             startsAt: true,
+            onlineSalesStartsAt: true,
             salesCutoffAt: true,
+            isPublished: true,
             staffCompsEnabled: true,
             staffCompLimitPerUser: true
           }
@@ -59,6 +61,10 @@ export const staffCompRoutes: FastifyPluginAsync = async (app) => {
 
         if (!performance.staffCompsEnabled) {
           throw new HttpError(400, 'Staff comps are disabled for this performance');
+        }
+
+        if (!performance.isPublished || (performance.onlineSalesStartsAt && performance.onlineSalesStartsAt > new Date())) {
+          throw new HttpError(400, 'Online sales are not live for this performance yet');
         }
 
         const salesCutoffAt = performance.salesCutoffAt || performance.startsAt;

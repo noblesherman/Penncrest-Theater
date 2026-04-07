@@ -329,7 +329,9 @@ model Performance {
   show          Show          @relation(fields: [showId], references: [id], onDelete: Cascade)
   title         String?
   startsAt      DateTime
+  onlineSalesStartsAt DateTime?
   salesCutoffAt DateTime?
+  isPublished   Boolean       @default(true)
   isArchived    Boolean       @default(false)
   isFundraiser  Boolean       @default(false)
   archivedAt    DateTime?
@@ -356,6 +358,7 @@ model Performance {
 
   @@index([showId])
   @@index([startsAt])
+  @@index([isPublished, onlineSalesStartsAt])
   @@index([isArchived, startsAt])
 }
 

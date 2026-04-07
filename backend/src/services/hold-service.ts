@@ -175,10 +175,14 @@ export async function syncSeatHold(params: {
   return prisma.$transaction(async (tx) => {
     const performance = await tx.performance.findFirst({
       where: { id: params.performanceId, isArchived: false },
-      select: { id: true, startsAt: true, salesCutoffAt: true }
+      select: { id: true, startsAt: true, onlineSalesStartsAt: true, salesCutoffAt: true, isPublished: true }
     });
     if (!performance) {
       throw new HttpError(404, 'Performance not found');
+    }
+
+    if (!performance.isPublished || (performance.onlineSalesStartsAt && performance.onlineSalesStartsAt > new Date())) {
+      throw new HttpError(400, 'Online sales are not live for this performance yet');
     }
 
     const salesCutoffAt = performance.salesCutoffAt || performance.startsAt;

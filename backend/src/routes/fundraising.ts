@@ -167,10 +167,13 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/api/fundraising/events', async (_request, reply) => {
     try {
+      const now = new Date();
       const events = await prisma.performance.findMany({
         where: {
           isArchived: false,
-          isFundraiser: true
+          isFundraiser: true,
+          isPublished: true,
+          OR: [{ onlineSalesStartsAt: null }, { onlineSalesStartsAt: { lte: now } }]
         },
         orderBy: [{ startsAt: 'asc' }, { createdAt: 'desc' }],
         include: {
@@ -192,7 +195,6 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
       });
 
       const payload = events.map((event) => {
-        const now = new Date();
         const pricingValues = event.pricingTiers.map((tier) => tier.priceCents);
         const seatPrices = event.seats.map((seat) => seat.price);
         const minPrice = pricingValues.length > 0 ? Math.min(...pricingValues) : seatPrices.length > 0 ? Math.min(...seatPrices) : 0;
@@ -205,8 +207,11 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
           description: event.show.description || '',
           posterUrl: event.show.posterUrl || '',
           startsAt: event.startsAt.toISOString(),
+          onlineSalesStartsAt: event.onlineSalesStartsAt?.toISOString() || null,
           salesCutoffAt: event.salesCutoffAt?.toISOString() || null,
-          salesOpen: (event.salesCutoffAt || event.startsAt) > new Date(),
+          salesOpen:
+            (!event.onlineSalesStartsAt || event.onlineSalesStartsAt <= now) &&
+            (event.salesCutoffAt || event.startsAt) > now,
           venue: event.venue,
           notes: event.notes || '',
           seatSelectionEnabled: event.seatSelectionEnabled,

@@ -150,7 +150,7 @@ async function validatePaidQueueRequest(payload: CheckoutRequestPayload): Promis
   const [performance, holdSession] = await Promise.all([
     prisma.performance.findFirst({
       where: { id: payload.performanceId, isArchived: false },
-      select: { id: true, startsAt: true, salesCutoffAt: true }
+      select: { id: true, startsAt: true, onlineSalesStartsAt: true, salesCutoffAt: true, isPublished: true }
     }),
     prisma.holdSession.findUnique({
       where: { holdToken: payload.holdToken },
@@ -164,6 +164,10 @@ async function validatePaidQueueRequest(payload: CheckoutRequestPayload): Promis
 
   if (!performance) {
     throw new HttpError(404, 'Performance not found');
+  }
+
+  if (!performance.isPublished || (performance.onlineSalesStartsAt && performance.onlineSalesStartsAt > new Date())) {
+    throw new HttpError(400, 'Online sales are not live for this performance yet');
   }
 
   const salesCutoffAt = performance.salesCutoffAt || performance.startsAt;

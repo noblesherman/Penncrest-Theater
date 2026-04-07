@@ -14,11 +14,19 @@ export const showRoutes: FastifyPluginAsync = async (app) => {
             some: {
               isArchived: false,
               isFundraiser: false,
-              OR: [
-                { salesCutoffAt: { gt: now } },
+              isPublished: true,
+              AND: [
                 {
-                  salesCutoffAt: null,
-                  startsAt: { gt: now }
+                  OR: [{ onlineSalesStartsAt: null }, { onlineSalesStartsAt: { lte: now } }]
+                },
+                {
+                  OR: [
+                    { salesCutoffAt: { gt: now } },
+                    {
+                      salesCutoffAt: null,
+                      startsAt: { gt: now }
+                    }
+                  ]
                 }
               ]
             }
@@ -48,7 +56,9 @@ export const showRoutes: FastifyPluginAsync = async (app) => {
           performances: {
             where: {
               isArchived: false,
-              isFundraiser: false
+              isFundraiser: false,
+              isPublished: true,
+              OR: [{ onlineSalesStartsAt: null }, { onlineSalesStartsAt: { lte: new Date() } }]
             },
             orderBy: { startsAt: 'asc' }
           }
@@ -81,8 +91,11 @@ export const showRoutes: FastifyPluginAsync = async (app) => {
         performances: show.performances.map((performance) => ({
           id: performance.id,
           date: performance.startsAt,
+          onlineSalesStartsAt: performance.onlineSalesStartsAt,
           salesCutoffAt: performance.salesCutoffAt,
-          salesOpen: (performance.salesCutoffAt || performance.startsAt) > new Date()
+          salesOpen:
+            (!performance.onlineSalesStartsAt || performance.onlineSalesStartsAt <= new Date()) &&
+            (performance.salesCutoffAt || performance.startsAt) > new Date()
         }))
       });
     } catch (err) {

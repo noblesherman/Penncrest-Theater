@@ -149,6 +149,10 @@ export async function executeCheckoutRequest(payload: CheckoutRequestPayload): P
       throw new HttpError(404, 'Performance not found');
     }
 
+    if (!performance.isPublished || (performance.onlineSalesStartsAt && performance.onlineSalesStartsAt > new Date())) {
+      throw new HttpError(400, 'Online sales are not live for this performance yet');
+    }
+
     const salesCutoffAt = performance.salesCutoffAt || performance.startsAt;
     if (salesCutoffAt <= new Date()) {
       throw new HttpError(400, 'Online sales are closed for this performance');
