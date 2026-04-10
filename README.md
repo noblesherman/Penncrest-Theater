@@ -173,8 +173,6 @@ See:
 - `INSTAGRAM_CACHE_FILE` (optional, default `.cache/instagram-feed.json`)
 - `INSTAGRAM_PYTHON_BIN` (optional, default `python3`)
 - `INSTAGRAM_SCRIPT_PATH` (optional, override python script path)
-- `INSTAGRAM_SESSION_USERNAME` (optional, username for Instaloader session file)
-- `INSTAGRAM_SESSION_FILE` (optional, default `.cache/instaloader.session`)
 - `R2_ACCOUNT_ID` (optional if `R2_ENDPOINT` is set)
 - `R2_ENDPOINT` (optional if `R2_ACCOUNT_ID` is set)
 - `R2_BUCKET`
@@ -207,29 +205,13 @@ Backend route:
 Install Python dependency (inside backend project or virtualenv):
 ```bash
 cd backend
-python3 -m venv venv
-source venv/bin/activate
-pip install instaloader
+python3 -m pip install instaloader
 ```
 
 Test the Python script directly:
 ```bash
 cd backend
-./venv/bin/python3 scripts/instagram_feed.py --username penncrest.theater --limit 6
-```
-
-If anonymous requests return `403`, create and use an authenticated Instaloader session:
-```bash
-cd backend
-source venv/bin/activate
-instaloader --login YOUR_IG_USERNAME --sessionfile .cache/instaloader.session --no-posts
-```
-
-Then set in `backend/.env`:
-```env
-INSTAGRAM_PYTHON_BIN=./venv/bin/python3
-INSTAGRAM_SESSION_USERNAME=YOUR_IG_USERNAME
-INSTAGRAM_SESSION_FILE=.cache/instaloader.session
+python3 scripts/instagram_feed.py --username penncrest.theater --limit 6
 ```
 
 Test the backend route:

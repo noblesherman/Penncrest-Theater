@@ -173,7 +173,6 @@ export type AboutSection =
 export type AboutPageContent = {
   slug: AboutPageSlug;
   navLabel: string;
-  showInstagramFeed?: boolean;
   hero: AboutHero;
   sections: AboutSection[];
 };

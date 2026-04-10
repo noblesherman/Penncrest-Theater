@@ -62,24 +62,6 @@ function resolveScriptPath(): string {
   return existing ?? candidates[0];
 }
 
-function resolvePythonBin(): string {
-  const configured = env.INSTAGRAM_PYTHON_BIN.trim();
-  if (!configured) {
-    return 'python3';
-  }
-
-  const looksLikePath = configured.includes('/') || configured.startsWith('.');
-  if (!looksLikePath) {
-    return configured;
-  }
-
-  if (path.isAbsolute(configured)) {
-    return configured;
-  }
-
-  return path.resolve(process.cwd(), configured);
-}
-
 function resolveCacheFilePath(): string {
   const configured = env.INSTAGRAM_CACHE_FILE.trim();
   if (path.isAbsolute(configured)) {
@@ -129,18 +111,11 @@ export async function fetchInstagramFeedFromInstaloader(): Promise<InstagramFeed
   }
 
   const scriptPath = resolveScriptPath();
-  const pythonBin = resolvePythonBin();
   const args = ['--username', username, '--limit', String(env.INSTAGRAM_MEDIA_LIMIT)];
-  const sessionUser = env.INSTAGRAM_SESSION_USERNAME?.trim();
-  const sessionFile = env.INSTAGRAM_SESSION_FILE?.trim();
-
-  if (sessionUser && sessionFile) {
-    args.push('--session-user', sessionUser, '--session-file', path.isAbsolute(sessionFile) ? sessionFile : path.resolve(process.cwd(), sessionFile));
-  }
 
   try {
     // Instaloader is unofficial and can break when Instagram changes internals.
-    const { stdout, stderr } = await execFileAsync(pythonBin, [scriptPath, ...args], {
+    const { stdout, stderr } = await execFileAsync(env.INSTAGRAM_PYTHON_BIN, [scriptPath, ...args], {
       timeout: env.INSTAGRAM_REQUEST_TIMEOUT_MS,
       maxBuffer: 1024 * 1024
     });

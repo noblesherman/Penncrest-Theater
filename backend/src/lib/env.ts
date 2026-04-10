@@ -77,8 +77,6 @@ const EnvSchema = z.object({
   INSTAGRAM_CACHE_FILE: z.string().min(1).default('.cache/instagram-feed.json'),
   INSTAGRAM_PYTHON_BIN: z.string().min(1).default('python3'),
   INSTAGRAM_SCRIPT_PATH: z.string().optional(),
-  INSTAGRAM_SESSION_USERNAME: z.string().optional(),
-  INSTAGRAM_SESSION_FILE: z.string().optional(),
 
   R2_ACCOUNT_ID: z.string().optional(),
   R2_ENDPOINT: z.string().url().optional(),

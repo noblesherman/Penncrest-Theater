@@ -302,7 +302,6 @@ export const aboutSectionSchema = z.discriminatedUnion('type', [
 export const aboutPageSchema = z.object({
   slug: aboutSlugSchema,
   navLabel: shortText,
-  showInstagramFeed: z.boolean().optional(),
   hero: heroSchema,
   sections: z.array(aboutSectionSchema).min(1).max(12)
 });
@@ -314,7 +313,6 @@ export const defaultAboutPages: Record<string, AboutPageContent> = {
   about: {
     slug: 'about',
     navLabel: 'About',
-    showInstagramFeed: true,
     hero: {
       eyebrow: 'Penncrest High School · Media, PA',
       title: 'About the',
