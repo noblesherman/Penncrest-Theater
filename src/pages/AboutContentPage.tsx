@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import AboutPageRenderer from '../components/about/AboutPageRenderer';
+import InstagramGrid from '../components/InstagramGrid';
 import { apiFetch } from '../lib/api';
 import type { AboutPageContent, AboutPageSlug } from '../lib/aboutContent';
 
@@ -99,5 +100,14 @@ export default function AboutContentPage({ slug }: { slug: AboutPageSlug }) {
     return <div className="min-h-[50vh] bg-stone-50 flex items-center justify-center text-stone-500">Loading page...</div>;
   }
 
-  return <AboutPageRenderer page={page} />;
+  return (
+    <>
+      <AboutPageRenderer page={page} />
+      {slug === 'about' && page.showInstagramFeed !== false && (
+        <div className="bg-stone-50">
+          <InstagramGrid title="Backstage On Instagram" maxItems={18} />
+        </div>
+      )}
+    </>
+  );
 }

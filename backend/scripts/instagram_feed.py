@@ -17,6 +17,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fetch recent public Instagram posts via Instaloader.")
     parser.add_argument("--username", required=True, help="Public Instagram username")
     parser.add_argument("--limit", type=int, default=12, help="Number of posts to fetch")
+    parser.add_argument("--session-user", help="Instagram username that owns the session file")
+    parser.add_argument("--session-file", help="Path to an Instaloader session file")
     return parser.parse_args()
 
 
@@ -82,6 +84,8 @@ def main() -> int:
 
     try:
         loader = build_loader()
+        if args.session_user and args.session_file:
+            loader.load_session_from_file(args.session_user, args.session_file)
         profile = instaloader.Profile.from_username(loader.context, args.username)
 
         items = []

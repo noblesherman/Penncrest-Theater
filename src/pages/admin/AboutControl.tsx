@@ -1142,9 +1142,16 @@ export default function AdminAboutControlPage() {
   const headerChanged = useMemo(() => {
     if (!draft) return false;
     if (!publishedPage) return true;
-    return JSON.stringify({ navLabel: draft.navLabel, hero: draft.hero })
-      !== JSON.stringify({ navLabel: publishedPage.navLabel, hero: publishedPage.hero });
-  }, [draft, publishedPage]);
+    return JSON.stringify({
+      navLabel: draft.navLabel,
+      hero: draft.hero,
+      showInstagramFeed: slug === 'about' ? draft.showInstagramFeed !== false : undefined
+    }) !== JSON.stringify({
+      navLabel: publishedPage.navLabel,
+      hero: publishedPage.hero,
+      showInstagramFeed: slug === 'about' ? publishedPage.showInstagramFeed !== false : undefined
+    });
+  }, [draft, publishedPage, slug]);
   const headerFieldChanged = useMemo(() => {
     if (!draft) {
       return {
@@ -1152,7 +1159,8 @@ export default function AdminAboutControlPage() {
         eyebrow: false,
         title: false,
         accent: false,
-        description: false
+        description: false,
+        instagramFeed: false
       };
     }
     if (!publishedPage) {
@@ -1161,7 +1169,8 @@ export default function AdminAboutControlPage() {
         eyebrow: true,
         title: true,
         accent: true,
-        description: true
+        description: true,
+        instagramFeed: slug === 'about'
       };
     }
     return {
@@ -1169,9 +1178,10 @@ export default function AdminAboutControlPage() {
       eyebrow: draft.hero.eyebrow !== publishedPage.hero.eyebrow,
       title: draft.hero.title !== publishedPage.hero.title,
       accent: draft.hero.accent !== publishedPage.hero.accent,
-      description: draft.hero.description !== publishedPage.hero.description
+      description: draft.hero.description !== publishedPage.hero.description,
+      instagramFeed: slug === 'about' && (draft.showInstagramFeed !== false) !== (publishedPage.showInstagramFeed !== false)
     };
-  }, [draft, publishedPage]);
+  }, [draft, publishedPage, slug]);
   const changedSectionIds = useMemo(() => {
     const changed = new Set<string>();
     if (!draft) return changed;
@@ -1854,6 +1864,19 @@ export default function AdminAboutControlPage() {
                 <Field label="Description" changed={headerFieldChanged.description}>
                   <textarea value={draft.hero.description} onChange={(e) => upHero('description', e.target.value)} className={taClass} />
                 </Field>
+                {slug === 'about' && (
+                  <Field label="Instagram Feed" changed={headerFieldChanged.instagramFeed}>
+                    <label className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+                      <input
+                        type="checkbox"
+                        checked={draft.showInstagramFeed !== false}
+                        onChange={(e) => upPage((p) => ({ ...p, showInstagramFeed: e.target.checked }))}
+                        className="h-4 w-4 rounded border-zinc-300 text-red-700 focus:ring-red-500"
+                      />
+                      Show Instagram grid at the bottom of the About page
+                    </label>
+                  </Field>
+                )}
               </div>
             </div>
 
