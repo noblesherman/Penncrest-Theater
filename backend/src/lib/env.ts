@@ -70,14 +70,6 @@ const EnvSchema = z.object({
 
   GOOGLE_CALENDAR_ICS_URL: z.string().url().optional(),
 
-  INSTAGRAM_USERNAME: z.string().optional(),
-  INSTAGRAM_MEDIA_LIMIT: z.coerce.number().int().min(1).max(50).default(18),
-  INSTAGRAM_CACHE_TTL_SECONDS: z.coerce.number().int().min(0).max(60 * 60 * 24).default(1800),
-  INSTAGRAM_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(15_000),
-  INSTAGRAM_CACHE_FILE: z.string().min(1).default('.cache/instagram-feed.json'),
-  INSTAGRAM_PYTHON_BIN: z.string().min(1).default('python3'),
-  INSTAGRAM_SCRIPT_PATH: z.string().optional(),
-
   R2_ACCOUNT_ID: z.string().optional(),
   R2_ENDPOINT: z.string().url().optional(),
   R2_BUCKET: z.string().optional(),

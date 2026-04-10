@@ -6,9 +6,9 @@ coverage/
 *.log
 .backup.env
 backups/
-backend/.cache/
 .env*
 !.env.example
 !**/.env.example
 .gitignore
 moble/.env
+
