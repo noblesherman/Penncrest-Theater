@@ -200,49 +200,56 @@ This migrates:
    ```bash
    npm --prefix backend run build
    ```
-5. Start the backend and tunnel with PM2 so they stay up after shell disconnects or server restarts:
+5. Recommended one-command deploy (single backend + single tunnel):
    ```bash
    npm install -g pm2
    cp cloudflared/config.example.yml cloudflared/config.yml
    # edit cloudflared/config.yml with your tunnel id, credentials path, and hostname
+   ./scripts/deploy-theater.sh
+   pm2 startup
+   ```
+   Notes:
+   - This uses `ecosystem.single.cjs`.
+   - It keeps only `theater-backend` + `theater-tunnel`.
+   - Checkout queue and hold cleanup run in-process inside `theater-backend`.
+   - Script location: `scripts/deploy-theater.sh`
+   - Optional overrides: `BACKEND_PORT`, `CLOUDFLARED_CONFIG`, `API_HEALTH_URL`.
+6. Alternative multi-process deploy (separate checkout + hold-cleanup workers):
+   ```bash
    # optional: set checkout worker replicas (defaults to 2)
    export CHECKOUT_WORKER_INSTANCES=3
    pm2 start ecosystem.config.cjs
    pm2 save
-   pm2 startup
    ```
    For a temporary quick tunnel instead of a named tunnel:
    ```bash
    pm2 start ecosystem.quick-tunnel.config.cjs
    pm2 save
    ```
-   You can inspect/restart it with:
+   Process inspection/restart:
    ```bash
    pm2 status
    pm2 logs theater-backend
    pm2 logs theater-checkout-worker
    pm2 logs theater-hold-cleanup
    pm2 logs theater-tunnel
+   pm2 logs theater-quick-tunnel
    pm2 restart theater-backend
    pm2 restart theater-checkout-worker
    pm2 restart theater-hold-cleanup
    pm2 restart theater-tunnel
    ```
-   Quick tunnel logs:
-   ```bash
-   pm2 logs theater-quick-tunnel
-   ```
-6. Create a named Cloudflare Tunnel so the backend URL is stable. Point it at `http://localhost:$PORT` (for example `http://localhost:6000`), then set the frontend `VITE_API_BASE_URL` to that hostname and set backend `FRONTEND_ORIGIN` / `APP_BASE_URL` to your Vercel frontend URL.
+7. Create a named Cloudflare Tunnel so the backend URL is stable. Point it at `http://localhost:$PORT` (for example `http://localhost:6000`), then set the frontend `VITE_API_BASE_URL` to that hostname and set backend `FRONTEND_ORIGIN` / `APP_BASE_URL` to your Vercel frontend URL.
    Quick tunnels are fine for temporary testing:
    ```bash
    cloudflared tunnel --url http://localhost:6000
    ```
    They are not a good PM2 target because the hostname changes when the process restarts.
    If you tunnel the Vite dev server instead of the backend, set `VITE_ALLOWED_HOSTS` so Vite accepts the tunnel hostname.
-7. Configure Stripe webhook endpoint:
+8. Configure Stripe webhook endpoint:
    - `https://<backend-domain>/api/webhooks/stripe`
-8. Set all backend env vars in your host.
-9. Keep queue and cleanup workers running separately from the API process:
+9. Set all backend env vars in your host.
+10. Keep queue and cleanup workers running separately from the API process:
    - `theater-checkout-worker` can run multiple instances (set `CHECKOUT_WORKER_INSTANCES`).
    - `theater-hold-cleanup` should run as a single scheduler process.
    - If needed, you can still run manual/scheduled cleanup with `npm --prefix backend run cron:release-holds`.
