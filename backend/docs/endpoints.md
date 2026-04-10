@@ -9,7 +9,148 @@ Base URL examples:
 ### `GET /api/health`
 Response:
 ```json
-{ "status": "ok" }
+{
+  "status": "degraded",
+  "observedAt": "2026-04-10T02:18:11.913Z",
+  "responseTimeMs": 57,
+  "degradationReasons": ["queue_lag_high", "recent_errors_detected"],
+  "service": {
+    "environment": "production",
+    "uptimeSeconds": 34812,
+    "startedAt": "2026-04-09T16:37:59.000Z",
+    "pid": 42811,
+    "nodeVersion": "v22.14.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "timezone": "America/New_York"
+  },
+  "dependencies": {
+    "database": {
+      "status": "ok",
+      "latencyMs": 12,
+      "schemaReady": true,
+      "clockSkewMs": 1,
+      "name": "theater"
+    },
+    "stripe": {
+      "status": "configured",
+      "mode": "live",
+      "publishableKeyConfigured": true,
+      "webhookSecretConfigured": true
+    },
+    "email": { "status": "configured", "transport": "smtp" },
+    "storage": {
+      "status": "configured",
+      "provider": "cloudflare_r2",
+      "maxUploadBytes": 8388608
+    },
+    "oauth": { "google": "configured", "microsoft": "configured" }
+  },
+  "queue": {
+    "waitingCount": 45,
+    "processingCount": 3,
+    "lagSeconds": 12,
+    "oldestWaitingAgeSeconds": 12,
+    "readyCountLastFiveMinutes": 28,
+    "failedCountLastFiveMinutes": 4,
+    "byStatus": {
+      "WAITING": 45,
+      "PROCESSING": 3,
+      "READY": 214,
+      "FAILED": 5,
+      "EXPIRED": 1,
+      "CANCELED": 0
+    },
+    "capacity": {
+      "maxActive": 30,
+      "utilizationPercent": 10,
+      "stuckProcessingCount": 0
+    },
+    "retry": {
+      "retryReadyCount": 42,
+      "retryScheduledCount": 3
+    },
+    "config": {
+      "maxWaitSeconds": 480,
+      "pollMinMs": 1500,
+      "pollMaxMs": 4000
+    }
+  },
+  "throughput": {
+    "successfulCheckoutsLastMinute": 3,
+    "successfulCheckoutsLastFiveMinutes": 12,
+    "successfulCheckoutsLastFifteenMinutes": 31,
+    "queueReadyLastFiveMinutes": 28,
+    "queueFailuresLastFiveMinutes": 4
+  },
+  "orders": {
+    "byStatus": {
+      "PENDING": 9,
+      "PAID": 1262,
+      "FINALIZATION_FAILED": 2,
+      "REFUNDED": 14,
+      "CANCELED": 8
+    },
+    "paidLast24Hours": 219,
+    "refundedLast24Hours": 1,
+    "finalizationFailedLast24Hours": 0
+  },
+  "holds": {
+    "activeCount": 51,
+    "expiringWithinTwoMinutes": 7,
+    "staleActiveCount": 0,
+    "byStatus": {
+      "ACTIVE": 51,
+      "EXPIRED": 318,
+      "CONVERTED": 1191,
+      "CANCELED": 12
+    },
+    "config": {
+      "holdTtlMinutes": 10,
+      "cleanupIntervalSeconds": 60
+    }
+  },
+  "webhooks": {
+    "byStatus": {
+      "PROCESSING": 0,
+      "PROCESSED": 784,
+      "FAILED": 2
+    },
+    "failedLastMinute": 0,
+    "processedLastFiveMinutes": 3
+  },
+  "errorsLastMinute": 0,
+  "seats": {
+    "total": 1760,
+    "soldPercent": 64.2,
+    "byStatus": {
+      "AVAILABLE": 580,
+      "HELD": 50,
+      "SOLD": 1130,
+      "BLOCKED": 0
+    }
+  },
+  "system": {
+    "memoryUsageMb": 280,
+    "heapUsedMb": 166,
+    "heapTotalMb": 212,
+    "externalMemoryMb": 12,
+    "freeMemoryMb": 10541,
+    "totalMemoryMb": 16384,
+    "cpuPercent": 65,
+    "loadAverage1m": 5.2,
+    "loadAverage5m": 4.8,
+    "loadAverage15m": 4.1
+  },
+  "lastSuccessfulCheckout": {
+    "at": "2026-04-10T02:17:53.000Z",
+    "secondsAgo": 18,
+    "amountCents": 3600,
+    "currency": "usd",
+    "source": "ONLINE"
+  },
+  "lastSuccessfulCheckoutSecondsAgo": 18
+}
 ```
 
 ### `GET /api/performances`
