@@ -47,6 +47,7 @@ import { tripAuthRoutes } from './routes/trip-auth.js';
 import { tripPortalRoutes } from './routes/trips-portal.js';
 import { adminTripRoutes } from './routes/admin-trips.js';
 import { adminDriveRoutes } from './routes/admin-drive.js';
+import { instagramRoutes } from './routes/instagram.js';
 import { startCheckoutQueueWorker } from './services/checkout-queue-worker.js';
 import { startHoldCleanupScheduler } from './services/hold-cleanup-scheduler.js';
 
@@ -109,6 +110,7 @@ export async function createServer() {
   await app.register(seniorSendoffFormRoutes);
   await app.register(tripAuthRoutes);
   await app.register(tripPortalRoutes);
+  await app.register(instagramRoutes);
 
   // Compatibility routes
   await app.register(showRoutes);

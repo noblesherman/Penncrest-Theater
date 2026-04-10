@@ -166,6 +166,13 @@ See:
 - `HOLD_CLEANUP_INTERVAL_SECONDS`
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`
 - `GOOGLE_CALENDAR_ICS_URL` (optional)
+- `INSTAGRAM_USERNAME` (required for `/api/instagram/feed`)
+- `INSTAGRAM_MEDIA_LIMIT` (optional, default `18`)
+- `INSTAGRAM_CACHE_TTL_SECONDS` (optional, default `1800`)
+- `INSTAGRAM_REQUEST_TIMEOUT_MS` (optional, default `15000`)
+- `INSTAGRAM_CACHE_FILE` (optional, default `.cache/instagram-feed.json`)
+- `INSTAGRAM_PYTHON_BIN` (optional, default `python3`)
+- `INSTAGRAM_SCRIPT_PATH` (optional, override python script path)
 - `R2_ACCOUNT_ID` (optional if `R2_ENDPOINT` is set)
 - `R2_ENDPOINT` (optional if `R2_ACCOUNT_ID` is set)
 - `R2_BUCKET`
@@ -174,6 +181,53 @@ See:
 - `R2_PUBLIC_BASE_URL`
 - `R2_UPLOAD_PREFIX` (optional, default `uploads`)
 - `R2_MAX_UPLOAD_BYTES` (optional, default `8388608`)
+
+## Instagram Feed Integration
+
+Implemented files:
+- `backend/src/services/instagram-feed.ts`
+- `backend/src/lib/memory-cache.ts`
+- `backend/src/routes/instagram.ts`
+- `backend/scripts/instagram_feed.py`
+- `src/components/InstagramGrid.tsx`
+- `src/components/InstagramGrid.module.css`
+- `src/pages/About.tsx` (mounted at bottom of About page)
+
+Backend route:
+- `GET /api/instagram/feed`
+- Uses `Instaloader` from a Python helper script (`backend/scripts/instagram_feed.py`).
+- Calls Instagram from the backend only (frontend never sees credentials).
+- Returns in-memory cached data when fresh.
+- Persists the last good payload to disk (default `.cache/instagram-feed.json`).
+- Returns stale cached data if Instaloader fails.
+- Returns `503` safe error when no cache is available.
+
+Install Python dependency (inside backend project or virtualenv):
+```bash
+cd backend
+python3 -m pip install instaloader
+```
+
+Test the Python script directly:
+```bash
+cd backend
+python3 scripts/instagram_feed.py --username penncrest.theater --limit 6
+```
+
+Test the backend route:
+```bash
+curl http://localhost:6000/api/instagram/feed
+```
+
+About page wiring:
+- `src/pages/About.tsx` already mounts `InstagramGrid` at the bottom.
+
+## Known limitations of the Instaloader approach
+
+- Instaloader is unofficial and can break when Instagram changes internals.
+- Public scraping can be throttled or blocked by Instagram without warning.
+- Some posts (especially videos/carousels) may occasionally return incomplete media URLs.
+- Request reliability can vary by region/IP reputation; caching reduces but does not remove this risk.
 
 ### One-Time Image Migration to R2
 
