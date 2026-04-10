@@ -88,7 +88,7 @@ export function StartupPreflightScreen({ onReady }: StartupPreflightScreenProps)
 
     try {
       try {
-        const response = await fetchWithTimeout(`${API_BASE_URL}/api/health`, 8_000);
+        const response = await fetchWithTimeout(`${API_BASE_URL}/api/health/ready`, 8_000);
         if (!response.ok) {
           setApiCheck({
             status: 'failed',
@@ -100,7 +100,7 @@ export function StartupPreflightScreen({ onReady }: StartupPreflightScreenProps)
           setApiCheck({
             status: payload.status === 'ok' || payload.status === 'degraded' ? 'ok' : 'failed',
             detail: payload.status ? `API responded with status: ${payload.status}.` : 'API is reachable.',
-            fix: payload.status ? undefined : 'Confirm /api/health returns JSON from this backend.'
+            fix: payload.status ? undefined : 'Confirm /api/health/ready returns JSON from this backend.'
           });
         }
       } catch (err) {

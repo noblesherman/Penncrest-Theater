@@ -6,7 +6,25 @@ Base URL examples:
 
 ## Public
 
-### `GET /api/health`
+### `GET /health`
+Lightweight liveness probe.
+
+Response:
+```json
+{
+  "status": "ok"
+}
+```
+
+### `GET /api/health/ready`
+Lightweight readiness probe (database ping + dependency configuration summary).
+
+### `GET /api/health` (Diagnostics)
+Heavy diagnostics snapshot. Expensive sections are cached for `HEALTH_DIAGNOSTICS_CACHE_TTL_SECONDS` (default 10s).
+
+### `GET /api/health/diagnostics`
+Alias for diagnostics (`/api/health`).
+
 Response:
 ```json
 {

@@ -7,7 +7,7 @@ ECOSYSTEM_FILE="${ROOT_DIR}/ecosystem.single.cjs"
 
 BACKEND_PORT="${BACKEND_PORT:-6000}"
 CLOUDFLARED_CONFIG="${CLOUDFLARED_CONFIG:-${ROOT_DIR}/cloudflared/config.yml}"
-API_HEALTH_URL="${API_HEALTH_URL:-http://127.0.0.1:${BACKEND_PORT}/api/health}"
+API_HEALTH_URL="${API_HEALTH_URL:-http://127.0.0.1:${BACKEND_PORT}/health}"
 
 log() {
   printf '\n[%s] %s\n' "deploy-theater" "$1"

@@ -25,6 +25,16 @@ type HealthSnapshot = {
   lastSuccessfulCheckoutSecondsAgo: number | null;
 };
 
+type MonitorDatabaseProbe = {
+  observedAtMs: number;
+  databaseLatencyMs: number;
+  queueWaitingCount: number;
+  queueProcessingCount: number;
+  queueLagSeconds: number;
+  errorsLastMinute: number;
+  lastSuccessfulCheckoutSecondsAgo: number | null;
+};
+
 function parseRecipients(raw: string): string[] {
   return raw
     .split(/[,\s;]+/)
@@ -130,64 +140,113 @@ export function startHealthAlertMonitor(
 
   const unrefTimer = options.unrefTimer ?? true;
   const cooldownMs = env.HEALTH_ALERT_COOLDOWN_MINUTES * 60_000;
+  const checkIntervalMs = env.HEALTH_ALERT_CHECK_INTERVAL_SECONDS * 1000;
+  const overloadedProbeIntervalMs = Math.max(checkIntervalMs, env.HEALTH_ALERT_OVERLOADED_PROBE_INTERVAL_SECONDS * 1000);
   let stopped = false;
   let timer: NodeJS.Timeout | null = null;
   let lastAlertSentAtMs: number | null = null;
   let lastStateWasOverloaded = false;
+  let tickInFlight = false;
+  let skippedTicks = 0;
+  let lastDatabaseProbe: MonitorDatabaseProbe | null = null;
 
   const runTick = async () => {
     if (stopped) return;
+    if (tickInFlight) {
+      skippedTicks += 1;
+      if (skippedTicks === 1 || skippedTicks % 5 === 0) {
+        logger.warn(
+          {
+            skippedTicks,
+            checkIntervalSeconds: env.HEALTH_ALERT_CHECK_INTERVAL_SECONDS
+          },
+          'health alert monitor tick skipped because previous tick is still running'
+        );
+      }
+      return;
+    }
 
+    tickInFlight = true;
     const now = new Date();
-    const minuteAgo = new Date(now.getTime() - 60_000);
     try {
-      const dbStartedAt = process.hrtime.bigint();
-      await prisma.$queryRaw`SELECT 1`;
-      const databaseLatencyMs = Number((process.hrtime.bigint() - dbStartedAt) / 1_000_000n);
+      const nowMs = now.getTime();
+      let probe: MonitorDatabaseProbe;
+      let usedCachedProbe = false;
 
-      const [queueMetrics, queueErrorsLastMinute, finalizationFailedLastMinute, webhooksFailedLastMinute, lastPaidOrder] =
-        await Promise.all([
-          getCheckoutQueueMetrics(now),
-          prisma.checkoutQueueItem.count({
-            where: {
-              status: { in: ['FAILED', 'EXPIRED'] },
-              updatedAt: { gte: minuteAgo }
-            }
-          }),
-          prisma.order.count({
-            where: {
-              status: 'FINALIZATION_FAILED',
-              updatedAt: { gte: minuteAgo }
-            }
-          }),
-          prisma.stripeWebhookEvent.count({
-            where: {
-              status: 'FAILED',
-              updatedAt: { gte: minuteAgo }
-            }
-          }),
-          prisma.order.findFirst({
-            where: { status: 'PAID' },
-            orderBy: { updatedAt: 'desc' },
-            select: { updatedAt: true }
-          })
-        ]);
+      const cachedProbe = lastDatabaseProbe;
+      const shouldReuseProbe =
+        lastStateWasOverloaded && cachedProbe !== null && nowMs - cachedProbe.observedAtMs < overloadedProbeIntervalMs;
 
-      const errorsLastMinute = queueErrorsLastMinute + finalizationFailedLastMinute + webhooksFailedLastMinute;
-      const lastSuccessfulCheckoutSecondsAgo = lastPaidOrder
-        ? Math.max(0, Math.floor((now.getTime() - lastPaidOrder.updatedAt.getTime()) / 1000))
-        : null;
+      if (shouldReuseProbe && cachedProbe) {
+        const elapsedSinceProbeSeconds = Math.max(0, Math.floor((nowMs - cachedProbe.observedAtMs) / 1000));
+        probe = {
+          ...cachedProbe,
+          lastSuccessfulCheckoutSecondsAgo:
+            cachedProbe.lastSuccessfulCheckoutSecondsAgo === null
+              ? null
+              : cachedProbe.lastSuccessfulCheckoutSecondsAgo + elapsedSinceProbeSeconds
+        };
+        usedCachedProbe = true;
+      } else {
+        const minuteAgo = new Date(now.getTime() - 60_000);
+        const dbStartedAt = process.hrtime.bigint();
+        await prisma.$queryRaw`SELECT 1`;
+        const databaseLatencyMs = Number((process.hrtime.bigint() - dbStartedAt) / 1_000_000n);
+
+        const [queueMetrics, queueErrorsLastMinute, finalizationFailedLastMinute, webhooksFailedLastMinute, lastPaidOrder] =
+          await Promise.all([
+            getCheckoutQueueMetrics(now),
+            prisma.checkoutQueueItem.count({
+              where: {
+                status: { in: ['FAILED', 'EXPIRED'] },
+                updatedAt: { gte: minuteAgo }
+              }
+            }),
+            prisma.order.count({
+              where: {
+                status: 'FINALIZATION_FAILED',
+                updatedAt: { gte: minuteAgo }
+              }
+            }),
+            prisma.stripeWebhookEvent.count({
+              where: {
+                status: 'FAILED',
+                updatedAt: { gte: minuteAgo }
+              }
+            }),
+            prisma.order.findFirst({
+              where: { status: 'PAID' },
+              orderBy: { updatedAt: 'desc' },
+              select: { updatedAt: true }
+            })
+          ]);
+
+        const errorsLastMinute = queueErrorsLastMinute + finalizationFailedLastMinute + webhooksFailedLastMinute;
+        const lastSuccessfulCheckoutSecondsAgo = lastPaidOrder
+          ? Math.max(0, Math.floor((now.getTime() - lastPaidOrder.updatedAt.getTime()) / 1000))
+          : null;
+        probe = {
+          observedAtMs: nowMs,
+          databaseLatencyMs,
+          queueWaitingCount: queueMetrics.waitingCount,
+          queueProcessingCount: queueMetrics.processingCount,
+          queueLagSeconds: queueMetrics.oldestWaitingAgeSeconds,
+          errorsLastMinute,
+          lastSuccessfulCheckoutSecondsAgo
+        };
+        lastDatabaseProbe = probe;
+      }
 
       const snapshot: HealthSnapshot = {
         observedAtIso: now.toISOString(),
         cpuPercent: getCpuPercent(),
         memoryUsageMb: Math.round(process.memoryUsage().rss / (1024 * 1024)),
-        databaseLatencyMs,
-        queueWaitingCount: queueMetrics.waitingCount,
-        queueProcessingCount: queueMetrics.processingCount,
-        queueLagSeconds: queueMetrics.oldestWaitingAgeSeconds,
-        errorsLastMinute,
-        lastSuccessfulCheckoutSecondsAgo
+        databaseLatencyMs: probe.databaseLatencyMs,
+        queueWaitingCount: probe.queueWaitingCount,
+        queueProcessingCount: probe.queueProcessingCount,
+        queueLagSeconds: probe.queueLagSeconds,
+        errorsLastMinute: probe.errorsLastMinute,
+        lastSuccessfulCheckoutSecondsAgo: probe.lastSuccessfulCheckoutSecondsAgo
       };
 
       const violations = evaluateSnapshot(snapshot);
@@ -214,7 +273,8 @@ export function startHealthAlertMonitor(
             {
               violations,
               snapshot,
-              recipients
+              recipients,
+              usedCachedProbe
             },
             'health alert email sent'
           );
@@ -223,7 +283,8 @@ export function startHealthAlertMonitor(
             {
               violations,
               snapshot,
-              cooldownMinutes: env.HEALTH_ALERT_COOLDOWN_MINUTES
+              cooldownMinutes: env.HEALTH_ALERT_COOLDOWN_MINUTES,
+              usedCachedProbe
             },
             'health alert suppressed due to cooldown'
           );
@@ -253,16 +314,18 @@ export function startHealthAlertMonitor(
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')}</pre>`
         });
-        logger.info({ snapshot, recipients }, 'health recovery email sent');
+        logger.info({ snapshot, recipients, usedCachedProbe }, 'health recovery email sent');
       }
 
+      skippedTicks = 0;
       lastStateWasOverloaded = overloaded;
     } catch (err) {
       logger.error({ err }, 'health alert monitor tick failed');
+    } finally {
+      tickInFlight = false;
     }
   };
 
-  const checkIntervalMs = env.HEALTH_ALERT_CHECK_INTERVAL_SECONDS * 1000;
   timer = setInterval(() => {
     void runTick();
   }, checkIntervalMs);
@@ -273,7 +336,8 @@ export function startHealthAlertMonitor(
     {
       recipients,
       checkIntervalSeconds: env.HEALTH_ALERT_CHECK_INTERVAL_SECONDS,
-      cooldownMinutes: env.HEALTH_ALERT_COOLDOWN_MINUTES
+      cooldownMinutes: env.HEALTH_ALERT_COOLDOWN_MINUTES,
+      overloadedProbeIntervalSeconds: Math.floor(overloadedProbeIntervalMs / 1000)
     },
     'health alert monitor started'
   );
