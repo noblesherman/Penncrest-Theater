@@ -49,6 +49,7 @@ import { adminTripRoutes } from './routes/admin-trips.js';
 import { adminDriveRoutes } from './routes/admin-drive.js';
 import { startCheckoutQueueWorker } from './services/checkout-queue-worker.js';
 import { startHoldCleanupScheduler } from './services/hold-cleanup-scheduler.js';
+import { startHealthAlertMonitor } from './services/health-alert-monitor.js';
 
 export async function createServer() {
   const uploadBodyLimitBytes = Math.max(16 * 1024 * 1024, Math.ceil(env.R2_MAX_UPLOAD_BYTES * 1.5));
@@ -149,6 +150,14 @@ export async function createServer() {
       stop: () => holdCleanupScheduler.stop()
     });
     app.log.info('in-process hold cleanup scheduler enabled');
+  }
+
+  if (env.ENABLE_IN_PROCESS_HEALTH_ALERT_MONITOR) {
+    const healthAlertMonitor = startHealthAlertMonitor(app.log);
+    backgroundControllers.push({
+      stop: () => healthAlertMonitor.stop()
+    });
+    app.log.info('in-process health alert monitor enabled');
   }
 
   if (backgroundControllers.length > 0) {

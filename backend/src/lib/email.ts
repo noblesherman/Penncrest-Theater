@@ -53,6 +53,13 @@ type TripLoginCodeEmailPayload = {
   expiresAt: Date;
 };
 
+type SystemAlertEmailPayload = {
+  to: string | string[];
+  subject: string;
+  text: string;
+  html?: string;
+};
+
 type EmailLogoAttachment = {
   filename: string;
   content: Buffer;
@@ -618,5 +625,27 @@ export async function sendTripLoginCodeEmail(payload: TripLoginCodeEmailPayload)
     subject: 'Your Penncrest Theater trip sign-in code',
     text,
     html
+  });
+}
+
+export async function sendSystemAlertEmail(payload: SystemAlertEmailPayload): Promise<void> {
+  if (!transporter || !env.SMTP_FROM) {
+    console.warn('SMTP is not configured; skipping system alert email send.');
+    return;
+  }
+
+  const recipients = Array.isArray(payload.to) ? payload.to : [payload.to];
+  const normalizedRecipients = recipients.map((recipient) => recipient.trim().toLowerCase()).filter(Boolean);
+  if (normalizedRecipients.length === 0) {
+    console.warn('No recipients configured; skipping system alert email send.');
+    return;
+  }
+
+  await transporter.sendMail({
+    from: env.SMTP_FROM,
+    to: normalizedRecipients.join(','),
+    subject: payload.subject,
+    text: payload.text,
+    html: payload.html
   });
 }
