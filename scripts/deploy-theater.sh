@@ -44,8 +44,10 @@ npm --prefix "${BACKEND_DIR}" run build
 log "Removing theater worker processes (single-process runtime)"
 pm2 delete theater-checkout-worker theater-hold-cleanup theater-quick-tunnel >/dev/null 2>&1 || true
 
-log "Starting or reloading theater backend+tunnel with ${ECOSYSTEM_FILE}"
-BACKEND_PORT="${BACKEND_PORT}" CLOUDFLARED_CONFIG="${CLOUDFLARED_CONFIG}" pm2 startOrRestart "${ECOSYSTEM_FILE}" --update-env
+log "Restarting theater backend+tunnel with ${ECOSYSTEM_FILE}"
+# NOTE: pm2 startOrRestart is flaky on some PM2 versions; delete+start is more portable.
+pm2 delete theater-backend theater-tunnel >/dev/null 2>&1 || true
+BACKEND_PORT="${BACKEND_PORT}" CLOUDFLARED_CONFIG="${CLOUDFLARED_CONFIG}" pm2 start "${ECOSYSTEM_FILE}" --update-env
 
 log "Waiting for backend health check at ${API_HEALTH_URL}"
 for attempt in {1..20}; do
