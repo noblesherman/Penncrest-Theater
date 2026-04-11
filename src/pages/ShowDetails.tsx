@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Calendar, Clock, MapPin, ArrowLeft } from 'lucide-react';
 import { format } from 'date-fns';
@@ -36,7 +36,14 @@ interface Show {
 
 export default function ShowDetails() {
   const { id } = useParams();
+  const location = useLocation();
   const [show, setShow] = useState<Show | null>(null);
+  const ticketsAnchorId = 'show-tickets';
+  const ticketsSectionRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollToTickets = (behavior: ScrollBehavior = 'smooth') => {
+    ticketsSectionRef.current?.scrollIntoView({ behavior, block: 'start' });
+  };
 
   useEffect(() => {
     fetch(apiUrl(`/api/shows/${id}`))
@@ -62,6 +69,18 @@ export default function ShowDetails() {
       });
   }, [id]);
 
+  useEffect(() => {
+    if (!show || location.hash !== `#${ticketsAnchorId}`) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      scrollToTickets('smooth');
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [show, location.hash]);
+
   if (!show) {
     return (
       <>
@@ -80,7 +99,6 @@ export default function ShowDetails() {
   const showDescription = typeof show.description === 'string' ? show.description : '';
   const showPosterUrl = typeof show.posterUrl === 'string' ? show.posterUrl : '';
   const nextPerformance = sortedPerformances[0];
-  const ticketsAnchorId = 'show-tickets';
   const seoTitle = `${show.title} | Penncrest Theater Showtimes and Tickets`;
   const seoDescription = trimDescription(
     `${cleanText(showDescription)} View cast details, performance times, and ticket information for ${show.title} at Penncrest High School Theater in Media, Pennsylvania.`
@@ -206,13 +224,14 @@ export default function ShowDetails() {
                 </p>
                 <div className="mt-6 border-t border-stone-100 pt-5 lg:hidden">
                   <div className="flex flex-col items-start gap-2">
-                    <a
-                      href={`#${ticketsAnchorId}`}
+                    <button
+                      type="button"
+                      onClick={() => scrollToTickets('smooth')}
                       className="inline-flex w-full items-center justify-center rounded-xl bg-red-700 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-800 sm:w-auto"
                       style={{ fontFamily: 'system-ui, sans-serif' }}
                     >
                       Get Tickets
-                    </a>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -264,7 +283,7 @@ export default function ShowDetails() {
 
             {/* Sidebar / Tickets */}
             <div className="lg:col-span-1">
-              <div id={ticketsAnchorId} className="scroll-mt-28 rounded-3xl border border-stone-100 bg-white p-6 shadow-lg sm:p-8 lg:sticky lg:top-24">
+              <div ref={ticketsSectionRef} id={ticketsAnchorId} className="scroll-mt-28 rounded-3xl border border-stone-100 bg-white p-6 shadow-lg sm:p-8 lg:sticky lg:top-24">
                 <h3 className="text-2xl font-bold mb-6 flex items-center gap-2 text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
                   <Calendar className="w-6 h-6 text-red-600" />
                   Performances
