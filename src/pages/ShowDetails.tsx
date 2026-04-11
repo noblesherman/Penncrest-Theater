@@ -80,6 +80,8 @@ export default function ShowDetails() {
   const showDescription = typeof show.description === 'string' ? show.description : '';
   const showPosterUrl = typeof show.posterUrl === 'string' ? show.posterUrl : '';
   const nextPerformance = sortedPerformances[0];
+  const firstBookablePerformance = sortedPerformances.find((performance) => performance.salesOpen !== false);
+  const ticketsAnchorId = 'show-tickets';
   const seoTitle = `${show.title} | Penncrest Theater Showtimes and Tickets`;
   const seoDescription = trimDescription(
     `${cleanText(showDescription)} View cast details, performance times, and ticket information for ${show.title} at Penncrest High School Theater in Media, Pennsylvania.`
@@ -203,6 +205,34 @@ export default function ShowDetails() {
                 <p className="whitespace-pre-line text-base leading-relaxed text-stone-600 sm:text-lg" style={{ fontFamily: 'system-ui, sans-serif' }}>
                   {showDescription || 'Details coming soon.'}
                 </p>
+                <div className="mt-6 border-t border-stone-100 pt-5 lg:hidden">
+                  <div className="flex flex-col items-start gap-2">
+                    {firstBookablePerformance ? (
+                      <Link
+                        to={`/booking/${firstBookablePerformance.id}`}
+                        className="inline-flex w-full items-center justify-center rounded-xl bg-red-700 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-800 sm:w-auto"
+                        style={{ fontFamily: 'system-ui, sans-serif' }}
+                      >
+                        Get Tickets
+                      </Link>
+                    ) : (
+                      <a
+                        href={`#${ticketsAnchorId}`}
+                        className="inline-flex w-full items-center justify-center rounded-xl bg-red-700 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-800 sm:w-auto"
+                        style={{ fontFamily: 'system-ui, sans-serif' }}
+                      >
+                        Get Tickets
+                      </a>
+                    )}
+                    <a
+                      href={`#${ticketsAnchorId}`}
+                      className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500 transition-colors hover:text-stone-700"
+                      style={{ fontFamily: 'system-ui, sans-serif' }}
+                    >
+                      Jump to Tickets
+                    </a>
+                  </div>
+                </div>
               </div>
 
               {/* Cast Grid */}
@@ -252,13 +282,13 @@ export default function ShowDetails() {
 
             {/* Sidebar / Tickets */}
             <div className="lg:col-span-1">
-              <div className="rounded-3xl border border-stone-100 bg-white p-6 shadow-lg sm:p-8 lg:sticky lg:top-24">
+              <div id={ticketsAnchorId} className="scroll-mt-28 rounded-3xl border border-stone-100 bg-white p-6 shadow-lg sm:p-8 lg:sticky lg:top-24">
                 <h3 className="text-2xl font-bold mb-6 flex items-center gap-2 text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
                   <Calendar className="w-6 h-6 text-red-600" />
                   Performances
                 </h3>
                 <div className="space-y-4">
-                  {show.performances.map((perf) => (
+                  {sortedPerformances.map((perf) => (
                     <div key={perf.id} className="rounded-2xl border border-stone-100 bg-white p-4 shadow-sm transition-shadow hover:shadow-md sm:p-6">
                       <div className="flex justify-between items-start mb-4">
                         <div>
@@ -291,7 +321,7 @@ export default function ShowDetails() {
                       )}
                     </div>
                   ))}
-                  {show.performances.length === 0 && (
+                  {sortedPerformances.length === 0 && (
                     <div className="text-stone-500 italic">No upcoming performances scheduled.</div>
                   )}
                 </div>
