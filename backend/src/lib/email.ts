@@ -276,7 +276,7 @@ export async function sendTicketsEmail(payload: TicketEmailPayload): Promise<voi
                       ${
                         logoSrc
                           ? `<img src="${logoSrc}" width="72" height="72" alt="${BRAND_NAME} lion crest" style="display:block;width:72px;height:72px;object-fit:contain;border-radius:10px;border:2px solid #c9a84c;background:#3d0a0a;padding:4px;box-sizing:border-box;" />`
-                          : `<div style="width:72px;height:72px;border-radius:10px;border:2px solid #c9a84c;background:#5a1010;display:flex;align-items:center;justify-content:center;font-family:Georgia,serif;font-size:28px;color:#c9a84c;text-align:center;line-height:72px;">&#127914;</div>`
+                          : `<table role="presentation" cellpadding="0" cellspacing="0" width="72" style="width:72px;height:72px;border-radius:10px;border:2px solid #c9a84c;background:#5a1010;"><tr><td width="72" height="72" align="center" valign="middle" style="width:72px;height:72px;text-align:center;vertical-align:middle;line-height:72px;mso-line-height-rule:exactly;"><span style="display:inline-block;line-height:1;font-size:32px;font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;">&#127917;</span></td></tr></table>`
                       }
                     </td>
                   </tr>

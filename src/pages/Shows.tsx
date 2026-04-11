@@ -110,8 +110,8 @@ export default function Shows() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {shows.map((show, index) => (
                 <motion.div key={show.id} {...fadeUp(index * 0.08)}>
-                  <Link to={`/shows/${show.id}`} className="group block h-full">
-                    <article className="h-full rounded-2xl overflow-hidden border border-stone-100 bg-white shadow-sm hover:shadow-xl transition-all duration-300">
+                  <article className="group h-full rounded-2xl overflow-hidden border border-stone-100 bg-white shadow-sm hover:shadow-xl transition-all duration-300">
+                    <Link to={`/shows/${show.id}`} className="block">
                       <div className="aspect-[4/3] overflow-hidden relative">
                         <motion.img
                           whileHover={{ scale: 1.05 }}
@@ -124,46 +124,57 @@ export default function Shows() {
                           {show.year}
                         </div>
                       </div>
+                    </Link>
 
-                      <div className="p-6 flex flex-col h-[calc(100%-0px)]">
-                        <div className="flex items-center gap-2 mb-3">
-                          <span
-                            className="h-2 w-2 rounded-full"
-                            style={{ backgroundColor: show.accentColor || '#b91c1c' }}
-                          />
-                          <span
-                            className="text-xs uppercase tracking-[0.15em] font-semibold text-red-600"
-                            style={{ fontFamily: 'system-ui, sans-serif' }}
-                          >
-                            {show.type}
-                          </span>
-                        </div>
+                    <div className="p-6 flex flex-col h-[calc(100%-0px)]">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span
+                          className="h-2 w-2 rounded-full"
+                          style={{ backgroundColor: show.accentColor || '#b91c1c' }}
+                        />
+                        <span
+                          className="text-xs uppercase tracking-[0.15em] font-semibold text-red-600"
+                          style={{ fontFamily: 'system-ui, sans-serif' }}
+                        >
+                          {show.type}
+                        </span>
+                      </div>
 
+                      <Link to={`/shows/${show.id}`} className="block">
                         <h3
                           className="font-bold text-stone-900 mb-2 group-hover:text-red-700 transition-colors"
                           style={{ fontFamily: 'Georgia, serif', fontSize: '1.4rem', lineHeight: 1.3 }}
                         >
                           {show.title}
                         </h3>
+                      </Link>
 
-                        <p
-                          className="text-stone-500 text-sm leading-relaxed flex-1"
-                          style={{ fontFamily: 'system-ui, sans-serif' }}
-                        >
-                          {show.description}
-                        </p>
+                      <p
+                        className="text-stone-500 text-sm leading-relaxed flex-1"
+                        style={{ fontFamily: 'system-ui, sans-serif' }}
+                      >
+                        {show.description}
+                      </p>
 
-                        <span
-                          className="mt-5 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-red-600"
-                          style={{ fontFamily: 'system-ui, sans-serif' }}
-                        >
-                          <Ticket className="w-3.5 h-3.5" />
-                          View Details
-                          <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                        </span>
-                      </div>
-                    </article>
-                  </Link>
+                      <Link
+                        to={`/shows/${show.id}#show-tickets`}
+                        className="mt-5 inline-flex items-center justify-center rounded-xl bg-red-700 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-800"
+                        style={{ fontFamily: 'system-ui, sans-serif' }}
+                      >
+                        Get Tickets
+                      </Link>
+
+                      <Link
+                        to={`/shows/${show.id}`}
+                        className="mt-4 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-red-600"
+                        style={{ fontFamily: 'system-ui, sans-serif' }}
+                      >
+                        <Ticket className="w-3.5 h-3.5" />
+                        View Details
+                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                      </Link>
+                    </div>
+                  </article>
                 </motion.div>
               ))}
             </div>

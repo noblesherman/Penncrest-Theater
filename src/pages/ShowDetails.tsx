@@ -80,7 +80,6 @@ export default function ShowDetails() {
   const showDescription = typeof show.description === 'string' ? show.description : '';
   const showPosterUrl = typeof show.posterUrl === 'string' ? show.posterUrl : '';
   const nextPerformance = sortedPerformances[0];
-  const firstBookablePerformance = sortedPerformances.find((performance) => performance.salesOpen !== false);
   const ticketsAnchorId = 'show-tickets';
   const seoTitle = `${show.title} | Penncrest Theater Showtimes and Tickets`;
   const seoDescription = trimDescription(
@@ -207,29 +206,12 @@ export default function ShowDetails() {
                 </p>
                 <div className="mt-6 border-t border-stone-100 pt-5 lg:hidden">
                   <div className="flex flex-col items-start gap-2">
-                    {firstBookablePerformance ? (
-                      <Link
-                        to={`/booking/${firstBookablePerformance.id}`}
-                        className="inline-flex w-full items-center justify-center rounded-xl bg-red-700 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-800 sm:w-auto"
-                        style={{ fontFamily: 'system-ui, sans-serif' }}
-                      >
-                        Get Tickets
-                      </Link>
-                    ) : (
-                      <a
-                        href={`#${ticketsAnchorId}`}
-                        className="inline-flex w-full items-center justify-center rounded-xl bg-red-700 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-800 sm:w-auto"
-                        style={{ fontFamily: 'system-ui, sans-serif' }}
-                      >
-                        Get Tickets
-                      </a>
-                    )}
                     <a
                       href={`#${ticketsAnchorId}`}
-                      className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500 transition-colors hover:text-stone-700"
+                      className="inline-flex w-full items-center justify-center rounded-xl bg-red-700 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-800 sm:w-auto"
                       style={{ fontFamily: 'system-ui, sans-serif' }}
                     >
-                      Jump to Tickets
+                      Get Tickets
                     </a>
                   </div>
                 </div>
