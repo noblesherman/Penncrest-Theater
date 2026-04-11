@@ -110,7 +110,7 @@ export default function Shows() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {shows.map((show, index) => (
                 <motion.div key={show.id} {...fadeUp(index * 0.08)}>
-                  <article className="group h-full rounded-2xl overflow-hidden border border-stone-100 bg-white shadow-sm hover:shadow-xl transition-all duration-300">
+                  <article className="group rounded-2xl overflow-hidden border border-stone-100 bg-white shadow-sm hover:shadow-xl transition-all duration-300">
                     <Link to={`/shows/${show.id}`} className="block">
                       <div className="aspect-[4/3] overflow-hidden relative">
                         <motion.img
@@ -126,7 +126,7 @@ export default function Shows() {
                       </div>
                     </Link>
 
-                    <div className="p-6 flex flex-col h-[calc(100%-0px)]">
+                    <div className="p-6 flex flex-col">
                       <div className="flex items-center gap-2 mb-3">
                         <span
                           className="h-2 w-2 rounded-full"
@@ -150,7 +150,7 @@ export default function Shows() {
                       </Link>
 
                       <p
-                        className="text-stone-500 text-sm leading-relaxed flex-1"
+                        className="text-stone-500 text-sm leading-relaxed"
                         style={{ fontFamily: 'system-ui, sans-serif' }}
                       >
                         {show.description}
