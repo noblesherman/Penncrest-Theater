@@ -38,8 +38,14 @@ export default function ShowDetails() {
   const { id } = useParams();
   const location = useLocation();
   const [show, setShow] = useState<Show | null>(null);
+  const aboutAnchorId = 'about-show';
   const ticketsAnchorId = 'show-tickets';
+  const aboutSectionRef = useRef<HTMLDivElement | null>(null);
   const ticketsSectionRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollToAbout = (behavior: ScrollBehavior = 'smooth') => {
+    aboutSectionRef.current?.scrollIntoView({ behavior, block: 'start' });
+  };
 
   const scrollToTickets = (behavior: ScrollBehavior = 'smooth') => {
     ticketsSectionRef.current?.scrollIntoView({ behavior, block: 'start' });
@@ -70,12 +76,19 @@ export default function ShowDetails() {
   }, [id]);
 
   useEffect(() => {
-    if (!show || location.hash !== `#${ticketsAnchorId}`) {
+    if (!show) {
       return;
     }
 
     const timeout = window.setTimeout(() => {
-      scrollToTickets('smooth');
+      if (location.hash === `#${ticketsAnchorId}`) {
+        scrollToTickets('smooth');
+        return;
+      }
+
+      if (location.hash === `#${aboutAnchorId}`) {
+        scrollToAbout('smooth');
+      }
     }, 0);
 
     return () => window.clearTimeout(timeout);
@@ -212,7 +225,7 @@ export default function ShowDetails() {
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 lg:gap-12">
             {/* Main Content */}
             <div className="lg:col-span-2 space-y-12">
-              <div className="rounded-3xl border border-stone-100 bg-white p-6 shadow-xl sm:p-8 md:p-12">
+              <div ref={aboutSectionRef} id={aboutAnchorId} className="scroll-mt-28 rounded-3xl border border-stone-100 bg-white p-6 shadow-xl sm:p-8 md:p-12">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-red-600 mb-2" style={{ fontFamily: 'system-ui, sans-serif' }}>
                   Synopsis
                 </p>

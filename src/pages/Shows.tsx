@@ -165,7 +165,7 @@ export default function Shows() {
                       </Link>
 
                       <Link
-                        to={`/shows/${show.id}`}
+                        to={`/shows/${show.id}#about-show`}
                         className="mt-4 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-red-600"
                         style={{ fontFamily: 'system-ui, sans-serif' }}
                       >
