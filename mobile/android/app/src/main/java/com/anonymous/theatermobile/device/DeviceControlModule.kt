@@ -71,7 +71,7 @@ class DeviceControlModule(private val appContext: ReactApplicationContext) : Rea
   fun setKioskLock(locked: Boolean, promise: Promise) {
     persistKioskLock(appContext, locked)
 
-    val activity = currentActivity
+    val activity = appContext.currentActivity
     if (activity == null) {
       promise.resolve(false)
       return
@@ -120,7 +120,7 @@ class DeviceControlModule(private val appContext: ReactApplicationContext) : Rea
 
   @ReactMethod
   fun restartApp(promise: Promise) {
-    val activity = currentActivity
+    val activity = appContext.currentActivity
     if (activity == null) {
       promise.resolve(null)
       return
