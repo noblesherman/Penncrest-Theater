@@ -128,6 +128,8 @@ export type PaymentLineEntryView = {
   entryId: string;
   dispatchId: string;
   queueKey: string;
+  performanceId: string;
+  performanceTitle: string;
   queueSortAt: string;
   status: TerminalDispatchStatus;
   failureReason: string | null;
@@ -136,6 +138,8 @@ export type PaymentLineEntryView = {
   canRetry: boolean;
   expectedAmountCents: number;
   currency: string;
+  paymentIntentId: string | null;
+  paymentIntentClientSecret: string | null;
   attemptCount: number;
   finalOrderId: string | null;
   targetDeviceId: string;
@@ -156,6 +160,9 @@ export type PaymentLineEntryView = {
   position: number | null;
   waitingCount: number;
   nowServingEntryId: string | null;
+  processingStartedAt: string | null;
+  processingHeartbeatAt: string | null;
+  activeTimeoutAt: string | null;
   isYourTurn: boolean;
   isNext: boolean;
   uiState: PaymentLineUiState;
@@ -186,6 +193,8 @@ function toPaymentLineEntryView(params: {
     entryId: params.entry.id,
     dispatchId: params.entry.id,
     queueKey: params.entry.queueKey,
+    performanceId: params.entry.performanceId,
+    performanceTitle: snapshot.performanceTitle,
     queueSortAt: params.entry.queueSortAt.toISOString(),
     status: params.entry.status,
     failureReason: params.entry.failureReason,
@@ -194,6 +203,8 @@ function toPaymentLineEntryView(params: {
     canRetry: params.entry.status === 'FAILED' && holdActive,
     expectedAmountCents: params.entry.expectedAmountCents,
     currency: params.entry.currency,
+    paymentIntentId: params.entry.stripePaymentIntentId,
+    paymentIntentClientSecret: params.entry.stripePaymentIntentClientSecret,
     attemptCount: params.entry.attemptCount,
     finalOrderId: params.entry.finalOrderId,
     targetDeviceId: params.entry.targetDeviceId,
@@ -217,6 +228,9 @@ function toPaymentLineEntryView(params: {
     position,
     waitingCount: params.queue.waitingEntries.length,
     nowServingEntryId: params.queue.nowServing?.id || null,
+    processingStartedAt: params.entry.processingStartedAt?.toISOString() || null,
+    processingHeartbeatAt: params.entry.processingHeartbeatAt?.toISOString() || null,
+    activeTimeoutAt: params.entry.activeTimeoutAt?.toISOString() || null,
     isYourTurn,
     isNext,
     uiState: mapStatusToUiState(params.entry.status),

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { handleRouteError } from '../lib/route-error.js';
 import { HttpError } from '../lib/http-error.js';
 import { prisma } from '../lib/prisma.js';
+import { env } from '../lib/env.js';
 import {
   backToLineEntry,
   cancelPaymentLineEntry,
@@ -276,10 +277,16 @@ export const adminPaymentLineRoutes: FastifyPluginAsync = async (app) => {
 
       const keepAlive = setInterval(() => {
         reply.raw.write(`event: ping\ndata: {"t":"${new Date().toISOString()}"}\n\n`);
-      }, 15_000);
+      }, env.PAYMENT_LINE_SSE_HEARTBEAT_SECONDS * 1_000);
 
       const snapshot = await fetchPaymentLineSnapshot(payload.queueKey);
-      reply.raw.write(`event: ready\ndata: ${JSON.stringify({ queueKey: payload.queueKey })}\n\n`);
+      reply.raw.write(
+        `event: ready\ndata: ${JSON.stringify({
+          queueKey: payload.queueKey,
+          heartbeatSeconds: env.PAYMENT_LINE_SSE_HEARTBEAT_SECONDS,
+          wallboardDefaultLimit: env.PAYMENT_LINE_WALLBOARD_DEFAULT_LIMIT
+        })}\n\n`
+      );
       reply.raw.write(`event: queue_snapshot\ndata: ${JSON.stringify(snapshot)}\n\n`);
 
       request.raw.on('close', () => {

@@ -1,30 +1,29 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  cancelTerminalDispatch,
-  completeTerminalDispatch,
+  backToLineMobilePaymentLineEntry,
+  cancelMobilePaymentLineEntry,
+  completeMobilePaymentLineEntry,
   createTerminalDispatchManualPaymentIntent,
-  fetchTerminalDispatchAdminState,
-  fetchNextTerminalDispatch,
+  failMobilePaymentLineEntry,
+  fetchMobilePaymentLineSnapshot,
+  heartbeatMobilePaymentLine,
   registerTerminalDevice,
-  sendTerminalHeartbeat,
   sendTerminalDispatchTelemetry,
-  retryTerminalDispatch,
-  updateTerminalDispatchStatus,
-  type TerminalIncomingDispatch
+  sendTerminalHeartbeat,
+  startMobilePaymentLine,
+  type PaymentLineEntryState,
+  type PaymentLineSession,
+  type PaymentLineSnapshot
 } from '../api/mobile';
 import { useAuth } from '../auth/AuthContext';
 import { PaymentModeBadge } from '../components/PaymentModeBadge';
 import { TERMINAL_MOCK_MODE } from '../config';
 import type { RootStackParamList } from '../navigation/types';
-import {
-  clearTerminalDispatchRecovery,
-  loadTerminalDispatchRecovery,
-  saveTerminalDispatchRecovery
-} from '../payments/paymentRecovery';
 import { stripePaymentSheet } from '../payments/stripePaymentSheet';
 import { useTerminal } from '../terminal/terminal';
 import { TAP_TO_PAY_DEVICE_LABEL, TAP_TO_PAY_DISPLAY_NAME, TAP_TO_PAY_PERMISSION_HINT } from '../terminal/tapToPay';
@@ -33,6 +32,10 @@ type Props = NativeStackScreenProps<RootStackParamList, 'TerminalStation'>;
 
 type DispatchPaymentChoice = 'tap' | 'manual';
 type PaymentPath = 'tap' | 'manual' | 'unknown';
+
+type DispatchChoiceEntry = {
+  dispatchId: string;
+};
 
 const DEVICE_ID_KEY = 'theater.mobile.terminal.deviceId';
 const TERMINAL_NAME_KEY = 'theater.mobile.terminal.name';
@@ -55,6 +58,16 @@ function mapPaymentPathToTelemetry(path: PaymentPath): 'TAP_TO_PAY' | 'MANUAL' |
   return 'UNKNOWN';
 }
 
+function formatSellerLabel(entry: PaymentLineEntryState | null): string {
+  if (!entry) return 'No active seller';
+  if (entry.sellerStationName && entry.sellerStationName.trim()) return entry.sellerStationName.trim();
+  if (entry.sellerClientSessionId && entry.sellerClientSessionId.trim()) {
+    return `Seller ${entry.sellerClientSessionId.slice(0, 8)}`;
+  }
+  if (entry.sellerAdminId && entry.sellerAdminId.trim()) return `Seller ${entry.sellerAdminId.slice(0, 8)}`;
+  return 'Seller';
+}
+
 export function TerminalStationScreen(_props: Props) {
   const { token } = useAuth();
   const terminal = useTerminal();
@@ -65,18 +78,20 @@ export function TerminalStationScreen(_props: Props) {
   const [savedTerminalName, setSavedTerminalName] = useState<string>(DEFAULT_TERMINAL_NAME);
   const [registering, setRegistering] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [startingPayment, setStartingPayment] = useState(false);
   const [statusMessage, setStatusMessage] = useState('Waiting to register terminal station...');
   const [error, setError] = useState<string | null>(null);
-  const [activeDispatch, setActiveDispatch] = useState<TerminalIncomingDispatch | null>(null);
+  const [heartbeatError, setHeartbeatError] = useState<string | null>(null);
+  const [lineSnapshot, setLineSnapshot] = useState<PaymentLineSnapshot | null>(null);
+  const [lineSession, setLineSession] = useState<PaymentLineSession | null>(null);
   const [lastOrderId, setLastOrderId] = useState<string | null>(null);
   const [lastFailedDispatchId, setLastFailedDispatchId] = useState<string | null>(null);
   const [lastFailureReason, setLastFailureReason] = useState<string | null>(null);
   const [lastFailurePath, setLastFailurePath] = useState<PaymentPath>('unknown');
-  const [lastFailureCanRetry, setLastFailureCanRetry] = useState(false);
   const [operatorBusy, setOperatorBusy] = useState(false);
-  const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
   const [dispatchChoiceDispatchId, setDispatchChoiceDispatchId] = useState<string | null>(null);
   const [dispatchChoiceSecondsRemaining, setDispatchChoiceSecondsRemaining] = useState<number>(0);
+  const [clockNowMs, setClockNowMs] = useState(() => Date.now());
 
   const terminalInitPromiseRef = useRef<Promise<void> | null>(null);
   const terminalInitializedRef = useRef(false);
@@ -85,13 +100,55 @@ export function TerminalStationScreen(_props: Props) {
   const dispatchChoiceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dispatchChoiceIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const canceledDispatchIdRef = useRef<string | null>(null);
+  const processingEntryIdRef = useRef<string | null>(null);
+  const lineSessionRef = useRef<PaymentLineSession | null>(null);
+
+  useEffect(() => {
+    lineSessionRef.current = lineSession;
+  }, [lineSession]);
 
   const canSaveName = useMemo(
     () => terminalName.trim().length > 0 && terminalName.trim() !== savedTerminalName && !registering,
     [registering, savedTerminalName, terminalName]
   );
-  const isDispatchChoiceVisible = Boolean(activeDispatch && dispatchChoiceDispatchId === activeDispatch.dispatchId);
-  const isManualPaymentAvailable = stripePaymentSheet.isAvailable;
+
+  const activeLineEntry = useMemo(() => {
+    if (!lineSnapshot) return null;
+
+    if (lineSession?.activeEntryId) {
+      const activeBySession = lineSnapshot.entries.find((entry) => entry.entryId === lineSession.activeEntryId);
+      if (activeBySession) return activeBySession;
+    }
+
+    if (lineSnapshot.nowServingEntryId) {
+      return lineSnapshot.entries.find((entry) => entry.entryId === lineSnapshot.nowServingEntryId) || null;
+    }
+
+    return lineSnapshot.entries.find((entry) => entry.uiState === 'ACTIVE_PAYMENT') || null;
+  }, [lineSession?.activeEntryId, lineSnapshot]);
+
+  const nextUpEntry = useMemo(() => {
+    if (!lineSnapshot?.nextUpEntryId) return null;
+    return lineSnapshot.entries.find((entry) => entry.entryId === lineSnapshot.nextUpEntryId) || null;
+  }, [lineSnapshot]);
+
+  const activeTimeoutAtIso = lineSession?.activeTimeoutAt || activeLineEntry?.activeTimeoutAt || null;
+  const activeSecondsRemaining = useMemo(() => {
+    if (!activeTimeoutAtIso) return null;
+    const remainingMs = new Date(activeTimeoutAtIso).getTime() - clockNowMs;
+    return Math.max(0, Math.ceil(remainingMs / 1000));
+  }, [activeTimeoutAtIso, clockNowMs]);
+
+  const activeSellerLabel = useMemo(() => formatSellerLabel(activeLineEntry), [activeLineEntry]);
+  const nextSellerLabel = useMemo(() => formatSellerLabel(nextUpEntry), [nextUpEntry]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setClockNowMs(Date.now());
+    }, 1_000);
+
+    return () => clearInterval(id);
+  }, []);
 
   const clearDispatchChoicePrompt = useCallback(() => {
     if (dispatchChoiceTimeoutRef.current) {
@@ -119,12 +176,12 @@ export function TerminalStationScreen(_props: Props) {
   );
 
   const waitForDispatchChoice = useCallback(
-    async (dispatch: TerminalIncomingDispatch): Promise<DispatchPaymentChoice> =>
+    async (entry: DispatchChoiceEntry): Promise<DispatchPaymentChoice> =>
       new Promise((resolve) => {
         settleDispatchChoice('tap');
 
         dispatchChoiceResolverRef.current = resolve;
-        setDispatchChoiceDispatchId(dispatch.dispatchId);
+        setDispatchChoiceDispatchId(entry.dispatchId);
         setDispatchChoiceSecondsRemaining(AUTO_TAP_TO_PAY_SECONDS);
 
         dispatchChoiceIntervalRef.current = setInterval(() => {
@@ -169,29 +226,6 @@ export function TerminalStationScreen(_props: Props) {
     [deviceId, token]
   );
 
-  const persistRecoveryState = useCallback(
-    async (params: {
-      dispatchId: string;
-      paymentIntentId: string;
-      stage: string;
-      paymentMethod: PaymentPath;
-    }) => {
-      if (!deviceId) {
-        return;
-      }
-
-      await saveTerminalDispatchRecovery({
-        dispatchId: params.dispatchId,
-        paymentIntentId: params.paymentIntentId,
-        deviceId,
-        stage: params.stage,
-        paymentMethod: params.paymentMethod,
-        updatedAt: new Date().toISOString()
-      }).catch(() => undefined);
-    },
-    [deviceId]
-  );
-
   useEffect(() => {
     const loadDeviceSettings = async () => {
       const storedDeviceId = (await AsyncStorage.getItem(DEVICE_ID_KEY))?.trim();
@@ -224,54 +258,13 @@ export function TerminalStationScreen(_props: Props) {
     }
   }, [terminal.connectedReader, terminal.getIsInitialized, terminal.isInitialized]);
 
-  useEffect(() => {
+  const refreshLineSnapshot = useCallback(async () => {
     if (!token || !deviceId) {
       return;
     }
 
-    let cancelled = false;
-
-    const loadRecovery = async () => {
-      const recovery = await loadTerminalDispatchRecovery();
-      if (!recovery || recovery.deviceId !== deviceId) {
-        if (recovery && recovery.deviceId !== deviceId) {
-          await clearTerminalDispatchRecovery().catch(() => undefined);
-        }
-        return;
-      }
-
-      const dispatchState = await fetchTerminalDispatchAdminState(token, recovery.dispatchId).catch(() => null);
-      if (!dispatchState || cancelled) {
-        return;
-      }
-
-      if (dispatchState.status === 'SUCCEEDED' || dispatchState.status === 'CANCELED' || dispatchState.status === 'EXPIRED') {
-        await clearTerminalDispatchRecovery().catch(() => undefined);
-        if (dispatchState.status === 'SUCCEEDED') {
-          setLastOrderId(dispatchState.finalOrderId || null);
-        }
-        return;
-      }
-
-      if (dispatchState.status === 'FAILED') {
-        setLastFailedDispatchId(dispatchState.dispatchId);
-        setLastFailureReason(dispatchState.failureReason || 'Terminal dispatch failed');
-        setLastFailurePath(recovery.paymentMethod);
-        setLastFailureCanRetry(dispatchState.canRetry);
-        setRecoveryMessage(`Recovered failed dispatch ${dispatchState.dispatchId}. Review and retry or cancel.`);
-        return;
-      }
-
-      setRecoveryMessage(
-        `Recovered in-progress dispatch ${dispatchState.dispatchId}. Waiting for terminal polling to resume payment.`
-      );
-    };
-
-    loadRecovery().catch(() => undefined);
-
-    return () => {
-      cancelled = true;
-    };
+    const snapshot = await fetchMobilePaymentLineSnapshot(token, deviceId);
+    setLineSnapshot(snapshot);
   }, [deviceId, token]);
 
   const ensureTerminalInitialized = useCallback(async () => {
@@ -328,7 +321,6 @@ export function TerminalStationScreen(_props: Props) {
         }
         readerConnectedRef.current = false;
       } catch {
-        // Ignore and continue with explicit discovery/connection.
       }
     }
 
@@ -382,7 +374,7 @@ export function TerminalStationScreen(_props: Props) {
   }, [ensurePlatformPermissions, ensureTerminalInitialized, terminal]);
 
   const collectManualPaymentWithPaymentSheet = useCallback(
-    async (dispatch: TerminalIncomingDispatch): Promise<string | null> => {
+    async (entry: PaymentLineEntryState): Promise<string | null> => {
       if (!token || !deviceId) {
         throw new Error('Terminal context missing for manual payment');
       }
@@ -391,7 +383,7 @@ export function TerminalStationScreen(_props: Props) {
       }
 
       const manualIntent = await createTerminalDispatchManualPaymentIntent(token, {
-        dispatchId: dispatch.dispatchId,
+        dispatchId: entry.entryId,
         deviceId
       });
 
@@ -437,131 +429,70 @@ export function TerminalStationScreen(_props: Props) {
     }
   }, []);
 
-  const processDispatch = useCallback(
-    async (dispatch: TerminalIncomingDispatch) => {
+  const processPaymentEntry = useCallback(
+    async (entry: PaymentLineEntryState) => {
       if (!token || !deviceId) {
         return;
       }
 
       let paymentPath: PaymentPath = 'unknown';
-      let paymentIntentId = dispatch.paymentIntentId;
+      let paymentIntentId = entry.paymentIntentId || '';
 
       const throwIfCanceled = () => {
-        if (canceledDispatchIdRef.current === dispatch.dispatchId) {
+        if (canceledDispatchIdRef.current === entry.entryId) {
           throw new Error('Dispatch canceled by operator');
-        }
-      };
-
-      const updateRetryState = async () => {
-        const state = await fetchTerminalDispatchAdminState(token, dispatch.dispatchId).catch(() => null);
-        if (state) {
-          setLastFailureCanRetry(state.canRetry);
         }
       };
 
       setProcessing(true);
       setError(null);
-      setRecoveryMessage(null);
+      setHeartbeatError(null);
       setLastFailedDispatchId(null);
       setLastFailureReason(null);
       setLastFailurePath('unknown');
-      setLastFailureCanRetry(false);
-      setActiveDispatch(dispatch);
       setStatusMessage(
-        `Dispatch received: ${dispatch.performanceTitle} (${dispatch.seats.length} seat${dispatch.seats.length === 1 ? '' : 's'})`
+        `Now serving ${formatSellerLabel(entry)} · ${entry.performanceTitle} (${entry.seatCount} seat${entry.seatCount === 1 ? '' : 's'})`
       );
 
-      await persistRecoveryState({
-        dispatchId: dispatch.dispatchId,
-        paymentIntentId,
-        stage: 'dispatch_received',
-        paymentMethod: 'unknown'
-      });
       await reportTelemetry({
-        dispatchId: dispatch.dispatchId,
-        paymentIntentId,
+        dispatchId: entry.entryId,
+        paymentIntentId: paymentIntentId || 'unknown',
         stage: 'dispatch_received',
         paymentMethod: 'UNKNOWN',
-        metadata: { dispatchStatus: dispatch.status }
+        metadata: { dispatchStatus: entry.status }
       });
 
       try {
-        const finalizeMockDispatch = async (successMessage: string, stage: string) => {
-          await reportTelemetry({
-            dispatchId: dispatch.dispatchId,
-            paymentIntentId,
-            stage,
-            paymentMethod: mapPaymentPathToTelemetry(paymentPath)
-          });
-          await runMockTapToPayAnimation();
-          const completion = await completeTerminalDispatch(token, {
-            dispatchId: dispatch.dispatchId,
-            deviceId,
-            mockApproved: true
-          });
-          setLastOrderId(completion.orderId || null);
-          setStatusMessage(successMessage);
-          setActiveDispatch(null);
-          await clearTerminalDispatchRecovery().catch(() => undefined);
-          await reportTelemetry({
-            dispatchId: dispatch.dispatchId,
-            paymentIntentId,
-            stage: 'dispatch_completed',
-            paymentMethod: mapPaymentPathToTelemetry(paymentPath),
-            metadata: { mockApproved: true }
-          });
-        };
-
-        throwIfCanceled();
-        await updateTerminalDispatchStatus(token, {
-          dispatchId: dispatch.dispatchId,
-          deviceId,
-          status: 'PROCESSING'
-        });
-        await reportTelemetry({
-          dispatchId: dispatch.dispatchId,
-          paymentIntentId,
-          stage: 'dispatch_marked_processing',
-          paymentMethod: 'UNKNOWN'
-        });
-
-        const recovery = await loadTerminalDispatchRecovery().catch(() => null);
-        if (dispatch.status === 'PROCESSING' && recovery?.dispatchId === dispatch.dispatchId) {
-          paymentPath = recovery.paymentMethod;
-          setStatusMessage(
-            `Resuming dispatch ${dispatch.dispatchId} at stage "${recovery.stage}". Attempting ${
-              paymentPath === 'manual' ? 'manual card entry' : 'Tap to Pay'
-            }.`
-          );
-        } else {
-          setStatusMessage(
-            `Choose payment method. Tap to Pay starts automatically in ${AUTO_TAP_TO_PAY_SECONDS} seconds if no selection is made.`
-          );
-          paymentPath = await waitForDispatchChoice(dispatch);
+        if (!entry.paymentIntentClientSecret) {
+          throw new Error('Payment intent client secret is missing.');
+        }
+        if (!paymentIntentId) {
+          throw new Error('Payment intent is missing.');
         }
 
         throwIfCanceled();
 
+        setStatusMessage(
+          `Choose payment method. Tap to Pay starts automatically in ${AUTO_TAP_TO_PAY_SECONDS} seconds if no selection is made.`
+        );
+        paymentPath = await waitForDispatchChoice({ dispatchId: entry.entryId });
+
+        throwIfCanceled();
+
         if (paymentPath === 'manual') {
-          if (!isManualPaymentAvailable) {
+          if (!stripePaymentSheet.isAvailable) {
             throw new Error('Manual card entry is unavailable in this app build.');
           }
 
-          await persistRecoveryState({
-            dispatchId: dispatch.dispatchId,
-            paymentIntentId,
-            stage: 'manual_payment_sheet_open',
-            paymentMethod: 'manual'
-          });
           await reportTelemetry({
-            dispatchId: dispatch.dispatchId,
+            dispatchId: entry.entryId,
             paymentIntentId,
             stage: 'manual_payment_sheet_open',
             paymentMethod: 'MANUAL'
           });
 
           setStatusMessage('Opening secure manual card entry...');
-          const manualPaymentIntentId = await collectManualPaymentWithPaymentSheet(dispatch);
+          const manualPaymentIntentId = await collectManualPaymentWithPaymentSheet(entry);
           if (!manualPaymentIntentId) {
             throw new Error('Manual card entry canceled');
           }
@@ -569,32 +500,26 @@ export function TerminalStationScreen(_props: Props) {
 
           throwIfCanceled();
 
-          await persistRecoveryState({
-            dispatchId: dispatch.dispatchId,
-            paymentIntentId,
-            stage: 'manual_payment_confirmed',
-            paymentMethod: 'manual'
-          });
           await reportTelemetry({
-            dispatchId: dispatch.dispatchId,
+            dispatchId: entry.entryId,
             paymentIntentId,
             stage: 'manual_payment_confirmed',
             paymentMethod: 'MANUAL'
           });
 
           setStatusMessage('Finalizing manual payment...');
-          const completion = await completeTerminalDispatch(token, {
-            dispatchId: dispatch.dispatchId,
+          const completion = await completeMobilePaymentLineEntry(token, {
+            entryId: entry.entryId,
             deviceId,
             paymentIntentId
           });
 
           setLastOrderId(completion.orderId || null);
           setStatusMessage('Manual payment approved and order finalized.');
-          setActiveDispatch(null);
-          await clearTerminalDispatchRecovery().catch(() => undefined);
+          setLineSession(null);
+          await refreshLineSnapshot().catch(() => undefined);
           await reportTelemetry({
-            dispatchId: dispatch.dispatchId,
+            dispatchId: entry.entryId,
             paymentIntentId,
             stage: 'dispatch_completed',
             paymentMethod: 'MANUAL'
@@ -603,27 +528,43 @@ export function TerminalStationScreen(_props: Props) {
         }
 
         paymentPath = 'tap';
-        await persistRecoveryState({
-          dispatchId: dispatch.dispatchId,
-          paymentIntentId,
-          stage: 'tap_to_pay_selected',
-          paymentMethod: 'tap'
-        });
         await reportTelemetry({
-          dispatchId: dispatch.dispatchId,
+          dispatchId: entry.entryId,
           paymentIntentId,
           stage: 'tap_to_pay_selected',
           paymentMethod: 'TAP_TO_PAY'
         });
 
         if (isTerminalMockMode) {
-          await finalizeMockDispatch('Mock payment approved and order finalized.', 'tap_to_pay_mock_mode');
+          await reportTelemetry({
+            dispatchId: entry.entryId,
+            paymentIntentId,
+            stage: 'tap_to_pay_mock_mode',
+            paymentMethod: 'TAP_TO_PAY'
+          });
+          await runMockTapToPayAnimation();
+          const completion = await completeMobilePaymentLineEntry(token, {
+            entryId: entry.entryId,
+            deviceId,
+            mockApproved: true
+          });
+          setLastOrderId(completion.orderId || null);
+          setStatusMessage('Mock payment approved and order finalized.');
+          setLineSession(null);
+          await refreshLineSnapshot().catch(() => undefined);
+          await reportTelemetry({
+            dispatchId: entry.entryId,
+            paymentIntentId,
+            stage: 'dispatch_completed',
+            paymentMethod: 'TAP_TO_PAY',
+            metadata: { mockApproved: true }
+          });
           return;
         }
 
         setStatusMessage('Connecting Tap to Pay...');
         await reportTelemetry({
-          dispatchId: dispatch.dispatchId,
+          dispatchId: entry.entryId,
           paymentIntentId,
           stage: 'tap_to_pay_connecting',
           paymentMethod: 'TAP_TO_PAY'
@@ -634,13 +575,7 @@ export function TerminalStationScreen(_props: Props) {
         throwIfCanceled();
 
         setStatusMessage('Loading payment intent...');
-        await persistRecoveryState({
-          dispatchId: dispatch.dispatchId,
-          paymentIntentId,
-          stage: 'tap_to_pay_retrieve_intent',
-          paymentMethod: 'tap'
-        });
-        const retrieved = await terminal.retrievePaymentIntent(dispatch.paymentIntentClientSecret);
+        const retrieved = await terminal.retrievePaymentIntent(entry.paymentIntentClientSecret);
         if (retrieved.error || !retrieved.paymentIntent) {
           throw new Error(retrieved.error?.message || 'Unable to retrieve payment intent');
         }
@@ -649,7 +584,7 @@ export function TerminalStationScreen(_props: Props) {
 
         setStatusMessage('Present card for payment...');
         await reportTelemetry({
-          dispatchId: dispatch.dispatchId,
+          dispatchId: entry.entryId,
           paymentIntentId,
           stage: 'tap_to_pay_collecting',
           paymentMethod: 'TAP_TO_PAY'
@@ -663,7 +598,7 @@ export function TerminalStationScreen(_props: Props) {
 
         setStatusMessage('Confirming payment...');
         await reportTelemetry({
-          dispatchId: dispatch.dispatchId,
+          dispatchId: entry.entryId,
           paymentIntentId,
           stage: 'tap_to_pay_confirming',
           paymentMethod: 'TAP_TO_PAY'
@@ -677,38 +612,38 @@ export function TerminalStationScreen(_props: Props) {
 
         setStatusMessage('Finalizing order...');
         await reportTelemetry({
-          dispatchId: dispatch.dispatchId,
+          dispatchId: entry.entryId,
           paymentIntentId,
           stage: 'dispatch_finalizing',
           paymentMethod: 'TAP_TO_PAY'
         });
-        const completion = await completeTerminalDispatch(token, {
-          dispatchId: dispatch.dispatchId,
+        const completion = await completeMobilePaymentLineEntry(token, {
+          entryId: entry.entryId,
           deviceId
         });
 
         setLastOrderId(completion.orderId || null);
         setStatusMessage('Payment approved and order finalized.');
-        setActiveDispatch(null);
-        await clearTerminalDispatchRecovery().catch(() => undefined);
+        setLineSession(null);
+        await refreshLineSnapshot().catch(() => undefined);
         await reportTelemetry({
-          dispatchId: dispatch.dispatchId,
+          dispatchId: entry.entryId,
           paymentIntentId,
           stage: 'dispatch_completed',
           paymentMethod: 'TAP_TO_PAY'
         });
       } catch (err) {
-        const rawMessage = err instanceof Error ? err.message : 'Terminal dispatch failed';
-        const wasCanceled = canceledDispatchIdRef.current === dispatch.dispatchId || /canceled by operator/i.test(rawMessage);
+        const rawMessage = err instanceof Error ? err.message : 'Terminal payment failed';
+        const wasCanceled = canceledDispatchIdRef.current === entry.entryId || /canceled by operator/i.test(rawMessage);
 
         if (wasCanceled) {
           setError(null);
           setStatusMessage('Dispatch canceled by operator.');
-          setActiveDispatch(null);
-          await clearTerminalDispatchRecovery().catch(() => undefined);
+          setLineSession(null);
+          await refreshLineSnapshot().catch(() => undefined);
           await reportTelemetry({
-            dispatchId: dispatch.dispatchId,
-            paymentIntentId,
+            dispatchId: entry.entryId,
+            paymentIntentId: paymentIntentId || 'unknown',
             stage: 'dispatch_canceled_by_operator',
             paymentMethod: mapPaymentPathToTelemetry(paymentPath),
             failureReason: rawMessage
@@ -725,34 +660,29 @@ export function TerminalStationScreen(_props: Props) {
 
         setError(failureMessageBase);
         setStatusMessage(failureMessageBase);
-        setLastFailedDispatchId(dispatch.dispatchId);
+        setLastFailedDispatchId(entry.entryId);
         setLastFailureReason(failureMessageBase);
         setLastFailurePath(paymentPath);
 
-        await persistRecoveryState({
-          dispatchId: dispatch.dispatchId,
-          paymentIntentId,
-          stage: 'dispatch_failed',
-          paymentMethod: paymentPath
-        });
         await reportTelemetry({
-          dispatchId: dispatch.dispatchId,
-          paymentIntentId,
+          dispatchId: entry.entryId,
+          paymentIntentId: paymentIntentId || 'unknown',
           stage: 'dispatch_failed',
           paymentMethod: mapPaymentPathToTelemetry(paymentPath),
           failureReason: failureMessageBase
         });
 
-        await updateTerminalDispatchStatus(token, {
-          dispatchId: dispatch.dispatchId,
+        await failMobilePaymentLineEntry(token, {
+          entryId: entry.entryId,
           deviceId,
-          status: 'FAILED',
           failureReason: failureMessageBase
         }).catch(() => undefined);
-        await updateRetryState();
+
+        setLineSession(null);
+        await refreshLineSnapshot().catch(() => undefined);
       } finally {
         clearDispatchChoicePrompt();
-        if (canceledDispatchIdRef.current === dispatch.dispatchId) {
+        if (canceledDispatchIdRef.current === entry.entryId) {
           canceledDispatchIdRef.current = null;
         }
         setProcessing(false);
@@ -763,9 +693,8 @@ export function TerminalStationScreen(_props: Props) {
       collectManualPaymentWithPaymentSheet,
       deviceId,
       ensureConnectedReader,
-      isManualPaymentAvailable,
       isTerminalMockMode,
-      persistRecoveryState,
+      refreshLineSnapshot,
       reportTelemetry,
       runMockTapToPayAnimation,
       terminal,
@@ -773,11 +702,12 @@ export function TerminalStationScreen(_props: Props) {
       waitForDispatchChoice
     ]
   );
-  const processDispatchRef = useRef(processDispatch);
+
+  const processPaymentEntryRef = useRef(processPaymentEntry);
 
   useEffect(() => {
-    processDispatchRef.current = processDispatch;
-  }, [processDispatch]);
+    processPaymentEntryRef.current = processPaymentEntry;
+  }, [processPaymentEntry]);
 
   useEffect(
     () => () => {
@@ -806,89 +736,105 @@ export function TerminalStationScreen(_props: Props) {
       });
       await AsyncStorage.setItem(TERMINAL_NAME_KEY, name);
       setSavedTerminalName(name);
-      setStatusMessage('Terminal station registered. Waiting for dispatches...');
+      setStatusMessage('Terminal station registered. Ready to load payment line.');
+      await refreshLineSnapshot().catch(() => undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to register terminal station');
     } finally {
       setRegistering(false);
     }
-  }, [deviceId, terminalName, token]);
+  }, [deviceId, refreshLineSnapshot, terminalName, token]);
 
-  const retryDispatchFromOperator = useCallback(async () => {
-    if (!token) {
+  const startNextPayment = useCallback(async () => {
+    if (!token || !deviceId) {
       return;
     }
 
-    const dispatchId = activeDispatch?.dispatchId || lastFailedDispatchId;
-    if (!dispatchId) {
+    setStartingPayment(true);
+    setError(null);
+    setHeartbeatError(null);
+
+    try {
+      const response = await startMobilePaymentLine(token, { deviceId });
+      setLineSnapshot(response.snapshot);
+      setLineSession(response.session);
+
+      if (response.session) {
+        setStatusMessage(`Started payment line session for ${formatSellerLabel(response.snapshot.entries.find((entry) => entry.entryId === response.session?.activeEntryId) || null)}.`);
+      } else {
+        setStatusMessage('No waiting payments in line.');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to start payment line';
+      setError(message);
+      setStatusMessage(message);
+    } finally {
+      setStartingPayment(false);
+    }
+  }, [deviceId, token]);
+
+  const retryFailedEntryFromOperator = useCallback(async () => {
+    if (!token || !deviceId || !lastFailedDispatchId) {
       return;
     }
 
     setOperatorBusy(true);
     setError(null);
-    setRecoveryMessage(null);
+
     try {
-      const retried = await retryTerminalDispatch(token, dispatchId);
+      await backToLineMobilePaymentLineEntry(token, {
+        entryId: lastFailedDispatchId,
+        deviceId
+      });
       setLastFailedDispatchId(null);
       setLastFailureReason(null);
       setLastFailurePath('unknown');
-      setLastFailureCanRetry(false);
-      setStatusMessage(`Dispatch ${retried.dispatchId} queued for retry. Waiting for terminal pickup...`);
-      await reportTelemetry({
-        dispatchId: retried.dispatchId,
-        paymentIntentId: activeDispatch?.paymentIntentId || 'retry_pending',
-        stage: 'operator_retry_requested',
-        paymentMethod: 'UNKNOWN'
-      });
+      setStatusMessage(`Entry ${lastFailedDispatchId} moved to the back of the line.`);
+      await refreshLineSnapshot().catch(() => undefined);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to retry dispatch';
+      const message = err instanceof Error ? err.message : 'Unable to move entry to back of line';
       setError(message);
       setStatusMessage(message);
     } finally {
       setOperatorBusy(false);
     }
-  }, [activeDispatch?.dispatchId, activeDispatch?.paymentIntentId, lastFailedDispatchId, reportTelemetry, token]);
+  }, [deviceId, lastFailedDispatchId, refreshLineSnapshot, token]);
 
   const cancelDispatchFromOperator = useCallback(async () => {
-    if (!token) {
+    if (!token || !deviceId) {
       return;
     }
 
-    const dispatchId = activeDispatch?.dispatchId || lastFailedDispatchId;
+    const dispatchId = activeLineEntry?.entryId || lastFailedDispatchId;
     if (!dispatchId) {
       return;
     }
 
     setOperatorBusy(true);
     setError(null);
-    setRecoveryMessage(null);
     canceledDispatchIdRef.current = dispatchId;
     settleDispatchChoice('tap');
 
     try {
-      await cancelTerminalDispatch(token, dispatchId);
-      await clearTerminalDispatchRecovery().catch(() => undefined);
-      setActiveDispatch((current) => (current?.dispatchId === dispatchId ? null : current));
+      await cancelMobilePaymentLineEntry(token, {
+        entryId: dispatchId,
+        deviceId
+      });
+      setLineSession(null);
       setLastFailedDispatchId(null);
       setLastFailureReason(null);
       setLastFailurePath('unknown');
-      setLastFailureCanRetry(false);
-      setStatusMessage(`Dispatch ${dispatchId} canceled.`);
-      await reportTelemetry({
-        dispatchId,
-        paymentIntentId: activeDispatch?.paymentIntentId || 'operator_cancel',
-        stage: 'operator_cancel_requested',
-        paymentMethod: 'UNKNOWN'
-      });
+      setStatusMessage(`Entry ${dispatchId} canceled.`);
+      await refreshLineSnapshot().catch(() => undefined);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to cancel dispatch';
+      const message = err instanceof Error ? err.message : 'Unable to cancel entry';
       setError(message);
       setStatusMessage(message);
       canceledDispatchIdRef.current = null;
     } finally {
       setOperatorBusy(false);
     }
-  }, [activeDispatch?.dispatchId, activeDispatch?.paymentIntentId, lastFailedDispatchId, reportTelemetry, settleDispatchChoice, token]);
+  }, [activeLineEntry?.entryId, deviceId, lastFailedDispatchId, refreshLineSnapshot, settleDispatchChoice, token]);
 
   useEffect(() => {
     if (!token || !deviceId || !savedTerminalName) {
@@ -898,58 +844,118 @@ export function TerminalStationScreen(_props: Props) {
     let cancelled = false;
 
     const run = async () => {
-      let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
       try {
         await registerTerminalDevice(token, {
           deviceId,
           terminalName: savedTerminalName
         });
 
-        setStatusMessage('Terminal station online. Waiting for dispatches...');
-
-        heartbeatTimer = setInterval(() => {
-          void sendTerminalHeartbeat(token, deviceId).catch(() => undefined);
-        }, 15_000);
-
-        while (!cancelled) {
-          try {
-            const dispatch = await fetchNextTerminalDispatch(token, {
-              deviceId,
-              waitMs: 25_000
-            });
-
-            if (!dispatch) {
-              continue;
-            }
-
-            await processDispatchRef.current(dispatch);
-          } catch (err) {
-            if (cancelled) {
-              break;
-            }
-
-            setError(err instanceof Error ? err.message : 'Terminal dispatch polling failed');
-            await new Promise((resolve) => setTimeout(resolve, 1_500));
-          }
+        if (!cancelled) {
+          setStatusMessage('Terminal station online. Ready for payment line.');
+          await refreshLineSnapshot().catch(() => undefined);
         }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Terminal station stopped');
           setStatusMessage('Terminal station offline. Tap Save Name to retry registration.');
         }
-      } finally {
-        if (heartbeatTimer) {
-          clearInterval(heartbeatTimer);
-        }
       }
     };
 
-    run().catch(() => undefined);
+    void run();
+
+    const heartbeatTimer = setInterval(() => {
+      void sendTerminalHeartbeat(token, deviceId).catch(() => undefined);
+    }, 15_000);
 
     return () => {
       cancelled = true;
+      clearInterval(heartbeatTimer);
     };
-  }, [deviceId, savedTerminalName, token]);
+  }, [deviceId, refreshLineSnapshot, savedTerminalName, token]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (token && deviceId) {
+        void refreshLineSnapshot().catch(() => undefined);
+      }
+
+      return () => undefined;
+    }, [deviceId, refreshLineSnapshot, token])
+  );
+
+  useEffect(() => {
+    if (!token || !deviceId || !lineSession?.sessionId) {
+      return;
+    }
+
+    let cancelled = false;
+    const intervalMs = Math.max(5, lineSession.heartbeatIntervalSeconds || 15) * 1000;
+
+    const heartbeat = async () => {
+      const currentSession = lineSessionRef.current;
+      if (!currentSession) {
+        return;
+      }
+
+      try {
+        const response = await heartbeatMobilePaymentLine(token, {
+          deviceId,
+          session: {
+            sessionId: currentSession.sessionId,
+            queueKey: currentSession.queueKey,
+            activeEntryId: currentSession.activeEntryId
+          }
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        setLineSnapshot(response.snapshot);
+        setLineSession(response.session);
+        setHeartbeatError(null);
+      } catch (err) {
+        if (cancelled) {
+          return;
+        }
+
+        setHeartbeatError(err instanceof Error ? err.message : 'Payment line heartbeat failed');
+      }
+    };
+
+    const timer = setInterval(() => {
+      void heartbeat();
+    }, intervalMs);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [deviceId, lineSession?.heartbeatIntervalSeconds, lineSession?.sessionId, token]);
+
+  useEffect(() => {
+    if (!lineSession || !activeLineEntry || activeLineEntry.uiState !== 'ACTIVE_PAYMENT') {
+      return;
+    }
+
+    if (processing || processingEntryIdRef.current === activeLineEntry.entryId) {
+      return;
+    }
+
+    processingEntryIdRef.current = activeLineEntry.entryId;
+
+    void processPaymentEntryRef.current(activeLineEntry).finally(() => {
+      if (processingEntryIdRef.current === activeLineEntry.entryId) {
+        processingEntryIdRef.current = null;
+      }
+    });
+  }, [activeLineEntry, lineSession, processing]);
+
+  const isDispatchChoiceVisible = Boolean(
+    activeLineEntry && dispatchChoiceDispatchId === activeLineEntry.entryId && activeLineEntry.uiState === 'ACTIVE_PAYMENT'
+  );
+  const isManualPaymentAvailable = stripePaymentSheet.isAvailable;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -957,7 +963,7 @@ export function TerminalStationScreen(_props: Props) {
         <View style={styles.header}>
           <Text style={styles.brandTag}>Penncrest Theater</Text>
           <Text style={styles.title}>Terminal{`\n`}<Text style={styles.titleAccent}>Station</Text></Text>
-          <Text style={styles.subtitle}>This device waits for dispatches and defaults to {TAP_TO_PAY_DISPLAY_NAME} after 5 seconds.</Text>
+          <Text style={styles.subtitle}>This device runs payment-line sessions and defaults to {TAP_TO_PAY_DISPLAY_NAME} after 5 seconds.</Text>
           <PaymentModeBadge />
           <View style={styles.divider} />
         </View>
@@ -965,6 +971,12 @@ export function TerminalStationScreen(_props: Props) {
         {error ? (
           <View style={styles.errorBox}>
             <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
+
+        {heartbeatError ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>Heartbeat: {heartbeatError}</Text>
           </View>
         ) : null}
 
@@ -991,37 +1003,74 @@ export function TerminalStationScreen(_props: Props) {
         </View>
 
         <View style={styles.card}>
+          <Text style={styles.label}>Payment Line</Text>
+          <View style={styles.metricGrid}>
+            <View style={styles.metricItem}>
+              <Text style={styles.metricLabel}>Active Seller</Text>
+              <Text style={styles.metricValue}>{activeSellerLabel}</Text>
+            </View>
+            <View style={styles.metricItem}>
+              <Text style={styles.metricLabel}>Amount</Text>
+              <Text style={styles.metricValue}>${((activeLineEntry?.expectedAmountCents || 0) / 100).toFixed(2)}</Text>
+            </View>
+            <View style={styles.metricItem}>
+              <Text style={styles.metricLabel}>Remaining</Text>
+              <Text style={styles.metricValue}>{activeSecondsRemaining == null ? '—' : `${activeSecondsRemaining}s`}</Text>
+            </View>
+            <View style={styles.metricItem}>
+              <Text style={styles.metricLabel}>Waiting</Text>
+              <Text style={styles.metricValue}>{lineSnapshot?.waitingCount ?? 0}</Text>
+            </View>
+            <View style={styles.metricItemWide}>
+              <Text style={styles.metricLabel}>Next Up Seller</Text>
+              <Text style={styles.metricValue}>{nextSellerLabel}</Text>
+            </View>
+          </View>
+          <Pressable
+            style={[styles.button, (startingPayment || processing) && styles.buttonDisabled]}
+            disabled={startingPayment || processing}
+            onPress={() => void startNextPayment()}
+          >
+            {startingPayment ? (
+              <ActivityIndicator size="small" color="#f5d98b" />
+            ) : (
+              <Text style={styles.buttonLabel}>{lineSession ? 'Refresh Active Session' : 'Start Next Payment'}</Text>
+            )}
+          </Pressable>
+          {lineSession ? (
+            <Text style={styles.recoveryText}>Heartbeat every {lineSession.heartbeatIntervalSeconds}s · Session {lineSession.sessionId.slice(0, 10)}</Text>
+          ) : null}
+        </View>
+
+        <View style={styles.card}>
           <Text style={styles.label}>Status</Text>
           <Text style={styles.value}>{statusMessage}</Text>
           {TAP_TO_PAY_PERMISSION_HINT ? <Text style={styles.recoveryText}>{TAP_TO_PAY_PERMISSION_HINT}</Text> : null}
-          {recoveryMessage ? <Text style={styles.recoveryText}>{recoveryMessage}</Text> : null}
           {processing ? <ActivityIndicator size="small" color="#c9a84c" style={{ marginTop: 10 }} /> : null}
-          {activeDispatch ? (
+          {activeLineEntry ? (
             <View style={styles.dispatchBox}>
-              <Text style={styles.dispatchTitle}>{activeDispatch.performanceTitle}</Text>
+              <Text style={styles.dispatchTitle}>{activeLineEntry.performanceTitle}</Text>
               <Text style={styles.dispatchMeta}>
-                ${(activeDispatch.expectedAmountCents / 100).toFixed(2)} · {activeDispatch.seats.length} seat
-                {activeDispatch.seats.length === 1 ? '' : 's'}
+                ${(activeLineEntry.expectedAmountCents / 100).toFixed(2)} · {activeLineEntry.seats.length} seat
+                {activeLineEntry.seats.length === 1 ? '' : 's'}
               </Text>
-              <Text style={styles.dispatchMeta}>{activeDispatch.seats.map((seat) => seat.label).join(', ')}</Text>
-              <Text style={styles.dispatchMeta}>Dispatch ID: {activeDispatch.dispatchId}</Text>
-              <Text style={styles.dispatchMeta}>Payment Intent: {activeDispatch.paymentIntentId}</Text>
+              <Text style={styles.dispatchMeta}>{activeLineEntry.seats.map((seat) => seat.label).join(', ')}</Text>
+              <Text style={styles.dispatchMeta}>Entry ID: {activeLineEntry.entryId}</Text>
+              <Text style={styles.dispatchMeta}>Payment Intent: {activeLineEntry.paymentIntentId || 'Unavailable'}</Text>
+              <Text style={styles.dispatchMeta}>Queue Position: {activeLineEntry.position || '—'}</Text>
             </View>
           ) : null}
           {lastOrderId ? <Text style={styles.successText}>Last completed order: {lastOrderId}</Text> : null}
         </View>
 
-        {(activeDispatch || lastFailedDispatchId) ? (
+        {(activeLineEntry || lastFailedDispatchId) ? (
           <View style={styles.card}>
             <Text style={styles.label}>Operator Controls</Text>
             {lastFailedDispatchId ? (
               <View style={styles.failureBox}>
                 <Text style={styles.failureTitle}>Last failure ({lastFailurePath === 'manual' ? 'Manual Card Entry' : lastFailurePath === 'tap' ? 'Tap to Pay' : 'Unknown'})</Text>
-                <Text style={styles.failureText}>{lastFailureReason || 'Terminal dispatch failed.'}</Text>
-                <Text style={styles.failureText}>Dispatch ID: {lastFailedDispatchId}</Text>
-                {!lastFailureCanRetry ? (
-                  <Text style={styles.failureHint}>Retry unavailable. Hold may be expired or dispatch already finalized.</Text>
-                ) : null}
+                <Text style={styles.failureText}>{lastFailureReason || 'Terminal payment failed.'}</Text>
+                <Text style={styles.failureText}>Entry ID: {lastFailedDispatchId}</Text>
               </View>
             ) : null}
             <View style={styles.actionRow}>
@@ -1029,23 +1078,23 @@ export function TerminalStationScreen(_props: Props) {
                 style={[
                   styles.actionButton,
                   styles.secondaryActionButton,
-                  (operatorBusy || (!activeDispatch && !lastFailedDispatchId)) && styles.actionButtonDisabled
+                  (operatorBusy || (!activeLineEntry && !lastFailedDispatchId)) && styles.actionButtonDisabled
                 ]}
                 onPress={() => void cancelDispatchFromOperator()}
-                disabled={operatorBusy || (!activeDispatch && !lastFailedDispatchId)}
+                disabled={operatorBusy || (!activeLineEntry && !lastFailedDispatchId)}
               >
-                <Text style={styles.secondaryActionLabel}>{operatorBusy ? 'Working...' : 'Cancel Dispatch'}</Text>
+                <Text style={styles.secondaryActionLabel}>{operatorBusy ? 'Working...' : 'Cancel Entry'}</Text>
               </Pressable>
               <Pressable
                 style={[
                   styles.actionButton,
                   styles.primaryActionButton,
-                  (operatorBusy || !lastFailedDispatchId || !lastFailureCanRetry) && styles.actionButtonDisabled
+                  (operatorBusy || !lastFailedDispatchId) && styles.actionButtonDisabled
                 ]}
-                onPress={() => void retryDispatchFromOperator()}
-                disabled={operatorBusy || !lastFailedDispatchId || !lastFailureCanRetry}
+                onPress={() => void retryFailedEntryFromOperator()}
+                disabled={operatorBusy || !lastFailedDispatchId}
               >
-                <Text style={styles.primaryActionLabel}>{operatorBusy ? 'Working...' : 'Retry Dispatch'}</Text>
+                <Text style={styles.primaryActionLabel}>{operatorBusy ? 'Working...' : 'Back To Line'}</Text>
               </Pressable>
             </View>
           </View>
@@ -1201,6 +1250,41 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 15
   },
+  metricGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8
+  },
+  metricItem: {
+    width: '48%',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(201,168,76,0.2)',
+    backgroundColor: 'rgba(245,240,232,0.05)',
+    padding: 9
+  },
+  metricItemWide: {
+    width: '100%',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(201,168,76,0.2)',
+    backgroundColor: 'rgba(245,240,232,0.05)',
+    padding: 9
+  },
+  metricLabel: {
+    color: 'rgba(245,240,232,0.6)',
+    fontFamily: 'Arial',
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 1.1,
+    marginBottom: 4
+  },
+  metricValue: {
+    color: '#f5f0e8',
+    fontFamily: 'Georgia',
+    fontSize: 13,
+    fontWeight: '700'
+  },
   dispatchBox: {
     marginTop: 12,
     borderRadius: 10,
@@ -1248,12 +1332,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Georgia',
     fontSize: 12,
     lineHeight: 18
-  },
-  failureHint: {
-    marginTop: 5,
-    color: '#f5d98b',
-    fontFamily: 'Arial',
-    fontSize: 11
   },
   actionRow: {
     flexDirection: 'row',

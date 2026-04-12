@@ -213,15 +213,33 @@ export type TerminalDispatchAdminState = {
     number: number;
     ticketType: string;
     priceCents: number;
+    label?: string;
   }>;
 };
 
 export type PaymentLineEntryState = TerminalDispatchAdminState & {
+  entryId: string;
+  performanceId: string;
+  performanceTitle: string;
   queueKey: string;
   queueSortAt: string;
   position: number | null;
   waitingCount: number;
   nowServingEntryId: string | null;
+  paymentIntentId: string | null;
+  paymentIntentClientSecret: string | null;
+  processingStartedAt: string | null;
+  processingHeartbeatAt: string | null;
+  activeTimeoutAt: string | null;
+  seats: Array<{
+    id: string;
+    sectionName: string;
+    row: string;
+    number: number;
+    ticketType: string;
+    priceCents: number;
+    label: string;
+  }>;
   isYourTurn: boolean;
   isNext: boolean;
   uiState: 'WAITING_FOR_PAYMENT' | 'ACTIVE_PAYMENT' | 'PAYMENT_SUCCESS' | 'PAYMENT_FAILED' | 'CANCELED';
@@ -238,6 +256,21 @@ export type PaymentLineSnapshot = {
   waitingCount: number;
   updatedAt: string;
   entries: PaymentLineEntryState[];
+};
+
+export type PaymentLineSession = {
+  sessionId: string;
+  queueKey: string;
+  deviceId: string;
+  activeEntryId: string;
+  heartbeatIntervalSeconds: number;
+  activeTimeoutAt: string | null;
+  startedAt: string;
+};
+
+export type PaymentLineSessionResponse = {
+  snapshot: PaymentLineSnapshot;
+  session: PaymentLineSession | null;
 };
 
 export async function getPerformances(token: string): Promise<PerformanceSummary[]> {
@@ -495,6 +528,28 @@ export async function startMobilePaymentLineEntry(
     method: 'POST',
     token,
     body: { deviceId: payload.deviceId }
+  });
+}
+
+export async function startMobilePaymentLine(
+  token: string,
+  payload: { deviceId: string }
+): Promise<PaymentLineSessionResponse> {
+  return apiRequest<PaymentLineSessionResponse>('/api/mobile/payment-line/start', {
+    method: 'POST',
+    token,
+    body: payload
+  });
+}
+
+export async function heartbeatMobilePaymentLine(
+  token: string,
+  payload: { deviceId: string; session?: Pick<PaymentLineSession, 'sessionId' | 'queueKey' | 'activeEntryId'> | null }
+): Promise<PaymentLineSessionResponse> {
+  return apiRequest<PaymentLineSessionResponse>('/api/mobile/payment-line/heartbeat', {
+    method: 'POST',
+    token,
+    body: payload
   });
 }
 

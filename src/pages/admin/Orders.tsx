@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { adminFetch } from '../../lib/adminAuth';
 import { apiFetch } from '../../lib/api';
+import { usePaymentLineStatusStream } from '../../hooks/usePaymentLineStatusStream';
+import type { PaymentLineEntry } from '../../lib/paymentLineTypes';
 import { SeatMapViewport } from '../../components/SeatMapViewport';
 import {
   Search, X, Check, ChevronRight, ChevronLeft,
@@ -93,6 +95,32 @@ type TerminalDispatch = {
   seatCount: number;
   seats: InPersonFinalizeSeatSummary[];
 };
+
+function mapEntryToTerminalDispatch(entry: PaymentLineEntry): TerminalDispatch {
+  return {
+    dispatchId: entry.entryId,
+    status: entry.status,
+    failureReason: entry.failureReason,
+    holdExpiresAt: entry.holdExpiresAt,
+    holdActive: entry.holdActive,
+    canRetry: entry.canRetry,
+    expectedAmountCents: entry.expectedAmountCents,
+    currency: entry.currency,
+    attemptCount: entry.attemptCount,
+    finalOrderId: entry.finalOrderId,
+    targetDeviceId: entry.targetDeviceId,
+    targetDeviceName: entry.targetDeviceName,
+    seatCount: entry.seatCount,
+    seats: entry.seats.map((seat) => ({
+      id: seat.id,
+      sectionName: seat.sectionName,
+      row: seat.row,
+      number: seat.number,
+      ticketType: seat.ticketType,
+      priceCents: seat.priceCents
+    }))
+  };
+}
 
 const TEACHER_TICKET_OPTION_ID = 'teacher-comp';
 const STUDENT_SHOW_TICKET_OPTION_ID = 'student-show-comp';
@@ -277,6 +305,12 @@ export default function AdminOrdersPage() {
   const [loadingCashTonight, setLoadingCashTonight] = useState(false);
   const [saleRecap, setSaleRecap] = useState<InPersonSaleRecap | null>(null);
   const [saleRecapSecondsLeft, setSaleRecapSecondsLeft] = useState(0);
+
+  const sellerStatusStream = usePaymentLineStatusStream({
+    queueKey: terminalDispatch?.targetDeviceId || null,
+    sellerEntryId: terminalDispatch?.dispatchId || null,
+    enabled: Boolean(terminalDispatch?.targetDeviceId)
+  });
 
   const [assignForm, setAssignForm] = useState<AssignForm>({
     performanceId: '', source: 'DOOR',
@@ -802,17 +836,21 @@ export default function AdminOrdersPage() {
   }, [assignForm.source, loadTerminalDevices, paymentMethod, showWizard, step]);
 
   useEffect(() => {
-    if (!terminalDispatch) return;
-    if (terminalDispatch.status === 'SUCCEEDED' || terminalDispatch.status === 'EXPIRED' || terminalDispatch.status === 'CANCELED') {
+    if (!terminalDispatch || !sellerStatusStream.snapshot) {
       return;
     }
 
-    const timerId = window.setInterval(() => {
+    const nextEntry = sellerStatusStream.snapshot.entries.find((entry) => entry.entryId === terminalDispatch.dispatchId);
+    if (!nextEntry) {
+      if (terminalDispatch.status === 'SUCCEEDED' || terminalDispatch.status === 'FAILED' || terminalDispatch.status === 'EXPIRED' || terminalDispatch.status === 'CANCELED') {
+        return;
+      }
       void refreshTerminalDispatchStatus(terminalDispatch.dispatchId).catch(() => undefined);
-    }, 1000);
+      return;
+    }
 
-    return () => window.clearInterval(timerId);
-  }, [refreshTerminalDispatchStatus, terminalDispatch]);
+    applyTerminalDispatchStatus(mapEntryToTerminalDispatch(nextEntry));
+  }, [applyTerminalDispatchStatus, refreshTerminalDispatchStatus, sellerStatusStream.snapshot, terminalDispatch]);
 
   useEffect(() => {
     if (!showWizard || step === 0 || terminalDispatch || !assignForm.performanceId || !seatSelectionEnabled) {
@@ -867,6 +905,25 @@ export default function AdminOrdersPage() {
   const selectedTerminalDevice = useMemo(
     () => terminalDevices.find((device) => device.deviceId === selectedTerminalDeviceId) || null,
     [selectedTerminalDeviceId, terminalDevices]
+  );
+  const sellerStatusUrl = useMemo(() => {
+    if (!terminalDispatch) return null;
+    const queueKey = encodeURIComponent(terminalDispatch.targetDeviceId);
+    const entryId = encodeURIComponent(terminalDispatch.dispatchId);
+    return `/admin/payment-line/seller?queueKey=${queueKey}&entryId=${entryId}`;
+  }, [terminalDispatch]);
+  const sellerOverlayUrl = useMemo(
+    () => (sellerStatusUrl ? `${sellerStatusUrl}&overlay=1` : null),
+    [sellerStatusUrl]
+  );
+  const wallboardUrl = useMemo(() => {
+    if (!terminalDispatch) return null;
+    const queueKey = encodeURIComponent(terminalDispatch.targetDeviceId);
+    return `/admin/payment-line/wallboard?queueKey=${queueKey}`;
+  }, [terminalDispatch]);
+  const wallboardOverlayUrl = useMemo(
+    () => (wallboardUrl ? `${wallboardUrl}&overlay=1` : null),
+    [wallboardUrl]
   );
   const selectedTicketOptions = useMemo<CashierTicketOption[]>(() => {
     if (!selectedPerformance) return [];
@@ -1715,6 +1772,9 @@ export default function AdminOrdersPage() {
                 <p className="mt-1 text-sm text-slate-500">
                   {terminalDispatch.targetDeviceName || terminalDispatch.targetDeviceId} • ${((terminalDispatch.expectedAmountCents || 0) / 100).toFixed(2)}
                 </p>
+                <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Realtime {sellerStatusStream.connected ? 'Connected' : 'Reconnecting'}
+                </p>
               </div>
 
               <div className="space-y-3 px-6 py-5 text-sm text-slate-600">
@@ -1731,6 +1791,44 @@ export default function AdminOrdersPage() {
                     {inPersonFlowError}
                   </div>
                 )}
+                <div className="flex flex-wrap items-center gap-2">
+                  {sellerStatusUrl ? (
+                    <Link
+                      to={sellerStatusUrl}
+                      className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-100"
+                    >
+                      Seller Status
+                    </Link>
+                  ) : null}
+                  {sellerOverlayUrl ? (
+                    <a
+                      href={sellerOverlayUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-100"
+                    >
+                      Seller Overlay
+                    </a>
+                  ) : null}
+                  {wallboardUrl ? (
+                    <Link
+                      to={wallboardUrl}
+                      className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-100"
+                    >
+                      Wallboard
+                    </Link>
+                  ) : null}
+                  {wallboardOverlayUrl ? (
+                    <a
+                      href={wallboardOverlayUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-100"
+                    >
+                      Wallboard Overlay
+                    </a>
+                  ) : null}
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 px-6 py-4">

@@ -52,6 +52,8 @@ const AdminFundraisePage = lazy(() => import('./pages/admin/Fundraise'));
 const AdminTripsPage = lazy(() => import('./pages/admin/Trips'));
 const AdminDrivePage = lazy(() => import('./pages/admin/Drive'));
 const AdminDevicesPage = lazy(() => import('./pages/admin/Devices'));
+const PaymentLineSellerStatusPage = lazy(() => import('./pages/admin/PaymentLineSellerStatus'));
+const PaymentLineWallboardPage = lazy(() => import('./pages/admin/PaymentLineWallboard'));
 const TripPaymentsPage = lazy(() => import('./pages/TripPayments'));
 
 function PublicLayout() {
@@ -93,6 +95,8 @@ export default function App() {
                   <Route path="archive" element={<AdminArchivePage />} />
                   <Route path="seats" element={<AdminSeatsPage />} />
                   <Route path="orders" element={<AdminOrdersPage />} />
+                  <Route path="payment-line/seller" element={<PaymentLineSellerStatusPage />} />
+                  <Route path="payment-line/wallboard" element={<PaymentLineWallboardPage />} />
                   <Route path="scanner" element={<AdminScannerPage />} />
                   <Route path="orders/:id" element={<AdminOrderDetailPage />} />
                   <Route path="roster" element={<AdminRosterPage />} />

@@ -49,6 +49,8 @@ const EnvSchema = z.object({
   TERMINAL_DISPATCH_HOLD_TTL_MINUTES: z.coerce.number().int().min(1).max(30).default(5),
   TERMINAL_DISPATCH_ALLOW_MOCK_PAYMENTS: booleanFromEnv(false),
   PAYMENT_LINE_WORKER_SWEEP_INTERVAL_SECONDS: z.coerce.number().int().min(5).max(120).default(10),
+  PAYMENT_LINE_SSE_HEARTBEAT_SECONDS: z.coerce.number().int().min(5).max(120).default(20),
+  PAYMENT_LINE_WALLBOARD_DEFAULT_LIMIT: z.coerce.number().int().min(1).max(20).default(5),
   PAYMENT_LINE_ACTIVE_TIMEOUT_SECONDS: z.coerce.number().int().min(30).max(600).default(120),
   PAYMENT_LINE_HOLD_EXTENSION_LEAD_SECONDS: z.coerce.number().int().min(10).max(600).default(45),
   HOLD_CLEANUP_INTERVAL_SECONDS: z.coerce.number().int().min(10).max(3600).default(60),

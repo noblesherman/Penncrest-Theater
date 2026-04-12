@@ -101,6 +101,7 @@ const routeAccessRules: Array<{ prefix: string; minRole: AdminRole }> = [
   { prefix: '/admin/devices', minRole: 'ADMIN' },
   { prefix: '/admin/audit', minRole: 'ADMIN' },
   { prefix: '/admin/about', minRole: 'SUPER_ADMIN' },
+  { prefix: '/admin/payment-line', minRole: 'BOX_OFFICE' },
   { prefix: '/admin/orders', minRole: 'BOX_OFFICE' },
   { prefix: '/admin/scanner', minRole: 'BOX_OFFICE' },
   { prefix: '/admin/dashboard', minRole: 'BOX_OFFICE' }
@@ -203,6 +204,9 @@ export default function AdminLayout() {
 
   const pathname = location.pathname;
   const isScannerLive = pathname === '/admin/scanner/live' || pathname.startsWith('/admin/scanner/live/');
+  const isPaymentLineOverlay =
+    (pathname === '/admin/payment-line/seller' || pathname === '/admin/payment-line/wallboard') &&
+    new URLSearchParams(location.search).get('overlay') === '1';
   const matchedRule = routeAccessRules
     .filter((rule) => pathname === rule.prefix || pathname.startsWith(`${rule.prefix}/`))
     .sort((a, b) => b.prefix.length - a.prefix.length)[0];
@@ -235,7 +239,7 @@ export default function AdminLayout() {
     return <Navigate to={fallbackRoute} replace />;
   }
 
-  if (isScannerLive) {
+  if (isScannerLive || isPaymentLineOverlay) {
     return <Outlet context={outletContext} />;
   }
 
