@@ -59,6 +59,7 @@ const EnvSchema = z.object({
   HEALTH_ALERT_ERRORS_LAST_MINUTE_THRESHOLD: z.coerce.number().int().min(1).max(10000).default(6),
   HEALTH_ALERT_DATABASE_LATENCY_MS_THRESHOLD: z.coerce.number().int().min(10).max(60000).default(1200),
   HEALTH_ALERT_CHECKOUT_STALE_SECONDS_THRESHOLD: z.coerce.number().int().min(30).max(86400).default(300),
+  HEALTH_ALERT_CHECKOUT_STALE_QUEUE_LAG_SECONDS_THRESHOLD: z.coerce.number().int().min(5).max(3600).default(45),
   HEALTH_ALERT_SEND_RECOVERY_EMAIL: booleanFromEnv(true),
 
   SMTP_HOST: z.string().optional(),

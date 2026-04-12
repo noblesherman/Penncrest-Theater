@@ -88,13 +88,17 @@ function evaluateSnapshot(snapshot: HealthSnapshot): string[] {
   }
 
   const hasQueuePressure = snapshot.queueWaitingCount > 0 || snapshot.queueProcessingCount > 0;
+  const hasSustainedQueueLag =
+    snapshot.queueWaitingCount > 0 &&
+    snapshot.queueLagSeconds >= env.HEALTH_ALERT_CHECKOUT_STALE_QUEUE_LAG_SECONDS_THRESHOLD;
   if (
     hasQueuePressure &&
+    hasSustainedQueueLag &&
     snapshot.lastSuccessfulCheckoutSecondsAgo !== null &&
     snapshot.lastSuccessfulCheckoutSecondsAgo >= env.HEALTH_ALERT_CHECKOUT_STALE_SECONDS_THRESHOLD
   ) {
     violations.push(
-      `No successful checkout for ${snapshot.lastSuccessfulCheckoutSecondsAgo}s while queue is active (threshold ${env.HEALTH_ALERT_CHECKOUT_STALE_SECONDS_THRESHOLD}s)`
+      `No successful checkout for ${snapshot.lastSuccessfulCheckoutSecondsAgo}s while queue is active with oldest wait ${snapshot.queueLagSeconds}s (stale threshold ${env.HEALTH_ALERT_CHECKOUT_STALE_SECONDS_THRESHOLD}s, queue lag threshold ${env.HEALTH_ALERT_CHECKOUT_STALE_QUEUE_LAG_SECONDS_THRESHOLD}s)`
     );
   }
 
@@ -337,7 +341,9 @@ export function startHealthAlertMonitor(
       recipients,
       checkIntervalSeconds: env.HEALTH_ALERT_CHECK_INTERVAL_SECONDS,
       cooldownMinutes: env.HEALTH_ALERT_COOLDOWN_MINUTES,
-      overloadedProbeIntervalSeconds: Math.floor(overloadedProbeIntervalMs / 1000)
+      overloadedProbeIntervalSeconds: Math.floor(overloadedProbeIntervalMs / 1000),
+      checkoutStaleSecondsThreshold: env.HEALTH_ALERT_CHECKOUT_STALE_SECONDS_THRESHOLD,
+      checkoutStaleQueueLagSecondsThreshold: env.HEALTH_ALERT_CHECKOUT_STALE_QUEUE_LAG_SECONDS_THRESHOLD
     },
     'health alert monitor started'
   );
