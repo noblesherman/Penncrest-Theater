@@ -90,7 +90,14 @@ export async function executeManagedDeviceCommand(
             ? (command.payload as { locked: boolean }).locked
             : true;
 
-        await setKioskLock(locked);
+        const kioskApplied = await setKioskLock(locked);
+        if (!kioskApplied) {
+          return {
+            status: 'FAILED',
+            failureReason: 'Kiosk lock policy was not applied (device owner not active or lock task denied)'
+          };
+        }
+
         await context.setKioskLocked(locked);
 
         return {

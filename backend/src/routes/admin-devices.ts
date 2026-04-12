@@ -11,6 +11,7 @@ import {
   listManagedDevicesForAdmin,
   queueManagedDeviceCommand,
   setManagedDevicePin,
+  updateManagedDeviceDisplayName,
   upsertMobileAppRelease
 } from '../services/device-management-service.js';
 
@@ -26,6 +27,10 @@ const queueCommandSchema = z.object({
 
 const setPinSchema = z.object({
   pin: z.string().trim().min(4).max(16)
+});
+
+const setDisplayNameSchema = z.object({
+  displayName: z.string().trim().min(1).max(120)
 });
 
 const updateMetadataSchema = z.object({
@@ -284,6 +289,46 @@ export const adminDeviceRoutes: FastifyPluginAsync = async (app) => {
       return reply.send({ ok: true });
     } catch (err) {
       handleRouteError(reply, err, 'Failed to set managed device PIN');
+    }
+  });
+
+  app.patch('/api/admin/devices/:id/name', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
+    const parsedParams = deviceIdParamSchema.safeParse(request.params || {});
+    if (!parsedParams.success) {
+      return reply.status(400).send({ error: parsedParams.error.flatten() });
+    }
+
+    const parsedBody = setDisplayNameSchema.safeParse(request.body || {});
+    if (!parsedBody.success) {
+      return reply.status(400).send({ error: parsedBody.error.flatten() });
+    }
+
+    try {
+      const device = await updateManagedDeviceDisplayName({
+        managedDeviceId: parsedParams.data.id,
+        displayName: parsedBody.data.displayName,
+        actorAdminId: request.adminUser?.id || null
+      });
+
+      await logAudit({
+        actor: request.adminUser?.username || 'admin',
+        actorAdminId: request.adminUser?.id || null,
+        action: 'MOBILE_DEVICE_NAME_UPDATED',
+        entityType: 'ManagedDevice',
+        entityId: parsedParams.data.id,
+        metadata: {
+          displayName: device.displayName
+        }
+      });
+
+      return reply.send({
+        device: {
+          id: device.id,
+          displayName: device.displayName
+        }
+      });
+    } catch (err) {
+      handleRouteError(reply, err, 'Failed to update managed device name');
     }
   });
 

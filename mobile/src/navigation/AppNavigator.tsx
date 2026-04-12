@@ -43,7 +43,7 @@ export function AppNavigator() {
           <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'Box Office' }} />
           <Stack.Screen name="Maintenance" component={MaintenanceScreen} options={{ title: 'Maintenance' }} />
           <Stack.Screen name="Legal" component={LegalScreen} options={{ title: 'Legal & Support' }} />
-          <Stack.Screen name="TerminalStation" component={TerminalStationScreen} options={{ title: 'Terminal Station' }} />
+          <Stack.Screen name="TerminalStation" component={TerminalStationScreen} options={{ headerShown: false }} />
           <Stack.Screen name="ScanTickets" component={ScanScreen} options={{ headerShown: false }} />
           <Stack.Screen name="SellTickets" component={SellTicketsScreen} options={{ title: 'Sell Tickets' }} />
           <Stack.Screen name="TapToPay" component={TapToPayScreen} options={{ title: 'Tap to Pay' }} />

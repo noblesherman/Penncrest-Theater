@@ -197,6 +197,61 @@ describe.sequential('device management integration', () => {
     expect(dbDevice.isOnline).toBe(true);
   });
 
+  it('keeps assigned device name stable across re-registration and lets admins rename it', async () => {
+    const registered = await registerDevice({
+      deviceId: 'android-kiosk-name-001',
+      installationId: 'install-name-001',
+      displayName: 'Lobby East Kiosk'
+    });
+
+    const reregisterResponse = await app.inject({
+      method: 'POST',
+      url: '/api/mobile/device/register',
+      headers: authHeaders(adminToken),
+      payload: {
+        deviceId: 'android-kiosk-name-001',
+        installationId: 'install-name-002',
+        displayName: 'Should Not Overwrite',
+        platform: 'android'
+      }
+    });
+
+    expect(reregisterResponse.statusCode).toBe(200);
+    expect(reregisterResponse.json().device.displayName).toBe('Lobby East Kiosk');
+
+    const renameResponse = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/devices/${encodeURIComponent(registered.device.id)}/name`,
+      headers: authHeaders(adminToken),
+      payload: {
+        displayName: 'Concessions Tablet'
+      }
+    });
+
+    expect(renameResponse.statusCode).toBe(200);
+    expect(renameResponse.json().device.displayName).toBe('Concessions Tablet');
+
+    const deniedRename = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/devices/${encodeURIComponent(registered.device.id)}/name`,
+      headers: authHeaders(boxOfficeToken),
+      payload: {
+        displayName: 'Unauthorized Rename'
+      }
+    });
+
+    expect(deniedRename.statusCode).toBe(403);
+
+    const detailResponse = await app.inject({
+      method: 'GET',
+      url: `/api/admin/devices/${encodeURIComponent(registered.device.id)}`,
+      headers: authHeaders(adminToken)
+    });
+
+    expect(detailResponse.statusCode).toBe(200);
+    expect(detailResponse.json().device.displayName).toBe('Concessions Tablet');
+  });
+
   it('runs command queue lifecycle pending -> delivered -> succeeded and handles timeout', async () => {
     const registered = await registerDevice({
       deviceId: 'android-kiosk-002',

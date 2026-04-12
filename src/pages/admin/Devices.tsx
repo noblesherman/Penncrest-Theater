@@ -120,6 +120,7 @@ export default function AdminDevicesPage() {
   const [commandType, setCommandType] = useState<CommandType>('REFRESH_CONFIG');
   const [commandPayloadText, setCommandPayloadText] = useState<string>('{}');
   const [settingPin, setSettingPin] = useState<string>('');
+  const [settingDeviceName, setSettingDeviceName] = useState<string>('');
 
   const [releaseForm, setReleaseForm] = useState({
     versionName: '',
@@ -194,6 +195,7 @@ export default function AdminDevicesPage() {
     try {
       const response = await adminFetch<DeviceDetailResponse>(`/api/admin/devices/${encodeURIComponent(id)}`);
       setSelectedDevice(response.device);
+      setSettingDeviceName(response.device.displayName || '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load managed device detail');
       setSelectedDevice(null);
@@ -293,6 +295,38 @@ export default function AdminDevicesPage() {
       await loadDeviceDetail(selectedDeviceId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update PIN');
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
+  const submitDeviceName = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedDeviceId) {
+      setError('Select a device first');
+      return;
+    }
+
+    const nextDisplayName = settingDeviceName.trim();
+    if (!nextDisplayName) {
+      setError('Enter a device name first');
+      return;
+    }
+
+    setBusyAction(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      await adminFetch(`/api/admin/devices/${encodeURIComponent(selectedDeviceId)}/name`, {
+        method: 'PATCH',
+        body: JSON.stringify({ displayName: nextDisplayName })
+      });
+
+      setNotice('Device name updated');
+      await Promise.all([loadFleet(), loadDeviceDetail(selectedDeviceId)]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update device name');
     } finally {
       setBusyAction(false);
     }
@@ -486,7 +520,25 @@ export default function AdminDevicesPage() {
                   </button>
                 </div>
 
-                <div className="mt-6 grid gap-6 lg:grid-cols-2">
+                <div className="mt-6 grid gap-6 lg:grid-cols-3">
+                  <form onSubmit={submitDeviceName} className="space-y-3 rounded-xl border border-slate-200 p-4">
+                    <h3 className="text-sm font-semibold text-slate-900">Assigned Device Name</h3>
+                    <p className="text-xs text-slate-500">Admin-controlled label used across the fleet and kept on re-registration.</p>
+                    <input
+                      value={settingDeviceName}
+                      onChange={(event) => setSettingDeviceName(event.target.value)}
+                      placeholder="e.g. Concessions Tablet"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900"
+                    />
+                    <button
+                      type="submit"
+                      disabled={busyAction}
+                      className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                    >
+                      Save Name
+                    </button>
+                  </form>
+
                   <form onSubmit={submitCustomCommand} className="space-y-3 rounded-xl border border-slate-200 p-4">
                     <h3 className="text-sm font-semibold text-slate-900">Queue Command</h3>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">

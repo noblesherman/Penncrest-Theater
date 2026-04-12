@@ -131,7 +131,10 @@ export function MaintenanceScreen({ navigation }: Props) {
             label="Relock Kiosk"
             onPress={() =>
               void runAction(async () => {
-                await setKioskLock(true);
+                const applied = await setKioskLock(true);
+                if (!applied) {
+                  throw new Error('Kiosk lock was not enforced. Confirm device owner provisioning is active.');
+                }
                 await setKioskLockedLocal(true);
               })
             }

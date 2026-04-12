@@ -3,6 +3,7 @@ package com.anonymous.theatermobile.device
 import android.app.Activity
 import android.app.PendingIntent
 import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -27,6 +28,32 @@ class DeviceControlModule(private val appContext: ReactApplicationContext) : Rea
     private const val KEY_KIOSK_LOCKED = "kiosk_locked"
     const val ACTION_SILENT_INSTALL_STATUS = "com.anonymous.theatermobile.SILENT_INSTALL_STATUS"
 
+    private fun devicePolicyManager(context: Context): DevicePolicyManager {
+      return context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+    }
+
+    private fun deviceAdmin(context: Context): ComponentName {
+      return ComponentName(context, TheaterDeviceAdminReceiver::class.java)
+    }
+
+    private fun ensureLockTaskPolicy(context: Context): Boolean {
+      val dpm = devicePolicyManager(context)
+      if (!dpm.isDeviceOwnerApp(context.packageName)) {
+        return false
+      }
+
+      return try {
+        val admin = deviceAdmin(context)
+        dpm.setLockTaskPackages(admin, arrayOf(context.packageName))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+          dpm.setLockTaskFeatures(admin, DevicePolicyManager.LOCK_TASK_FEATURE_NONE)
+        }
+        true
+      } catch (_: Exception) {
+        false
+      }
+    }
+
     fun applyKioskLockIfNeeded(activity: Activity?) {
       if (activity == null) {
         return
@@ -35,6 +62,11 @@ class DeviceControlModule(private val appContext: ReactApplicationContext) : Rea
       val prefs = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
       val shouldLock = prefs.getBoolean(KEY_KIOSK_LOCKED, false)
       if (!shouldLock) {
+        return
+      }
+
+      if (!ensureLockTaskPolicy(activity)) {
+        // Do not silently fall back to user-escapable screen pinning.
         return
       }
 
@@ -60,16 +92,19 @@ class DeviceControlModule(private val appContext: ReactApplicationContext) : Rea
   @ReactMethod
   fun isDeviceOwner(promise: Promise) {
     try {
-      val dpm = appContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+      val dpm = devicePolicyManager(appContext)
       promise.resolve(dpm.isDeviceOwnerApp(appContext.packageName))
-    } catch (error: Exception) {
+    } catch (_: Exception) {
       promise.resolve(false)
     }
   }
 
   @ReactMethod
   fun setKioskLock(locked: Boolean, promise: Promise) {
-    persistKioskLock(appContext, locked)
+    if (locked && !ensureLockTaskPolicy(appContext)) {
+      promise.resolve(false)
+      return
+    }
 
     val activity = appContext.currentActivity
     if (activity == null) {
@@ -84,6 +119,8 @@ class DeviceControlModule(private val appContext: ReactApplicationContext) : Rea
         } else {
           activity.stopLockTask()
         }
+
+        persistKioskLock(appContext, locked)
         promise.resolve(true)
       } catch (_: Exception) {
         promise.resolve(false)

@@ -141,7 +141,6 @@ export async function registerManagedDevice(params: {
     },
     update: {
       installationId,
-      displayName: params.displayName?.trim() || null,
       platform: params.platform?.trim() || 'android',
       model: params.model?.trim() || null,
       osVersion: params.osVersion?.trim() || null,
@@ -162,7 +161,7 @@ export async function registerManagedDevice(params: {
     metadata: {
       deviceId,
       installationId,
-      displayName: params.displayName || null
+      displayName: device.displayName || null
     }
   });
 
@@ -460,6 +459,35 @@ export async function setManagedDevicePin(params: {
     actorId: params.actorAdminId || null,
     eventType: 'PIN_UPDATED'
   });
+}
+
+export async function updateManagedDeviceDisplayName(params: {
+  managedDeviceId: string;
+  displayName: string;
+  actorAdminId?: string | null;
+}): Promise<ManagedDevice> {
+  const nextDisplayName = params.displayName.trim();
+
+  const device = await prisma.managedDevice.update({
+    where: {
+      id: params.managedDeviceId
+    },
+    data: {
+      displayName: nextDisplayName
+    }
+  });
+
+  await recordManagedDeviceEvent({
+    managedDeviceId: params.managedDeviceId,
+    actor: 'ADMIN',
+    actorId: params.actorAdminId || null,
+    eventType: 'DISPLAY_NAME_UPDATED',
+    metadata: {
+      displayName: nextDisplayName
+    }
+  });
+
+  return device;
 }
 
 export async function verifyManagedDevicePin(params: {
