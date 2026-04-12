@@ -1508,13 +1508,21 @@ export default function AdminOrdersPage() {
           <h1 className="text-[1.75rem] font-black tracking-tight text-slate-900" style={{ fontFamily: "var(--font-sans)" }}>Orders</h1>
           <p className="mt-1 text-sm text-slate-400">Search, manage, and process ticket orders.</p>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-          onClick={openCashierFlow}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-rose-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-rose-700 sm:w-auto"
-        >
-          <Plus className="h-4 w-4" /> Cashier checkout
-        </motion.button>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <Link
+            to="/admin/devices"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900 sm:w-auto"
+          >
+            <ExternalLink className="h-4 w-4" /> Device Control
+          </Link>
+          <motion.button
+            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+            onClick={openCashierFlow}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-rose-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-rose-700 sm:w-auto"
+          >
+            <Plus className="h-4 w-4" /> Cashier checkout
+          </motion.button>
+        </div>
       </div>
 
       {/* Toast notices */}

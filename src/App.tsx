@@ -51,6 +51,7 @@ const AdminAboutControlPage = lazy(() => import('./pages/admin/AboutControl'));
 const AdminFundraisePage = lazy(() => import('./pages/admin/Fundraise'));
 const AdminTripsPage = lazy(() => import('./pages/admin/Trips'));
 const AdminDrivePage = lazy(() => import('./pages/admin/Drive'));
+const AdminDevicesPage = lazy(() => import('./pages/admin/Devices'));
 const TripPaymentsPage = lazy(() => import('./pages/TripPayments'));
 
 function PublicLayout() {
@@ -104,6 +105,7 @@ export default function App() {
                   <Route path="fundraise" element={<AdminFundraisePage />} />
                   <Route path="trips" element={<AdminTripsPage />} />
                   <Route path="drive" element={<AdminDrivePage />} />
+                  <Route path="devices" element={<AdminDevicesPage />} />
                 </Route>
               </Route>
 

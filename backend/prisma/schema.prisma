@@ -141,6 +141,39 @@ enum TripPaymentStatus {
   EXPIRED
 }
 
+enum ManagedDeviceUpdateState {
+  IDLE
+  DOWNLOADING
+  VERIFYING
+  INSTALLING
+  INSTALLED
+  FAILED
+}
+
+enum ManagedDeviceCommandType {
+  REFRESH_CONFIG
+  RESTART_APP
+  ENTER_MAINTENANCE
+  EXIT_MAINTENANCE
+  UPDATE_APP
+  SET_KIOSK_LOCK
+}
+
+enum ManagedDeviceCommandStatus {
+  PENDING
+  DELIVERED
+  SUCCEEDED
+  FAILED
+  TIMEOUT
+  CANCELED
+}
+
+enum ManagedDeviceEventActor {
+  ADMIN
+  DEVICE
+  SYSTEM
+}
+
 model AdminUser {
   id           String    @id @default(cuid())
   username     String    @unique
@@ -537,6 +570,94 @@ model TerminalDeviceSession {
 
   @@index([isOnline, lastHeartbeatAt])
   @@index([displayName])
+}
+
+model ManagedDevice {
+  id                String                   @id @default(cuid())
+  deviceId          String                   @unique
+  installationId    String
+  displayName       String?
+  platform          String                   @default("android")
+  model             String?
+  osVersion         String?
+  tokenVersion      Int                      @default(1)
+  lastHeartbeatAt   DateTime?
+  isOnline          Boolean                  @default(false)
+  appVersionName    String?
+  appVersionCode    Int?
+  kioskLocked       Boolean                  @default(false)
+  maintenanceMode   Boolean                  @default(false)
+  deviceOwnerActive Boolean                  @default(false)
+  updateState       ManagedDeviceUpdateState @default(IDLE)
+  lastCommandId     String?
+  lastCommandStatus ManagedDeviceCommandStatus?
+  adminPinHash      String?
+  pinFailedAttempts Int                      @default(0)
+  pinLockedUntil    DateTime?
+  registeredByAdminId String?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  commands          ManagedDeviceCommand[]
+  events            ManagedDeviceEvent[]
+
+  @@index([isOnline, lastHeartbeatAt])
+  @@index([maintenanceMode, kioskLocked])
+}
+
+model ManagedDeviceCommand {
+  id                String                     @id @default(cuid())
+  managedDeviceId   String
+  device            ManagedDevice              @relation(fields: [managedDeviceId], references: [id], onDelete: Cascade)
+  type              ManagedDeviceCommandType
+  status            ManagedDeviceCommandStatus @default(PENDING)
+  payload           Json?
+  createdByAdminId  String?
+  claimTimeoutSeconds Int                      @default(90)
+  claimedAt         DateTime?
+  claimExpiresAt    DateTime?
+  acknowledgedAt    DateTime?
+  completedAt       DateTime?
+  failureReason     String?
+  result            Json?
+  canceledAt        DateTime?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  @@index([managedDeviceId, status, createdAt])
+  @@index([status, claimExpiresAt])
+}
+
+model MobileAppRelease {
+  id                String   @id @default(cuid())
+  channel           String   @unique @default("production")
+  versionName       String
+  versionCode       Int
+  apkUrl            String
+  apkSha256         String
+  apkSizeBytes      Int?
+  forceUpdate       Boolean  @default(false)
+  releaseNotes      String?
+  metadataSignature String?
+  createdByAdminId  String?
+  updatedByAdminId  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([versionCode])
+}
+
+model ManagedDeviceEvent {
+  id              String                 @id @default(cuid())
+  managedDeviceId String
+  device          ManagedDevice          @relation(fields: [managedDeviceId], references: [id], onDelete: Cascade)
+  actor           ManagedDeviceEventActor @default(SYSTEM)
+  actorId         String?
+  eventType       String
+  metadata        Json?
+  createdAt       DateTime               @default(now())
+
+  @@index([managedDeviceId, createdAt])
+  @@index([eventType, createdAt])
 }
 
 model TerminalPaymentDispatch {

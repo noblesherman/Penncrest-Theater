@@ -447,6 +447,12 @@ export default function AdminScannerPage() {
           >
             Full Screen
           </Link>
+          <Link
+            to="/admin/devices"
+            className="rounded-xl border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-600 shadow-sm transition hover:border-stone-300 hover:text-stone-900"
+          >
+            Devices
+          </Link>
         </div>
       </div>
 

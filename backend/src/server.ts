@@ -11,6 +11,7 @@ import { rateLimitPlugin } from './plugins/rate-limit.js';
 import { adminAuthPlugin } from './plugins/admin-auth.js';
 import { userAuthPlugin } from './plugins/user-auth.js';
 import { tripAccountAuthPlugin } from './plugins/trip-account-auth.js';
+import { deviceAuthPlugin } from './plugins/device-auth.js';
 import { healthRoutes } from './routes/health.js';
 import { performanceRoutes } from './routes/performances.js';
 import { holdRoutes } from './routes/hold.js';
@@ -47,6 +48,8 @@ import { tripAuthRoutes } from './routes/trip-auth.js';
 import { tripPortalRoutes } from './routes/trips-portal.js';
 import { adminTripRoutes } from './routes/admin-trips.js';
 import { adminDriveRoutes } from './routes/admin-drive.js';
+import { mobileDeviceRoutes } from './routes/mobile-device.js';
+import { adminDeviceRoutes } from './routes/admin-devices.js';
 import { startCheckoutQueueWorker } from './services/checkout-queue-worker.js';
 import { startHoldCleanupScheduler } from './services/hold-cleanup-scheduler.js';
 import { startHealthAlertMonitor } from './services/health-alert-monitor.js';
@@ -74,6 +77,7 @@ export async function createServer() {
   await app.register(adminAuthPlugin);
   await app.register(userAuthPlugin);
   await app.register(tripAccountAuthPlugin);
+  await app.register(deviceAuthPlugin);
 
   const allowedOrigins = getAllowedOrigins();
   app.options('/api/*', async (request, reply) => {
@@ -106,6 +110,7 @@ export async function createServer() {
   await app.register(staffCompRoutes);
   await app.register(aboutContentRoutes);
   await app.register(mobileRoutes);
+  await app.register(mobileDeviceRoutes);
   await app.register(programBioFormRoutes);
   await app.register(seniorSendoffFormRoutes);
   await app.register(tripAuthRoutes);
@@ -133,6 +138,7 @@ export async function createServer() {
   await app.register(adminUploadRoutes);
   await app.register(adminTripRoutes);
   await app.register(adminDriveRoutes);
+  await app.register(adminDeviceRoutes);
 
   const backgroundControllers: Array<{ stop: () => void | Promise<void> }> = [];
 

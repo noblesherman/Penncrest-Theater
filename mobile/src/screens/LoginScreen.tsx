@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthContext';
+import { AdminEscapeModal } from '../components/AdminEscapeModal';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
@@ -23,6 +24,7 @@ export function LoginScreen({ navigation }: Props) {
   const [otpCode, setOtpCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showAdminModal, setShowAdminModal] = useState(false);
 
   const onSubmit = async () => {
     setError(null);
@@ -139,9 +141,13 @@ export function LoginScreen({ navigation }: Props) {
             <TouchableOpacity style={styles.legalButton} onPress={() => navigation.navigate('Legal')} activeOpacity={0.75}>
               <Text style={styles.legalButtonText}>Privacy, Terms & Support</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.adminButton} onPress={() => setShowAdminModal(true)} activeOpacity={0.75}>
+              <Text style={styles.adminButtonText}>Admin Unlock</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </KeyboardAvoidingView>
+      <AdminEscapeModal visible={showAdminModal} onClose={() => setShowAdminModal(false)} />
     </SafeAreaView>
   );
 }
@@ -296,6 +302,17 @@ const styles = StyleSheet.create({
     color: '#f5d98b',
     fontFamily: 'Georgia',
     fontSize: 13,
+    textDecorationLine: 'underline',
+  },
+  adminButton: {
+    marginTop: 2,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  adminButtonText: {
+    color: 'rgba(245,240,232,0.7)',
+    fontFamily: 'Arial',
+    fontSize: 12,
     textDecorationLine: 'underline',
   },
 });

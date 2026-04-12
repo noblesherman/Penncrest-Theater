@@ -5,6 +5,7 @@ import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { CreatePaymentIntentResponse } from '../api/mobile';
 import { useAuth } from '../auth/AuthContext';
+import { AdminEscapeModal } from '../components/AdminEscapeModal';
 import type { RootStackParamList } from '../navigation/types';
 import { clearPendingSale, loadPendingSale } from '../payments/paymentRecovery';
 
@@ -43,6 +44,7 @@ function ActionButton({ icon, label, sublabel, onPress, variant = 'primary' }: A
 export function HomeScreen({ navigation }: Props) {
   const { logout } = useAuth();
   const [pendingSale, setPendingSale] = useState<CreatePaymentIntentResponse | null>(null);
+  const [showAdminModal, setShowAdminModal] = useState(false);
 
   const onLogout = async () => {
     try {
@@ -135,8 +137,20 @@ export function HomeScreen({ navigation }: Props) {
             onPress={onLogout}
             variant="secondary"
           />
+          <ActionButton
+            icon="🔓"
+            label="Admin Unlock"
+            sublabel="Open maintenance controls"
+            onPress={() => setShowAdminModal(true)}
+            variant="secondary"
+          />
         </View>
       </ScrollView>
+      <AdminEscapeModal
+        visible={showAdminModal}
+        onClose={() => setShowAdminModal(false)}
+        onUnlocked={() => navigation.navigate('Maintenance')}
+      />
     </SafeAreaView>
   );
 }

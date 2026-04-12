@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   Plane,
   FolderOpen,
+  Smartphone,
   Ticket,
   UserCheck,
   UsersRound,
@@ -50,7 +51,8 @@ const navSections: NavSection[] = [
       { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, minRole: 'BOX_OFFICE' },
       { to: '/admin/finance', label: 'Finance', icon: CircleDollarSign, minRole: 'ADMIN' },
       { to: '/admin/scanner', label: 'Scanner', icon: ScanLine, minRole: 'BOX_OFFICE' },
-      { to: '/admin/orders', label: 'Orders', icon: ReceiptText, minRole: 'BOX_OFFICE' }
+      { to: '/admin/orders', label: 'Orders', icon: ReceiptText, minRole: 'BOX_OFFICE' },
+      { to: '/admin/devices', label: 'Devices', icon: Smartphone, minRole: 'ADMIN' }
     ]
   },
   {
@@ -96,6 +98,7 @@ const routeAccessRules: Array<{ prefix: string; minRole: AdminRole }> = [
   { prefix: '/admin/fundraise', minRole: 'ADMIN' },
   { prefix: '/admin/trips', minRole: 'ADMIN' },
   { prefix: '/admin/drive', minRole: 'ADMIN' },
+  { prefix: '/admin/devices', minRole: 'ADMIN' },
   { prefix: '/admin/audit', minRole: 'ADMIN' },
   { prefix: '/admin/about', minRole: 'SUPER_ADMIN' },
   { prefix: '/admin/orders', minRole: 'BOX_OFFICE' },

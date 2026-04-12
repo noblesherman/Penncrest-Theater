@@ -11,6 +11,7 @@ import { StartupPreflightScreen } from '../screens/StartupPreflightScreen';
 import { SuccessScreen } from '../screens/SuccessScreen';
 import { TapToPayScreen } from '../screens/TapToPayScreen';
 import { TerminalStationScreen } from '../screens/TerminalStationScreen';
+import { MaintenanceScreen } from '../screens/MaintenanceScreen';
 import type { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -40,6 +41,7 @@ export function AppNavigator() {
           }}
         >
           <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'Box Office' }} />
+          <Stack.Screen name="Maintenance" component={MaintenanceScreen} options={{ title: 'Maintenance' }} />
           <Stack.Screen name="Legal" component={LegalScreen} options={{ title: 'Legal & Support' }} />
           <Stack.Screen name="TerminalStation" component={TerminalStationScreen} options={{ title: 'Terminal Station' }} />
           <Stack.Screen name="ScanTickets" component={ScanScreen} options={{ headerShown: false }} />

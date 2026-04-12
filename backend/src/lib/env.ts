@@ -73,6 +73,12 @@ const EnvSchema = z.object({
   TRIP_LOGIN_CODE_TTL_MINUTES: z.coerce.number().int().min(5).max(120).default(15),
   TRIP_LOGIN_CODE_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(6),
   TRIP_ACCOUNT_TOKEN_TTL_HOURS: z.coerce.number().int().min(1).max(24 * 14).default(24),
+  MOBILE_DEVICE_TOKEN_TTL: z.string().min(2).default('30d'),
+  MOBILE_ADMIN_PIN_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
+  MOBILE_ADMIN_PIN_LOCK_MINUTES: z.coerce.number().int().min(1).max(120).default(10),
+  MOBILE_ADMIN_UNLOCK_WINDOW_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
+  MOBILE_APP_UPDATE_ALLOWED_HOSTS: z.string().default(''),
+  MOBILE_RELEASE_METADATA_SIGNING_SECRET: z.string().optional(),
 
   GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional(),

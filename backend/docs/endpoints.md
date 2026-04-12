@@ -1092,3 +1092,51 @@ Query params:
 - `page`, `pageSize`
 
 Returns staff comp redemption ledger rows (user/perforance/ticket/seat metadata).
+
+## Managed Devices
+
+All `/api/admin/devices/*` endpoints require `ADMIN` or `SUPER_ADMIN`.
+All `/api/mobile/device/*` endpoints require a valid managed-device token unless noted.
+
+### `POST /api/mobile/device/register` (Admin-auth)
+Registers or re-registers a device and returns a device token.
+
+### `POST /api/mobile/device/heartbeat`
+Updates device runtime status (`appVersion`, kiosk/maintenance state, update state, command sync state).
+
+### `POST /api/mobile/device/commands/next`
+Long-poll for the next pending command (`waitMs` max `30000`).
+
+### `POST /api/mobile/device/commands/:id/ack`
+Acknowledge command completion with strict status:
+- `SUCCEEDED`
+- `FAILED`
+- `TIMEOUT`
+- `CANCELED`
+
+### `GET /api/mobile/device/update/latest`
+Returns current production APK release metadata (if published).
+
+### `POST /api/mobile/device/admin-unlock/verify`
+Verifies device-local admin PIN with server-side hash checks and lockout policy.
+
+### `GET /api/admin/devices`
+Returns fleet summary (online/offline, heartbeat, version, kiosk/maintenance, latest command).
+
+### `GET /api/admin/devices/:id`
+Returns full device detail with recent command and event history.
+
+### `POST /api/admin/devices/:id/commands`
+Queues a remote command:
+- `REFRESH_CONFIG`
+- `RESTART_APP`
+- `ENTER_MAINTENANCE`
+- `EXIT_MAINTENANCE`
+- `UPDATE_APP`
+- `SET_KIOSK_LOCK`
+
+### `POST /api/admin/devices/:id/pin`
+Sets or rotates admin escape PIN (stored hashed server-side).
+
+### `PUT /api/admin/devices/update-metadata`
+Upserts production APK metadata (`version*`, `apkUrl`, `apkSha256`, optional force-update/signature fields).
