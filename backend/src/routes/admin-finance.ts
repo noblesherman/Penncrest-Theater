@@ -193,6 +193,12 @@ function amountForCurrency(rows: Array<{ currency: string; amount: number }>, cu
   return match ? match.amount : 0;
 }
 
+async function resolveConnectAccountId(): Promise<string> {
+  const accountId = env.STRIPE_CONNECT_ACCOUNT_ID;
+  if (accountId) return accountId;
+  throw new HttpError(400, 'Stripe Connect account is not configured. Set STRIPE_CONNECT_ACCOUNT_ID.');
+}
+
 function csvCell(value: unknown): string {
   if (value === null || value === undefined) return '';
   const text = String(value);
@@ -1080,6 +1086,68 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(statusCode).send({ error: err.message || 'Stripe reporting error' });
       }
       handleRouteError(reply, err, 'Failed to generate Stripe finance report');
+    }
+  });
+
+  app.post('/api/admin/finance/connect/account-session', { preHandler: app.authenticateAdmin }, async (_request, reply) => {
+    if (!env.STRIPE_PUBLISHABLE_KEY) {
+      return reply.status(500).send({ error: 'Missing STRIPE_PUBLISHABLE_KEY for Stripe embedded components' });
+    }
+
+    try {
+      const stripeAccountId = await resolveConnectAccountId();
+      const account = await stripe.accounts.retrieve(stripeAccountId);
+
+      const session = await stripe.accountSessions.create({
+        account: stripeAccountId,
+        components: {
+          account_onboarding: { enabled: true },
+          account_management: { enabled: true },
+          payouts: { enabled: true },
+          financial_account: { enabled: true },
+          tax_settings: { enabled: true }
+        }
+      });
+
+      let financialAccounts: Array<{
+        id: string;
+        displayName: string | null;
+        status: string | null;
+        supportedCurrencies: string[];
+      }> = [];
+
+      try {
+        const treasuryAccounts = await stripe.treasury.financialAccounts.list({ limit: 25 }, { stripeAccount: stripeAccountId });
+        financialAccounts = treasuryAccounts.data.map((row) => ({
+          id: row.id,
+          displayName: (row as { display_name?: string | null; nickname?: string | null }).display_name
+            || (row as { nickname?: string | null }).nickname
+            || null,
+          status: row.status || null,
+          supportedCurrencies: row.supported_currencies || []
+        }));
+      } catch (err) {
+        if (!(err instanceof Stripe.errors.StripeError)) {
+          throw err;
+        }
+      }
+
+      reply.send({
+        clientSecret: session.client_secret,
+        publishableKey: env.STRIPE_PUBLISHABLE_KEY,
+        stripeAccountId,
+        chargesEnabled: account.charges_enabled,
+        payoutsEnabled: account.payouts_enabled,
+        detailsSubmitted: account.details_submitted,
+        requirementsCurrentlyDue: account.requirements?.currently_due || [],
+        financialAccounts
+      });
+    } catch (err) {
+      if (err instanceof Stripe.errors.StripeError) {
+        const statusCode = err.type === 'StripeInvalidRequestError' ? 400 : 502;
+        return reply.status(statusCode).send({ error: err.message || 'Stripe account session failed' });
+      }
+      handleRouteError(reply, err, 'Failed to create Stripe account session');
     }
   });
 

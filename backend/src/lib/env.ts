@@ -28,6 +28,7 @@ const EnvSchema = z.object({
   STRIPE_SECRET_KEY: z.string().min(1).transform((value) => value.trim()),
   STRIPE_WEBHOOK_SECRET: z.string().min(1).transform((value) => value.trim()),
   STRIPE_PUBLISHABLE_KEY: z.string().min(1).transform((value) => value.trim()).optional(),
+  STRIPE_CONNECT_ACCOUNT_ID: z.string().min(1).transform((value) => value.trim()).optional(),
 
   JWT_SECRET: z.string().min(16),
   ADMIN_USERNAME: z.string().min(1),

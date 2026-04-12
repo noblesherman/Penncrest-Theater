@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { loadConnectAndInitialize } from '@stripe/connect-js';
+import {
+  ConnectAccountManagement,
+  ConnectAccountOnboarding,
+  ConnectComponentsProvider,
+  ConnectFinancialAccount,
+  ConnectPayouts,
+  ConnectTaxSettings
+} from '@stripe/react-connect-js';
 import { adminFetch, getAdminToken } from '../../lib/adminAuth';
 import { apiUrl } from '../../lib/api';
 
@@ -40,45 +49,25 @@ type FinanceSummary = {
   sourceBreakdown: FinanceBreakdownRow[];
 };
 
-type StripePayoutRow = {
+type StripeFinancialAccount = {
   id: string;
-  status: string;
-  amountCents: number;
-  currency: string;
-  createdAt: string | null;
-  arrivalDate: string | null;
-  destinationId: string | null;
-  type: string;
+  displayName?: string | null;
+  status?: string | null;
+  supportedCurrencies?: string[];
 };
 
-type StripeBalanceTransactionRow = {
-  id: string;
-  type: string;
-  status: string;
-  reportingCategory: string;
-  description: string | null;
-  currency: string;
-  amountCents: number;
-  feeCents: number;
-  netCents: number;
-  createdAt: string | null;
-  availableOn: string | null;
-  sourceId: string | null;
+type StripeConnectAccountSessionResponse = {
+  clientSecret: string;
+  publishableKey: string;
+  stripeAccountId: string;
+  chargesEnabled?: boolean;
+  payoutsEnabled?: boolean;
+  detailsSubmitted?: boolean;
+  requirementsCurrentlyDue?: string[];
+  financialAccounts: StripeFinancialAccount[];
 };
 
-type FinancePayoutOverview = {
-  balance: {
-    currency: string;
-    totalCents: number;
-    availableCents: number;
-    pendingCents: number;
-    availableByCurrency: Array<{ currency: string; amountCents: number }>;
-    pendingByCurrency: Array<{ currency: string; amountCents: number }>;
-  };
-  nextPayout: StripePayoutRow | null;
-  recentPayouts: StripePayoutRow[];
-  recentTransactions: StripeBalanceTransactionRow[];
-};
+type ConnectFinanceTab = 'payouts' | 'financial' | 'tax' | 'account';
 
 type SendFinanceInvoiceResponse = {
   invoiceId: string;
@@ -216,24 +205,6 @@ function cents(value: number): string {
   return `$${(value / 100).toFixed(2)}`;
 }
 
-function formatCurrencyAmount(value: number, currency = 'USD'): string {
-  try {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: (currency || 'USD').toUpperCase()
-    }).format(value / 100);
-  } catch {
-    return cents(value);
-  }
-}
-
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString();
-}
-
 function invoiceStatusLabel(status: FinanceInvoiceSummary['status']): string {
   switch (status) {
     case 'paid':
@@ -268,21 +239,6 @@ function invoiceStatusColor(status: FinanceInvoiceSummary['status']): { bg: stri
   }
 }
 
-function payoutStatusColor(status: string): { bg: string; text: string; border: string } {
-  switch (status) {
-    case 'paid':
-      return { bg: '#ecfdf5', text: '#166534', border: '#bbf7d0' };
-    case 'in_transit':
-    case 'pending':
-      return { bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' };
-    case 'failed':
-    case 'canceled':
-      return { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca' };
-    default:
-      return { bg: '#f8fafc', text: '#475569', border: '#e2e8f0' };
-  }
-}
-
 function buildQuery(params: {
   startDate: string;
   endDate: string;
@@ -298,6 +254,13 @@ function buildQuery(params: {
   }
   return query;
 }
+
+const connectFinanceTabs: Array<{ id: ConnectFinanceTab; label: string; description: string }> = [
+  { id: 'payouts', label: 'Payouts', description: 'View & manage payouts' },
+  { id: 'financial', label: 'Financial Account', description: 'Stripe Treasury balances' },
+  { id: 'tax', label: 'Tax Settings', description: 'Tax forms and details' },
+  { id: 'account', label: 'Account Management', description: 'Business profile and verification' }
+];
 
 // ─── small presentational helpers ────────────────────────────────────────────
 
@@ -446,10 +409,15 @@ export default function AdminFinancePage() {
   const [includeCompOrders, setIncludeCompOrders] = useState(true);
 
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
-  const [payoutOverview, setPayoutOverview] = useState<FinancePayoutOverview | null>(null);
+  const [connectSession, setConnectSession] = useState<StripeConnectAccountSessionResponse | null>(null);
+  const [connectFinanceTab, setConnectFinanceTab] = useState<ConnectFinanceTab>('payouts');
+  const [selectedFinancialAccountId, setSelectedFinancialAccountId] = useState('');
+  const [accountManagementComplete, setAccountManagementComplete] = useState(true);
+  const [requirementsCurrentlyDue, setRequirementsCurrentlyDue] = useState<string[]>([]);
+  const [connectRefreshNonce, setConnectRefreshNonce] = useState(0);
   const [loadingSummary, setLoadingSummary] = useState(false);
-  const [loadingPayoutOverview, setLoadingPayoutOverview] = useState(false);
-  const [payoutError, setPayoutError] = useState<string | null>(null);
+  const [loadingConnectSession, setLoadingConnectSession] = useState(false);
+  const [connectSessionError, setConnectSessionError] = useState<string | null>(null);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [downloadingStripeCsv, setDownloadingStripeCsv] = useState(false);
   const [downloadingLocalCsv, setDownloadingLocalCsv] = useState(false);
@@ -513,26 +481,62 @@ export default function AdminFinancePage() {
     void refreshSummary();
   }, [startDate, endDate, performanceId, includeCompOrders]);
 
-  const refreshPayoutOverview = async () => {
-    setLoadingPayoutOverview(true);
-    setPayoutError(null);
+  const refreshConnectSession = useCallback(async () => {
+    setLoadingConnectSession(true);
+    setConnectSessionError(null);
     try {
-      const query = new URLSearchParams({ startDate, endDate });
-      const result = await adminFetch<FinancePayoutOverview>(`/api/admin/finance/payouts-overview?${query.toString()}`);
-      setPayoutOverview(result);
+      const result = await adminFetch<StripeConnectAccountSessionResponse>('/api/admin/finance/connect/account-session', {
+        method: 'POST'
+      });
+      setConnectSession(result);
+      setAccountManagementComplete(Boolean(result.detailsSubmitted));
+      setRequirementsCurrentlyDue(result.requirementsCurrentlyDue || []);
+      setSelectedFinancialAccountId((current) => current || result.financialAccounts?.[0]?.id || '');
+      if (!result.detailsSubmitted) {
+        setConnectFinanceTab('account');
+      }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load payout overview';
-      setPayoutError(message);
-      setPayoutOverview(null);
+      const message = err instanceof Error ? err.message : 'Failed to initialize Stripe finance controls';
+      setConnectSessionError(message);
+      setConnectSession(null);
     } finally {
-      setLoadingPayoutOverview(false);
+      setLoadingConnectSession(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (activeFinanceTab !== 'payouts') return;
-    void refreshPayoutOverview();
-  }, [activeFinanceTab, startDate, endDate]);
+    void refreshConnectSession();
+  }, [activeFinanceTab, refreshConnectSession, connectRefreshNonce]);
+
+  useEffect(() => {
+    const financialAccounts = connectSession?.financialAccounts || [];
+    if (financialAccounts.length === 0) {
+      setSelectedFinancialAccountId('');
+      return;
+    }
+    const exists = financialAccounts.some((account) => account.id === selectedFinancialAccountId);
+    if (!exists) {
+      setSelectedFinancialAccountId(financialAccounts[0].id);
+    }
+  }, [connectSession?.financialAccounts, selectedFinancialAccountId]);
+
+  const connectInstance = useMemo(() => {
+    if (!connectSession?.publishableKey) return null;
+    return loadConnectAndInitialize({
+      publishableKey: connectSession.publishableKey,
+      fetchClientSecret: async () => {
+        const refreshed = await adminFetch<StripeConnectAccountSessionResponse>('/api/admin/finance/connect/account-session', {
+          method: 'POST'
+        });
+        setConnectSession(refreshed);
+        setAccountManagementComplete(Boolean(refreshed.detailsSubmitted));
+        setRequirementsCurrentlyDue(refreshed.requirementsCurrentlyDue || []);
+        setSelectedFinancialAccountId((current) => current || refreshed.financialAccounts?.[0]?.id || '');
+        return refreshed.clientSecret;
+      }
+    });
+  }, [connectSession?.publishableKey, connectRefreshNonce]);
 
   const refreshInvoices = async () => {
     setLoadingInvoices(true);
@@ -1632,19 +1636,29 @@ export default function AdminFinancePage() {
         ) : activeFinanceTab === 'payouts' ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={cardStyle}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
                 <div>
-                  <SectionLabel>Payouts &amp; Transactions</SectionLabel>
+                  <SectionLabel>Stripe Finance</SectionLabel>
                   <p style={{ margin: 0, fontSize: 13, color: '#6b7280', fontFamily: "var(--font-sans)" }}>
-                    Stripe payout timeline and transaction ledger for {startDate} to {endDate}.
+                    Embedded Stripe controls for payouts, financial account, tax settings, and account management.
                   </p>
+                  {connectSession?.stripeAccountId && (
+                    <p style={{ margin: '6px 0 0', fontSize: 12, color: '#64748b', fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)" }}>
+                      {connectSession.stripeAccountId}
+                    </p>
+                  )}
                 </div>
-                <button type="button" className="btn-pill btn-ghost" onClick={() => void refreshPayoutOverview()} disabled={loadingPayoutOverview}>
-                  {loadingPayoutOverview ? 'Refreshing…' : '↻ Refresh Payouts'}
+                <button
+                  type="button"
+                  className="btn-pill btn-ghost"
+                  onClick={() => setConnectRefreshNonce((value) => value + 1)}
+                  disabled={loadingConnectSession}
+                >
+                  {loadingConnectSession ? 'Loading…' : 'Refresh session'}
                 </button>
               </div>
 
-              {payoutError && (
+              {connectSessionError && (
                 <div
                   style={{
                     marginTop: 12,
@@ -1657,171 +1671,115 @@ export default function AdminFinancePage() {
                     fontFamily: "var(--font-sans)",
                   }}
                 >
-                  {payoutError}
+                  {connectSessionError}
                 </div>
               )}
 
-              {!payoutOverview ? (
-                <p style={{ margin: '14px 0 0', fontSize: 13, color: '#94a3b8', fontFamily: "var(--font-sans)" }}>
-                  {loadingPayoutOverview ? 'Loading payout data…' : 'No Stripe payout data found for this range.'}
-                </p>
-              ) : (
-                <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
-                    <StatCard
-                      label="Total Balance"
-                      value={formatCurrencyAmount(payoutOverview.balance.totalCents, payoutOverview.balance.currency)}
-                    />
-                    <StatCard
-                      label="Available to Payout"
-                      value={formatCurrencyAmount(payoutOverview.balance.availableCents, payoutOverview.balance.currency)}
-                      accent
-                    />
-                    <StatCard
-                      label="Pending Balance"
-                      value={formatCurrencyAmount(payoutOverview.balance.pendingCents, payoutOverview.balance.currency)}
-                    />
-                    <StatCard
-                      label="Next Payout"
-                      value={payoutOverview.nextPayout ? formatDateTime(payoutOverview.nextPayout.arrivalDate) : 'Manual / None'}
-                    />
-                  </div>
-
-                  {payoutOverview.nextPayout && (
-                    <div
-                      style={{
-                        border: '1px solid #e2e8f0',
-                        borderRadius: 12,
-                        background: '#f8fafc',
-                        padding: '10px 12px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        gap: 8,
-                        flexWrap: 'wrap',
-                      }}
-                    >
-                      <p style={{ margin: 0, fontSize: 12, color: '#475569', fontFamily: "var(--font-sans)" }}>
-                        Upcoming payout {payoutOverview.nextPayout.id}
-                      </p>
-                      <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#0f172a', fontFamily: "var(--font-sans)" }}>
-                        {formatCurrencyAmount(payoutOverview.nextPayout.amountCents, payoutOverview.nextPayout.currency)} · arrives {formatDateTime(payoutOverview.nextPayout.arrivalDate)}
-                      </p>
-                    </div>
-                  )}
+              {requirementsCurrentlyDue.length > 0 && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    borderRadius: 10,
+                    border: '1px solid #fde68a',
+                    background: '#fffbeb',
+                    padding: '10px 12px',
+                    fontSize: 12,
+                    color: '#92400e',
+                    fontFamily: "var(--font-sans)",
+                  }}
+                >
+                  Stripe requires additional details: {requirementsCurrentlyDue.slice(0, 6).join(', ')}
                 </div>
               )}
             </div>
 
+            <div
+              style={{
+                display: 'flex',
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: 12,
+                padding: 4,
+                gap: 4,
+                flexWrap: 'wrap'
+              }}
+            >
+              {connectFinanceTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setConnectFinanceTab(tab.id)}
+                  className={`tab-btn ${connectFinanceTab === tab.id ? 'tab-active' : 'tab-inactive'}`}
+                  style={{ flex: 'unset' }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
             <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
               <div style={{ padding: '14px 16px', borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
-                <SectionLabel>Recent Payouts</SectionLabel>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#111827', fontFamily: "var(--font-sans)" }}>
+                  {connectFinanceTabs.find((tab) => tab.id === connectFinanceTab)?.label || 'Payouts'}
+                </p>
+                <p style={{ margin: '3px 0 0', fontSize: 12, color: '#9ca3af', fontFamily: "var(--font-sans)" }}>
+                  {connectFinanceTabs.find((tab) => tab.id === connectFinanceTab)?.description || 'View & manage payouts'}
+                </p>
               </div>
-              {!payoutOverview || payoutOverview.recentPayouts.length === 0 ? (
+
+              {loadingConnectSession ? (
                 <p style={{ margin: 0, padding: 16, fontSize: 13, color: '#94a3b8', fontFamily: "var(--font-sans)" }}>
-                  No payouts available.
+                  Loading Stripe finance controls…
+                </p>
+              ) : !connectInstance ? (
+                <p style={{ margin: 0, padding: 16, fontSize: 13, color: '#94a3b8', fontFamily: "var(--font-sans)" }}>
+                  Stripe embedded components are unavailable. Verify Stripe Connect account session setup.
                 </p>
               ) : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
-                    <thead>
-                      <tr>
-                        <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Date</th>
-                        <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Status</th>
-                        <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Destination</th>
-                        <th style={{ textAlign: 'right', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {payoutOverview.recentPayouts.map((row) => {
-                        const tone = payoutStatusColor(row.status);
-                        return (
-                          <tr key={row.id} style={{ borderTop: '1px solid #f1f5f9' }}>
-                            <td style={{ padding: '10px 16px', fontSize: 12, color: '#0f172a', fontFamily: "var(--font-sans)" }}>
-                              {formatDateTime(row.arrivalDate || row.createdAt)}
-                            </td>
-                            <td style={{ padding: '10px 16px' }}>
-                              <span
-                                style={{
-                                  padding: '2px 8px',
-                                  borderRadius: 999,
-                                  fontSize: 11,
-                                  fontWeight: 700,
-                                  border: `1px solid ${tone.border}`,
-                                  background: tone.bg,
-                                  color: tone.text,
-                                  fontFamily: "var(--font-sans)",
-                                  textTransform: 'capitalize',
-                                }}
+                <ConnectComponentsProvider connectInstance={connectInstance}>
+                  <div style={{ padding: 16 }}>
+                    {connectFinanceTab === 'payouts' && <ConnectPayouts />}
+
+                    {connectFinanceTab === 'tax' && <ConnectTaxSettings />}
+
+                    {connectFinanceTab === 'account' && (
+                      accountManagementComplete ? (
+                        <ConnectAccountManagement />
+                      ) : (
+                        <ConnectAccountOnboarding onExit={() => setConnectRefreshNonce((value) => value + 1)} />
+                      )
+                    )}
+
+                    {connectFinanceTab === 'financial' && (
+                      selectedFinancialAccountId ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          {(connectSession?.financialAccounts?.length || 0) > 1 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              <label style={labelStyle}>Financial Account</label>
+                              <select
+                                value={selectedFinancialAccountId}
+                                onChange={(event) => setSelectedFinancialAccountId(event.target.value)}
+                                className="finance-select"
+                                style={{ ...inputStyle, appearance: 'none' }}
                               >
-                                {row.status.replace('_', ' ')}
-                              </span>
-                            </td>
-                            <td style={{ padding: '10px 16px', fontSize: 12, color: '#475569', fontFamily: "var(--font-sans)" }}>
-                              {row.destinationId || '—'}
-                            </td>
-                            <td style={{ padding: '10px 16px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: '#0f172a', fontFamily: "var(--font-sans)" }}>
-                              {formatCurrencyAmount(row.amountCents, row.currency)}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
-              <div style={{ padding: '14px 16px', borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
-                <SectionLabel>Recent Transactions</SectionLabel>
-              </div>
-              {!payoutOverview || payoutOverview.recentTransactions.length === 0 ? (
-                <p style={{ margin: 0, padding: 16, fontSize: 13, color: '#94a3b8', fontFamily: "var(--font-sans)" }}>
-                  No transactions found for this range.
-                </p>
-              ) : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
-                    <thead>
-                      <tr>
-                        <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Date</th>
-                        <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Type</th>
-                        <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Status</th>
-                        <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Description</th>
-                        <th style={{ textAlign: 'right', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Gross</th>
-                        <th style={{ textAlign: 'right', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Fee</th>
-                        <th style={{ textAlign: 'right', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Net</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {payoutOverview.recentTransactions.map((row) => (
-                        <tr key={row.id} style={{ borderTop: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '10px 16px', fontSize: 12, color: '#0f172a', fontFamily: "var(--font-sans)" }}>
-                            {formatDateTime(row.createdAt)}
-                          </td>
-                          <td style={{ padding: '10px 16px', fontSize: 12, color: '#475569', fontFamily: "var(--font-sans)" }}>
-                            {row.type}
-                          </td>
-                          <td style={{ padding: '10px 16px', fontSize: 12, color: '#475569', fontFamily: "var(--font-sans)" }}>
-                            {row.status}
-                          </td>
-                          <td style={{ padding: '10px 16px', fontSize: 12, color: '#475569', fontFamily: "var(--font-sans)" }}>
-                            {row.description || row.reportingCategory || row.id}
-                          </td>
-                          <td style={{ padding: '10px 16px', textAlign: 'right', fontSize: 12, color: '#0f172a', fontFamily: "var(--font-sans)" }}>
-                            {formatCurrencyAmount(row.amountCents, row.currency)}
-                          </td>
-                          <td style={{ padding: '10px 16px', textAlign: 'right', fontSize: 12, color: '#b91c1c', fontFamily: "var(--font-sans)" }}>
-                            {formatCurrencyAmount(row.feeCents, row.currency)}
-                          </td>
-                          <td style={{ padding: '10px 16px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: '#0f172a', fontFamily: "var(--font-sans)" }}>
-                            {formatCurrencyAmount(row.netCents, row.currency)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                                {(connectSession?.financialAccounts || []).map((account) => (
+                                  <option key={account.id} value={account.id}>
+                                    {(account.displayName || account.id) + (account.status ? ` (${account.status})` : '')}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          <ConnectFinancialAccount financialAccount={selectedFinancialAccountId} />
+                        </div>
+                      ) : (
+                        <p style={{ margin: 0, fontSize: 13, color: '#94a3b8', fontFamily: "var(--font-sans)" }}>
+                          No Stripe Treasury financial account is available yet.
+                        </p>
+                      )
+                    )}
+                  </div>
+                </ConnectComponentsProvider>
               )}
             </div>
           </div>
