@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronRight, Copy, Download, Plus, RefreshCw, Save, Users, X } from 'lucide-react';
+import { Archive, ChevronRight, Copy, Download, Plus, RefreshCw, Save, Trash2, Users, X } from 'lucide-react';
 import { adminFetch } from '../../../lib/adminAuth';
 
 type ProgramBioFormSummary = {
@@ -14,8 +14,10 @@ type ProgramBioFormSummary = {
   questions: ProgramBioQuestions;
   deadlineAt: string;
   isOpen: boolean;
+  isArchived: boolean;
+  archivedAt: string | null;
   acceptingResponses: boolean;
-  status: 'OPEN' | 'CLOSED';
+  status: 'OPEN' | 'CLOSED' | 'ARCHIVED';
   responseCount: number;
   createdAt: string;
   updatedAt: string;
@@ -73,6 +75,8 @@ type SyncResult = {
   syncCast: { created: number; updated: number; skipped: number } | null;
   syncStudentCredits: { created: number; updated: number; skipped: number } | null;
 };
+
+type FormScope = 'active' | 'archived' | 'all';
 
 const DEFAULT_PROGRAM_BIO_QUESTIONS: ProgramBioQuestions = {
   fullNameLabel: 'Full name',
@@ -173,16 +177,28 @@ export default function ProgramBioFormsPanel() {
   const [syncCast, setSyncCast] = useState(true);
   const [syncStudentCredits, setSyncStudentCredits] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [formScope, setFormScope] = useState<FormScope>('active');
   const [loading, setLoading] = useState(false);
   const [loadingSubmissions, setLoadingSubmissions] = useState(false);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   // which tab is active in the detail panel
   const [activeTab, setActiveTab] = useState<'settings' | 'questions' | 'sync' | 'responses'>('settings');
 
+  const visibleForms = useMemo(() => {
+    if (formScope === 'active') {
+      return forms.filter((form) => !form.isArchived);
+    }
+    if (formScope === 'archived') {
+      return forms.filter((form) => form.isArchived);
+    }
+    return forms;
+  }, [forms, formScope]);
   const selectedForm = useMemo(() => forms.find((f) => f.id === selectedFormId) ?? null, [forms, selectedFormId]);
   const selectedDraft = selectedForm ? drafts[selectedForm.id] : null;
   const selectedCustomQuestionsById = useMemo(
@@ -269,6 +285,15 @@ export default function ProgramBioFormsPanel() {
 
   useEffect(() => { void loadBase(); }, [loadBase]);
   useEffect(() => {
+    if (visibleForms.length === 0) {
+      setSelectedFormId(null);
+      return;
+    }
+    if (!selectedFormId || !visibleForms.some((form) => form.id === selectedFormId)) {
+      setSelectedFormId(visibleForms[0].id);
+    }
+  }, [visibleForms, selectedFormId]);
+  useEffect(() => {
     if (!selectedFormId) { setSubmissions([]); return; }
     void loadSubmissions(selectedFormId);
   }, [selectedFormId, loadSubmissions]);
@@ -316,6 +341,77 @@ export default function ProgramBioFormsPanel() {
       setError(err instanceof Error ? err.message : 'Failed to save form settings');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function archiveForm(form: ProgramBioFormSummary): Promise<void> {
+    const confirmed = window.confirm(
+      `Archive "${form.show.title}" program bio form?\n\nThis keeps all responses but removes it from active form operations.`
+    );
+    if (!confirmed) return;
+
+    setArchiving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const archived = await adminFetch<ProgramBioFormSummary>(`/api/admin/forms/${form.id}/archive`, {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+      const normalizedArchived = { ...archived, questions: normalizeQuestions(archived.questions) };
+      setForms((current) => current.map((row) => (row.id === form.id ? normalizedArchived : row)));
+      setDrafts((current) => ({
+        ...current,
+        [form.id]: {
+          title: normalizedArchived.title,
+          instructions: normalizedArchived.instructions,
+          questions: normalizedArchived.questions,
+          deadlineAt: toLocalInputValue(normalizedArchived.deadlineAt),
+          isOpen: normalizedArchived.isOpen
+        }
+      }));
+      setNotice('Form archived. Data was preserved.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to archive form');
+    } finally {
+      setArchiving(false);
+    }
+  }
+
+  async function deleteForm(form: ProgramBioFormSummary): Promise<void> {
+    const confirmed = window.confirm(
+      `Delete "${form.show.title}" program bio form permanently?\n\nThis permanently deletes the form and all submissions. This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await adminFetch<{
+        deleted: boolean;
+        formId: string;
+        submissionCount: number;
+      }>(`/api/admin/forms/${form.id}`, {
+        method: 'DELETE'
+      });
+
+      setForms((current) => current.filter((row) => row.id !== form.id));
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[form.id];
+        return next;
+      });
+      if (selectedFormId === form.id) {
+        setSelectedFormId(null);
+      }
+      setSubmissions([]);
+      setSelectedSubmission(null);
+      setNotice(`Form deleted permanently. Removed ${result.submissionCount} response${result.submissionCount === 1 ? '' : 's'}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete form');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -444,15 +540,26 @@ export default function ProgramBioFormsPanel() {
             <h1 className="mt-0.5 text-2xl font-bold text-stone-900">Program Bio Forms</h1>
             <p className="mt-1 text-sm text-stone-500">Create and manage bio collection forms linked to a show.</p>
           </div>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-600 transition hover:bg-stone-50 disabled:opacity-50"
-            onClick={() => void loadBase()}
-            disabled={loading}
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            {loading ? 'Refreshing…' : 'Refresh'}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={formScope}
+              onChange={(event) => setFormScope(event.target.value as FormScope)}
+              className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700"
+            >
+              <option value="active">Active</option>
+              <option value="archived">Archived</option>
+              <option value="all">All</option>
+            </select>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-600 transition hover:bg-stone-50 disabled:opacity-50"
+              onClick={() => void loadBase()}
+              disabled={loading}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              {loading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
         </div>
 
         {/* ── Alerts ── */}
@@ -506,10 +613,10 @@ export default function ProgramBioFormsPanel() {
           {/* Sidebar */}
           <aside className="space-y-2">
             <p className={labelCls + ' px-1'}>All Forms</p>
-            {forms.length === 0 && !loading && (
+            {visibleForms.length === 0 && !loading && (
               <p className="rounded-xl border border-stone-200 bg-white px-4 py-6 text-center text-sm text-stone-400">No forms yet.</p>
             )}
-            {forms.map((form) => {
+            {visibleForms.map((form) => {
               const active = form.id === selectedFormId;
               return (
                 <button
@@ -528,7 +635,11 @@ export default function ProgramBioFormsPanel() {
                   </div>
                   <div className="mt-1.5 flex items-center gap-2">
                     <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                      form.status === 'OPEN' ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-500'
+                      form.status === 'OPEN'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : form.status === 'ARCHIVED'
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-stone-100 text-stone-500'
                     }`}>
                       {form.status}
                     </span>
@@ -551,7 +662,10 @@ export default function ProgramBioFormsPanel() {
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-stone-100 px-6 pt-5 pb-4">
                   <div>
                     <h2 className="text-lg font-bold text-stone-900">{selectedForm.show.title}</h2>
-                    <p className="mt-0.5 text-xs text-stone-400">Schema v{selectedForm.schemaVersion} · {selectedForm.responseCount} response{selectedForm.responseCount !== 1 ? 's' : ''}</p>
+                    <p className="mt-0.5 text-xs text-stone-400">
+                      Schema v{selectedForm.schemaVersion} · {selectedForm.responseCount} response{selectedForm.responseCount !== 1 ? 's' : ''}
+                      {selectedForm.isArchived && selectedForm.archivedAt ? ` · archived ${formatDateTime(selectedForm.archivedAt)}` : ''}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -562,10 +676,30 @@ export default function ProgramBioFormsPanel() {
                       <Copy className="h-3.5 w-3.5" />
                       Copy Link
                     </button>
+                    {!selectedForm.isArchived && (
+                      <button
+                        type="button"
+                        onClick={() => void archiveForm(selectedForm)}
+                        disabled={archiving || deleting}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100 disabled:opacity-50"
+                      >
+                        <Archive className="h-3.5 w-3.5" />
+                        {archiving ? 'Archiving…' : 'Archive'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void deleteForm(selectedForm)}
+                      disabled={deleting || archiving}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {deleting ? 'Deleting…' : 'Delete'}
+                    </button>
                     <button
                       type="button"
                       onClick={() => void saveForm(selectedForm.id)}
-                      disabled={saving}
+                      disabled={saving || deleting}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-stone-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-stone-700 disabled:opacity-50"
                     >
                       <Save className="h-3.5 w-3.5" />
@@ -623,12 +757,18 @@ export default function ProgramBioFormsPanel() {
                           type="checkbox"
                           checked={selectedDraft.isOpen}
                           onChange={(e) => setDrafts((cur) => ({ ...cur, [selectedForm.id]: { ...cur[selectedForm.id], isOpen: e.target.checked } }))}
+                          disabled={selectedForm.isArchived}
                           className="h-4 w-4 rounded border-stone-300 accent-red-700"
                         />
                         <label htmlFor="isOpen" className="text-sm font-medium text-stone-700 cursor-pointer">
                           Form is open — students can submit responses
                         </label>
                       </div>
+                      {selectedForm.isArchived && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                          This form is archived. Responses are preserved, but it is no longer active.
+                        </div>
+                      )}
 
                       <div>
                         <label className={labelCls}>Instructions</label>
@@ -844,12 +984,15 @@ export default function ProgramBioFormsPanel() {
                       <button
                         type="button"
                         onClick={() => void runSync(selectedForm.id)}
-                        disabled={syncing || (!syncCast && !syncStudentCredits)}
+                        disabled={selectedForm.isArchived || syncing || (!syncCast && !syncStudentCredits)}
                         className="inline-flex items-center gap-2 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-800 disabled:opacity-50"
                       >
                         <Users className="h-4 w-4" />
                         {syncing ? 'Syncing…' : 'Run Sync'}
                       </button>
+                      {selectedForm.isArchived && (
+                        <p className="text-xs text-amber-700">Archived forms cannot be synced.</p>
+                      )}
 
                       {syncResult && (
                         <div className="rounded-xl border border-stone-200 bg-stone-50 p-4 text-sm space-y-1">

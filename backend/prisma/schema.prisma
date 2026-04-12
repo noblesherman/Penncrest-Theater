@@ -249,6 +249,8 @@ model ProgramBioForm {
   questionConfig  Json?
   deadlineAt      DateTime
   isOpen          Boolean                @default(true)
+  isArchived      Boolean                @default(false)
+  archivedAt      DateTime?
   createdByAdminId String?
   updatedByAdminId String?
   createdAt       DateTime               @default(now())
@@ -256,6 +258,7 @@ model ProgramBioForm {
   submissions     ProgramBioSubmission[]
 
   @@index([isOpen, deadlineAt])
+  @@index([isArchived, createdAt])
 }
 
 model ProgramBioSubmission {

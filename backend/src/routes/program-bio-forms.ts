@@ -7,7 +7,7 @@ import { env } from '../lib/env.js';
 import { HttpError } from '../lib/http-error.js';
 import { handleRouteError } from '../lib/route-error.js';
 import { logAudit } from '../lib/audit-log.js';
-import { uploadImageFromDataUrl } from '../lib/r2.js';
+import { deleteUploadedObjectByKey, uploadImageFromDataUrl } from '../lib/r2.js';
 import { normalizeStudentVerificationCode } from '../services/student-ticket-credit-service.js';
 
 const PROGRAM_BIO_SCHEMA_VERSION = 'PROGRAM_BIO_V1';
@@ -337,6 +337,8 @@ function serializeFormSummary(
     questionConfig: Prisma.JsonValue | null;
     deadlineAt: Date;
     isOpen: boolean;
+    isArchived: boolean;
+    archivedAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
     show: { id: string; title: string };
@@ -345,6 +347,7 @@ function serializeFormSummary(
   now: Date
 ) {
   const acceptingResponses = isAcceptingResponses(form, now);
+  const status = form.isArchived ? 'ARCHIVED' : acceptingResponses ? 'OPEN' : 'CLOSED';
   return {
     id: form.id,
     showId: form.showId,
@@ -360,8 +363,10 @@ function serializeFormSummary(
     questions: normalizeProgramBioQuestions(form.questionConfig),
     deadlineAt: form.deadlineAt,
     isOpen: form.isOpen,
+    isArchived: form.isArchived,
+    archivedAt: form.archivedAt,
     acceptingResponses,
-    status: acceptingResponses ? 'OPEN' : 'CLOSED',
+    status,
     responseCount: form._count?.submissions ?? 0,
     createdAt: form.createdAt,
     updatedAt: form.updatedAt
@@ -634,10 +639,15 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
 
         const existingForm = await tx.programBioForm.findUnique({
           where: { showId: show.id },
-          select: { id: true }
+          select: { id: true, isArchived: true }
         });
         if (existingForm) {
-          throw new HttpError(409, 'A program bio form already exists for this show');
+          throw new HttpError(
+            409,
+            existingForm.isArchived
+              ? 'A program bio form already exists for this show and is archived. Unarchive it or delete it first.'
+              : 'A program bio form already exists for this show'
+          );
         }
 
         const defaultDeadline = show.performances[0]?.startsAt || new Date(Date.now() + 21 * 24 * 60 * 60 * 1000);
@@ -654,6 +664,8 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
             questionConfig: PROGRAM_BIO_DEFAULT_QUESTIONS,
             deadlineAt,
             isOpen: true,
+            isArchived: false,
+            archivedAt: null,
             createdByAdminId: request.adminUser?.id || null,
             updatedByAdminId: request.adminUser?.id || null
           },
@@ -779,6 +791,10 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
         throw new HttpError(404, 'Form not found');
       }
 
+      if (existing.isArchived && parsed.data.isOpen === true) {
+        throw new HttpError(400, 'Archived forms cannot be opened. Unarchive first.');
+      }
+
       const nextQuestions = parsed.data.questions
         ? mergeProgramBioQuestions(existing.questionConfig, parsed.data.questions)
         : undefined;
@@ -897,6 +913,10 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
         throw new HttpError(404, 'Form not found');
       }
 
+      if (form.isArchived) {
+        throw new HttpError(400, 'Archived forms cannot be synced.');
+      }
+
       const submissions = await prisma.programBioSubmission.findMany({
         where: { formId: form.id },
         orderBy: [{ updatedAt: 'asc' }, { createdAt: 'asc' }],
@@ -969,6 +989,145 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
+  app.post('/api/admin/forms/:id/archive', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
+    const params = request.params as { id: string };
+
+    try {
+      const existing = await prisma.programBioForm.findUnique({
+        where: { id: params.id },
+        include: {
+          show: {
+            select: {
+              id: true,
+              title: true
+            }
+          },
+          _count: {
+            select: {
+              submissions: true
+            }
+          }
+        }
+      });
+
+      if (!existing) {
+        throw new HttpError(404, 'Form not found');
+      }
+
+      if (existing.isArchived) {
+        return reply.send(serializeFormSummary(existing, new Date()));
+      }
+
+      const archived = await prisma.programBioForm.update({
+        where: { id: params.id },
+        data: {
+          isArchived: true,
+          archivedAt: new Date(),
+          isOpen: false,
+          updatedByAdminId: request.adminUser?.id || null
+        },
+        include: {
+          show: {
+            select: {
+              id: true,
+              title: true
+            }
+          },
+          _count: {
+            select: {
+              submissions: true
+            }
+          }
+        }
+      });
+
+      await logAudit({
+        actor: adminActor(request),
+        actorAdminId: request.adminUser?.id || null,
+        action: 'PROGRAM_BIO_FORM_ARCHIVED',
+        entityType: 'ProgramBioForm',
+        entityId: archived.id,
+        metadata: {
+          showId: archived.showId,
+          archivedAt: archived.archivedAt?.toISOString() || null,
+          responseCount: archived._count?.submissions ?? 0
+        }
+      });
+
+      reply.send(serializeFormSummary(archived, new Date()));
+    } catch (err) {
+      handleRouteError(reply, err, 'Failed to archive form');
+    }
+  });
+
+  app.delete('/api/admin/forms/:id', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
+    const params = request.params as { id: string };
+
+    try {
+      const existing = await prisma.programBioForm.findUnique({
+        where: { id: params.id },
+        include: {
+          show: {
+            select: {
+              id: true,
+              title: true
+            }
+          },
+          submissions: {
+            select: {
+              id: true,
+              headshotKey: true
+            }
+          }
+        }
+      });
+      if (!existing) {
+        throw new HttpError(404, 'Form not found');
+      }
+
+      await prisma.programBioForm.delete({
+        where: { id: existing.id }
+      });
+
+      const headshotKeys = existing.submissions
+        .map((submission) => submission.headshotKey)
+        .filter((key): key is string => Boolean(key));
+
+      const deleteResults = await Promise.allSettled(headshotKeys.map((key) => deleteUploadedObjectByKey(key)));
+      const r2DeleteFailures = deleteResults.filter((result) => result.status === 'rejected').length;
+      if (r2DeleteFailures > 0) {
+        app.log.warn(
+          { formId: existing.id, r2DeleteFailures, headshotObjectCount: headshotKeys.length },
+          'program bio form deleted, but some headshot objects could not be removed from storage'
+        );
+      }
+
+      await logAudit({
+        actor: adminActor(request),
+        actorAdminId: request.adminUser?.id || null,
+        action: 'PROGRAM_BIO_FORM_DELETED',
+        entityType: 'ProgramBioForm',
+        entityId: existing.id,
+        metadata: {
+          showId: existing.showId,
+          submissionCount: existing.submissions.length,
+          deletedHeadshotObjectCount: headshotKeys.length - r2DeleteFailures,
+          failedHeadshotObjectDeleteCount: r2DeleteFailures
+        }
+      });
+
+      reply.send({
+        deleted: true,
+        formId: existing.id,
+        submissionCount: existing.submissions.length,
+        deletedHeadshotObjectCount: headshotKeys.length - r2DeleteFailures,
+        failedHeadshotObjectDeleteCount: r2DeleteFailures
+      });
+    } catch (err) {
+      handleRouteError(reply, err, 'Failed to delete form');
+    }
+  });
+
   app.get('/api/forms/:slug', async (request, reply) => {
     const params = request.params as { slug: string };
 
@@ -986,6 +1145,9 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
       });
 
       if (!form) {
+        throw new HttpError(404, 'Form not found');
+      }
+      if (form.isArchived) {
         throw new HttpError(404, 'Form not found');
       }
 
@@ -1031,10 +1193,14 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
           showId: true,
           questionConfig: true,
           isOpen: true,
-          deadlineAt: true
+          deadlineAt: true,
+          isArchived: true
         }
       });
       if (!form) {
+        throw new HttpError(404, 'Form not found');
+      }
+      if (form.isArchived) {
         throw new HttpError(404, 'Form not found');
       }
 

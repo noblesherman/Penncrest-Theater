@@ -8,6 +8,7 @@ type OrderDetail = {
   status: string;
   source: 'ONLINE' | 'DOOR' | 'COMP' | 'STAFF_FREE' | 'FAMILY_FREE' | 'STUDENT_COMP';
   inPersonPaymentMethod?: 'STRIPE' | 'CASH' | null;
+  stripePaymentIntentId?: string | null;
   email: string;
   customerName: string;
   amountTotal: number;
@@ -30,6 +31,116 @@ type OrderDetail = {
   tickets: Array<{ publicId: string; seatId: string }>;
   stripeRefundStatus?: string | null;
   refundRequestedAt?: string | null;
+};
+
+type StripeTransactionDetail = {
+  available: boolean;
+  reason?: string;
+  dashboardUrl?: string;
+  paymentIntent?: {
+    id: string;
+    status: string;
+    amount: number;
+    amountReceived: number;
+    currency: string;
+    createdAt: string | null;
+    canceledAt: string | null;
+    cancellationReason: string | null;
+    description: string | null;
+    captureMethod: string;
+    statementDescriptor: string | null;
+    statementDescriptorSuffix: string | null;
+    paymentMethodTypes: string[];
+    livemode: boolean;
+  };
+  paymentMethod?: {
+    id: string | null;
+    type: string | null;
+    brand: string | null;
+    displayBrand: string | null;
+    funding: string | null;
+    last4: string | null;
+    fingerprint: string | null;
+    expMonth: number | null;
+    expYear: number | null;
+    issuer: string | null;
+    country: string | null;
+    network: string | null;
+    walletType: string | null;
+    checks: {
+      cvcCheck: string | null;
+      addressLine1Check: string | null;
+      addressPostalCodeCheck: string | null;
+    };
+  };
+  charge?: {
+    id: string;
+    status: string;
+    paid: boolean;
+    captured: boolean;
+    amount: number;
+    amountCaptured: number;
+    amountRefunded: number;
+    createdAt: string | null;
+    receiptEmail: string | null;
+    receiptUrl: string | null;
+    failureCode: string | null;
+    failureMessage: string | null;
+    statementDescriptor: string | null;
+    statementDescriptorSuffix: string | null;
+    outcome: {
+      riskLevel: string | null;
+      riskScore: number | null;
+      networkStatus: string | null;
+      sellerMessage: string | null;
+      type: string;
+    } | null;
+    billingDetails: {
+      name: string | null;
+      email: string | null;
+      phone: string | null;
+      postalCode: string | null;
+      country: string | null;
+    };
+  } | null;
+  balance?: {
+    id: string;
+    amount: number;
+    fee: number;
+    net: number;
+    type: string;
+    reportingCategory: string;
+    availableOn: string | null;
+    exchangeRate: number | null;
+    feeDetails: Array<{
+      amount: number;
+      currency: string;
+      description: string | null;
+      type: string;
+    }>;
+  } | null;
+  customer?: {
+    id: string | null;
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+    country: string | null;
+  };
+  refunds?: Array<{
+    id: string;
+    status: string | null;
+    amount: number;
+    reason: string | null;
+    createdAt: string | null;
+  }>;
+  activity?: Array<{
+    key: string;
+    label: string;
+    status: 'success' | 'warning' | 'info';
+    occurredAt: string;
+  }>;
+  metadata?: Record<string, string>;
+  orderRefundStatus?: string | null;
 };
 
 const STATUS_STYLES: Record<string, string> = {
@@ -58,10 +169,36 @@ function Badge({ label, style }: { label: string; style?: string }) {
   );
 }
 
+function formatCurrency(cents: number | null | undefined, currency = 'usd'): string {
+  if (typeof cents !== 'number' || Number.isNaN(cents)) return '—';
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: (currency || 'usd').toUpperCase(),
+  }).format(cents / 100);
+}
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString();
+}
+
+function formatLabel(value: string | null | undefined): string {
+  if (!value) return '—';
+  return value
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 export default function AdminOrderDetailPage() {
   const { id } = useParams();
   const { admin } = useAdminSession();
   const [data, setData] = useState<OrderDetail | null>(null);
+  const [transaction, setTransaction] = useState<StripeTransactionDetail | null>(null);
+  const [transactionLoading, setTransactionLoading] = useState(false);
+  const [transactionError, setTransactionError] = useState<string | null>(null);
+  const [showTransactionDetails, setShowTransactionDetails] = useState(true);
   const [loading, setLoading] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +219,49 @@ export default function AdminOrderDetailPage() {
   };
 
   useEffect(() => { void load(); }, [id]);
+
+  useEffect(() => {
+    if (!data) {
+      setTransaction(null);
+      setTransactionError(null);
+      setTransactionLoading(false);
+      return;
+    }
+
+    const shouldLoadTransaction =
+      Boolean(data.stripePaymentIntentId) ||
+      data.source === 'ONLINE' ||
+      (data.source === 'DOOR' && data.inPersonPaymentMethod === 'STRIPE');
+
+    if (!shouldLoadTransaction) {
+      setTransaction(null);
+      setTransactionError(null);
+      setTransactionLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setTransaction(null);
+    setTransactionLoading(true);
+    setTransactionError(null);
+    void adminFetch<StripeTransactionDetail>(`/api/admin/orders/${data.id}/transaction`)
+      .then((result) => {
+        if (cancelled) return;
+        setTransaction(result);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setTransactionError(err instanceof Error ? err.message : 'Failed to load transaction details');
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setTransactionLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [data]);
 
   const resendTickets = async () => {
     if (!data) return;
@@ -141,6 +321,16 @@ export default function AdminOrderDetailPage() {
 
   const statusStyle = STATUS_STYLES[data.status] ?? 'bg-stone-100 text-stone-500 ring-stone-200';
   const formattedTotal = `$${(data.amountTotal / 100).toFixed(2)}`;
+  const shouldShowTransactionPanel =
+    Boolean(transaction) || Boolean(transactionError) || transactionLoading || Boolean(data.stripePaymentIntentId) || data.source === 'ONLINE' || (data.source === 'DOOR' && data.inPersonPaymentMethod === 'STRIPE');
+  const hasTransactionDetails = Boolean(transaction?.available && transaction.paymentIntent);
+  const paymentIntent = transaction?.paymentIntent;
+  const paymentMethod = transaction?.paymentMethod;
+  const paymentCharge = transaction?.charge;
+  const paymentBalance = transaction?.balance;
+  const paymentRefunds = transaction?.refunds || [];
+  const paymentActivity = transaction?.activity || [];
+  const metadataEntries = Object.entries(transaction?.metadata || {});
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 py-2">
@@ -217,6 +407,232 @@ export default function AdminOrderDetailPage() {
           <div className="mt-2 text-xs text-stone-500">
             Refunded orders automatically return their seats to inventory for resale.
           </div>
+        </div>
+      )}
+
+      {/* ── Stripe transaction ── */}
+      {shouldShowTransactionPanel && (
+        <div className="rounded-2xl border border-stone-100 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-widest text-stone-400">Transaction</p>
+              {hasTransactionDetails && paymentIntent ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge
+                    label={formatLabel(paymentIntent.status)}
+                    style={
+                      paymentIntent.status === 'succeeded'
+                        ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                        : paymentIntent.status === 'canceled'
+                          ? 'bg-rose-50 text-rose-700 ring-rose-200'
+                          : 'bg-amber-50 text-amber-700 ring-amber-200'
+                    }
+                  />
+                  <span className="text-sm font-semibold text-stone-800">
+                    {formatCurrency(paymentIntent.amount, paymentIntent.currency)}
+                  </span>
+                  {paymentMethod?.brand && paymentMethod?.last4 && (
+                    <span className="text-sm text-stone-500">
+                      {formatLabel(paymentMethod.brand)} •••• {paymentMethod.last4}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-stone-500">
+                  {transactionLoading ? 'Loading Stripe transaction details…' : transaction?.reason || 'Stripe transaction details are unavailable.'}
+                </p>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {transaction?.dashboardUrl && (
+                <a
+                  href={transaction.dashboardUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-600 transition-colors hover:border-stone-300 hover:bg-white hover:text-stone-900"
+                >
+                  Open in Stripe
+                </a>
+              )}
+              {hasTransactionDetails && (
+                <button
+                  type="button"
+                  onClick={() => setShowTransactionDetails((current) => !current)}
+                  className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-600 transition-colors hover:border-stone-300 hover:text-stone-900"
+                >
+                  {showTransactionDetails ? 'Hide Details' : 'View Details'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {transactionError && (
+            <div className="mt-4 rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {transactionError}
+            </div>
+          )}
+
+          {hasTransactionDetails && showTransactionDetails && paymentIntent && (
+            <div className="mt-4 space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-xl border border-stone-100 bg-stone-50 p-4">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500">Payment Breakdown</p>
+                  <dl className="space-y-1.5 text-sm text-stone-600">
+                    <div className="flex items-center justify-between gap-2">
+                      <dt>Payment amount</dt>
+                      <dd className="font-semibold text-stone-900">
+                        {formatCurrency(paymentIntent.amount, paymentIntent.currency)}
+                      </dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <dt>Stripe fees</dt>
+                      <dd className="font-medium text-stone-700">
+                        {paymentBalance ? `- ${formatCurrency(paymentBalance.fee, paymentIntent.currency)}` : '—'}
+                      </dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 border-t border-stone-200 pt-2">
+                      <dt className="font-semibold text-stone-700">Net amount</dt>
+                      <dd className="font-bold text-stone-900">
+                        {paymentBalance ? formatCurrency(paymentBalance.net, paymentIntent.currency) : '—'}
+                      </dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 text-xs text-stone-500">
+                      <dt>Funds available</dt>
+                      <dd>{formatDateTime(paymentBalance?.availableOn)}</dd>
+                    </div>
+                  </dl>
+                </div>
+
+                <div className="rounded-xl border border-stone-100 bg-stone-50 p-4">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500">Payment Method</p>
+                  <dl className="space-y-1.5 text-sm text-stone-600">
+                    <div className="flex items-center justify-between gap-2">
+                      <dt>Type</dt>
+                      <dd className="font-medium text-stone-900">{formatLabel(paymentMethod?.type)}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <dt>Card</dt>
+                      <dd className="font-medium text-stone-900">
+                        {paymentMethod?.brand && paymentMethod?.last4
+                          ? `${formatLabel(paymentMethod.brand)} •••• ${paymentMethod.last4}`
+                          : '—'}
+                      </dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <dt>Expires</dt>
+                      <dd>{paymentMethod?.expMonth && paymentMethod?.expYear ? `${String(paymentMethod.expMonth).padStart(2, '0')} / ${paymentMethod.expYear}` : '—'}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <dt>CVC check</dt>
+                      <dd>{formatLabel(paymentMethod?.checks?.cvcCheck)}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <dt>Zip check</dt>
+                      <dd>{formatLabel(paymentMethod?.checks?.addressPostalCodeCheck)}</dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-xl border border-stone-100 bg-white p-4">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500">Details</p>
+                  <dl className="space-y-1.5 text-sm text-stone-600 break-all">
+                    <div>
+                      <dt className="text-stone-400">Payment ID</dt>
+                      <dd className="font-mono text-xs text-stone-800">{paymentIntent.id}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-stone-400">Charge ID</dt>
+                      <dd className="font-mono text-xs text-stone-800">{paymentCharge?.id || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-stone-400">Payment method ID</dt>
+                      <dd className="font-mono text-xs text-stone-800">{paymentMethod?.id || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-stone-400">Fingerprint</dt>
+                      <dd className="font-mono text-xs text-stone-800">{paymentMethod?.fingerprint || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-stone-400">Created</dt>
+                      <dd>{formatDateTime(paymentIntent.createdAt)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-stone-400">Customer email</dt>
+                      <dd>{paymentCharge?.billingDetails.email || transaction?.customer?.email || data.email || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-stone-400">Billing location</dt>
+                      <dd>
+                        {[paymentCharge?.billingDetails.postalCode, paymentCharge?.billingDetails.country]
+                          .filter(Boolean)
+                          .join(', ') || '—'}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+
+                <div className="rounded-xl border border-stone-100 bg-white p-4">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500">Recent Activity</p>
+                  {paymentActivity.length > 0 ? (
+                    <ul className="space-y-2">
+                      {paymentActivity.map((item) => (
+                        <li key={item.key} className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2">
+                          <p className="text-sm font-medium text-stone-800">{item.label}</p>
+                          <p className="text-xs text-stone-500">{formatDateTime(item.occurredAt)}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-stone-500">No activity available.</p>
+                  )}
+                </div>
+              </div>
+
+              {(metadataEntries.length > 0 || paymentRefunds.length > 0) && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-stone-100 bg-stone-50 p-4">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500">Metadata</p>
+                    {metadataEntries.length > 0 ? (
+                      <div className="space-y-1.5 text-sm text-stone-600">
+                        {metadataEntries.map(([key, value]) => (
+                          <div key={key} className="flex items-start justify-between gap-3">
+                            <span className="font-medium text-stone-500">{key}</span>
+                            <span className="max-w-[70%] text-right break-all text-stone-800">{value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-stone-500">No metadata attached.</p>
+                    )}
+                  </div>
+
+                  <div className="rounded-xl border border-stone-100 bg-stone-50 p-4">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500">Refunds</p>
+                    {paymentRefunds.length > 0 ? (
+                      <div className="space-y-2">
+                        {paymentRefunds.map((refund) => (
+                          <div key={refund.id} className="rounded-lg border border-stone-200 bg-white px-3 py-2">
+                            <p className="text-sm font-medium text-stone-800">
+                              {formatCurrency(refund.amount, paymentIntent.currency)} · {formatLabel(refund.status)}
+                            </p>
+                            <p className="text-xs text-stone-500">
+                              {refund.reason ? `${formatLabel(refund.reason)} · ` : ''}{formatDateTime(refund.createdAt)}
+                            </p>
+                            <p className="mt-1 font-mono text-[11px] text-stone-500 break-all">{refund.id}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-stone-500">No refunds on this payment.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

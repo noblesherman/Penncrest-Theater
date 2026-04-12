@@ -308,6 +308,40 @@ export default function AdminTripsPage() {
     }
   }
 
+  async function handleDeleteTrip() {
+    if (!selectedTripId || !selectedTrip) return;
+    setError(null);
+    setNotice(null);
+
+    const confirmed = window.confirm(
+      `Delete trip "${selectedTrip.title}" permanently?\n\nThis will permanently delete the trip, roster enrollments, trip payment records, and trip documents. This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    try {
+      const result = await adminFetch<{
+        deleted: boolean;
+        tripId: string;
+        deletedEnrollments: number;
+        deletedPayments: number;
+        deletedDocuments: number;
+      }>(`/api/admin/trips/${encodeURIComponent(selectedTripId)}`, {
+        method: 'DELETE'
+      });
+
+      await loadTrips(false);
+      setSelectedTrip(null);
+      setRoster([]);
+      setLedgerSummary(null);
+      setLedgerPayments([]);
+      setNotice(
+        `Trip deleted. Removed ${result.deletedEnrollments} enrollments, ${result.deletedPayments} payments, and ${result.deletedDocuments} documents.`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete trip');
+    }
+  }
+
   async function handleUploadDocument(event: FormEvent) {
     event.preventDefault();
     if (!selectedTripId || !documentFile) return;
@@ -655,6 +689,13 @@ export default function AdminTripsPage() {
                       onClick={() => void handlePublishOrArchive('archive')}
                     >
                       Archive
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700"
+                      onClick={() => void handleDeleteTrip()}
+                    >
+                      Delete Trip
                     </button>
                   </div>
                 </form>

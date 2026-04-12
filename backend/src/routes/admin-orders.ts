@@ -203,6 +203,103 @@ function dedupeSeatIds(seatIds: string[]): string[] {
   return [...new Set(seatIds)];
 }
 
+function isoFromUnix(seconds?: number | null): string | null {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds)) {
+    return null;
+  }
+  return new Date(seconds * 1000).toISOString();
+}
+
+function isDeletedStripeCustomer(customer: Stripe.Customer | Stripe.DeletedCustomer): customer is Stripe.DeletedCustomer {
+  return 'deleted' in customer && customer.deleted === true;
+}
+
+type StripeActivityEntry = {
+  key: string;
+  label: string;
+  status: 'success' | 'warning' | 'info';
+  occurredAt: string;
+};
+
+function buildStripeActivity(params: {
+  paymentIntent: Stripe.PaymentIntent;
+  charge: Stripe.Charge | null;
+  refunds: Stripe.Refund[];
+}): StripeActivityEntry[] {
+  const entries: StripeActivityEntry[] = [];
+
+  const paymentCreatedAt = isoFromUnix(params.paymentIntent.created);
+  if (paymentCreatedAt) {
+    entries.push({
+      key: `pi-created:${params.paymentIntent.id}`,
+      label: 'Payment started',
+      status: 'info',
+      occurredAt: paymentCreatedAt
+    });
+  }
+
+  if (params.paymentIntent.status === 'succeeded') {
+    const succeededAt =
+      isoFromUnix(params.charge?.created ?? null) ||
+      isoFromUnix(params.paymentIntent.created);
+    if (succeededAt) {
+      entries.push({
+        key: `pi-succeeded:${params.paymentIntent.id}`,
+        label: 'Payment succeeded',
+        status: 'success',
+        occurredAt: succeededAt
+      });
+    }
+  }
+
+  if (params.paymentIntent.status === 'requires_payment_method' || params.paymentIntent.status === 'canceled') {
+    const canceledAt =
+      isoFromUnix(params.paymentIntent.canceled_at) ||
+      isoFromUnix(params.paymentIntent.created);
+    if (canceledAt) {
+      entries.push({
+        key: `pi-blocked:${params.paymentIntent.id}`,
+        label: params.paymentIntent.status === 'canceled' ? 'Payment canceled' : 'Payment needs attention',
+        status: 'warning',
+        occurredAt: canceledAt
+      });
+    }
+  }
+
+  if (params.charge) {
+    const chargeCreatedAt = isoFromUnix(params.charge.created);
+    if (chargeCreatedAt) {
+      entries.push({
+        key: `charge:${params.charge.id}`,
+        label:
+          params.charge.status === 'succeeded'
+            ? 'Charge captured'
+            : params.charge.status === 'failed'
+              ? 'Charge failed'
+              : `Charge ${params.charge.status}`,
+        status: params.charge.status === 'succeeded' ? 'success' : params.charge.status === 'failed' ? 'warning' : 'info',
+        occurredAt: chargeCreatedAt
+      });
+    }
+  }
+
+  params.refunds.forEach((refund) => {
+    const occurredAt = isoFromUnix(refund.created);
+    if (!occurredAt) return;
+
+    entries.push({
+      key: `refund:${refund.id}`,
+      label: `Refund ${refund.status}`,
+      status: refund.status === 'succeeded' ? 'success' : refund.status === 'failed' ? 'warning' : 'info',
+      occurredAt
+    });
+  });
+
+  return entries
+    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+    .slice(0, 10);
+}
+
 function sortSeats<T extends { sectionName: string; row: string; number: number }>(seats: T[]): T[] {
   return [...seats].sort((a, b) => {
     if (a.sectionName !== b.sectionName) {
@@ -787,6 +884,236 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
       reply.send(order);
     } catch (err) {
       handleRouteError(reply, err, 'Failed to fetch order details');
+    }
+  });
+
+  app.get('/api/admin/orders/:id/transaction', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+    const params = request.params as { id: string };
+
+    try {
+      const order = await prisma.order.findUnique({
+        where: { id: params.id },
+        select: {
+          id: true,
+          email: true,
+          stripeSessionId: true,
+          stripePaymentIntentId: true,
+          stripeRefundId: true,
+          stripeRefundStatus: true
+        }
+      });
+
+      if (!order) {
+        throw new HttpError(404, 'Order not found');
+      }
+
+      let paymentIntentId = order.stripePaymentIntentId;
+      if (!paymentIntentId && order.stripeSessionId) {
+        const session = await stripe.checkout.sessions.retrieve(order.stripeSessionId);
+        if (typeof session.payment_intent === 'string') {
+          paymentIntentId = session.payment_intent;
+          await prisma.order
+            .update({
+              where: { id: order.id },
+              data: { stripePaymentIntentId: paymentIntentId }
+            })
+            .catch(() => undefined);
+        }
+      }
+
+      if (!paymentIntentId) {
+        return reply.send({
+          available: false,
+          reason: 'No Stripe payment is linked to this order.'
+        });
+      }
+
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
+        expand: ['latest_charge.balance_transaction', 'payment_method', 'customer']
+      });
+
+      const charge =
+        paymentIntent.latest_charge && typeof paymentIntent.latest_charge !== 'string'
+          ? paymentIntent.latest_charge
+          : null;
+      const balanceTransaction =
+        charge?.balance_transaction && typeof charge.balance_transaction !== 'string'
+          ? charge.balance_transaction
+          : null;
+
+      let paymentMethod =
+        paymentIntent.payment_method && typeof paymentIntent.payment_method !== 'string'
+          ? paymentIntent.payment_method
+          : null;
+      if (!paymentMethod && typeof paymentIntent.payment_method === 'string') {
+        try {
+          paymentMethod = await stripe.paymentMethods.retrieve(paymentIntent.payment_method);
+        } catch (err) {
+          if (err instanceof Stripe.errors.StripeError) {
+            app.log.warn(
+              { err, paymentMethodId: paymentIntent.payment_method, orderId: order.id },
+              'Failed to retrieve Stripe payment method'
+            );
+          } else {
+            throw err;
+          }
+        }
+      }
+
+      const chargeCardDetails =
+        charge?.payment_method_details?.type === 'card' ? charge.payment_method_details.card : null;
+      const cardDetails = paymentMethod?.card ?? null;
+      const cardChecks = cardDetails?.checks || chargeCardDetails?.checks || null;
+      const cardWalletType = cardDetails?.wallet?.type || chargeCardDetails?.wallet?.type || null;
+
+      const expandedCustomer =
+        paymentIntent.customer && typeof paymentIntent.customer !== 'string'
+          ? paymentIntent.customer
+          : null;
+      const customer =
+        expandedCustomer && !isDeletedStripeCustomer(expandedCustomer)
+          ? expandedCustomer
+          : null;
+
+      const refundsById = new Map<string, Stripe.Refund>();
+      (charge?.refunds?.data || []).forEach((refund) => refundsById.set(refund.id, refund));
+      if (order.stripeRefundId && !refundsById.has(order.stripeRefundId)) {
+        try {
+          const refund = await stripe.refunds.retrieve(order.stripeRefundId);
+          refundsById.set(refund.id, refund);
+        } catch (err) {
+          if (err instanceof Stripe.errors.StripeError) {
+            app.log.warn({ err, refundId: order.stripeRefundId, orderId: order.id }, 'Failed to retrieve Stripe refund');
+          } else {
+            throw err;
+          }
+        }
+      }
+      const refunds = [...refundsById.values()].sort((a, b) => b.created - a.created);
+
+      const billingAddress = charge?.billing_details?.address || paymentMethod?.billing_details?.address || null;
+      const billingEmail =
+        charge?.billing_details?.email || paymentMethod?.billing_details?.email || paymentIntent.receipt_email || order.email || null;
+      const billingName = charge?.billing_details?.name || paymentMethod?.billing_details?.name || null;
+
+      const activity = buildStripeActivity({ paymentIntent, charge, refunds });
+      const dashboardBase = paymentIntent.livemode ? 'https://dashboard.stripe.com' : 'https://dashboard.stripe.com/test';
+
+      reply.send({
+        available: true,
+        orderId: order.id,
+        dashboardUrl: `${dashboardBase}/payments/${paymentIntent.id}`,
+        paymentIntent: {
+          id: paymentIntent.id,
+          status: paymentIntent.status,
+          amount: paymentIntent.amount,
+          amountReceived: paymentIntent.amount_received,
+          currency: paymentIntent.currency,
+          createdAt: isoFromUnix(paymentIntent.created),
+          canceledAt: isoFromUnix(paymentIntent.canceled_at),
+          cancellationReason: paymentIntent.cancellation_reason,
+          description: paymentIntent.description,
+          captureMethod: paymentIntent.capture_method,
+          statementDescriptor: paymentIntent.statement_descriptor,
+          statementDescriptorSuffix: paymentIntent.statement_descriptor_suffix,
+          paymentMethodTypes: paymentIntent.payment_method_types,
+          livemode: paymentIntent.livemode
+        },
+        paymentMethod: {
+          id: paymentMethod?.id || (typeof paymentIntent.payment_method === 'string' ? paymentIntent.payment_method : null),
+          type: paymentMethod?.type || charge?.payment_method_details?.type || null,
+          brand: cardDetails?.brand || chargeCardDetails?.brand || null,
+          displayBrand: cardDetails?.display_brand || null,
+          funding: cardDetails?.funding || chargeCardDetails?.funding || null,
+          last4: cardDetails?.last4 || chargeCardDetails?.last4 || null,
+          fingerprint: cardDetails?.fingerprint || chargeCardDetails?.fingerprint || null,
+          expMonth: cardDetails?.exp_month || chargeCardDetails?.exp_month || null,
+          expYear: cardDetails?.exp_year || chargeCardDetails?.exp_year || null,
+          issuer: cardDetails?.issuer || chargeCardDetails?.issuer || null,
+          country: cardDetails?.country || chargeCardDetails?.country || null,
+          network: chargeCardDetails?.network || cardDetails?.networks?.preferred || null,
+          walletType: cardWalletType,
+          checks: {
+            cvcCheck: cardChecks?.cvc_check || null,
+            addressLine1Check: cardChecks?.address_line1_check || null,
+            addressPostalCodeCheck: cardChecks?.address_postal_code_check || null
+          }
+        },
+        charge: charge
+          ? {
+              id: charge.id,
+              status: charge.status,
+              paid: charge.paid,
+              captured: charge.captured,
+              amount: charge.amount,
+              amountCaptured: charge.amount_captured,
+              amountRefunded: charge.amount_refunded,
+              createdAt: isoFromUnix(charge.created),
+              receiptEmail: charge.receipt_email,
+              receiptUrl: charge.receipt_url,
+              failureCode: charge.failure_code,
+              failureMessage: charge.failure_message,
+              statementDescriptor: charge.statement_descriptor,
+              statementDescriptorSuffix: charge.statement_descriptor_suffix,
+              outcome: charge.outcome
+                ? {
+                    riskLevel: charge.outcome.risk_level || null,
+                    riskScore: charge.outcome.risk_score ?? null,
+                    networkStatus: charge.outcome.network_status,
+                    sellerMessage: charge.outcome.seller_message,
+                    type: charge.outcome.type
+                  }
+                : null,
+              billingDetails: {
+                name: billingName,
+                email: billingEmail,
+                phone: charge.billing_details?.phone || paymentMethod?.billing_details?.phone || null,
+                postalCode: billingAddress?.postal_code || null,
+                country: billingAddress?.country || null
+              }
+            }
+          : null,
+        balance: balanceTransaction
+          ? {
+              id: balanceTransaction.id,
+              amount: balanceTransaction.amount,
+              fee: balanceTransaction.fee,
+              net: balanceTransaction.net,
+              type: balanceTransaction.type,
+              reportingCategory: balanceTransaction.reporting_category,
+              availableOn: isoFromUnix(balanceTransaction.available_on),
+              exchangeRate: balanceTransaction.exchange_rate,
+              feeDetails: balanceTransaction.fee_details.map((row) => ({
+                amount: row.amount,
+                currency: row.currency,
+                description: row.description,
+                type: row.type
+              }))
+            }
+          : null,
+        customer: {
+          id: customer?.id || (typeof paymentIntent.customer === 'string' ? paymentIntent.customer : null),
+          name: customer?.name || billingName,
+          email: customer?.email || billingEmail,
+          phone: customer?.phone || charge?.billing_details?.phone || paymentMethod?.billing_details?.phone || null,
+          country: customer?.address?.country || billingAddress?.country || null
+        },
+        refunds: refunds.map((refund) => ({
+          id: refund.id,
+          status: refund.status,
+          amount: refund.amount,
+          reason: refund.reason,
+          createdAt: isoFromUnix(refund.created)
+        })),
+        activity,
+        metadata: paymentIntent.metadata,
+        orderRefundStatus: order.stripeRefundStatus
+      });
+    } catch (err) {
+      if (err instanceof Stripe.errors.StripeError) {
+        return reply.status(502).send({ error: err.message || 'Stripe request failed' });
+      }
+      handleRouteError(reply, err, 'Failed to fetch Stripe transaction details');
     }
   });
 

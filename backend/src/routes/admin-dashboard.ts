@@ -468,6 +468,9 @@ export const adminDashboardRoutes: FastifyPluginAsync = async (app) => {
             rangeEnd
           }),
           prisma.programBioForm.findMany({
+            where: {
+              isArchived: false
+            },
             select: {
               isOpen: true,
               deadlineAt: true,

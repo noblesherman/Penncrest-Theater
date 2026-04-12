@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma.js';
 import { handleRouteError } from '../lib/route-error.js';
 import { HttpError } from '../lib/http-error.js';
 import { logAudit } from '../lib/audit-log.js';
+import { deleteUploadedObjectByKey } from '../lib/r2.js';
 
 const createTripSchema = z.object({
   title: z.string().trim().min(1).max(180),
@@ -440,6 +441,131 @@ export const adminTripRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(404).send({ error: 'Trip not found' });
       }
       handleRouteError(reply, err, 'Failed to archive trip');
+    }
+  });
+
+  app.delete('/api/admin/trips/:tripId', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
+    const params = request.params as { tripId: string };
+
+    try {
+      const existing = await prisma.trip.findUnique({
+        where: { id: params.tripId },
+        include: {
+          documents: {
+            select: {
+              id: true,
+              fileKey: true
+            }
+          },
+          _count: {
+            select: {
+              enrollments: true,
+              documents: true
+            }
+          }
+        }
+      });
+      if (!existing) {
+        return reply.status(404).send({ error: 'Trip not found' });
+      }
+
+      const deleted = await prisma.$transaction(async (tx) => {
+        const enrollments = await tx.tripEnrollment.findMany({
+          where: {
+            tripId: existing.id
+          },
+          select: {
+            id: true
+          }
+        });
+
+        const enrollmentIds = enrollments.map((row) => row.id);
+        const deletedPayments =
+          enrollmentIds.length === 0
+            ? 0
+            : (
+                await tx.tripPayment.deleteMany({
+                  where: {
+                    enrollmentId: {
+                      in: enrollmentIds
+                    }
+                  }
+                })
+              ).count;
+
+        const deletedEnrollments = (
+          await tx.tripEnrollment.deleteMany({
+            where: {
+              tripId: existing.id
+            }
+          })
+        ).count;
+
+        const deletedDocuments = (
+          await tx.tripDocument.deleteMany({
+            where: {
+              tripId: existing.id
+            }
+          })
+        ).count;
+
+        await tx.trip.delete({
+          where: {
+            id: existing.id
+          }
+        });
+
+        return {
+          deletedPayments,
+          deletedEnrollments,
+          deletedDocuments
+        };
+      });
+
+      const documentKeys = existing.documents
+        .map((document) => document.fileKey)
+        .filter((key): key is string => Boolean(key));
+      const r2DeleteResults = await Promise.allSettled(documentKeys.map((key) => deleteUploadedObjectByKey(key)));
+      const failedDocumentObjectDeletes = r2DeleteResults.filter((result) => result.status === 'rejected').length;
+
+      if (failedDocumentObjectDeletes > 0) {
+        app.log.warn(
+          {
+            tripId: existing.id,
+            failedDocumentObjectDeletes,
+            documentObjectCount: documentKeys.length
+          },
+          'trip deleted but some document objects could not be removed from storage'
+        );
+      }
+
+      await logAudit({
+        actor: request.adminUser?.username || 'admin',
+        actorAdminId: request.adminUser?.id,
+        action: 'TRIP_DELETED',
+        entityType: 'Trip',
+        entityId: existing.id,
+        metadata: {
+          slug: existing.slug,
+          deletedEnrollments: deleted.deletedEnrollments,
+          deletedPayments: deleted.deletedPayments,
+          deletedDocuments: deleted.deletedDocuments,
+          deletedDocumentObjects: documentKeys.length - failedDocumentObjectDeletes,
+          failedDocumentObjectDeletes
+        }
+      });
+
+      reply.send({
+        deleted: true,
+        tripId: existing.id,
+        deletedEnrollments: deleted.deletedEnrollments,
+        deletedPayments: deleted.deletedPayments,
+        deletedDocuments: deleted.deletedDocuments,
+        deletedDocumentObjects: documentKeys.length - failedDocumentObjectDeletes,
+        failedDocumentObjectDeletes
+      });
+    } catch (err) {
+      handleRouteError(reply, err, 'Failed to delete trip');
     }
   });
 
