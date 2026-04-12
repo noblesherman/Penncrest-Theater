@@ -30,6 +30,12 @@ const stripePayoutOverviewQuerySchema = z.object({
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 });
 
+const stripePayoutCreateSchema = z.object({
+  amountCents: z.number().int().positive().optional(),
+  currency: z.string().trim().min(3).max(3).optional(),
+  statementDescriptor: z.string().trim().min(1).max(22).optional()
+});
+
 const sendInvoiceLineItemSchema = z.object({
   description: z.string().trim().min(1).max(240),
   quantity: z.number().int().min(1).max(1000),
@@ -191,12 +197,6 @@ function pickPrimaryCurrency(
 function amountForCurrency(rows: Array<{ currency: string; amount: number }>, currency: string): number {
   const match = rows.find((row) => row.currency === currency);
   return match ? match.amount : 0;
-}
-
-async function resolveConnectAccountId(): Promise<string> {
-  const accountId = env.STRIPE_CONNECT_ACCOUNT_ID;
-  if (accountId) return accountId;
-  throw new HttpError(400, 'Stripe Connect account is not configured. Set STRIPE_CONNECT_ACCOUNT_ID.');
 }
 
 function csvCell(value: unknown): string {
@@ -1089,68 +1089,6 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.post('/api/admin/finance/connect/account-session', { preHandler: app.authenticateAdmin }, async (_request, reply) => {
-    if (!env.STRIPE_PUBLISHABLE_KEY) {
-      return reply.status(500).send({ error: 'Missing STRIPE_PUBLISHABLE_KEY for Stripe embedded components' });
-    }
-
-    try {
-      const stripeAccountId = await resolveConnectAccountId();
-      const account = await stripe.accounts.retrieve(stripeAccountId);
-
-      const session = await stripe.accountSessions.create({
-        account: stripeAccountId,
-        components: {
-          account_onboarding: { enabled: true },
-          account_management: { enabled: true },
-          payouts: { enabled: true },
-          financial_account: { enabled: true },
-          tax_settings: { enabled: true }
-        }
-      });
-
-      let financialAccounts: Array<{
-        id: string;
-        displayName: string | null;
-        status: string | null;
-        supportedCurrencies: string[];
-      }> = [];
-
-      try {
-        const treasuryAccounts = await stripe.treasury.financialAccounts.list({ limit: 25 }, { stripeAccount: stripeAccountId });
-        financialAccounts = treasuryAccounts.data.map((row) => ({
-          id: row.id,
-          displayName: (row as { display_name?: string | null; nickname?: string | null }).display_name
-            || (row as { nickname?: string | null }).nickname
-            || null,
-          status: row.status || null,
-          supportedCurrencies: row.supported_currencies || []
-        }));
-      } catch (err) {
-        if (!(err instanceof Stripe.errors.StripeError)) {
-          throw err;
-        }
-      }
-
-      reply.send({
-        clientSecret: session.client_secret,
-        publishableKey: env.STRIPE_PUBLISHABLE_KEY,
-        stripeAccountId,
-        chargesEnabled: account.charges_enabled,
-        payoutsEnabled: account.payouts_enabled,
-        detailsSubmitted: account.details_submitted,
-        requirementsCurrentlyDue: account.requirements?.currently_due || [],
-        financialAccounts
-      });
-    } catch (err) {
-      if (err instanceof Stripe.errors.StripeError) {
-        const statusCode = err.type === 'StripeInvalidRequestError' ? 400 : 502;
-        return reply.status(statusCode).send({ error: err.message || 'Stripe account session failed' });
-      }
-      handleRouteError(reply, err, 'Failed to create Stripe account session');
-    }
-  });
-
   app.get('/api/admin/finance/payouts-overview', { preHandler: app.authenticateAdmin }, async (request, reply) => {
     const parsed = stripePayoutOverviewQuerySchema.safeParse(request.query || {});
     if (!parsed.success) {
@@ -1247,6 +1185,76 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(statusCode).send({ error: err.message || 'Stripe payouts lookup failed' });
       }
       handleRouteError(reply, err, 'Failed to fetch Stripe payout overview');
+    }
+  });
+
+  app.post('/api/admin/finance/payouts/pay-out', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
+    const parsed = stripePayoutCreateSchema.safeParse(request.body || {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+
+    try {
+      const balance = await stripe.balance.retrieve();
+      const availableByCurrency = balance.available.map((row) => ({
+        currency: row.currency.toLowerCase(),
+        amount: row.amount
+      }));
+
+      const requestedCurrency = parsed.data.currency?.toLowerCase();
+      const payoutCurrency = requestedCurrency || pickPrimaryCurrency(availableByCurrency, []);
+      const availableCents = amountForCurrency(availableByCurrency, payoutCurrency);
+      if (availableCents <= 0) {
+        throw new HttpError(400, `No available balance to pay out in ${payoutCurrency.toUpperCase()}.`);
+      }
+
+      const payoutAmount = parsed.data.amountCents ?? availableCents;
+      if (payoutAmount > availableCents) {
+        throw new HttpError(
+          400,
+          `Requested payout exceeds available balance (${toUsd(availableCents)} ${payoutCurrency.toUpperCase()}).`
+        );
+      }
+
+      const payout = await stripe.payouts.create({
+        amount: payoutAmount,
+        currency: payoutCurrency,
+        ...(parsed.data.statementDescriptor
+          ? { statement_descriptor: parsed.data.statementDescriptor }
+          : {})
+      });
+
+      await logAudit({
+        action: 'admin.finance.payout_created',
+        actor: request.adminUser?.username || 'admin',
+        actorAdminId: request.adminUser?.id || null,
+        entityType: 'finance_payout',
+        entityId: payout.id,
+        metadata: {
+          amountCents: payoutAmount,
+          currency: payoutCurrency.toUpperCase(),
+          statementDescriptor: parsed.data.statementDescriptor || null
+        }
+      });
+
+      reply.send({
+        payout: {
+          id: payout.id,
+          status: payout.status,
+          amountCents: payout.amount,
+          currency: payout.currency.toUpperCase(),
+          arrivalDate: toIsoFromEpochSeconds(payout.arrival_date),
+          createdAt: toIsoFromEpochSeconds(payout.created)
+        },
+        remainingAvailableCents: availableCents - payoutAmount,
+        currency: payoutCurrency.toUpperCase()
+      });
+    } catch (err) {
+      if (err instanceof Stripe.errors.StripeError) {
+        const statusCode = err.type === 'StripeInvalidRequestError' ? 400 : 502;
+        return reply.status(statusCode).send({ error: err.message || 'Stripe payout failed' });
+      }
+      handleRouteError(reply, err, 'Failed to create payout');
     }
   });
 

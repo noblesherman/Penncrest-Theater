@@ -24,8 +24,6 @@
     "restore:db": "bash ./scripts/restore-postgres-backup.sh"
   },
   "dependencies": {
-    "@stripe/connect-js": "^3.3.35",
-    "@stripe/react-connect-js": "^3.3.34",
     "@stripe/react-stripe-js": "^5.6.1",
     "@stripe/stripe-js": "^8.11.0",
     "@tailwindcss/vite": "^4.1.14",
