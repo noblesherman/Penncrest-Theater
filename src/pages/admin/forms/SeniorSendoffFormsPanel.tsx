@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronRight, Copy, Download, Plus, RefreshCw, Save, X } from 'lucide-react';
+import { Archive, ChevronRight, Copy, Download, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
 import { adminFetch } from '../../../lib/adminAuth';
 
 type SeniorSendoffFormSummary = {
@@ -14,9 +14,11 @@ type SeniorSendoffFormSummary = {
   questions: SeniorSendoffQuestions;
   deadlineAt: string;
   isOpen: boolean;
+  isArchived: boolean;
+  archivedAt: string | null;
   secondSubmissionPriceCents: number;
   acceptingResponses: boolean;
-  status: 'OPEN' | 'CLOSED';
+  status: 'OPEN' | 'CLOSED' | 'ARCHIVED';
   responseCount: number;
   paidResponseCount: number;
   createdAt: string;
@@ -73,6 +75,8 @@ type SeniorSendoffCustomQuestion = {
   hidden: boolean;
   options: string[];
 };
+
+type FormScope = 'active' | 'archived' | 'all';
 
 const DEFAULT_SENIOR_SENDOFF_QUESTIONS: SeniorSendoffQuestions = {
   parentNameLabel: 'Parent/Guardian Name',
@@ -180,14 +184,22 @@ export default function SeniorSendoffFormsPanel() {
   const [drafts, setDrafts] = useState<Record<string, FormDraft>>({});
   const [submissions, setSubmissions] = useState<SeniorSendoffSubmission[]>([]);
   const [selectedSubmission, setSelectedSubmission] = useState<SeniorSendoffSubmission | null>(null);
+  const [formScope, setFormScope] = useState<FormScope>('active');
   const [loading, setLoading] = useState(false);
   const [loadingSubmissions, setLoadingSubmissions] = useState(false);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'settings' | 'questions' | 'responses'>('settings');
 
+  const visibleForms = useMemo(() => {
+    if (formScope === 'active') return forms.filter((form) => !form.isArchived);
+    if (formScope === 'archived') return forms.filter((form) => form.isArchived);
+    return forms;
+  }, [forms, formScope]);
   const selectedForm = useMemo(() => forms.find((f) => f.id === selectedFormId) ?? null, [forms, selectedFormId]);
   const selectedDraft = selectedForm ? drafts[selectedForm.id] : null;
   const selectedCustomQuestionsById = useMemo(
@@ -303,6 +315,16 @@ export default function SeniorSendoffFormsPanel() {
   }, [loadBase]);
 
   useEffect(() => {
+    if (visibleForms.length === 0) {
+      setSelectedFormId(null);
+      return;
+    }
+    if (!selectedFormId || !visibleForms.some((form) => form.id === selectedFormId)) {
+      setSelectedFormId(visibleForms[0].id);
+    }
+  }, [visibleForms, selectedFormId]);
+
+  useEffect(() => {
     if (!selectedFormId) {
       setSubmissions([]);
       return;
@@ -408,6 +430,81 @@ export default function SeniorSendoffFormsPanel() {
     }
   }
 
+  async function archiveForm(form: SeniorSendoffFormSummary): Promise<void> {
+    const confirmed = window.confirm(
+      `Archive "${form.show.title}" senior send-off form?\n\nThis keeps all responses but removes it from active form operations.`
+    );
+    if (!confirmed) return;
+
+    setArchiving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const archived = await adminFetch<SeniorSendoffFormSummary>(`/api/admin/forms/senior-sendoff/${form.id}/archive`, {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+      const normalizedArchived = { ...archived, questions: normalizeQuestions(archived.questions) };
+      setForms((current) => current.map((row) => (row.id === form.id ? normalizedArchived : row)));
+      setDrafts((current) => ({
+        ...current,
+        [form.id]: {
+          title: normalizedArchived.title,
+          instructions: normalizedArchived.instructions,
+          questions: normalizedArchived.questions,
+          deadlineAt: toLocalInputValue(normalizedArchived.deadlineAt),
+          isOpen: normalizedArchived.isOpen,
+          secondSubmissionPriceCents: normalizedArchived.secondSubmissionPriceCents,
+          secondSubmissionPriceInput: (normalizedArchived.secondSubmissionPriceCents / 100).toFixed(2)
+        }
+      }));
+      setNotice('Form archived. Data was preserved.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to archive form');
+    } finally {
+      setArchiving(false);
+    }
+  }
+
+  async function deleteForm(form: SeniorSendoffFormSummary): Promise<void> {
+    const confirmed = window.confirm(
+      `Delete "${form.show.title}" senior send-off form permanently?\n\nThis permanently deletes the form and all submissions. This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await adminFetch<{
+        deleted: boolean;
+        formId: string;
+        submissionCount: number;
+      }>(`/api/admin/forms/senior-sendoff/${form.id}`, {
+        method: 'DELETE'
+      });
+
+      setForms((current) => current.filter((row) => row.id !== form.id));
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[form.id];
+        return next;
+      });
+      if (selectedFormId === form.id) {
+        setSelectedFormId(null);
+      }
+      setSubmissions([]);
+      setSelectedSubmission(null);
+      setNotice(
+        `Form deleted permanently. Removed ${result.submissionCount} response${result.submissionCount === 1 ? '' : 's'}.`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete form');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   async function copyShareLink(form: SeniorSendoffFormSummary): Promise<void> {
     const url = `${window.location.origin}${form.sharePath}`;
     try {
@@ -508,12 +605,22 @@ export default function SeniorSendoffFormsPanel() {
 
   return (
     <div className="space-y-6 font-sans">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-red-700">Admin</p>
-            <h1 className="mt-0.5 text-2xl font-bold text-stone-900">Senior Send-Off Forms</h1>
-            <p className="mt-1 text-sm text-stone-500">Create and manage playbill shout-out forms by show.</p>
-          </div>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-red-700">Admin</p>
+          <h1 className="mt-0.5 text-2xl font-bold text-stone-900">Senior Send-Off Forms</h1>
+          <p className="mt-1 text-sm text-stone-500">Create and manage playbill shout-out forms by show.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={formScope}
+            onChange={(event) => setFormScope(event.target.value as FormScope)}
+            className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700"
+          >
+            <option value="active">Active</option>
+            <option value="archived">Archived</option>
+            <option value="all">All</option>
+          </select>
           <button
             type="button"
             className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-600 transition hover:bg-stone-50 disabled:opacity-50"
@@ -521,9 +628,10 @@ export default function SeniorSendoffFormsPanel() {
             disabled={loading}
           >
             <RefreshCw className="h-3.5 w-3.5" />
-            {loading ? 'Refreshing...' : 'Refresh'}
+            {loading ? 'Refreshing…' : 'Refresh'}
           </button>
         </div>
+      </div>
 
         {error && (
           <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -583,10 +691,10 @@ export default function SeniorSendoffFormsPanel() {
         <div className="grid gap-5 lg:grid-cols-[260px,1fr]">
           <aside className="space-y-2">
             <p className={labelCls + ' px-1'}>All Forms</p>
-            {forms.length === 0 && !loading && (
+            {visibleForms.length === 0 && !loading && (
               <p className="rounded-xl border border-stone-200 bg-white px-4 py-6 text-center text-sm text-stone-400">No forms yet.</p>
             )}
-            {forms.map((form) => {
+            {visibleForms.map((form) => {
               const active = form.id === selectedFormId;
               return (
                 <button
@@ -604,7 +712,15 @@ export default function SeniorSendoffFormsPanel() {
                     <ChevronRight className={`h-3.5 w-3.5 flex-none transition ${active ? 'text-red-500' : 'text-stone-300 group-hover:text-stone-400'}`} />
                   </div>
                   <div className="mt-1.5 flex items-center gap-2">
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${form.status === 'OPEN' ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-500'}`}>
+                    <span
+                      className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                        form.status === 'OPEN'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : form.status === 'ARCHIVED'
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-stone-100 text-stone-500'
+                      }`}
+                    >
                       {form.status}
                     </span>
                     <span className="text-xs text-stone-400">{form.responseCount} responses</span>
@@ -622,7 +738,10 @@ export default function SeniorSendoffFormsPanel() {
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-stone-100 px-6 pt-5 pb-4">
                   <div>
                     <h2 className="text-lg font-bold text-stone-900">{selectedForm.show.title}</h2>
-                    <p className="mt-0.5 text-xs text-stone-400">Schema v{selectedForm.schemaVersion} - {selectedForm.responseCount} total - {selectedForm.paidResponseCount} paid</p>
+                    <p className="mt-0.5 text-xs text-stone-400">
+                      Schema v{selectedForm.schemaVersion} - {selectedForm.responseCount} total - {selectedForm.paidResponseCount} paid
+                      {selectedForm.isArchived && selectedForm.archivedAt ? ` - archived ${formatDateTime(selectedForm.archivedAt)}` : ''}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -633,14 +752,34 @@ export default function SeniorSendoffFormsPanel() {
                       <Copy className="h-3.5 w-3.5" />
                       Copy Link
                     </button>
+                    {!selectedForm.isArchived && (
+                      <button
+                        type="button"
+                        onClick={() => void archiveForm(selectedForm)}
+                        disabled={archiving || deleting}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100 disabled:opacity-50"
+                      >
+                        <Archive className="h-3.5 w-3.5" />
+                        {archiving ? 'Archiving…' : 'Archive'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void deleteForm(selectedForm)}
+                      disabled={deleting || archiving}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {deleting ? 'Deleting…' : 'Delete'}
+                    </button>
                     <button
                       type="button"
                       onClick={() => void saveForm(selectedForm.id)}
-                      disabled={saving}
+                      disabled={saving || deleting}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-stone-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-stone-700 disabled:opacity-50"
                     >
                       <Save className="h-3.5 w-3.5" />
-                      {saving ? 'Saving...' : 'Save'}
+                      {saving ? 'Saving…' : 'Save'}
                     </button>
                   </div>
                 </div>
@@ -738,12 +877,18 @@ export default function SeniorSendoffFormsPanel() {
                               [selectedForm.id]: { ...current[selectedForm.id], isOpen: event.target.checked }
                             }))
                           }
+                          disabled={selectedForm.isArchived}
                           className="h-4 w-4 rounded border-stone-300 accent-red-700"
                         />
                         <label htmlFor="senior-sendoff-is-open" className="text-sm font-medium text-stone-700 cursor-pointer">
                           Form is open - parents can submit shout-outs
                         </label>
                       </div>
+                      {selectedForm.isArchived && (
+                        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                          This form is archived. Responses are preserved, and public access is disabled.
+                        </p>
+                      )}
 
                       <div>
                         <label className={labelCls}>Instructions</label>

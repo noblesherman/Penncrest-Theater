@@ -292,6 +292,8 @@ model SeniorSendoffForm {
   questionConfig           Json?
   deadlineAt               DateTime
   isOpen                   Boolean                  @default(true)
+  isArchived               Boolean                  @default(false)
+  archivedAt               DateTime?
   secondSubmissionPriceCents Int                    @default(2500)
   createdByAdminId         String?
   updatedByAdminId         String?
@@ -300,6 +302,7 @@ model SeniorSendoffForm {
   submissions              SeniorSendoffSubmission[]
 
   @@index([isOpen, deadlineAt])
+  @@index([isArchived, createdAt])
 }
 
 model SeniorSendoffSubmission {

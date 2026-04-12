@@ -312,6 +312,8 @@ function serializeFormSummary(
     questionConfig: Prisma.JsonValue | null;
     deadlineAt: Date;
     isOpen: boolean;
+    isArchived: boolean;
+    archivedAt: Date | null;
     secondSubmissionPriceCents: number;
     createdAt: Date;
     updatedAt: Date;
@@ -322,6 +324,7 @@ function serializeFormSummary(
   now: Date
 ) {
   const acceptingResponses = isAcceptingResponses(form, now);
+  const status = form.isArchived ? 'ARCHIVED' : acceptingResponses ? 'OPEN' : 'CLOSED';
   const responseCount = form._count?.submissions ?? form.submissions?.length ?? 0;
   const paidResponseCount = form.submissions?.reduce((sum, submission) => sum + (submission.isPaid ? 1 : 0), 0) ?? 0;
 
@@ -340,9 +343,11 @@ function serializeFormSummary(
     questions: normalizeSeniorSendoffQuestions(form.questionConfig),
     deadlineAt: form.deadlineAt,
     isOpen: form.isOpen,
+    isArchived: form.isArchived,
+    archivedAt: form.archivedAt,
     secondSubmissionPriceCents: form.secondSubmissionPriceCents,
     acceptingResponses,
-    status: acceptingResponses ? 'OPEN' : 'CLOSED',
+    status,
     responseCount,
     paidResponseCount,
     createdAt: form.createdAt,
@@ -464,10 +469,15 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
 
         const existingForm = await tx.seniorSendoffForm.findUnique({
           where: { showId: show.id },
-          select: { id: true }
+          select: { id: true, isArchived: true }
         });
         if (existingForm) {
-          throw new HttpError(409, 'A senior send-off form already exists for this show');
+          throw new HttpError(
+            409,
+            existingForm.isArchived
+              ? 'A senior send-off form already exists for this show and is archived. Delete it first.'
+              : 'A senior send-off form already exists for this show'
+          );
         }
 
         const defaultDeadline = show.performances[0]?.startsAt || new Date(Date.now() + 21 * 24 * 60 * 60 * 1000);
@@ -486,6 +496,8 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
             questionConfig: SENIOR_SENDOFF_DEFAULT_QUESTIONS,
             deadlineAt,
             isOpen: true,
+            isArchived: false,
+            archivedAt: null,
             secondSubmissionPriceCents,
             createdByAdminId: request.adminUser?.id || null,
             updatedByAdminId: request.adminUser?.id || null
@@ -598,6 +610,10 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
         throw new HttpError(404, 'Form not found');
       }
 
+      if (existing.isArchived && parsed.data.isOpen === true) {
+        throw new HttpError(400, 'Archived forms cannot be opened.');
+      }
+
       const nextQuestions = parsed.data.questions
         ? mergeSeniorSendoffQuestions(existing.questionConfig, parsed.data.questions)
         : undefined;
@@ -699,6 +715,145 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
+  app.post('/api/admin/forms/senior-sendoff/:id/archive', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
+    const params = request.params as { id: string };
+
+    try {
+      const existing = await prisma.seniorSendoffForm.findUnique({
+        where: { id: params.id },
+        include: {
+          show: {
+            select: {
+              id: true,
+              title: true
+            }
+          },
+          _count: {
+            select: {
+              submissions: true
+            }
+          },
+          submissions: {
+            select: {
+              isPaid: true
+            }
+          }
+        }
+      });
+
+      if (!existing) {
+        throw new HttpError(404, 'Form not found');
+      }
+
+      if (existing.isArchived) {
+        return reply.send(serializeFormSummary(existing, new Date()));
+      }
+
+      const archived = await prisma.seniorSendoffForm.update({
+        where: { id: params.id },
+        data: {
+          isArchived: true,
+          archivedAt: new Date(),
+          isOpen: false,
+          updatedByAdminId: request.adminUser?.id || null
+        },
+        include: {
+          show: {
+            select: {
+              id: true,
+              title: true
+            }
+          },
+          _count: {
+            select: {
+              submissions: true
+            }
+          },
+          submissions: {
+            select: {
+              isPaid: true
+            }
+          }
+        }
+      });
+
+      await logAudit({
+        actor: adminActor(request),
+        actorAdminId: request.adminUser?.id || null,
+        action: 'SENIOR_SENDOFF_FORM_ARCHIVED',
+        entityType: 'SeniorSendoffForm',
+        entityId: archived.id,
+        metadata: {
+          showId: archived.showId,
+          archivedAt: archived.archivedAt?.toISOString() || null,
+          responseCount: archived._count?.submissions ?? 0
+        }
+      });
+
+      reply.send(serializeFormSummary(archived, new Date()));
+    } catch (err) {
+      handleRouteError(reply, err, 'Failed to archive senior send-off form');
+    }
+  });
+
+  app.delete('/api/admin/forms/senior-sendoff/:id', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
+    const params = request.params as { id: string };
+
+    try {
+      const existing = await prisma.seniorSendoffForm.findUnique({
+        where: { id: params.id },
+        include: {
+          show: {
+            select: {
+              id: true,
+              title: true
+            }
+          },
+          submissions: {
+            select: {
+              id: true,
+              isPaid: true
+            }
+          }
+        }
+      });
+      if (!existing) {
+        throw new HttpError(404, 'Form not found');
+      }
+
+      await prisma.seniorSendoffForm.delete({
+        where: { id: existing.id }
+      });
+
+      const paidSubmissionCount = existing.submissions.reduce(
+        (sum, submission) => sum + (submission.isPaid ? 1 : 0),
+        0
+      );
+
+      await logAudit({
+        actor: adminActor(request),
+        actorAdminId: request.adminUser?.id || null,
+        action: 'SENIOR_SENDOFF_FORM_DELETED',
+        entityType: 'SeniorSendoffForm',
+        entityId: existing.id,
+        metadata: {
+          showId: existing.showId,
+          submissionCount: existing.submissions.length,
+          paidSubmissionCount
+        }
+      });
+
+      reply.send({
+        deleted: true,
+        formId: existing.id,
+        submissionCount: existing.submissions.length,
+        paidSubmissionCount
+      });
+    } catch (err) {
+      handleRouteError(reply, err, 'Failed to delete senior send-off form');
+    }
+  });
+
   app.get('/api/forms/senior-sendoff/:slug', async (request, reply) => {
     const params = request.params as { slug: string };
 
@@ -716,6 +871,9 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
       });
 
       if (!form) {
+        throw new HttpError(404, 'Form not found');
+      }
+      if (form.isArchived) {
         throw new HttpError(404, 'Form not found');
       }
 
@@ -766,10 +924,14 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
           id: true,
           isOpen: true,
           deadlineAt: true,
+          isArchived: true,
           secondSubmissionPriceCents: true
         }
       });
       if (!form) {
+        throw new HttpError(404, 'Form not found');
+      }
+      if (form.isArchived) {
         throw new HttpError(404, 'Form not found');
       }
 
@@ -823,6 +985,7 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
             showId: true,
             isOpen: true,
             deadlineAt: true,
+            isArchived: true,
             secondSubmissionPriceCents: true,
             show: {
               select: {
@@ -833,6 +996,9 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
         });
 
         if (!form) {
+          throw new HttpError(404, 'Form not found');
+        }
+        if (form.isArchived) {
           throw new HttpError(404, 'Form not found');
         }
 
@@ -922,6 +1088,9 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
       });
 
       if (!form) {
+        throw new HttpError(404, 'Form not found');
+      }
+      if (form.isArchived) {
         throw new HttpError(404, 'Form not found');
       }
 
