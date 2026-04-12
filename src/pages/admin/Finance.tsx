@@ -40,6 +40,46 @@ type FinanceSummary = {
   sourceBreakdown: FinanceBreakdownRow[];
 };
 
+type StripePayoutRow = {
+  id: string;
+  status: string;
+  amountCents: number;
+  currency: string;
+  createdAt: string | null;
+  arrivalDate: string | null;
+  destinationId: string | null;
+  type: string;
+};
+
+type StripeBalanceTransactionRow = {
+  id: string;
+  type: string;
+  status: string;
+  reportingCategory: string;
+  description: string | null;
+  currency: string;
+  amountCents: number;
+  feeCents: number;
+  netCents: number;
+  createdAt: string | null;
+  availableOn: string | null;
+  sourceId: string | null;
+};
+
+type FinancePayoutOverview = {
+  balance: {
+    currency: string;
+    totalCents: number;
+    availableCents: number;
+    pendingCents: number;
+    availableByCurrency: Array<{ currency: string; amountCents: number }>;
+    pendingByCurrency: Array<{ currency: string; amountCents: number }>;
+  };
+  nextPayout: StripePayoutRow | null;
+  recentPayouts: StripePayoutRow[];
+  recentTransactions: StripeBalanceTransactionRow[];
+};
+
 type SendFinanceInvoiceResponse = {
   invoiceId: string;
   invoiceNumber: string | null;
@@ -176,6 +216,24 @@ function cents(value: number): string {
   return `$${(value / 100).toFixed(2)}`;
 }
 
+function formatCurrencyAmount(value: number, currency = 'USD'): string {
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: (currency || 'USD').toUpperCase()
+    }).format(value / 100);
+  } catch {
+    return cents(value);
+  }
+}
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString();
+}
+
 function invoiceStatusLabel(status: FinanceInvoiceSummary['status']): string {
   switch (status) {
     case 'paid':
@@ -207,6 +265,21 @@ function invoiceStatusColor(status: FinanceInvoiceSummary['status']): { bg: stri
       return { bg: '#fff7ed', text: '#c2410c', border: '#fed7aa' };
     default:
       return { bg: '#f8fafc', text: '#334155', border: '#e2e8f0' };
+  }
+}
+
+function payoutStatusColor(status: string): { bg: string; text: string; border: string } {
+  switch (status) {
+    case 'paid':
+      return { bg: '#ecfdf5', text: '#166534', border: '#bbf7d0' };
+    case 'in_transit':
+    case 'pending':
+      return { bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' };
+    case 'failed':
+    case 'canceled':
+      return { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca' };
+    default:
+      return { bg: '#f8fafc', text: '#475569', border: '#e2e8f0' };
   }
 }
 
@@ -361,7 +434,7 @@ function BreakdownRow({ row }: { row: FinanceBreakdownRow }) {
 // ─── main page ────────────────────────────────────────────────────────────────
 
 export default function AdminFinancePage() {
-  const [activeFinanceTab, setActiveFinanceTab] = useState<'reporting' | 'invoices'>('reporting');
+  const [activeFinanceTab, setActiveFinanceTab] = useState<'reporting' | 'payouts' | 'invoices'>('reporting');
   const [performances, setPerformances] = useState<PerformanceItem[]>([]);
   const [loadingPerformances, setLoadingPerformances] = useState(false);
   const [rangeMode, setRangeMode] = useState<'month' | 'custom'>('month');
@@ -373,7 +446,10 @@ export default function AdminFinancePage() {
   const [includeCompOrders, setIncludeCompOrders] = useState(true);
 
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
+  const [payoutOverview, setPayoutOverview] = useState<FinancePayoutOverview | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
+  const [loadingPayoutOverview, setLoadingPayoutOverview] = useState(false);
+  const [payoutError, setPayoutError] = useState<string | null>(null);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [downloadingStripeCsv, setDownloadingStripeCsv] = useState(false);
   const [downloadingLocalCsv, setDownloadingLocalCsv] = useState(false);
@@ -436,6 +512,27 @@ export default function AdminFinancePage() {
   useEffect(() => {
     void refreshSummary();
   }, [startDate, endDate, performanceId, includeCompOrders]);
+
+  const refreshPayoutOverview = async () => {
+    setLoadingPayoutOverview(true);
+    setPayoutError(null);
+    try {
+      const query = new URLSearchParams({ startDate, endDate });
+      const result = await adminFetch<FinancePayoutOverview>(`/api/admin/finance/payouts-overview?${query.toString()}`);
+      setPayoutOverview(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load payout overview';
+      setPayoutError(message);
+      setPayoutOverview(null);
+    } finally {
+      setLoadingPayoutOverview(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeFinanceTab !== 'payouts') return;
+    void refreshPayoutOverview();
+  }, [activeFinanceTab, startDate, endDate]);
 
   const refreshInvoices = async () => {
     setLoadingInvoices(true);
@@ -1017,6 +1114,13 @@ export default function AdminFinancePage() {
           </button>
           <button
             type="button"
+            onClick={() => setActiveFinanceTab('payouts')}
+            className={`tab-btn ${activeFinanceTab === 'payouts' ? 'tab-active' : 'tab-inactive'}`}
+          >
+            Payouts
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveFinanceTab('invoices')}
             className={`tab-btn ${activeFinanceTab === 'invoices' ? 'tab-active' : 'tab-inactive'}`}
           >
@@ -1525,6 +1629,202 @@ export default function AdminFinancePage() {
           )}
         </div>
       </>
+        ) : activeFinanceTab === 'payouts' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={cardStyle}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div>
+                  <SectionLabel>Payouts &amp; Transactions</SectionLabel>
+                  <p style={{ margin: 0, fontSize: 13, color: '#6b7280', fontFamily: "var(--font-sans)" }}>
+                    Stripe payout timeline and transaction ledger for {startDate} to {endDate}.
+                  </p>
+                </div>
+                <button type="button" className="btn-pill btn-ghost" onClick={() => void refreshPayoutOverview()} disabled={loadingPayoutOverview}>
+                  {loadingPayoutOverview ? 'Refreshing…' : '↻ Refresh Payouts'}
+                </button>
+              </div>
+
+              {payoutError && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    borderRadius: 10,
+                    border: '1px solid #fecaca',
+                    background: '#fff5f5',
+                    padding: '10px 12px',
+                    fontSize: 12,
+                    color: '#dc2626',
+                    fontFamily: "var(--font-sans)",
+                  }}
+                >
+                  {payoutError}
+                </div>
+              )}
+
+              {!payoutOverview ? (
+                <p style={{ margin: '14px 0 0', fontSize: 13, color: '#94a3b8', fontFamily: "var(--font-sans)" }}>
+                  {loadingPayoutOverview ? 'Loading payout data…' : 'No Stripe payout data found for this range.'}
+                </p>
+              ) : (
+                <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+                    <StatCard
+                      label="Total Balance"
+                      value={formatCurrencyAmount(payoutOverview.balance.totalCents, payoutOverview.balance.currency)}
+                    />
+                    <StatCard
+                      label="Available to Payout"
+                      value={formatCurrencyAmount(payoutOverview.balance.availableCents, payoutOverview.balance.currency)}
+                      accent
+                    />
+                    <StatCard
+                      label="Pending Balance"
+                      value={formatCurrencyAmount(payoutOverview.balance.pendingCents, payoutOverview.balance.currency)}
+                    />
+                    <StatCard
+                      label="Next Payout"
+                      value={payoutOverview.nextPayout ? formatDateTime(payoutOverview.nextPayout.arrivalDate) : 'Manual / None'}
+                    />
+                  </div>
+
+                  {payoutOverview.nextPayout && (
+                    <div
+                      style={{
+                        border: '1px solid #e2e8f0',
+                        borderRadius: 12,
+                        background: '#f8fafc',
+                        padding: '10px 12px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <p style={{ margin: 0, fontSize: 12, color: '#475569', fontFamily: "var(--font-sans)" }}>
+                        Upcoming payout {payoutOverview.nextPayout.id}
+                      </p>
+                      <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#0f172a', fontFamily: "var(--font-sans)" }}>
+                        {formatCurrencyAmount(payoutOverview.nextPayout.amountCents, payoutOverview.nextPayout.currency)} · arrives {formatDateTime(payoutOverview.nextPayout.arrivalDate)}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '14px 16px', borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+                <SectionLabel>Recent Payouts</SectionLabel>
+              </div>
+              {!payoutOverview || payoutOverview.recentPayouts.length === 0 ? (
+                <p style={{ margin: 0, padding: 16, fontSize: 13, color: '#94a3b8', fontFamily: "var(--font-sans)" }}>
+                  No payouts available.
+                </p>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Date</th>
+                        <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Status</th>
+                        <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Destination</th>
+                        <th style={{ textAlign: 'right', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {payoutOverview.recentPayouts.map((row) => {
+                        const tone = payoutStatusColor(row.status);
+                        return (
+                          <tr key={row.id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '10px 16px', fontSize: 12, color: '#0f172a', fontFamily: "var(--font-sans)" }}>
+                              {formatDateTime(row.arrivalDate || row.createdAt)}
+                            </td>
+                            <td style={{ padding: '10px 16px' }}>
+                              <span
+                                style={{
+                                  padding: '2px 8px',
+                                  borderRadius: 999,
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  border: `1px solid ${tone.border}`,
+                                  background: tone.bg,
+                                  color: tone.text,
+                                  fontFamily: "var(--font-sans)",
+                                  textTransform: 'capitalize',
+                                }}
+                              >
+                                {row.status.replace('_', ' ')}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 16px', fontSize: 12, color: '#475569', fontFamily: "var(--font-sans)" }}>
+                              {row.destinationId || '—'}
+                            </td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: '#0f172a', fontFamily: "var(--font-sans)" }}>
+                              {formatCurrencyAmount(row.amountCents, row.currency)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '14px 16px', borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+                <SectionLabel>Recent Transactions</SectionLabel>
+              </div>
+              {!payoutOverview || payoutOverview.recentTransactions.length === 0 ? (
+                <p style={{ margin: 0, padding: 16, fontSize: 13, color: '#94a3b8', fontFamily: "var(--font-sans)" }}>
+                  No transactions found for this range.
+                </p>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Date</th>
+                        <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Type</th>
+                        <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Status</th>
+                        <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Description</th>
+                        <th style={{ textAlign: 'right', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Gross</th>
+                        <th style={{ textAlign: 'right', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Fee</th>
+                        <th style={{ textAlign: 'right', padding: '10px 16px', fontSize: 11, color: '#64748b' }}>Net</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {payoutOverview.recentTransactions.map((row) => (
+                        <tr key={row.id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '10px 16px', fontSize: 12, color: '#0f172a', fontFamily: "var(--font-sans)" }}>
+                            {formatDateTime(row.createdAt)}
+                          </td>
+                          <td style={{ padding: '10px 16px', fontSize: 12, color: '#475569', fontFamily: "var(--font-sans)" }}>
+                            {row.type}
+                          </td>
+                          <td style={{ padding: '10px 16px', fontSize: 12, color: '#475569', fontFamily: "var(--font-sans)" }}>
+                            {row.status}
+                          </td>
+                          <td style={{ padding: '10px 16px', fontSize: 12, color: '#475569', fontFamily: "var(--font-sans)" }}>
+                            {row.description || row.reportingCategory || row.id}
+                          </td>
+                          <td style={{ padding: '10px 16px', textAlign: 'right', fontSize: 12, color: '#0f172a', fontFamily: "var(--font-sans)" }}>
+                            {formatCurrencyAmount(row.amountCents, row.currency)}
+                          </td>
+                          <td style={{ padding: '10px 16px', textAlign: 'right', fontSize: 12, color: '#b91c1c', fontFamily: "var(--font-sans)" }}>
+                            {formatCurrencyAmount(row.feeCents, row.currency)}
+                          </td>
+                          <td style={{ padding: '10px 16px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: '#0f172a', fontFamily: "var(--font-sans)" }}>
+                            {formatCurrencyAmount(row.netCents, row.currency)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={cardStyle}>

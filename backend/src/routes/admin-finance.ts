@@ -25,6 +25,11 @@ const stripeReportDownloadQuerySchema = z.object({
   reportTypeId: z.string().min(1).optional()
 });
 
+const stripePayoutOverviewQuerySchema = z.object({
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+});
+
 const sendInvoiceLineItemSchema = z.object({
   description: z.string().trim().min(1).max(240),
   quantity: z.number().int().min(1).max(1000),
@@ -161,6 +166,31 @@ function safeFilenamePart(value: string): string {
 
 function toUsd(valueInCents: number): string {
   return (valueInCents / 100).toFixed(2);
+}
+
+function extractExpandableId(value: unknown): string | null {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && 'id' in value) {
+    const id = (value as { id?: unknown }).id;
+    return typeof id === 'string' ? id : null;
+  }
+  return null;
+}
+
+function pickPrimaryCurrency(
+  available: Array<{ currency: string; amount: number }>,
+  pending: Array<{ currency: string; amount: number }>
+): string {
+  if (available.some((row) => row.currency === 'usd') || pending.some((row) => row.currency === 'usd')) {
+    return 'usd';
+  }
+  return available[0]?.currency || pending[0]?.currency || 'usd';
+}
+
+function amountForCurrency(rows: Array<{ currency: string; amount: number }>, currency: string): number {
+  const match = rows.find((row) => row.currency === currency);
+  return match ? match.amount : 0;
 }
 
 function csvCell(value: unknown): string {
@@ -1050,6 +1080,105 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(statusCode).send({ error: err.message || 'Stripe reporting error' });
       }
       handleRouteError(reply, err, 'Failed to generate Stripe finance report');
+    }
+  });
+
+  app.get('/api/admin/finance/payouts-overview', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+    const parsed = stripePayoutOverviewQuerySchema.safeParse(request.query || {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+
+    const serializePayout = (payout: Stripe.Payout) => ({
+      id: payout.id,
+      status: payout.status,
+      amountCents: payout.amount,
+      currency: payout.currency.toUpperCase(),
+      createdAt: toIsoFromEpochSeconds(payout.created),
+      arrivalDate: toIsoFromEpochSeconds(payout.arrival_date),
+      destinationId: extractExpandableId(payout.destination),
+      type: payout.type
+    });
+
+    try {
+      const intervalStart = Math.floor(parseUtcDayStart(parsed.data.startDate).getTime() / 1000);
+      const intervalEndExclusive = Math.floor(parseUtcNextDayStart(parsed.data.endDate).getTime() / 1000);
+      if (intervalStart >= intervalEndExclusive) {
+        throw new HttpError(400, 'startDate must be on or before endDate');
+      }
+
+      const [balance, payoutList, balanceTransactions] = await Promise.all([
+        stripe.balance.retrieve(),
+        stripe.payouts.list({ limit: 25 }),
+        stripe.balanceTransactions.list({
+          limit: 100,
+          created: {
+            gte: intervalStart,
+            lt: intervalEndExclusive
+          }
+        })
+      ]);
+
+      const availableByCurrency = balance.available.map((row) => ({
+        currency: row.currency.toLowerCase(),
+        amount: row.amount
+      }));
+      const pendingByCurrency = balance.pending.map((row) => ({
+        currency: row.currency.toLowerCase(),
+        amount: row.amount
+      }));
+      const primaryCurrency = pickPrimaryCurrency(availableByCurrency, pendingByCurrency);
+      const availableCents = amountForCurrency(availableByCurrency, primaryCurrency);
+      const pendingCents = amountForCurrency(pendingByCurrency, primaryCurrency);
+
+      const sortedPayouts = [...payoutList.data].sort((a, b) => b.created - a.created);
+      const nextPayoutRaw = [...payoutList.data]
+        .filter((payout) => payout.status === 'pending' || payout.status === 'in_transit')
+        .sort((a, b) => (a.arrival_date || a.created) - (b.arrival_date || b.created))[0];
+
+      const recentTransactions = [...balanceTransactions.data]
+        .sort((a, b) => b.created - a.created)
+        .slice(0, 30)
+        .map((row) => ({
+          id: row.id,
+          type: row.type,
+          status: row.status,
+          reportingCategory: row.reporting_category,
+          description: row.description || null,
+          currency: row.currency.toUpperCase(),
+          amountCents: row.amount,
+          feeCents: row.fee,
+          netCents: row.net,
+          createdAt: toIsoFromEpochSeconds(row.created),
+          availableOn: toIsoFromEpochSeconds(row.available_on),
+          sourceId: extractExpandableId(row.source)
+        }));
+
+      reply.send({
+        balance: {
+          currency: primaryCurrency.toUpperCase(),
+          totalCents: availableCents + pendingCents,
+          availableCents,
+          pendingCents,
+          availableByCurrency: availableByCurrency.map((row) => ({
+            currency: row.currency.toUpperCase(),
+            amountCents: row.amount
+          })),
+          pendingByCurrency: pendingByCurrency.map((row) => ({
+            currency: row.currency.toUpperCase(),
+            amountCents: row.amount
+          }))
+        },
+        nextPayout: nextPayoutRaw ? serializePayout(nextPayoutRaw) : null,
+        recentPayouts: sortedPayouts.slice(0, 8).map((row) => serializePayout(row)),
+        recentTransactions
+      });
+    } catch (err) {
+      if (err instanceof Stripe.errors.StripeError) {
+        const statusCode = err.type === 'StripeInvalidRequestError' ? 400 : 502;
+        return reply.status(statusCode).send({ error: err.message || 'Stripe payouts lookup failed' });
+      }
+      handleRouteError(reply, err, 'Failed to fetch Stripe payout overview');
     }
   });
 
