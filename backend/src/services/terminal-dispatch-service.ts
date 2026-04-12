@@ -10,6 +10,7 @@ export const TERMINAL_DEVICE_ACTIVE_WINDOW_MS = 70_000;
 export const TERMINAL_NEXT_DISPATCH_WAIT_MS = 25_000;
 
 export const TERMINAL_DISPATCH_ACTIVE_STATUSES: TerminalDispatchStatus[] = ['PENDING', 'DELIVERED', 'PROCESSING'];
+export const TERMINAL_DISPATCH_BUSY_STATUSES: TerminalDispatchStatus[] = ['PROCESSING'];
 const TERMINAL_DISPATCH_EXPIRABLE_STATUSES: TerminalDispatchStatus[] = ['PENDING', 'DELIVERED', 'PROCESSING', 'FAILED'];
 
 const terminalDispatchSnapshotSchema = z.object({
@@ -86,7 +87,9 @@ async function expireDispatchById(dispatchId: string): Promise<boolean> {
     },
     data: {
       status: 'EXPIRED',
-      failureReason: 'Seat hold expired'
+      failureReason: 'Seat hold expired',
+      activeTimeoutAt: null,
+      processingHeartbeatAt: null
     }
   });
 
@@ -281,7 +284,7 @@ export async function isTerminalDeviceBusy(params: {
   const busy = await prisma.terminalPaymentDispatch.findFirst({
     where: {
       targetDeviceId: params.deviceId,
-      status: { in: TERMINAL_DISPATCH_ACTIVE_STATUSES },
+      status: { in: TERMINAL_DISPATCH_BUSY_STATUSES },
       ...(params.excludeDispatchId
         ? {
             id: {

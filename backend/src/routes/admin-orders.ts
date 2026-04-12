@@ -21,7 +21,6 @@ import {
   isTerminalDeviceBusy,
   listActiveTerminalDeviceSessions,
   parseTerminalDispatchSnapshot,
-  TERMINAL_DISPATCH_ACTIVE_STATUSES,
   type TerminalDispatchSnapshot
 } from '../services/terminal-dispatch-service.js';
 import {
@@ -72,7 +71,11 @@ const inPersonTerminalSendSchema = z.object({
   receiptEmail: z.string().email().optional(),
   sendReceipt: z.boolean().optional(),
   studentCode: z.string().min(1).optional(),
-  deviceId: z.string().min(1).max(200)
+  deviceId: z.string().min(1).max(200),
+  sellerStationName: z.string().trim().max(120).optional(),
+  sellerAdminId: z.string().trim().max(120).optional(),
+  sellerClientSessionId: z.string().trim().max(160).optional(),
+  submissionId: z.string().trim().max(160).optional()
 });
 
 const terminalDispatchParamsSchema = z.object({
@@ -1288,7 +1291,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
         ? await prisma.terminalPaymentDispatch.findMany({
             where: {
               targetDeviceId: { in: deviceIds },
-              status: { in: TERMINAL_DISPATCH_ACTIVE_STATUSES }
+              status: 'PROCESSING'
             },
             select: { targetDeviceId: true }
           })
@@ -1331,10 +1334,6 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
       await expireDeviceDispatches(normalizedDeviceId);
 
       const deviceSession = await getActiveTerminalDeviceSession(normalizedDeviceId);
-      const isBusy = await isTerminalDeviceBusy({ deviceId: normalizedDeviceId });
-      if (isBusy) {
-        throw new HttpError(409, 'Selected terminal is currently busy with another sale');
-      }
 
       const hold = await createTerminalDispatchHold({
         performanceId: quote.performanceId,
@@ -1348,10 +1347,18 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
         receiptEmail: normalizedReceiptEmail,
         sendReceipt
       });
+      const snapshotForStorage = parsed.data.submissionId
+        ? {
+            ...snapshot,
+            submissionId: parsed.data.submissionId
+          }
+        : snapshot;
 
       const createdDispatch = await prisma.terminalPaymentDispatch.create({
         data: {
           status: 'PENDING',
+          queueKey: normalizedDeviceId,
+          queueSortAt: new Date(),
           performanceId: quote.performanceId,
           targetDeviceSessionId: deviceSession.id,
           targetDeviceId: deviceSession.deviceId,
@@ -1359,7 +1366,10 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
           holdExpiresAt: hold.holdExpiresAt,
           expectedAmountCents: quote.expectedAmountCents,
           currency: quote.currency,
-          saleSnapshot: snapshot as Prisma.InputJsonValue,
+          saleSnapshot: snapshotForStorage as Prisma.InputJsonValue,
+          sellerStationName: parsed.data.sellerStationName?.trim() || null,
+          sellerAdminId: parsed.data.sellerAdminId?.trim() || request.adminUser?.id || null,
+          sellerClientSessionId: parsed.data.sellerClientSessionId?.trim() || null,
           createdByAdminId: request.adminUser?.id || null
         }
       });
@@ -1429,7 +1439,9 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
           data: {
             status: 'FAILED',
             failureReason:
-              err instanceof Error ? err.message.slice(0, 500) : 'Failed to create Stripe payment intent'
+              err instanceof Error ? err.message.slice(0, 500) : 'Failed to create Stripe payment intent',
+            processingHeartbeatAt: null,
+            activeTimeoutAt: null
           }
         });
 
@@ -1550,11 +1562,14 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
           where: { id: current.id },
           data: {
             status: 'PENDING',
+            queueSortAt: new Date(),
             stripePaymentIntentId: paymentIntent.id,
             stripePaymentIntentClientSecret: paymentIntent.client_secret,
             failureReason: null,
             deliveredAt: null,
             processingStartedAt: null,
+            processingHeartbeatAt: null,
+            activeTimeoutAt: null,
             completedAt: null,
             canceledAt: null,
             attemptCount: {
@@ -1630,7 +1645,9 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
                 data: {
                   status: 'CANCELED',
                   canceledAt: new Date(),
-                  failureReason: current.failureReason || 'Canceled by cashier'
+                  failureReason: current.failureReason || 'Canceled by cashier',
+                  processingHeartbeatAt: null,
+                  activeTimeoutAt: null
                 },
                 include: {
                   targetDeviceSession: {

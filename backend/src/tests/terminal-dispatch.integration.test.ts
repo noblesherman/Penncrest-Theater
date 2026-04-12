@@ -31,6 +31,7 @@ process.env.JWT_SECRET = 'terminal-dispatch-secret-12345';
 process.env.ADMIN_USERNAME = 'terminal-admin';
 process.env.ADMIN_PASSWORD = 'terminal-admin-password';
 process.env.TERMINAL_DISPATCH_HOLD_TTL_MINUTES = '5';
+process.env.ENABLE_IN_PROCESS_PAYMENT_LINE_WORKER = 'false';
 
 type MockPaymentIntent = {
   id: string;
@@ -277,7 +278,7 @@ describe.sequential('terminal dispatch integration', () => {
     expect(hold.expiresAt.getTime()).toBeGreaterThan(Date.now());
   });
 
-  it('returns 409 when target terminal is already busy', async () => {
+  it('enqueues multiple sales to the same payment phone queue', async () => {
     const fixture = await createPerformanceFixture({ seatCount: 2 });
     const deviceId = `device_busy_${Date.now()}`;
     await registerDevice(deviceId, 'Busy iPhone');
@@ -310,8 +311,23 @@ describe.sequential('terminal dispatch integration', () => {
       }
     });
 
-    expect(secondResponse.statusCode).toBe(409);
-    expect(secondResponse.json().error).toContain('busy');
+    expect(secondResponse.statusCode).toBe(201);
+
+    const firstDispatchId = firstResponse.json().dispatchId as string;
+    const secondDispatchId = secondResponse.json().dispatchId as string;
+    expect(firstDispatchId).not.toBe(secondDispatchId);
+
+    const snapshotResponse = await app.inject({
+      method: 'GET',
+      url: `/api/admin/payment-line/snapshot?queueKey=${encodeURIComponent(deviceId)}`,
+      headers: authHeaders()
+    });
+
+    expect(snapshotResponse.statusCode).toBe(200);
+    const snapshotBody = snapshotResponse.json();
+    expect(snapshotBody.entries).toHaveLength(2);
+    expect(snapshotBody.entries[0].entryId).toBe(firstDispatchId);
+    expect(snapshotBody.entries[1].entryId).toBe(secondDispatchId);
   });
 
   it('next-dispatch only returns rows targeted to that device', async () => {
@@ -353,6 +369,123 @@ describe.sequential('terminal dispatch integration', () => {
     });
     expect(targetDevice.statusCode).toBe(200);
     expect(targetDevice.json().dispatch.dispatchId).toBe(dispatchId);
+  });
+
+  it('enforces one active payment per queue and supports back-to-line sequencing', async () => {
+    const fixture = await createPerformanceFixture({ seatCount: 2 });
+    const deviceId = `device_lock_${Date.now()}`;
+    await registerDevice(deviceId, 'Shared iPhone');
+
+    const firstSeat = fixture.seats[0]!.id;
+    const secondSeat = fixture.seats[1]!.id;
+
+    const firstResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/orders/in-person/terminal/send',
+      headers: authHeaders(),
+      payload: {
+        performanceId: fixture.performance.id,
+        seatIds: [firstSeat],
+        ticketSelectionBySeatId: buildTicketSelection([firstSeat], fixture.tier.id),
+        deviceId
+      }
+    });
+    const secondResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/orders/in-person/terminal/send',
+      headers: authHeaders(),
+      payload: {
+        performanceId: fixture.performance.id,
+        seatIds: [secondSeat],
+        ticketSelectionBySeatId: buildTicketSelection([secondSeat], fixture.tier.id),
+        deviceId
+      }
+    });
+
+    expect(firstResponse.statusCode).toBe(201);
+    expect(secondResponse.statusCode).toBe(201);
+
+    const firstDispatchId = firstResponse.json().dispatchId as string;
+    const secondDispatchId = secondResponse.json().dispatchId as string;
+
+    const startFirst = await app.inject({
+      method: 'POST',
+      url: `/api/mobile/payment-line/entry/${encodeURIComponent(firstDispatchId)}/start`,
+      headers: authHeaders(),
+      payload: { deviceId }
+    });
+    expect(startFirst.statusCode).toBe(200);
+    expect(startFirst.json().status).toBe('PROCESSING');
+
+    const startSecondWhileFirstActive = await app.inject({
+      method: 'POST',
+      url: `/api/mobile/payment-line/entry/${encodeURIComponent(secondDispatchId)}/start`,
+      headers: authHeaders(),
+      payload: { deviceId }
+    });
+    expect(startSecondWhileFirstActive.statusCode).toBe(409);
+
+    const moveFirstBackToLine = await app.inject({
+      method: 'POST',
+      url: `/api/mobile/payment-line/entry/${encodeURIComponent(firstDispatchId)}/back-to-line`,
+      headers: authHeaders(),
+      payload: { deviceId }
+    });
+    expect(moveFirstBackToLine.statusCode).toBe(200);
+    expect(moveFirstBackToLine.json().status).toBe('PENDING');
+
+    const startSecondAfterBackToLine = await app.inject({
+      method: 'POST',
+      url: `/api/mobile/payment-line/entry/${encodeURIComponent(secondDispatchId)}/start`,
+      headers: authHeaders(),
+      payload: { deviceId }
+    });
+    expect(startSecondAfterBackToLine.statusCode).toBe(200);
+    expect(startSecondAfterBackToLine.json().status).toBe('PROCESSING');
+  });
+
+  it('times out stale active entries after the active timeout window', async () => {
+    const fixture = await createPerformanceFixture({ seatCount: 1 });
+    const deviceId = `device_timeout_${Date.now()}`;
+    await registerDevice(deviceId, 'Timeout iPhone');
+
+    const seatId = fixture.seats[0]!.id;
+    const sendResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/orders/in-person/terminal/send',
+      headers: authHeaders(),
+      payload: {
+        performanceId: fixture.performance.id,
+        seatIds: [seatId],
+        ticketSelectionBySeatId: buildTicketSelection([seatId], fixture.tier.id),
+        deviceId
+      }
+    });
+    expect(sendResponse.statusCode).toBe(201);
+    const dispatchId = sendResponse.json().dispatchId as string;
+
+    const startResponse = await app.inject({
+      method: 'POST',
+      url: `/api/mobile/payment-line/entry/${encodeURIComponent(dispatchId)}/start`,
+      headers: authHeaders(),
+      payload: { deviceId }
+    });
+    expect(startResponse.statusCode).toBe(200);
+
+    await prisma.terminalPaymentDispatch.update({
+      where: { id: dispatchId },
+      data: { activeTimeoutAt: new Date(Date.now() - 1_000) }
+    });
+
+    const { expireTimedOutActivePaymentLineEntries } = await import('../services/payment-line-service.js');
+    const timedOut = await expireTimedOutActivePaymentLineEntries(10);
+    expect(timedOut.some((item) => item.entryId === dispatchId)).toBe(true);
+
+    const failedDispatch = await prisma.terminalPaymentDispatch.findUniqueOrThrow({
+      where: { id: dispatchId }
+    });
+    expect(failedDispatch.status).toBe('FAILED');
+    expect(failedDispatch.failureReason).toContain('too long');
   });
 
   it('successful completion creates one paid door order with exact mapping and stripePaymentIntentId', async () => {

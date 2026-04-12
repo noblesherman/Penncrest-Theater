@@ -406,8 +406,7 @@ export default function AdminOrdersPage() {
       setTerminalDevices(payload.devices);
       setSelectedTerminalDeviceId(prev => {
         if (prev && payload.devices.some((device) => device.deviceId === prev)) return prev;
-        const nextAvailable = payload.devices.find((device) => !device.isBusy)?.deviceId;
-        return nextAvailable || payload.devices[0]?.deviceId || '';
+        return payload.devices[0]?.deviceId || '';
       });
     } catch {
       setTerminalDevices([]);
@@ -443,12 +442,12 @@ export default function AdminOrdersPage() {
 
     if (paymentMethod === 'STRIPE') {
       if (!selectedTerminalDeviceId) {
-        setInPersonFlowError('Select an active terminal device before sending card payment.');
+        setInPersonFlowError('Select an active payment phone before sending card payment.');
         return;
       }
       setInPersonSubmitting(true);
       try {
-        const dispatch = await adminFetch<TerminalDispatch>('/api/admin/orders/in-person/terminal/send', {
+        const dispatch = await adminFetch<TerminalDispatch>('/api/admin/payment-line/enqueue', {
           method: 'POST',
           body: JSON.stringify({
             performanceId: assignForm.performanceId,
@@ -463,13 +462,7 @@ export default function AdminOrdersPage() {
         });
         setTerminalDispatch(dispatch);
       } catch (e) {
-        const message = e instanceof Error ? e.message : 'Failed to send sale to terminal';
-        if (message.toLowerCase().includes('busy')) {
-          setInPersonFlowError('Selected terminal is busy. Pick another active terminal or wait.');
-          void loadTerminalDevices();
-        } else {
-          setInPersonFlowError(message);
-        }
+        setInPersonFlowError(e instanceof Error ? e.message : 'Failed to send sale to payment line');
       } finally {
         setInPersonSubmitting(false);
       }
@@ -535,7 +528,7 @@ export default function AdminOrdersPage() {
   }, []);
 
   const refreshTerminalDispatchStatus = useCallback(async (dispatchId: string) => {
-    const dispatch = await adminFetch<TerminalDispatch>(`/api/admin/orders/in-person/terminal/dispatch/${encodeURIComponent(dispatchId)}`);
+    const dispatch = await adminFetch<TerminalDispatch>(`/api/admin/payment-line/entry/${encodeURIComponent(dispatchId)}`);
     applyTerminalDispatchStatus(dispatch);
   }, [applyTerminalDispatchStatus]);
 
@@ -545,7 +538,7 @@ export default function AdminOrdersPage() {
     setInPersonFlowError(null);
     try {
       const dispatch = await adminFetch<TerminalDispatch>(
-        `/api/admin/orders/in-person/terminal/dispatch/${encodeURIComponent(terminalDispatch.dispatchId)}/retry`,
+        `/api/admin/payment-line/entry/${encodeURIComponent(terminalDispatch.dispatchId)}/retry-now`,
         { method: 'POST' }
       );
       applyTerminalDispatchStatus(dispatch);
@@ -562,7 +555,7 @@ export default function AdminOrdersPage() {
     setTerminalDispatchActionBusy(true);
     try {
       const dispatch = await adminFetch<TerminalDispatch>(
-        `/api/admin/orders/in-person/terminal/dispatch/${encodeURIComponent(terminalDispatch.dispatchId)}/cancel`,
+        `/api/admin/payment-line/entry/${encodeURIComponent(terminalDispatch.dispatchId)}/cancel`,
         { method: 'POST' }
       );
       setTerminalDispatch(dispatch.status === 'CANCELED' ? null : dispatch);
@@ -1418,7 +1411,7 @@ export default function AdminOrdersPage() {
                     </p>
                     {selectedTerminalDevice?.isBusy && (
                       <p className="text-xs font-semibold text-amber-700">
-                        This terminal is busy with another sale.
+                        Payment in progress now. New entries will join the line.
                       </p>
                     )}
                   </div>
@@ -1901,7 +1894,7 @@ export default function AdminOrdersPage() {
                     <motion.button
                       type="button"
                       onClick={finalizeInPersonSale}
-                      disabled={inPersonSubmitting || (paymentMethod === 'STRIPE' && (!selectedTerminalDeviceId || Boolean(selectedTerminalDevice?.isBusy)))}
+                      disabled={inPersonSubmitting || (paymentMethod === 'STRIPE' && !selectedTerminalDeviceId)}
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.97 }}
                       className="inline-flex min-w-[180px] items-center justify-center gap-2 rounded-full bg-rose-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700 disabled:opacity-60"
@@ -1910,7 +1903,7 @@ export default function AdminOrdersPage() {
                       {inPersonSubmitting
                         ? (paymentMethod === 'STRIPE' ? 'Sending…' : 'Processing…')
                         : (paymentMethod === 'STRIPE'
-                          ? `Send to terminal · $${(selectedTierSubtotalCents / 100).toFixed(2)}`
+                          ? `Send to Payment Line · $${(selectedTierSubtotalCents / 100).toFixed(2)}`
                           : `Collect $${(selectedTierSubtotalCents / 100).toFixed(2)}`)}
                     </motion.button>
                   ) : (

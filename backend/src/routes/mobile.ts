@@ -223,7 +223,14 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
         terminalDispatchComplete: true,
         terminalDispatchTelemetry: true,
         dispatchRetry: true,
-        dispatchCancel: true
+        dispatchCancel: true,
+        paymentLineSnapshot: true,
+        paymentLineStart: true,
+        paymentLineHeartbeat: true,
+        paymentLineComplete: true,
+        paymentLineFail: true,
+        paymentLineBackToLine: true,
+        paymentLineCancel: true
       },
       stripe: {
         terminalSecretKeyConfigured: stripeSecretConfigured,
@@ -318,7 +325,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
             stripePaymentIntentId: { not: null },
             stripePaymentIntentClientSecret: { not: null }
           },
-          orderBy: [{ processingStartedAt: 'asc' }, { createdAt: 'asc' }]
+          orderBy: [{ processingStartedAt: 'asc' }, { queueSortAt: 'asc' }, { createdAt: 'asc' }]
         });
 
         if (processing) {
@@ -340,7 +347,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
             stripePaymentIntentId: { not: null },
             stripePaymentIntentClientSecret: { not: null }
           },
-          orderBy: [{ deliveredAt: 'asc' }, { createdAt: 'asc' }]
+          orderBy: [{ queueSortAt: 'asc' }, { deliveredAt: 'asc' }, { createdAt: 'asc' }]
         });
 
         if (delivered) {
@@ -362,7 +369,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
             stripePaymentIntentId: { not: null },
             stripePaymentIntentClientSecret: { not: null }
           },
-          orderBy: [{ createdAt: 'asc' }]
+          orderBy: [{ queueSortAt: 'asc' }, { createdAt: 'asc' }]
         });
 
         if (!pending) {
@@ -435,14 +442,40 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
         if (!['PENDING', 'DELIVERED', 'PROCESSING'].includes(dispatch.status)) {
           throw new HttpError(409, `Dispatch is ${dispatch.status} and cannot move to PROCESSING`);
         }
+        const now = new Date();
+        const activeTimeoutAt = new Date(now.getTime() + env.PAYMENT_LINE_ACTIVE_TIMEOUT_SECONDS * 1_000);
 
-        const updated = await prisma.terminalPaymentDispatch.update({
-          where: { id: dispatch.id },
-          data: {
-            status: 'PROCESSING',
-            processingStartedAt: dispatch.processingStartedAt || new Date(),
-            failureReason: null
+        const updated = await prisma.$transaction(async (tx) => {
+          await tx.$executeRaw`
+            SELECT pg_advisory_xact_lock(hashtext(${`payment-line:${dispatch.queueKey || dispatch.targetDeviceId}`}))
+          `;
+
+          const activeSibling = await tx.terminalPaymentDispatch.findFirst({
+            where: {
+              queueKey: dispatch.queueKey || dispatch.targetDeviceId,
+              status: 'PROCESSING',
+              id: {
+                not: dispatch.id
+              }
+            },
+            select: { id: true }
+          });
+
+          if (activeSibling) {
+            throw new HttpError(409, 'Another payment is already active on this phone');
           }
+
+          return tx.terminalPaymentDispatch.update({
+            where: { id: dispatch.id },
+            data: {
+              status: 'PROCESSING',
+              processingStartedAt: dispatch.processingStartedAt || now,
+              processingHeartbeatAt: now,
+              activeTimeoutAt,
+              deliveredAt: dispatch.deliveredAt || now,
+              failureReason: null
+            }
+          });
         });
 
         return reply.send({
@@ -459,7 +492,9 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
         where: { id: dispatch.id },
         data: {
           status: 'FAILED',
-          failureReason: parsed.data.failureReason || 'Terminal payment failed'
+          failureReason: parsed.data.failureReason || 'Terminal payment failed',
+          processingHeartbeatAt: null,
+          activeTimeoutAt: null
         }
       });
 
@@ -649,7 +684,9 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
           status: 'SUCCEEDED',
           completedAt: new Date(),
           finalOrderId: created.id,
-          failureReason: null
+          failureReason: null,
+          processingHeartbeatAt: null,
+          activeTimeoutAt: null
         }
       });
 
@@ -690,7 +727,9 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
             },
             data: {
               status: 'FAILED',
-              failureReason: message.slice(0, 500)
+              failureReason: message.slice(0, 500),
+              processingHeartbeatAt: null,
+              activeTimeoutAt: null
             }
           })
           .catch(() => undefined);

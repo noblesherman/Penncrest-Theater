@@ -44,13 +44,16 @@ import { adminUserRoutes } from './routes/admin-users.js';
 import { aboutContentRoutes } from './routes/about-content.js';
 import { adminUploadRoutes } from './routes/admin-uploads.js';
 import { mobileRoutes } from './routes/mobile.js';
+import { mobilePaymentLineRoutes } from './routes/mobile-payment-line.js';
 import { tripAuthRoutes } from './routes/trip-auth.js';
 import { tripPortalRoutes } from './routes/trips-portal.js';
 import { adminTripRoutes } from './routes/admin-trips.js';
 import { adminDriveRoutes } from './routes/admin-drive.js';
 import { mobileDeviceRoutes } from './routes/mobile-device.js';
 import { adminDeviceRoutes } from './routes/admin-devices.js';
+import { adminPaymentLineRoutes } from './routes/admin-payment-line.js';
 import { startCheckoutQueueWorker } from './services/checkout-queue-worker.js';
+import { startPaymentLineWorker } from './services/payment-line-worker.js';
 import { startHoldCleanupScheduler } from './services/hold-cleanup-scheduler.js';
 import { startHealthAlertMonitor } from './services/health-alert-monitor.js';
 
@@ -110,6 +113,7 @@ export async function createServer() {
   await app.register(staffCompRoutes);
   await app.register(aboutContentRoutes);
   await app.register(mobileRoutes);
+  await app.register(mobilePaymentLineRoutes);
   await app.register(mobileDeviceRoutes);
   await app.register(programBioFormRoutes);
   await app.register(seniorSendoffFormRoutes);
@@ -139,6 +143,7 @@ export async function createServer() {
   await app.register(adminTripRoutes);
   await app.register(adminDriveRoutes);
   await app.register(adminDeviceRoutes);
+  await app.register(adminPaymentLineRoutes);
 
   const backgroundControllers: Array<{ stop: () => void | Promise<void> }> = [];
 
@@ -148,6 +153,20 @@ export async function createServer() {
       stop: () => checkoutQueueWorker.stop()
     });
     app.log.info({ maxActiveWorkers: env.CHECKOUT_MAX_ACTIVE }, 'in-process checkout queue worker enabled');
+  }
+
+  if (env.ENABLE_IN_PROCESS_PAYMENT_LINE_WORKER) {
+    const paymentLineWorker = startPaymentLineWorker(app.log);
+    backgroundControllers.push({
+      stop: () => paymentLineWorker.stop()
+    });
+    app.log.info(
+      {
+        activeTimeoutSeconds: env.PAYMENT_LINE_ACTIVE_TIMEOUT_SECONDS,
+        sweepIntervalSeconds: env.PAYMENT_LINE_WORKER_SWEEP_INTERVAL_SECONDS
+      },
+      'in-process payment line worker enabled'
+    );
   }
 
   if (env.ENABLE_IN_PROCESS_HOLD_CLEANUP_SCHEDULER) {

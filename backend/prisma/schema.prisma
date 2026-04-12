@@ -663,6 +663,8 @@ model ManagedDeviceEvent {
 model TerminalPaymentDispatch {
   id                              String                @id @default(cuid())
   status                          TerminalDispatchStatus @default(PENDING)
+  queueKey                        String
+  queueSortAt                     DateTime              @default(now())
   performanceId                   String
   performance                     Performance           @relation(fields: [performanceId], references: [id], onDelete: Restrict)
   targetDeviceSessionId           String
@@ -677,8 +679,13 @@ model TerminalPaymentDispatch {
   saleSnapshot                    Json
   attemptCount                    Int                   @default(1)
   failureReason                   String?
+  sellerStationName               String?
+  sellerAdminId                   String?
+  sellerClientSessionId           String?
   deliveredAt                     DateTime?
   processingStartedAt             DateTime?
+  processingHeartbeatAt           DateTime?
+  activeTimeoutAt                 DateTime?
   completedAt                     DateTime?
   canceledAt                      DateTime?
   finalOrderId                    String?               @unique
@@ -688,6 +695,9 @@ model TerminalPaymentDispatch {
   updatedAt                       DateTime              @updatedAt
 
   @@index([targetDeviceId, status, createdAt])
+  @@index([queueKey, status, queueSortAt])
+  @@index([sellerClientSessionId, createdAt])
+  @@index([status, activeTimeoutAt])
   @@index([status, holdExpiresAt])
   @@index([performanceId, createdAt])
 }

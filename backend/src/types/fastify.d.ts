@@ -20,12 +20,20 @@ declare module 'fastify' {
 
 declare module '@fastify/jwt' {
   type JwtPayload = {
-    role: 'admin' | 'user' | 'trip_account' | 'admin_setup' | 'admin_checkin_events' | 'mobile_device';
+    role:
+      | 'admin'
+      | 'user'
+      | 'trip_account'
+      | 'admin_setup'
+      | 'admin_checkin_events'
+      | 'admin_payment_line_events'
+      | 'mobile_device';
     adminId?: string;
     adminRole?: AdminRole;
     username?: string;
     performanceId?: string;
-    purpose?: 'admin-2fa-setup' | 'admin-check-in-events';
+    queueKey?: string;
+    purpose?: 'admin-2fa-setup' | 'admin-check-in-events' | 'admin-payment-line-events';
     twoFactorSetupSecret?: string;
     userId?: string;
     email?: string;

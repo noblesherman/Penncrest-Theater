@@ -216,6 +216,30 @@ export type TerminalDispatchAdminState = {
   }>;
 };
 
+export type PaymentLineEntryState = TerminalDispatchAdminState & {
+  queueKey: string;
+  queueSortAt: string;
+  position: number | null;
+  waitingCount: number;
+  nowServingEntryId: string | null;
+  isYourTurn: boolean;
+  isNext: boolean;
+  uiState: 'WAITING_FOR_PAYMENT' | 'ACTIVE_PAYMENT' | 'PAYMENT_SUCCESS' | 'PAYMENT_FAILED' | 'CANCELED';
+  updatedAt: string;
+  sellerStationName?: string | null;
+  sellerAdminId?: string | null;
+  sellerClientSessionId?: string | null;
+};
+
+export type PaymentLineSnapshot = {
+  queueKey: string;
+  nowServingEntryId: string | null;
+  nextUpEntryId: string | null;
+  waitingCount: number;
+  updatedAt: string;
+  entries: PaymentLineEntryState[];
+};
+
 export async function getPerformances(token: string): Promise<PerformanceSummary[]> {
   return apiRequest<PerformanceSummary[]>('/api/performances', { token });
 }
@@ -454,5 +478,86 @@ export async function sendTerminalDispatchTelemetry(
       failureReason: payload.failureReason,
       metadata: payload.metadata
     }
+  });
+}
+
+export async function fetchMobilePaymentLineSnapshot(token: string, deviceId: string): Promise<PaymentLineSnapshot> {
+  return apiRequest<PaymentLineSnapshot>(`/api/mobile/payment-line/snapshot?deviceId=${encodeURIComponent(deviceId)}`, {
+    token
+  });
+}
+
+export async function startMobilePaymentLineEntry(
+  token: string,
+  payload: { entryId: string; deviceId: string }
+): Promise<PaymentLineEntryState> {
+  return apiRequest<PaymentLineEntryState>(`/api/mobile/payment-line/entry/${encodeURIComponent(payload.entryId)}/start`, {
+    method: 'POST',
+    token,
+    body: { deviceId: payload.deviceId }
+  });
+}
+
+export async function heartbeatMobilePaymentLineEntry(
+  token: string,
+  payload: { entryId: string; deviceId: string }
+): Promise<{ ok: true; activeTimeoutAt: string }> {
+  return apiRequest<{ ok: true; activeTimeoutAt: string }>(
+    `/api/mobile/payment-line/entry/${encodeURIComponent(payload.entryId)}/heartbeat`,
+    {
+      method: 'POST',
+      token,
+      body: { deviceId: payload.deviceId }
+    }
+  );
+}
+
+export async function completeMobilePaymentLineEntry(
+  token: string,
+  payload: { entryId: string; deviceId: string; mockApproved?: boolean; paymentIntentId?: string }
+): Promise<{ success: boolean; alreadyCompleted?: boolean; orderId?: string; mockApproved?: boolean }> {
+  return apiRequest<{ success: boolean; alreadyCompleted?: boolean; orderId?: string; mockApproved?: boolean }>(
+    `/api/mobile/payment-line/entry/${encodeURIComponent(payload.entryId)}/complete`,
+    {
+      method: 'POST',
+      token,
+      body: payload
+    }
+  );
+}
+
+export async function failMobilePaymentLineEntry(
+  token: string,
+  payload: { entryId: string; deviceId: string; failureReason?: string }
+): Promise<PaymentLineEntryState> {
+  return apiRequest<PaymentLineEntryState>(`/api/mobile/payment-line/entry/${encodeURIComponent(payload.entryId)}/fail`, {
+    method: 'POST',
+    token,
+    body: payload
+  });
+}
+
+export async function backToLineMobilePaymentLineEntry(
+  token: string,
+  payload: { entryId: string; deviceId: string }
+): Promise<PaymentLineEntryState> {
+  return apiRequest<PaymentLineEntryState>(
+    `/api/mobile/payment-line/entry/${encodeURIComponent(payload.entryId)}/back-to-line`,
+    {
+      method: 'POST',
+      token,
+      body: { deviceId: payload.deviceId }
+    }
+  );
+}
+
+export async function cancelMobilePaymentLineEntry(
+  token: string,
+  payload: { entryId: string; deviceId: string }
+): Promise<PaymentLineEntryState> {
+  return apiRequest<PaymentLineEntryState>(`/api/mobile/payment-line/entry/${encodeURIComponent(payload.entryId)}/cancel`, {
+    method: 'POST',
+    token,
+    body: { deviceId: payload.deviceId }
   });
 }
