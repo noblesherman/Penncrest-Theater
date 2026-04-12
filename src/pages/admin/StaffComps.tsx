@@ -55,6 +55,7 @@ type RedemptionRow = {
 
 type TeacherPromoCodeRow = {
   id: string;
+  code: string | null;
   createdByAdminId: string;
   active: boolean;
   expiresAt: string | null;
@@ -71,6 +72,7 @@ export default function AdminStaffCompsPage() {
   const [teacherPromoCodeInput, setTeacherPromoCodeInput] = useState('');
   const [teacherPromoCodeExpiresAt, setTeacherPromoCodeExpiresAt] = useState('');
   const [createdTeacherPromoCode, setCreatedTeacherPromoCode] = useState<{ id: string; code: string; expiresAt: string | null } | null>(null);
+  const [copiedPromoCodeId, setCopiedPromoCodeId] = useState<string | null>(null);
   const [promoCodeStatus, setPromoCodeStatus] = useState<'active' | 'inactive' | 'all'>('active');
   const [scope, setScope] = useState<'active' | 'archived' | 'all'>('active');
   const [error, setError] = useState<string | null>(null);
@@ -152,6 +154,46 @@ export default function AdminStaffCompsPage() {
     }
   };
 
+  const copyTextWithFallback = async (text: string): Promise<void> => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.setAttribute('readonly', '');
+    textArea.style.position = 'fixed';
+    textArea.style.top = '-1000px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+
+    const copied = document.execCommand('copy');
+    document.body.removeChild(textArea);
+    if (!copied) {
+      throw new Error('Copy failed');
+    }
+  };
+
+  const copyTeacherPromoCode = async (codeId: string, codeValue: string | null) => {
+    if (!codeValue) {
+      setError('This promo code was created before code display support and cannot be copied.');
+      return;
+    }
+
+    setError(null);
+    try {
+      await copyTextWithFallback(codeValue);
+      setCopiedPromoCodeId(codeId);
+      window.setTimeout(() => {
+        setCopiedPromoCodeId((current) => (current === codeId ? null : current));
+      }, 1400);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to copy promo code');
+    }
+  };
+
   return (
     <div className="space-y-8">
       <div>
@@ -212,7 +254,14 @@ export default function AdminStaffCompsPage() {
 
         {createdTeacherPromoCode && (
           <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-sm text-green-900">
-            New promo code: <span className="font-sans font-bold">{createdTeacherPromoCode.code}</span>
+            New promo code:{' '}
+            <button
+              type="button"
+              className="font-mono font-bold underline decoration-green-400 underline-offset-2"
+              onClick={() => void copyTeacherPromoCode(createdTeacherPromoCode.id, createdTeacherPromoCode.code)}
+            >
+              {createdTeacherPromoCode.code}
+            </button>
             {createdTeacherPromoCode.expiresAt ? ` (expires ${new Date(createdTeacherPromoCode.expiresAt).toLocaleString()})` : ''}
           </div>
         )}
@@ -221,6 +270,22 @@ export default function AdminStaffCompsPage() {
           {teacherPromoCodes.map((code) => (
             <div key={code.id} className="border border-stone-200 rounded-xl p-3 text-xs text-stone-600 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
+                <button
+                  type="button"
+                  onClick={() => void copyTeacherPromoCode(code.id, code.code)}
+                  disabled={!code.code}
+                  className={`mb-1 inline-flex rounded-md border px-2 py-1 font-mono text-[13px] ${
+                    code.code
+                      ? 'border-stone-300 bg-stone-50 text-stone-900 hover:bg-stone-100'
+                      : 'cursor-not-allowed border-stone-200 bg-stone-100 text-stone-500'
+                  }`}
+                  title={code.code ? 'Click to copy code' : 'Code not available for this legacy record'}
+                >
+                  {code.code || 'CODE_UNAVAILABLE'}
+                </button>
+                <div className="mb-1 text-[11px] text-stone-500">
+                  {code.code ? (copiedPromoCodeId === code.id ? 'Copied' : 'Click code to copy') : 'Legacy entry (copy unavailable)'}
+                </div>
                 <div>ID: {code.id}</div>
                 <div>Created: {new Date(code.createdAt).toLocaleString()}</div>
                 <div>Created by: {code.createdByAdminId}</div>

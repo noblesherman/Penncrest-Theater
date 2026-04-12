@@ -192,6 +192,7 @@ model StaffRedeemCode {
 model TeacherCompPromoCode {
   id              String   @id @default(cuid())
   codeHash        String   @unique
+  code            String?
   createdByAdminId String
   active          Boolean  @default(true)
   expiresAt       DateTime?

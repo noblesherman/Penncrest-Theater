@@ -236,6 +236,7 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
       const created = await prisma.teacherCompPromoCode.create({
         data: {
           codeHash,
+          code: normalizedCode,
           createdByAdminId: adminActor(request),
           expiresAt: expiresAt || null
         }
@@ -256,7 +257,7 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
       reply.status(201).send({
         promoCode: {
           id: created.id,
-          code: normalizedCode,
+          code: created.code,
           createdByAdminId: created.createdByAdminId,
           active: created.active,
           expiresAt: created.expiresAt,
@@ -313,6 +314,7 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
         total,
         rows: rows.map((row) => ({
           id: row.id,
+          code: row.code,
           createdByAdminId: row.createdByAdminId,
           active: row.active,
           expiresAt: row.expiresAt,
