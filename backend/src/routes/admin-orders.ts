@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { FastifyPluginAsync } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
+import { env } from '../lib/env.js';
 import { prisma } from '../lib/prisma.js';
 import { stripe } from '../lib/stripe.js';
 import { handleRouteError } from '../lib/route-error.js';
@@ -62,6 +63,20 @@ const inPersonFinalizeSchema = z.object({
   receiptEmail: z.string().email().optional(),
   sendReceipt: z.boolean().optional(),
   studentCode: z.string().min(1).optional(),
+});
+
+const inPersonManualIntentSchema = z.object({
+  performanceId: z.string().min(1),
+  seatIds: z.array(z.string().min(1)).min(1).max(50),
+  ticketSelectionBySeatId: z.record(z.string().min(1), z.string().min(1)),
+  customerName: z.string().max(120).optional(),
+  receiptEmail: z.string().email().optional(),
+  sendReceipt: z.boolean().optional(),
+  studentCode: z.string().min(1).optional()
+});
+
+const inPersonManualCompleteSchema = inPersonManualIntentSchema.extend({
+  paymentIntentId: z.string().min(1)
 });
 
 const inPersonTerminalSendSchema = z.object({
@@ -1215,6 +1230,276 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
       });
     } catch (err) {
       handleRouteError(reply, err, 'Failed to prepare in-person sale quote');
+    }
+  });
+
+  app.post('/api/admin/orders/in-person/manual-intent', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+    const parsed = inPersonManualIntentSchema.safeParse(request.body || {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+
+    try {
+      if (!env.STRIPE_PUBLISHABLE_KEY) {
+        throw new HttpError(500, 'Stripe publishable key is not configured');
+      }
+
+      const quote = await buildInPersonSaleQuote({
+        performanceId: parsed.data.performanceId,
+        seatIds: parsed.data.seatIds,
+        ticketSelectionBySeatId: parsed.data.ticketSelectionBySeatId,
+        studentCode: parsed.data.studentCode
+      });
+
+      if (quote.expectedAmountCents <= 0) {
+        throw new HttpError(400, 'Manual card checkout requires a charge amount greater than $0.00');
+      }
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: quote.expectedAmountCents,
+        currency: quote.currency,
+        payment_method_types: ['card'],
+        capture_method: 'automatic',
+        description: `${quote.performanceTitle} - ${quote.seatCount} ${quote.isGeneralAdmission ? 'ticket' : 'seat'}${quote.seatCount === 1 ? '' : 's'}`,
+        receipt_email: parsed.data.receiptEmail?.trim().toLowerCase() || undefined,
+        metadata: {
+          source: 'admin_in_person_manual',
+          performanceId: quote.performanceId,
+          expectedAmountCents: String(quote.expectedAmountCents),
+          seatCount: String(quote.seatCount)
+        }
+      });
+
+      if (!paymentIntent.client_secret) {
+        throw new HttpError(500, 'Stripe payment intent missing client secret');
+      }
+
+      await logAudit({
+        actor: adminActor(request),
+        action: 'IN_PERSON_MANUAL_CHECKOUT_STARTED',
+        entityType: 'InPersonSale',
+        entityId: paymentIntent.id,
+        metadata: {
+          performanceId: quote.performanceId,
+          seatIds: quote.seatIds,
+          seatCount: quote.seatCount,
+          expectedAmountCents: quote.expectedAmountCents,
+          paymentIntentId: paymentIntent.id
+        }
+      });
+
+      reply.send({
+        paymentIntentId: paymentIntent.id,
+        clientSecret: paymentIntent.client_secret,
+        publishableKey: env.STRIPE_PUBLISHABLE_KEY,
+        expectedAmountCents: quote.expectedAmountCents,
+        currency: quote.currency
+      });
+    } catch (err) {
+      if (err instanceof Stripe.errors.StripeError) {
+        return reply.status(502).send({ error: err.message || 'Payment provider error' });
+      }
+      handleRouteError(reply, err, 'Failed to create manual in-person payment intent');
+    }
+  });
+
+  app.post('/api/admin/orders/in-person/manual-complete', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+    const parsed = inPersonManualCompleteSchema.safeParse(request.body || {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+
+    try {
+      const quote = await buildInPersonSaleQuote({
+        performanceId: parsed.data.performanceId,
+        seatIds: parsed.data.seatIds,
+        ticketSelectionBySeatId: parsed.data.ticketSelectionBySeatId,
+        studentCode: parsed.data.studentCode
+      });
+      if (quote.expectedAmountCents <= 0) {
+        throw new HttpError(400, 'Manual card checkout requires a charge amount greater than $0.00');
+      }
+
+      const paymentIntent = await stripe.paymentIntents.retrieve(parsed.data.paymentIntentId);
+      if (paymentIntent.status !== 'succeeded') {
+        throw new HttpError(409, `Payment intent is ${paymentIntent.status}. It must be succeeded before checkout can complete.`);
+      }
+
+      const paymentSource = String(paymentIntent.metadata?.source || '');
+      if (paymentSource && paymentSource !== 'admin_in_person_manual') {
+        throw new HttpError(400, 'Payment intent source is invalid for manual in-person checkout');
+      }
+
+      const paymentIntentPerformanceId = String(paymentIntent.metadata?.performanceId || '');
+      if (paymentIntentPerformanceId && paymentIntentPerformanceId !== quote.performanceId) {
+        throw new HttpError(400, 'Payment intent performance does not match this checkout');
+      }
+
+      if (paymentIntent.currency.toLowerCase() !== quote.currency.toLowerCase()) {
+        throw new HttpError(409, 'Payment currency does not match checkout currency');
+      }
+      if (paymentIntent.amount_received < quote.expectedAmountCents) {
+        throw new HttpError(409, 'Payment amount is less than the expected checkout total');
+      }
+
+      const existingOrder = await prisma.order.findUnique({
+        where: { stripePaymentIntentId: paymentIntent.id },
+        select: {
+          id: true,
+          status: true,
+          source: true
+        }
+      });
+      if (existingOrder) {
+        return reply.send({
+          success: true,
+          alreadyCompleted: true,
+          id: existingOrder.id,
+          status: existingOrder.status,
+          source: existingOrder.source,
+          expectedAmountCents: quote.expectedAmountCents,
+          paymentMethod: 'STRIPE' as const,
+          seats: quote.seats
+        });
+      }
+
+      const attemptId = `ipsm_${crypto.randomBytes(10).toString('hex')}`;
+      const normalizedSeatIds = quote.seatIds;
+      const priceBySeatId = Object.fromEntries(quote.seats.map((seat) => [seat.id, seat.priceCents]));
+      const ticketTypeBySeatId = Object.fromEntries(
+        quote.seats.map((seat) => [seat.id, seat.ticketType])
+      ) as Record<string, string>;
+
+      const normalizedCustomerName = parsed.data.customerName?.trim() || 'Walk-in Guest';
+      const normalizedReceiptEmail = parsed.data.receiptEmail?.trim().toLowerCase() || null;
+      const customerEmail = normalizedReceiptEmail || `walkin+${attemptId}@boxoffice.local`;
+      const sendEmail = Boolean(parsed.data.sendReceipt && normalizedReceiptEmail);
+
+      let created: Awaited<ReturnType<typeof createAssignedOrder>>;
+      try {
+        created = await createAssignedOrder({
+          performanceId: parsed.data.performanceId,
+          seatIds: normalizedSeatIds,
+          customerName: normalizedCustomerName,
+          customerEmail,
+          ticketTypeBySeatId,
+          priceBySeatId,
+          source: 'DOOR',
+          allowHeldSeats: false,
+          enforceSalesCutoff: false,
+          sendEmail,
+          inPersonPaymentMethod: 'STRIPE'
+        });
+      } catch (err) {
+        if (err instanceof HttpError && err.statusCode >= 400 && err.statusCode < 500) {
+          try {
+            const refund = await stripe.refunds.create(
+              {
+                payment_intent: paymentIntent.id,
+                reason: 'requested_by_customer',
+                metadata: {
+                  source: 'admin_in_person_manual_auto_refund',
+                  reason: 'checkout_finalize_failed',
+                  performanceId: parsed.data.performanceId
+                }
+              },
+              {
+                idempotencyKey: `admin-manual-complete-refund:${paymentIntent.id}`
+              }
+            );
+
+            await logAudit({
+              actor: adminActor(request),
+              action: 'IN_PERSON_MANUAL_CHECKOUT_AUTO_REFUND_REQUESTED',
+              entityType: 'InPersonSale',
+              entityId: paymentIntent.id,
+              metadata: {
+                refundId: refund.id,
+                refundStatus: refund.status,
+                failureReason: err.message
+              }
+            });
+          } catch (refundErr) {
+            await logAudit({
+              actor: adminActor(request),
+              action: 'IN_PERSON_MANUAL_CHECKOUT_AUTO_REFUND_FAILED',
+              entityType: 'InPersonSale',
+              entityId: paymentIntent.id,
+              metadata: {
+                failureReason: err.message,
+                refundError: refundErr instanceof Error ? refundErr.message : 'Unknown refund error'
+              }
+            });
+          }
+
+          throw new HttpError(
+            409,
+            'Payment succeeded but checkout could not be finalized. A Stripe refund was requested automatically.'
+          );
+        }
+
+        throw err;
+      }
+
+      await prisma.order.update({
+        where: { id: created.id },
+        data: {
+          stripePaymentIntentId: paymentIntent.id
+        }
+      });
+
+      await logAudit({
+        actor: adminActor(request),
+        action: 'IN_PERSON_SALE_FINALIZED',
+        entityType: 'InPersonSale',
+        entityId: attemptId,
+        metadata: {
+          orderId: created.id,
+          performanceId: quote.performanceId,
+          performanceTitle: quote.performanceTitle,
+          seatIds: normalizedSeatIds,
+          seatCount: quote.seatCount,
+          expectedAmountCents: quote.expectedAmountCents,
+          paymentMethod: 'STRIPE',
+          source: 'DOOR',
+          sendReceipt: sendEmail,
+          receiptEmail: normalizedReceiptEmail,
+          customerName: normalizedCustomerName,
+          paymentIntentId: paymentIntent.id
+        }
+      });
+
+      await logAudit({
+        actor: adminActor(request),
+        action: 'ORDER_ASSIGNED',
+        entityType: 'Order',
+        entityId: created.id,
+        metadata: {
+          source: 'DOOR',
+          performanceId: quote.performanceId,
+          seatIds: normalizedSeatIds,
+          inPersonAttemptId: attemptId,
+          expectedAmountCents: quote.expectedAmountCents,
+          paymentMethod: 'STRIPE',
+          paymentIntentId: paymentIntent.id,
+          ticketSelectionBySeatId: parsed.data.ticketSelectionBySeatId
+        }
+      });
+
+      reply.status(201).send({
+        success: true,
+        id: created.id,
+        status: created.status,
+        source: created.source,
+        expectedAmountCents: quote.expectedAmountCents,
+        paymentMethod: 'STRIPE',
+        seats: quote.seats
+      });
+    } catch (err) {
+      if (err instanceof Stripe.errors.StripeError) {
+        return reply.status(502).send({ error: err.message || 'Payment provider error' });
+      }
+      handleRouteError(reply, err, 'Failed to complete manual in-person checkout');
     }
   });
 

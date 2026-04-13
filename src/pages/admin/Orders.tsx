@@ -98,22 +98,27 @@ type TerminalDispatch = {
   seats: InPersonFinalizeSeatSummary[];
 };
 
-type ManualDispatchPaymentIntent = {
+type ManualInPersonPaymentIntent = {
   paymentIntentId: string;
   clientSecret: string;
   publishableKey?: string;
+  expectedAmountCents: number;
+  currency: string;
 };
 
 type ManualCheckoutSession = {
-  dispatchId: string;
-  deviceId: string;
+  performanceId: string;
+  seatIds: string[];
+  ticketSelectionBySeatId: Record<string, string>;
+  studentCode?: string;
+  sendReceipt: boolean;
+  customerName: string;
+  receiptEmail: string;
   paymentIntentId: string;
   clientSecret: string;
   publishableKey: string;
   expectedAmountCents: number;
   currency: string;
-  customerName: string;
-  receiptEmail: string;
 };
 
 function mapEntryToTerminalDispatch(entry: PaymentLineEntry): TerminalDispatch {
@@ -571,26 +576,32 @@ export default function AdminOrdersPage() {
     }
   }, []);
 
-  const fetchPaymentLineDispatch = useCallback(async (dispatchId: string) => {
-    const entry = await adminFetch<PaymentLineEntry>(`/api/admin/payment-line/entry/${encodeURIComponent(dispatchId)}`);
-    return mapEntryToTerminalDispatch(entry);
-  }, []);
-
-  const openManualCheckoutForDispatch = useCallback(async (
-    dispatch: TerminalDispatch,
-    options?: { customerName?: string; receiptEmail?: string }
-  ): Promise<boolean> => {
+  const startManualInPersonCheckout = useCallback(async (params: {
+    performanceId: string;
+    seatIds: string[];
+    ticketSelectionBySeatId: Record<string, string>;
+    customerName: string;
+    receiptEmail: string;
+    sendReceipt: boolean;
+    studentCode?: string;
+  }): Promise<boolean> => {
     setManualCheckoutLoading(true);
     setManualCheckoutError(null);
     setManualCapturedPaymentIntentId(null);
     setInPersonFlowError(null);
     try {
-      const intent = await adminFetch<ManualDispatchPaymentIntent>(
-        `/api/mobile/terminal/dispatch/${encodeURIComponent(dispatch.dispatchId)}/manual-payment-intent`,
+      const intent = await adminFetch<ManualInPersonPaymentIntent>(
+        '/api/admin/orders/in-person/manual-intent',
         {
           method: 'POST',
           body: JSON.stringify({
-            deviceId: dispatch.targetDeviceId
+            performanceId: params.performanceId,
+            seatIds: params.seatIds,
+            ticketSelectionBySeatId: params.ticketSelectionBySeatId,
+            customerName: params.customerName,
+            receiptEmail: params.receiptEmail || undefined,
+            sendReceipt: params.sendReceipt,
+            studentCode: params.studentCode
           })
         }
       );
@@ -601,15 +612,18 @@ export default function AdminOrdersPage() {
       }
 
       setManualCheckout({
-        dispatchId: dispatch.dispatchId,
-        deviceId: dispatch.targetDeviceId,
+        performanceId: params.performanceId,
+        seatIds: [...params.seatIds],
+        ticketSelectionBySeatId: { ...params.ticketSelectionBySeatId },
+        studentCode: params.studentCode,
+        sendReceipt: params.sendReceipt,
+        customerName: params.customerName,
+        receiptEmail: params.receiptEmail,
         paymentIntentId: intent.paymentIntentId,
         clientSecret: intent.clientSecret,
         publishableKey,
-        expectedAmountCents: dispatch.expectedAmountCents,
-        currency: dispatch.currency,
-        customerName: options?.customerName?.trim() || assignForm.customerName.trim() || 'Walk-in Guest',
-        receiptEmail: options?.receiptEmail?.trim().toLowerCase() || receiptEmail.trim().toLowerCase()
+        expectedAmountCents: intent.expectedAmountCents,
+        currency: intent.currency
       });
       return true;
     } catch (err) {
@@ -620,9 +634,9 @@ export default function AdminOrdersPage() {
     } finally {
       setManualCheckoutLoading(false);
     }
-  }, [assignForm.customerName, receiptEmail]);
+  }, []);
 
-  const finalizeManualDispatch = useCallback(async (paymentIntentId: string) => {
+  async function finalizeManualCheckout(paymentIntentId: string) {
     if (!manualCheckout) {
       throw new Error('Manual checkout session is missing.');
     }
@@ -632,27 +646,46 @@ export default function AdminOrdersPage() {
     setInPersonFlowError(null);
     setManualCapturedPaymentIntentId(paymentIntentId);
     try {
-      await adminFetch<{ success: boolean }>(
-        `/api/mobile/terminal/dispatch/${encodeURIComponent(manualCheckout.dispatchId)}/complete`,
+      const result = await adminFetch<{
+        success: boolean;
+        id: string;
+        expectedAmountCents: number;
+        paymentMethod: 'STRIPE' | 'CASH';
+        seats: InPersonFinalizeSeatSummary[];
+        alreadyCompleted?: boolean;
+      }>(
+        '/api/admin/orders/in-person/manual-complete',
         {
           method: 'POST',
           body: JSON.stringify({
-            deviceId: manualCheckout.deviceId,
+            performanceId: manualCheckout.performanceId,
+            seatIds: manualCheckout.seatIds,
+            ticketSelectionBySeatId: manualCheckout.ticketSelectionBySeatId,
+            customerName: manualCheckout.customerName,
+            receiptEmail: manualCheckout.receiptEmail || undefined,
+            sendReceipt: manualCheckout.sendReceipt,
+            studentCode: manualCheckout.studentCode,
             paymentIntentId
           })
         }
       );
 
-      const refreshed = await fetchPaymentLineDispatch(manualCheckout.dispatchId);
-      setTerminalDispatch(refreshed);
-
-      if (refreshed.status !== 'SUCCEEDED') {
-        throw new Error(`Charge succeeded, but dispatch status is ${refreshed.status}. Retry finalization.`);
-      }
-
       setManualCheckout(null);
       setManualCapturedPaymentIntentId(null);
-      finalizeSuccessfulTerminalDispatch(refreshed);
+      setSaleRecap({
+        expectedAmountCents: result.expectedAmountCents,
+        paymentMethod: result.paymentMethod,
+        seats: result.seats,
+        expiresAtMs: Date.now() + 10000
+      });
+      setAssignForm(prev => ({ ...prev, customerName: '', customerEmail: '', seatIdsInput: '', gaQuantityInput: '1', ticketType: '' }));
+      setTicketSelectionBySeatId({});
+      setNotice(
+        `Stripe sale completed — ${result.seats.length} ${seatSelectionEnabled ? 'seat' : 'ticket'}${result.seats.length === 1 ? '' : 's'} · $${(result.expectedAmountCents / 100).toFixed(2)}`
+      );
+      startCashierLoop(manualCheckout.performanceId);
+      void load();
+      void loadSeatsForPerformance(manualCheckout.performanceId, { showLoading: false, syncSelection: false });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to finalize successful manual charge.';
       setManualCheckoutError(message);
@@ -661,33 +694,19 @@ export default function AdminOrdersPage() {
     } finally {
       setManualCheckoutCompleting(false);
     }
-  }, [fetchPaymentLineDispatch, finalizeSuccessfulTerminalDispatch, manualCheckout]);
+  }
 
   const closeManualCheckout = useCallback(() => {
     setManualCheckout(null);
     setManualCheckoutError(null);
     setManualCapturedPaymentIntentId(null);
+    setManualCheckoutLoading(false);
+    setManualCheckoutCompleting(false);
   }, []);
 
-  const cancelManualSale = useCallback(async () => {
-    if (!manualCheckout) return;
-    setManualCheckoutCompleting(true);
-    setManualCheckoutError(null);
-    try {
-      await adminFetch(
-        `/api/admin/payment-line/entry/${encodeURIComponent(manualCheckout.dispatchId)}/cancel`,
-        { method: 'POST' }
-      );
-      setTerminalDispatch(null);
-      closeManualCheckout();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to cancel manual checkout sale';
-      setManualCheckoutError(message);
-      setInPersonFlowError(message);
-    } finally {
-      setManualCheckoutCompleting(false);
-    }
-  }, [closeManualCheckout, manualCheckout]);
+  const cancelManualSale = useCallback(() => {
+    closeManualCheckout();
+  }, [closeManualCheckout]);
 
   const finalizeInPersonSale = async () => {
     setError(null); setNotice(null); setInPersonFlowError(null);
@@ -713,48 +732,56 @@ export default function AdminOrdersPage() {
       setInPersonFlowError('Enter an email address before sending a receipt.'); return;
     }
 
-      const effectivePaymentMethod: 'STRIPE' | 'CASH' = isComplimentaryDoorCheckout ? 'CASH' : paymentMethod;
-      if (effectivePaymentMethod === 'STRIPE') {
-        if (!selectedTerminalDeviceId) {
-          setInPersonFlowError('Select an active payment phone before starting card checkout.');
-          return;
-        }
+    const effectivePaymentMethod: 'STRIPE' | 'CASH' = isComplimentaryDoorCheckout ? 'CASH' : paymentMethod;
+    if (effectivePaymentMethod === 'STRIPE') {
+      if (stripeChargePath === 'MANUAL') {
         setInPersonSubmitting(true);
         try {
-          const dispatch = await adminFetch<TerminalDispatch>('/api/admin/payment-line/enqueue', {
-            method: 'POST',
-            body: JSON.stringify({
-              performanceId: assignForm.performanceId,
-              seatIds: selectionIds,
-              ticketSelectionBySeatId,
-              receiptEmail: normalizedReceiptEmail || undefined,
-              sendReceipt,
-              customerName: assignForm.customerName.trim() || undefined,
-              studentCode: hasStudentInShowCompSelection ? normalizedStudentCode : undefined,
-              deviceId: selectedTerminalDeviceId
-            })
+          await startManualInPersonCheckout({
+            performanceId: assignForm.performanceId,
+            seatIds: selectionIds,
+            ticketSelectionBySeatId,
+            customerName: assignForm.customerName.trim() || 'Walk-in Guest',
+            receiptEmail: normalizedReceiptEmail,
+            sendReceipt,
+            studentCode: hasStudentInShowCompSelection ? normalizedStudentCode : undefined
           });
-          setTerminalDispatch(dispatch);
-          if (stripeChargePath === 'MANUAL') {
-            const manualReady = await openManualCheckoutForDispatch(dispatch, {
-              customerName: assignForm.customerName,
-              receiptEmail: normalizedReceiptEmail
-            });
-            if (!manualReady) {
-              await adminFetch(
-                `/api/admin/payment-line/entry/${encodeURIComponent(dispatch.dispatchId)}/cancel`,
-                { method: 'POST' }
-              ).catch(() => undefined);
-              setTerminalDispatch(null);
-            }
-          }
         } catch (e) {
-          setInPersonFlowError(e instanceof Error ? e.message : 'Failed to send sale to payment line');
+          setInPersonFlowError(e instanceof Error ? e.message : 'Failed to start manual checkout');
         } finally {
           setInPersonSubmitting(false);
         }
         return;
       }
+
+      if (!selectedTerminalDeviceId) {
+        setInPersonFlowError('Select an active payment phone before starting terminal checkout.');
+        return;
+      }
+
+      setInPersonSubmitting(true);
+      try {
+        const dispatch = await adminFetch<TerminalDispatch>('/api/admin/payment-line/enqueue', {
+          method: 'POST',
+          body: JSON.stringify({
+            performanceId: assignForm.performanceId,
+            seatIds: selectionIds,
+            ticketSelectionBySeatId,
+            receiptEmail: normalizedReceiptEmail || undefined,
+            sendReceipt,
+            customerName: assignForm.customerName.trim() || undefined,
+            studentCode: hasStudentInShowCompSelection ? normalizedStudentCode : undefined,
+            deviceId: selectedTerminalDeviceId
+          })
+        });
+        setTerminalDispatch(dispatch);
+      } catch (e) {
+        setInPersonFlowError(e instanceof Error ? e.message : 'Failed to send sale to payment line');
+      } finally {
+        setInPersonSubmitting(false);
+      }
+      return;
+    }
 
     setInPersonSubmitting(true);
     try {
@@ -1115,11 +1142,17 @@ export default function AdminOrdersPage() {
     void loadCashTonight(assignForm.performanceId);
   }, [assignForm.performanceId, assignForm.source, loadCashTonight, showWizard]);
   useEffect(() => {
-    if (!showWizard || assignForm.source !== 'DOOR' || paymentMethod !== 'STRIPE' || step !== 2) {
+    if (
+      !showWizard ||
+      assignForm.source !== 'DOOR' ||
+      paymentMethod !== 'STRIPE' ||
+      stripeChargePath !== 'TERMINAL' ||
+      step !== 2
+    ) {
       return;
     }
     void loadTerminalDevices();
-  }, [assignForm.source, loadTerminalDevices, paymentMethod, showWizard, step]);
+  }, [assignForm.source, loadTerminalDevices, paymentMethod, showWizard, step, stripeChargePath]);
 
   useEffect(() => {
     if (!terminalDispatch?.dispatchId || !terminalDispatch.status || !sellerStatusStream.snapshot) {
@@ -1842,43 +1875,44 @@ export default function AdminOrdersPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between gap-2">
-                      <FieldLabel>Terminal device</FieldLabel>
-                      <button
-                        type="button"
-                        onClick={() => void loadTerminalDevices()}
-                        className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-100"
-                      >
-                        <RefreshCw className={`h-3 w-3 ${loadingTerminalDevices ? 'animate-spin' : ''}`} />
-                        Refresh
-                      </button>
-                    </div>
-                    <select
-                      value={selectedTerminalDeviceId}
-                      onChange={e => setSelectedTerminalDeviceId(e.target.value)}
-                      className={baseSelect}
-                    >
-                      {!terminalDevices.length && <option value="">No active terminals found</option>}
-                      {terminalDevices.map(device => (
-                        <option key={device.deviceId} value={device.deviceId}>
-                          {device.name}{device.isBusy ? ' (Busy)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-slate-500">
-                      {stripeChargePath === 'MANUAL'
-                        ? 'Manual checkout still reserves seats through this payment line device, then takes card details in this browser.'
-                        : 'Send card collection to an active phone in Terminal Station mode.'}
-                    </p>
-                    {selectedTerminalDevice?.isBusy && (
-                      <p className="text-xs font-semibold text-amber-700">
-                        Payment in progress now. New entries will join the line.
-                      </p>
-                    )}
-                    {stripeChargePath === 'MANUAL' && (
-                      <p className="text-xs font-semibold text-slate-600">
-                        After you click charge, an embedded Stripe card form opens for manual entry.
-                      </p>
+                    {stripeChargePath === 'TERMINAL' ? (
+                      <>
+                        <div className="flex items-center justify-between gap-2">
+                          <FieldLabel>Terminal device</FieldLabel>
+                          <button
+                            type="button"
+                            onClick={() => void loadTerminalDevices()}
+                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-100"
+                          >
+                            <RefreshCw className={`h-3 w-3 ${loadingTerminalDevices ? 'animate-spin' : ''}`} />
+                            Refresh
+                          </button>
+                        </div>
+                        <select
+                          value={selectedTerminalDeviceId}
+                          onChange={e => setSelectedTerminalDeviceId(e.target.value)}
+                          className={baseSelect}
+                        >
+                          {!terminalDevices.length && <option value="">No active terminals found</option>}
+                          {terminalDevices.map(device => (
+                            <option key={device.deviceId} value={device.deviceId}>
+                              {device.name}{device.isBusy ? ' (Busy)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-slate-500">
+                          Send card collection to an active phone in Terminal Station mode.
+                        </p>
+                        {selectedTerminalDevice?.isBusy && (
+                          <p className="text-xs font-semibold text-amber-700">
+                            Payment in progress now. New entries will join the line.
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-xs text-emerald-800">
+                        Manual checkout bypasses terminal devices and opens an embedded Stripe card form directly in this browser.
+                      </div>
                     )}
                   </div>
                 )}
@@ -2171,7 +2205,7 @@ export default function AdminOrdersPage() {
                 <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Manual checkout</p>
                 <h2 className="mt-1 text-2xl font-black text-slate-900">Enter card details</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Dispatch {manualCheckout.dispatchId} • ${(manualCheckout.expectedAmountCents / 100).toFixed(2)}
+                  ${(manualCheckout.expectedAmountCents / 100).toFixed(2)} • {manualCheckout.seatIds.length} ticket{manualCheckout.seatIds.length === 1 ? '' : 's'}
                 </p>
               </div>
 
@@ -2195,7 +2229,7 @@ export default function AdminOrdersPage() {
                       type="button"
                       onClick={() => {
                         if (!manualCapturedPaymentIntentId) return;
-                        void finalizeManualDispatch(manualCapturedPaymentIntentId).catch(() => undefined);
+                        void finalizeManualCheckout(manualCapturedPaymentIntentId).catch(() => undefined);
                       }}
                       disabled={manualCheckoutCompleting}
                       className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 font-semibold text-white transition hover:bg-amber-700 disabled:opacity-60"
@@ -2214,7 +2248,7 @@ export default function AdminOrdersPage() {
                           receiptEmail={manualCheckout.receiptEmail}
                           disabled={manualCheckoutCompleting}
                           onError={setManualCheckoutError}
-                          onPaymentConfirmed={finalizeManualDispatch}
+                          onPaymentConfirmed={finalizeManualCheckout}
                         />
                       </Elements>
                     ) : (
@@ -2233,15 +2267,15 @@ export default function AdminOrdersPage() {
                   disabled={manualCheckoutCompleting}
                   className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
                 >
-                  Use terminal instead
+                  Close
                 </button>
                 <button
                   type="button"
-                  onClick={() => void cancelManualSale()}
+                  onClick={cancelManualSale}
                   disabled={manualCheckoutCompleting}
                   className="inline-flex items-center justify-center rounded-full bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700 disabled:opacity-60"
                 >
-                  {manualCheckoutCompleting ? 'Canceling…' : 'Cancel sale'}
+                  Cancel checkout
                 </button>
               </div>
             </motion.div>
@@ -2326,18 +2360,6 @@ export default function AdminOrdersPage() {
                   </button>
                 ) : (
                   <>
-                    {(terminalDispatch.status === 'PENDING' ||
-                      terminalDispatch.status === 'DELIVERED' ||
-                      terminalDispatch.status === 'FAILED') && (
-                      <button
-                        type="button"
-                        onClick={() => void openManualCheckoutForDispatch(terminalDispatch)}
-                        disabled={terminalDispatchActionBusy || manualCheckoutLoading}
-                        className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
-                      >
-                        {manualCheckoutLoading ? 'Opening manual checkout…' : 'Manual checkout'}
-                      </button>
-                    )}
                     {terminalDispatch.status !== 'EXPIRED' && terminalDispatch.status !== 'CANCELED' && (
                       <button
                         type="button"
@@ -2477,7 +2499,15 @@ export default function AdminOrdersPage() {
                     <motion.button
                       type="button"
                       onClick={finalizeInPersonSale}
-                      disabled={inPersonSubmitting || (paymentMethod === 'STRIPE' && !isComplimentaryDoorCheckout && !selectedTerminalDeviceId)}
+                      disabled={
+                        inPersonSubmitting ||
+                        (
+                          paymentMethod === 'STRIPE' &&
+                          !isComplimentaryDoorCheckout &&
+                          stripeChargePath === 'TERMINAL' &&
+                          !selectedTerminalDeviceId
+                        )
+                      }
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.97 }}
                       className="inline-flex min-w-[180px] items-center justify-center gap-2 rounded-full bg-rose-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700 disabled:opacity-60"
