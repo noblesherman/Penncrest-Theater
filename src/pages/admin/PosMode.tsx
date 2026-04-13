@@ -13,23 +13,26 @@ import {
   Plus,
   RefreshCw,
   Ticket,
-  X,
-  ShoppingCart,
-  CreditCard,
-  Banknote,
-  Monitor,
-  ArrowLeft,
-  RotateCcw,
-  Trash2,
-  Users,
-  Tag,
-  Receipt
+  X
 } from 'lucide-react';
 
 import { adminFetch } from '../../lib/adminAuth';
 import { apiFetch } from '../../lib/api';
 import { usePaymentLineStatusStream } from '../../hooks/usePaymentLineStatusStream';
+import { readCashierDefaultPerformanceId, writeCashierDefaultPerformanceId } from '../../hooks/useCashierDefaultPerformance';
 import type { PaymentLineEntry } from '../../lib/paymentLineTypes';
+import {
+  buildGeneralAdmissionLineIds,
+  isStudentInShowTicketName,
+  isTeacherTicketName,
+  MAX_STUDENT_COMP_TICKETS,
+  MAX_TEACHER_COMP_TICKETS,
+  naturalSort,
+  parseSeatIds,
+  pickComplimentarySeatIds,
+  STUDENT_SHOW_TICKET_OPTION_ID,
+  TEACHER_TICKET_OPTION_ID
+} from '../../lib/cashierRules';
 import { SeatMapViewport } from '../../components/SeatMapViewport';
 import {
   PosHeader,
@@ -134,67 +137,10 @@ type ManualCheckoutSession = {
   currency: string;
 };
 
-const TEACHER_TICKET_OPTION_ID = 'teacher-comp';
-const STUDENT_SHOW_TICKET_OPTION_ID = 'student-show-comp';
-const MAX_TEACHER_COMP_TICKETS = 2;
-const MAX_STUDENT_COMP_TICKETS = 2;
-const CASHIER_DEFAULT_PERFORMANCE_STORAGE_KEY = 'theater_cashier_default_performance_v1';
 const TERMINAL_DISPATCH_POLL_INTERVAL_MS = 750;
 const TERMINAL_DISPATCH_REFRESH_MIN_INTERVAL_MS = 300;
 const FALLBACK_STRIPE_PUBLISHABLE_KEY = (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '').trim();
 
-const naturalSort = (a: string, b: string) =>
-  a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-
-const parseSeatIds = (input: string) =>
-  [...new Set(input.split(',').map((v) => v.trim()).filter((v): v is string => Boolean(v)))];
-
-const buildGeneralAdmissionLineIds = (quantity: number) =>
-  Array.from({ length: Math.max(0, Math.min(quantity, 50)) }, (_value, index) => `ga-${index + 1}`);
-
-function readCashierDefaultPerformanceId(): string {
-  if (typeof window === 'undefined') return '';
-  try {
-    return window.localStorage.getItem(CASHIER_DEFAULT_PERFORMANCE_STORAGE_KEY) || '';
-  } catch {
-    return '';
-  }
-}
-
-function writeCashierDefaultPerformanceId(performanceId: string): void {
-  if (typeof window === 'undefined') return;
-  try {
-    if (!performanceId) {
-      window.localStorage.removeItem(CASHIER_DEFAULT_PERFORMANCE_STORAGE_KEY);
-      return;
-    }
-    window.localStorage.setItem(CASHIER_DEFAULT_PERFORMANCE_STORAGE_KEY, performanceId);
-  } catch {
-    // Ignore storage failures.
-  }
-}
-
-const isTeacherTicketName = (name: string) => {
-  const normalized = name.trim().toLowerCase();
-  return normalized.includes('teacher') || (normalized.includes('rtmsd') && normalized.includes('staff'));
-};
-
-const isStudentInShowTicketName = (name: string) =>
-  name.trim().toLowerCase().includes('student in show');
-
-function pickComplimentarySeatIds(
-  seats: Array<{ id: string; sectionName: string; row: string; number: number; basePriceCents: number }>,
-  quantity: number
-): Set<string> {
-  if (quantity <= 0) return new Set();
-  const ranked = [...seats].sort((a, b) => {
-    if (a.basePriceCents !== b.basePriceCents) return b.basePriceCents - a.basePriceCents;
-    if (a.sectionName !== b.sectionName) return naturalSort(a.sectionName, b.sectionName);
-    if (a.row !== b.row) return naturalSort(a.row, b.row);
-    return a.number - b.number;
-  });
-  return new Set(ranked.slice(0, quantity).map((seat) => seat.id));
-}
 
 function isTerminalDispatchFinalStatus(status: PosTerminalDispatch['status']): boolean {
   return status === 'SUCCEEDED' || status === 'FAILED' || status === 'EXPIRED' || status === 'CANCELED';
@@ -305,16 +251,16 @@ function ManualDispatchChargeForm(props: {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="rounded-xl border border-gray-200 bg-white p-4">
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <div className="rounded-xl border border-slate-700 bg-slate-950 p-3 sm:p-4">
         <PaymentElement />
       </div>
       <button
         type="submit"
         disabled={props.disabled || submitting || !stripe || !elements}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {submitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+        {submitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Ticket className="h-4 w-4" />}
         Charge ${(props.amountCents / 100).toFixed(2)}
       </button>
     </form>
@@ -387,7 +333,7 @@ export default function AdminPosModePage() {
     if (!manualCheckout?.clientSecret) return null;
     return {
       clientSecret: manualCheckout.clientSecret,
-      appearance: { theme: 'stripe' }
+      appearance: { theme: 'night' }
     };
   }, [manualCheckout?.clientSecret]);
 
@@ -1491,10 +1437,9 @@ export default function AdminPosModePage() {
 
   if (loadingSetup && performances.length === 0) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="flex items-center gap-3 text-sm text-gray-500">
-          <RefreshCw className="h-4 w-4 animate-spin text-red-600" />
-          <span className="font-medium">Loading POS…</span>
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-100">
+        <div className="flex items-center gap-3 text-sm text-slate-300">
+          <RefreshCw className="h-4 w-4 animate-spin" /> Loading POS…
         </div>
       </div>
     );
@@ -1502,86 +1447,51 @@ export default function AdminPosModePage() {
 
   return (
     <>
-      {/* ── Top bar ── */}
-      <div className="flex h-14 items-center justify-between border-b border-gray-200 bg-white px-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => navigate('/admin/orders')}
-            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Orders
-          </button>
-          <span className="text-gray-300">/</span>
-          <span className="text-sm font-semibold text-gray-900">POS — Box Office</span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Sale total badge */}
-          {selectionIds.length > 0 && (
-            <div className="flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1.5">
-              <ShoppingCart className="h-3.5 w-3.5 text-gray-500" />
-              <span className="text-sm font-semibold text-gray-900">
-                {selectionIds.length} item{selectionIds.length !== 1 ? 's' : ''} · ${(selectedTierSubtotalCents / 100).toFixed(2)}
-              </span>
-            </div>
-          )}
-          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${
-            assignForm.source === 'DOOR'
-              ? 'bg-blue-50 text-blue-700'
-              : 'bg-purple-50 text-purple-700'
-          }`}>
-            {assignForm.source === 'DOOR' ? 'Door sale' : 'Comp'}
-          </span>
-          <button
-            type="button"
-            onClick={startNewSale}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            New sale
-          </button>
-        </div>
-      </div>
-
-      {/* ── Alerts ── */}
-      <AnimatePresence>
-        {(notice || error) && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            className={`mx-4 mt-3 flex items-start justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
-              notice
-                ? 'border-green-200 bg-green-50 text-green-800'
-                : 'border-red-200 bg-red-50 text-red-800'
-            }`}
-          >
-            <span className="flex items-center gap-2">
-              {notice ? <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-green-600" /> : <AlertCircle className="h-4 w-4 flex-shrink-0 text-red-600" />}
-              {notice || error}
-            </span>
-            <button
-              type="button"
-              onClick={() => { setNotice(null); setError(null); }}
-              className="rounded p-0.5 hover:bg-black/10"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </motion.div>
+      <PosShell
+        header={(
+          <PosHeader
+            performanceTitle={selectedPerformance?.title || 'Choose a performance'}
+            performanceDate={selectedPerformance ? new Date(selectedPerformance.startsAt).toLocaleString() : ''}
+            source={assignForm.source}
+            lineCount={selectionIds.length}
+            totalCents={selectedTierSubtotalCents}
+            onExit={() => navigate('/admin/orders')}
+            onStartOver={startNewSale}
+          />
         )}
-      </AnimatePresence>
+        left={(
+          <div className="flex h-full min-h-0 flex-col gap-4">
+            <AnimatePresence>
+              {(notice || error) && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  className={[
+                    'rounded-2xl border px-4 py-3 text-sm',
+                    notice ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-100' : 'border-red-400/40 bg-red-500/15 text-red-100'
+                  ].join(' ')}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="flex items-start gap-2">
+                      {notice ? <CheckCircle2 className="mt-0.5 h-4 w-4" /> : <AlertCircle className="mt-0.5 h-4 w-4" />}
+                      {notice || error}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNotice(null);
+                        setError(null);
+                      }}
+                      className="rounded-md p-1 hover:bg-black/20"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-      {/* ── Main 3-column layout ── */}
-      <div className="flex h-[calc(100vh-3.5rem)] gap-0 overflow-hidden bg-gray-50">
-
-        {/* ── LEFT: Setup ── */}
-        <div className="flex w-80 flex-shrink-0 flex-col gap-4 overflow-y-auto border-r border-gray-200 bg-white p-4">
-
-          {/* Performance */}
-          <div>
-            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">Performance</p>
             <PosPerformanceSelector
               performances={performanceOptions}
               value={assignForm.performanceId}
@@ -1602,11 +1512,7 @@ export default function AdminPosModePage() {
                 setNotice(null);
               }}
             />
-          </div>
 
-          {/* Mode */}
-          <div>
-            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">Sale type</p>
             <PosModeSelector
               value={assignForm.source}
               onChange={(source) => {
@@ -1614,43 +1520,23 @@ export default function AdminPosModePage() {
                 resetInPersonFlow();
               }}
             />
-          </div>
 
-          {/* Ticket types */}
-          {selectedTicketOptions.length > 0 && (
-            <div>
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">Ticket type</p>
-              <PosTicketGrid
-                options={selectedTicketOptions}
-                selectedOptionId={primaryTicketTier?.id || null}
-                onApplyToAll={(ticketTypeId) => {
-                  setTicketSelectionBySeatId((prev) => {
-                    const next = { ...prev };
-                    selectionIds.forEach((id) => { next[id] = ticketTypeId; });
-                    return next;
-                  });
-                }}
-                formatLabel={formatTicketOptionLabel}
-              />
-            </div>
-          )}
-
-          {/* Quick actions */}
-          <div>
-            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">Actions</p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <button
                 type="button"
                 onClick={() => {
-                  if (!assignForm.performanceId) { setError('Choose a performance first.'); return; }
+                  if (!assignForm.performanceId) {
+                    setError('Choose a performance first.');
+                    return;
+                  }
                   setSeatPickerOpen(true);
                   setSeatPickerError(null);
                 }}
                 disabled={!seatSelectionEnabled}
-                className="flex flex-col items-start gap-1.5 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-left transition hover:border-gray-300 hover:bg-gray-100 disabled:opacity-40"
+                className="rounded-2xl border border-slate-600 bg-slate-900 px-4 py-3 text-left text-sm font-bold text-slate-100 transition hover:border-slate-500 disabled:opacity-40"
               >
-                <MapPin className="h-4 w-4 text-red-600" />
-                <span className="text-xs font-semibold text-gray-700">Seat map</span>
+                <MapPin className="mb-2 h-5 w-5 text-rose-300" />
+                Open Seat Map
               </button>
 
               <button
@@ -1659,103 +1545,110 @@ export default function AdminPosModePage() {
                   setAssignForm((prev) => ({ ...prev, seatIdsInput: '', gaQuantityInput: '1' }));
                   setTicketSelectionBySeatId({});
                 }}
-                className="flex flex-col items-start gap-1.5 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-left transition hover:border-gray-300 hover:bg-gray-100"
+                className="rounded-2xl border border-slate-600 bg-slate-900 px-4 py-3 text-left text-sm font-bold text-slate-100 transition hover:border-slate-500"
               >
-                <Trash2 className="h-4 w-4 text-red-600" />
-                <span className="text-xs font-semibold text-gray-700">Clear cart</span>
+                <X className="mb-2 h-5 w-5 text-rose-300" />
+                Clear Cart
               </button>
-            </div>
-          </div>
 
-          {/* GA quantity or seat chips */}
-          {seatSelectionEnabled ? (
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Selected seats</p>
-                <span className="text-xs font-bold text-gray-700">{seatIds.length}</span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {selectedMappedSeats.length === 0 && selectedUnknownSeatIds.length === 0 ? (
-                  <p className="text-sm text-gray-400">No seats selected yet.</p>
-                ) : (
-                  <>
-                    {selectedMappedSeats.map((seat) => (
-                      <button
-                        key={seat.id}
-                        type="button"
-                        onClick={() => toggleSeat(seat.id)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 transition hover:border-red-300 hover:bg-red-50"
-                      >
-                        {seat.sectionName} {seat.row}-{seat.number}
-                        <X className="h-3 w-3 text-gray-400" />
-                      </button>
-                    ))}
-                    {selectedUnknownSeatIds.map((id) => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => toggleSeat(id)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800"
-                      >
-                        {id}
-                        <X className="h-3 w-3" />
-                      </button>
-                    ))}
-                  </>
-                )}
-              </div>
+              <button
+                type="button"
+                onClick={startNewSale}
+                className="rounded-2xl border border-slate-600 bg-slate-900 px-4 py-3 text-left text-sm font-bold text-slate-100 transition hover:border-slate-500"
+              >
+                <RefreshCw className="mb-2 h-5 w-5 text-rose-300" />
+                Start New Sale
+              </button>
+
+              <Link
+                to="/admin/orders"
+                className="rounded-2xl border border-slate-600 bg-slate-900 px-4 py-3 text-left text-sm font-bold text-slate-100 transition hover:border-slate-500"
+              >
+                <ChevronRight className="mb-2 h-5 w-5 text-rose-300" />
+                Back to Orders
+              </Link>
             </div>
-          ) : (
-            <div>
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">Quantity</p>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setAssignForm((prev) => ({ ...prev, gaQuantityInput: String(Math.max(0, gaTicketQuantity - 1)) }))}
-                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
-                >
-                  <Minus className="h-4 w-4" />
-                </button>
-                <div className="flex-1 rounded-xl border border-gray-200 bg-white py-2 text-center text-2xl font-black text-gray-900">
-                  {gaTicketQuantity}
+
+            {seatSelectionEnabled ? (
+              <div className="rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Selected Seats</p>
+                  <p className="text-sm font-semibold text-slate-200">{seatIds.length}</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setAssignForm((prev) => ({ ...prev, gaQuantityInput: String(Math.min(50, gaTicketQuantity + 1)) }))}
-                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
+                <div className="mt-2 flex max-h-[110px] flex-wrap gap-2 overflow-y-auto">
+                  {selectedMappedSeats.length === 0 && selectedUnknownSeatIds.length === 0 ? (
+                    <p className="text-sm text-slate-500">No seats selected yet.</p>
+                  ) : (
+                    <>
+                      {selectedMappedSeats.map((seat) => (
+                        <button
+                          key={seat.id}
+                          type="button"
+                          onClick={() => toggleSeat(seat.id)}
+                          className="inline-flex items-center gap-1 rounded-xl border border-slate-600 bg-slate-950 px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-rose-400"
+                        >
+                          {seat.sectionName} {seat.row}-{seat.number}
+                          <X className="h-3 w-3" />
+                        </button>
+                      ))}
+                      {selectedUnknownSeatIds.map((id) => (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => toggleSeat(id)}
+                          className="inline-flex items-center gap-1 rounded-xl border border-amber-500/50 bg-amber-500/10 px-2.5 py-1.5 text-xs font-semibold text-amber-100"
+                        >
+                          {id}
+                          <X className="h-3 w-3" />
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            ) : (
+              <div className="rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-3">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">General Admission Quantity</p>
+                <div className="mt-2 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setAssignForm((prev) => ({ ...prev, gaQuantityInput: String(Math.max(0, gaTicketQuantity - 1)) }))}
+                    className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-600 bg-slate-950 text-slate-100"
+                  >
+                    <Minus className="h-5 w-5" />
+                  </button>
+                  <div className="flex-1 rounded-2xl border border-slate-600 bg-slate-950 px-4 py-3 text-center text-2xl font-black text-white">
+                    {gaTicketQuantity}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAssignForm((prev) => ({ ...prev, gaQuantityInput: String(Math.min(50, gaTicketQuantity + 1)) }))}
+                    className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-600 bg-slate-950 text-slate-100"
+                  >
+                    <Plus className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+            )}
 
-        {/* ── CENTER: Order lines ── */}
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex flex-1 flex-col overflow-y-auto p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-900">
-                Order <span className="ml-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-bold text-gray-600">{selectionIds.length}</span>
-              </h2>
-              {selectionIds.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (seatSelectionEnabled) {
-                      setAssignForm((prev) => ({ ...prev, seatIdsInput: '' }));
-                    } else {
-                      setAssignForm((prev) => ({ ...prev, gaQuantityInput: '0' }));
-                    }
-                    setTicketSelectionBySeatId({});
-                  }}
-                  className="text-xs font-medium text-gray-400 transition hover:text-red-600"
-                >
-                  Clear all
-                </button>
-              )}
-            </div>
-
+            <PosTicketGrid
+              options={selectedTicketOptions}
+              selectedOptionId={primaryTicketTier?.id || null}
+              onApplyToAll={(ticketTypeId) => {
+                setTicketSelectionBySeatId((prev) => {
+                  const next = { ...prev };
+                  selectionIds.forEach((id) => {
+                    next[id] = ticketTypeId;
+                  });
+                  return next;
+                });
+              }}
+              formatLabel={formatTicketOptionLabel}
+            />
+          </div>
+        )}
+        right={(
+          <div className="flex h-full min-h-0 flex-col">
             <PosSelectedLinesPanel
               lines={selectedLines}
               seatSelectionEnabled={seatSelectionEnabled}
@@ -1782,85 +1675,44 @@ export default function AdminPosModePage() {
               formatTicketOptionLabel={formatTicketOptionLabel}
             />
 
-            {selectionIds.length === 0 && (
-              <div className="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100">
-                  <ShoppingCart className="h-6 w-6 text-gray-400" />
-                </div>
-                <div>
-                  <p className="font-semibold text-gray-700">No items in this sale</p>
-                  <p className="mt-1 text-sm text-gray-400">
-                    {seatSelectionEnabled ? 'Open the seat map or enter seat IDs to get started.' : 'Use the quantity control to add GA tickets.'}
-                  </p>
-                </div>
-                {seatSelectionEnabled && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!assignForm.performanceId) { setError('Choose a performance first.'); return; }
-                      setSeatPickerOpen(true);
-                    }}
-                    className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-700"
-                  >
-                    <MapPin className="h-4 w-4" />
-                    Open seat map
-                  </button>
-                )}
+            <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Order Summary</p>
+                <p className="text-2xl font-black text-white">${(selectedTierSubtotalCents / 100).toFixed(2)}</p>
               </div>
-            )}
-          </div>
-
-          {/* Terminal status */}
-          {terminalDispatch && (
-            <div className="border-t border-gray-200 p-4">
-              <PosTerminalStatus
-                dispatch={terminalDispatch}
-                inlineTitle={dispatchInlineStatus.title}
-                inlineDetail={dispatchInlineStatus.detail}
-                tone={dispatchInlineStatus.tone}
-                streamConnected={sellerStatusStream.connected}
-                actionBusy={terminalDispatchActionBusy}
-                onRetry={() => void retryTerminalDispatch()}
-                onCancel={() => void cancelTerminalDispatch()}
-                onAcknowledgeSuccess={() => finalizeSuccessfulTerminalDispatch(terminalDispatch)}
-                onClose={() => setTerminalDispatch(null)}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* ── RIGHT: Payment & checkout ── */}
-        <div className="flex w-80 flex-shrink-0 flex-col border-l border-gray-200 bg-white">
-          {/* Order summary */}
-          <div className="border-b border-gray-100 px-4 py-4">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Summary</p>
-            {selectedTierBreakdown.length > 0 ? (
-              <div className="space-y-2">
+              <div className="mt-2 space-y-1">
                 {selectedTierBreakdown.map((item) => (
-                  <div key={`${item.name}-${item.priceCents}`} className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">{item.name} <span className="text-gray-400">×{item.count}</span></span>
-                    <span className="font-semibold text-gray-900">${((item.priceCents * item.count) / 100).toFixed(2)}</span>
+                  <div key={`${item.name}-${item.priceCents}`} className="flex items-center justify-between text-sm text-slate-200">
+                    <span>{item.name} ×{item.count}</span>
+                    <span>${((item.priceCents * item.count) / 100).toFixed(2)}</span>
                   </div>
                 ))}
-                <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
-                  <span className="text-sm font-semibold text-gray-700">Total</span>
-                  <span className="text-2xl font-black text-gray-900">${(selectedTierSubtotalCents / 100).toFixed(2)}</span>
-                </div>
+                {!selectedTierBreakdown.length && <p className="text-sm text-slate-500">No items in this sale.</p>}
               </div>
-            ) : (
-              <p className="text-sm text-gray-400">No items yet.</p>
+              {hasMixedCompSelection && (
+                <p className="mt-2 rounded-xl border border-red-400/40 bg-red-500/15 px-3 py-2 text-xs font-semibold text-red-100">
+                  Teacher and Student in Show complimentary tickets cannot be mixed in one order.
+                </p>
+              )}
+            </div>
+
+            {terminalDispatch && (
+              <div className="mt-4">
+                <PosTerminalStatus
+                  dispatch={terminalDispatch}
+                  inlineTitle={dispatchInlineStatus.title}
+                  inlineDetail={dispatchInlineStatus.detail}
+                  tone={dispatchInlineStatus.tone}
+                  streamConnected={sellerStatusStream.connected}
+                  actionBusy={terminalDispatchActionBusy}
+                  onRetry={() => void retryTerminalDispatch()}
+                  onCancel={() => void cancelTerminalDispatch()}
+                  onAcknowledgeSuccess={() => finalizeSuccessfulTerminalDispatch(terminalDispatch)}
+                  onClose={() => setTerminalDispatch(null)}
+                />
+              </div>
             )}
 
-            {hasMixedCompSelection && (
-              <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700">
-                <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                Teacher and Student in Show comps can't be mixed in one order.
-              </div>
-            )}
-          </div>
-
-          {/* Payment options */}
-          <div className="flex-1 overflow-y-auto px-4 py-4">
             <PosPaymentPanel
               source={assignForm.source}
               totalCents={selectedTierSubtotalCents}
@@ -1894,7 +1746,7 @@ export default function AdminPosModePage() {
               cashTonightLabel={
                 loadingCashTonight
                   ? 'Loading cash total…'
-                  : `Cash tonight: $${((cashTonight?.totalCashCents || 0) / 100).toFixed(2)} (${cashTonight?.saleCount || 0} sale${(cashTonight?.saleCount || 0) !== 1 ? 's' : ''})`
+                  : `Cash collected tonight: $${((cashTonight?.totalCashCents || 0) / 100).toFixed(2)} (${cashTonight?.saleCount || 0} sale${(cashTonight?.saleCount || 0) !== 1 ? 's' : ''})`
               }
               flowError={inPersonFlowError}
               submitDisabled={submitDisabled}
@@ -1903,31 +1755,9 @@ export default function AdminPosModePage() {
               onSubmit={handlePrimarySubmit}
             />
           </div>
+        )}
+      />
 
-          {/* Charge button (sticky bottom) */}
-          <div className="border-t border-gray-200 p-4">
-            <button
-              type="button"
-              onClick={handlePrimarySubmit}
-              disabled={submitDisabled}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {(inPersonSubmitting || manualCheckoutLoading) ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
-              ) : paymentMethod === 'CASH' || isComplimentaryDoorCheckout ? (
-                <Banknote className="h-4 w-4" />
-              ) : stripeChargePath === 'TERMINAL' ? (
-                <Monitor className="h-4 w-4" />
-              ) : (
-                <CreditCard className="h-4 w-4" />
-              )}
-              {submitLabel}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Recap panel ── */}
       <PosRecapPanel
         open={Boolean(saleRecap)}
         paymentMethod={saleRecap?.paymentMethod || 'CASH'}
@@ -1937,57 +1767,45 @@ export default function AdminPosModePage() {
         onClose={() => setSaleRecap(null)}
         onExtend={() =>
           setSaleRecap((prev) =>
-            prev ? { ...prev, expiresAtMs: Math.max(prev.expiresAtMs, Date.now()) + 10000 } : prev
+            prev
+              ? { ...prev, expiresAtMs: Math.max(prev.expiresAtMs, Date.now()) + 10000 }
+              : prev
           )
         }
       />
 
-      {/* ── Manual card checkout modal ── */}
       <AnimatePresence>
         {manualCheckout && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[115] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[115] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
           >
             <motion.div
               initial={{ y: 12, opacity: 0, scale: 0.98 }}
               animate={{ y: 0, opacity: 1, scale: 1 }}
               exit={{ y: 12, opacity: 0, scale: 0.98 }}
-              className="w-full max-w-lg overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+              className="w-full max-w-xl rounded-3xl border border-slate-700 bg-slate-950 text-slate-100 shadow-2xl"
             >
-              <div className="border-b border-gray-100 px-6 py-5">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Manual checkout</p>
-                    <h2 className="mt-1 text-xl font-bold text-gray-900">Enter card details</h2>
-                    <p className="mt-1 text-sm text-gray-500">
-                      ${(manualCheckout.expectedAmountCents / 100).toFixed(2)} · {manualCheckout.seatIds.length} ticket{manualCheckout.seatIds.length === 1 ? '' : 's'}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={closeManualCheckout}
-                    disabled={manualCheckoutCompleting}
-                    className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
+              <div className="border-b border-slate-800 px-6 py-5">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Manual checkout</p>
+                <h2 className="mt-1 text-2xl font-black">Enter card details</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  ${(manualCheckout.expectedAmountCents / 100).toFixed(2)} · {manualCheckout.seatIds.length} ticket{manualCheckout.seatIds.length === 1 ? '' : 's'}
+                </p>
               </div>
 
               <div className="space-y-4 px-6 py-5">
                 {manualCheckoutError && (
-                  <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                    <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-600" />
+                  <div className="rounded-xl border border-red-400/40 bg-red-500/15 px-4 py-3 text-sm text-red-100">
                     {manualCheckoutError}
                   </div>
                 )}
 
                 {manualCapturedPaymentIntentId ? (
-                  <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
-                    <p>Charge succeeded but order confirmation needs one more attempt.</p>
+                  <div className="space-y-3 rounded-xl border border-amber-400/40 bg-amber-500/15 px-4 py-4 text-sm text-amber-100">
+                    <p>Charge succeeded ({manualCapturedPaymentIntentId}), but final order confirmation needs one more attempt.</p>
                     <button
                       type="button"
                       onClick={() => {
@@ -1995,7 +1813,7 @@ export default function AdminPosModePage() {
                         void finalizeManualCheckout(manualCapturedPaymentIntentId).catch(() => undefined);
                       }}
                       disabled={manualCheckoutCompleting}
-                      className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:opacity-50"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 font-semibold text-white transition hover:bg-amber-500 disabled:opacity-60"
                     >
                       {manualCheckoutCompleting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                       Retry finalization
@@ -2015,71 +1833,83 @@ export default function AdminPosModePage() {
                         />
                       </Elements>
                     ) : (
-                      <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500">
-                        Loading Stripe card form…
+                      <div className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-400">
+                        Loading secure Stripe card form…
                       </div>
                     )}
                   </>
                 )}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-800 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={closeManualCheckout}
+                  disabled={manualCheckoutCompleting}
+                  className="inline-flex items-center justify-center rounded-full border border-slate-600 bg-slate-900 px-4 py-2.5 text-sm font-bold text-slate-100 transition hover:border-slate-500 disabled:opacity-60"
+                >
+                  Close
+                </button>
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ── Seat picker modal ── */}
       <AnimatePresence>
         {seatPickerOpen && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[105] flex items-end justify-center bg-black/40 backdrop-blur-sm sm:items-center sm:p-4"
+            className="fixed inset-0 z-[105] flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center sm:p-4"
           >
             <motion.div
-              initial={{ scale: 0.97, opacity: 0, y: 16 }}
+              initial={{ scale: 0.96, opacity: 0, y: 16 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.97, opacity: 0, y: 16 }}
+              exit={{ scale: 0.96, opacity: 0, y: 16 }}
               transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-              className="flex h-[92dvh] w-full flex-col overflow-hidden rounded-t-2xl border border-gray-200 bg-white shadow-2xl sm:h-auto sm:max-h-[90dvh] sm:max-w-6xl sm:rounded-2xl"
+              className="flex h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl border border-slate-700 bg-slate-950 text-slate-100 shadow-2xl sm:h-auto sm:max-h-[90dvh] sm:max-w-6xl sm:rounded-3xl"
             >
-              {/* Header */}
-              <div className="flex-shrink-0 border-b border-gray-100 px-5 py-4">
-                <div className="flex items-center justify-between gap-3">
+              <div className="flex-shrink-0 border-b border-slate-800 px-5 pb-4 pt-5">
+                <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h3 className="text-base font-bold text-gray-900">Select seats</h3>
-                    <p className="mt-0.5 text-xs text-gray-500">{selectedPerformance?.title ?? 'No performance selected'}</p>
+                    <p className="text-lg font-bold">Select seats</p>
+                    <p className="mt-0.5 text-xs text-slate-400">{selectedPerformance?.title ?? 'No performance selected'}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => void loadSeatsForPerformance(assignForm.performanceId)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
-                    >
-                      <RefreshCw className="h-3 w-3" /> Refresh
-                    </button>
-                    <span className="text-xs font-semibold text-gray-600">{seatIds.length} seat{seatIds.length !== 1 ? 's' : ''}</span>
-                    <button
-                      type="button"
                       onClick={() => setSeatPickerOpen(false)}
-                      className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+                      className="rounded-full p-1.5 text-slate-300 transition hover:bg-slate-900 hover:text-white"
                     >
                       <X className="h-5 w-5" />
                     </button>
                   </div>
                 </div>
+                <div className="mt-3 flex items-center gap-3 text-xs text-slate-400">
+                  <button
+                    type="button"
+                    onClick={() => void loadSeatsForPerformance(assignForm.performanceId)}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-600 px-3 py-1.5 font-semibold text-slate-200 transition hover:border-slate-500"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" /> Refresh
+                  </button>
+                  <span className="font-semibold text-slate-200">{seatIds.length} seat{seatIds.length !== 1 ? 's' : ''} selected</span>
+                </div>
+              </div>
 
-                {/* Section pills */}
-                <div className="mt-3 flex flex-wrap gap-1.5">
+              <div className="flex-shrink-0 border-b border-slate-800 px-5 py-3">
+                <div className="flex flex-wrap gap-1.5">
                   {['All', ...sections].map((section) => (
                     <button
                       key={section}
                       type="button"
                       onClick={() => setActiveSection(section)}
-                      className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
                         activeSection === section
-                          ? 'bg-gray-900 text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          ? 'bg-white text-slate-900'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                       }`}
                     >
                       {section}
@@ -2090,15 +1920,14 @@ export default function AdminPosModePage() {
 
               {seatPickerError && (
                 <div className="px-5 pt-3">
-                  <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-800">
+                  <div className="flex items-center gap-2 rounded-xl border border-red-400/40 bg-red-500/15 px-4 py-2.5 text-sm text-red-100">
                     <AlertCircle className="h-4 w-4 flex-shrink-0" /> {seatPickerError}
                   </div>
                 </div>
               )}
 
-              {/* Map */}
               <div className="min-h-0 flex-1 px-5 pb-2 pt-3">
-                <div className="h-full overflow-hidden rounded-xl border border-gray-200">
+                <div className="h-full overflow-hidden rounded-2xl border border-slate-700">
                   <SeatMapViewport
                     seats={seats}
                     visibleSeats={visibleSeats}
@@ -2129,14 +1958,14 @@ export default function AdminPosModePage() {
                           className={[
                             'seat-button absolute flex h-8 w-8 items-center justify-center rounded-t-lg rounded-b-md text-[10px] font-bold transition-all duration-150 md:h-10 md:w-10',
                             isSelected
-                              ? 'z-10 scale-110 bg-red-600 text-white shadow-lg ring-2 ring-red-300'
+                              ? 'z-10 scale-110 bg-emerald-500 text-white shadow-lg ring-2 ring-emerald-300'
                               : isUnavailable
-                                ? 'cursor-not-allowed bg-gray-200 text-gray-400'
+                                ? 'cursor-not-allowed bg-slate-300 text-slate-500'
                                 : seat.isCompanion
-                                  ? 'border-2 border-cyan-400 bg-cyan-50 text-cyan-800 hover:-translate-y-1 hover:shadow-md'
+                                  ? 'border-2 border-cyan-400 bg-cyan-100 text-cyan-900 hover:-translate-y-1 hover:shadow-md'
                                   : seat.isAccessible
-                                    ? 'border-2 border-blue-400 bg-blue-50 text-blue-800 hover:-translate-y-1 hover:shadow-md'
-                                    : 'border-2 border-gray-200 bg-white text-gray-700 hover:-translate-y-1 hover:border-red-400 hover:shadow-md'
+                                    ? 'border-2 border-blue-400 bg-blue-100 text-blue-900 hover:-translate-y-1 hover:shadow-md'
+                                    : 'border-2 border-slate-200 bg-white text-slate-700 hover:-translate-y-1 hover:border-rose-400 hover:shadow-md'
                           ].join(' ')}
                         >
                           {seat.number}
@@ -2147,22 +1976,21 @@ export default function AdminPosModePage() {
                 </div>
               </div>
 
-              {/* Footer */}
-              <div className="flex-shrink-0 border-t border-gray-100 px-5 py-4">
-                <div className="mb-3 flex flex-wrap gap-2">
+              <div className="flex-shrink-0 border-t border-slate-800 px-5 py-4">
+                <div className="mb-3 min-h-[32px]">
                   {selectedMappedSeats.length === 0 && selectedUnknownSeatIds.length === 0 ? (
-                    <p className="text-sm text-gray-400">No seats selected yet.</p>
+                    <p className="text-sm text-slate-400">No seats selected yet.</p>
                   ) : (
-                    <>
+                    <div className="flex flex-wrap gap-2">
                       {selectedMappedSeats.map((seat) => (
                         <button
                           key={seat.id}
                           type="button"
                           onClick={() => toggleSeat(seat.id)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:border-red-300 hover:bg-red-50"
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-500 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-100 transition hover:border-rose-400"
                         >
                           {seat.sectionName} {seat.row}-{seat.number}
-                          <X className="h-3 w-3 text-gray-400" />
+                          <X className="h-3 w-3" />
                         </button>
                       ))}
                       {selectedUnknownSeatIds.map((id) => (
@@ -2170,19 +1998,19 @@ export default function AdminPosModePage() {
                           key={id}
                           type="button"
                           onClick={() => toggleSeat(id)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800"
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-amber-400/50 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/25"
                         >
                           {id} <X className="h-3 w-3" />
                         </button>
                       ))}
-                    </>
+                    </div>
                   )}
                 </div>
                 <div className="flex justify-end">
                   <button
                     type="button"
                     onClick={() => setSeatPickerOpen(false)}
-                    className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-red-700"
+                    className="inline-flex items-center gap-2 rounded-full bg-rose-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-rose-500"
                   >
                     Confirm seats <ChevronRight className="h-4 w-4" />
                   </button>

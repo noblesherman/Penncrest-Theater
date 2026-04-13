@@ -160,6 +160,33 @@ function normalizeOptionsText(value: string): string[] {
   return Array.from(new Set(value.split('\n').map((l) => l.trim()).filter(Boolean)));
 }
 
+function normalizeCustomQuestionsForSave(customQuestions: ProgramBioCustomQuestion[]): ProgramBioCustomQuestion[] {
+  return customQuestions.map((question) => ({
+    ...question,
+    id: question.id.trim(),
+    label: question.label.trim(),
+    options: question.type === 'multiple_choice' ? normalizeOptionsText(question.options.join('\n')) : []
+  }));
+}
+
+function validateCustomQuestionsForSave(customQuestions: ProgramBioCustomQuestion[]): string | null {
+  const seenIds = new Set<string>();
+  for (let index = 0; index < customQuestions.length; index += 1) {
+    const question = customQuestions[index];
+    const questionNumber = index + 1;
+
+    if (!question.id) return `Question ${questionNumber} is missing an id.`;
+    if (seenIds.has(question.id)) return `Question ${questionNumber} has a duplicate id.`;
+    seenIds.add(question.id);
+
+    if (!question.label) return `Question ${questionNumber} label is required.`;
+    if (question.type === 'multiple_choice' && question.options.length < 2) {
+      return `Question ${questionNumber} needs at least two options.`;
+    }
+  }
+  return null;
+}
+
 function toLocalInputValue(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
@@ -406,11 +433,27 @@ export default function ProgramBioFormsPanel() {
   async function saveForm(formId: string): Promise<void> {
     const draft = drafts[formId];
     if (!draft) return;
+    const normalizedCustomQuestions = normalizeCustomQuestionsForSave(draft.questions.customQuestions);
+    const customQuestionError = validateCustomQuestionsForSave(normalizedCustomQuestions);
+    if (customQuestionError) {
+      setError(customQuestionError);
+      setNotice(null);
+      return;
+    }
     setSaving(true); setError(null); setNotice(null);
     try {
       const updated = await adminFetch<ProgramBioFormSummary>(`/api/admin/forms/${formId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ title: draft.title.trim(), instructions: draft.instructions.trim(), questions: draft.questions, deadlineAt: toIsoFromLocalInput(draft.deadlineAt), isOpen: draft.isOpen }),
+        body: JSON.stringify({
+          title: draft.title.trim(),
+          instructions: draft.instructions.trim(),
+          questions: {
+            ...draft.questions,
+            customQuestions: normalizedCustomQuestions
+          },
+          deadlineAt: toIsoFromLocalInput(draft.deadlineAt),
+          isOpen: draft.isOpen
+        }),
       });
       const norm = { ...updated, questions: normalizeQuestions(updated.questions) };
       setForms((cur) => cur.map((r) => (r.id === formId ? norm : r)));

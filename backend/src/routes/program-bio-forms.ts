@@ -308,6 +308,37 @@ function normalizeCustomQuestions(value: ProgramBioQuestionsPatch['customQuestio
   return normalized;
 }
 
+function validateCustomQuestions(value: ProgramBioQuestionsPatch['customQuestions']): void {
+  if (!Array.isArray(value)) return;
+
+  const seenIds = new Set<string>();
+  for (let index = 0; index < value.length; index += 1) {
+    const question = value[index];
+    const questionNumber = index + 1;
+    const id = question.id.trim();
+    const label = question.label.trim();
+
+    if (!id) {
+      throw new HttpError(400, `Question ${questionNumber} is missing an id.`);
+    }
+    if (seenIds.has(id)) {
+      throw new HttpError(400, `Question ${questionNumber} has a duplicate id.`);
+    }
+    seenIds.add(id);
+
+    if (!label) {
+      throw new HttpError(400, `Question ${questionNumber} label is required.`);
+    }
+
+    if (question.type === 'multiple_choice') {
+      const options = normalizeCustomQuestionOptions(question.options);
+      if (options.length < 2) {
+        throw new HttpError(400, `Question ${questionNumber} needs at least two options.`);
+      }
+    }
+  }
+}
+
 function normalizeProgramBioQuestions(value: Prisma.JsonValue | null | undefined): ProgramBioQuestions {
   const parsed = programBioQuestionsPatchSchema.safeParse(value ?? {});
   if (!parsed.success) {
@@ -339,6 +370,7 @@ function mergeProgramBioQuestions(
 ): ProgramBioQuestions {
   const base = normalizeProgramBioQuestions(current);
   const { customQuestions, ...labelPatch } = patch;
+  validateCustomQuestions(customQuestions);
   const normalizedLabels = Object.fromEntries(
     Object.entries(labelPatch).filter(([, fieldValue]) => fieldValue !== undefined)
   ) as Partial<Omit<ProgramBioQuestions, 'customQuestions'>>;

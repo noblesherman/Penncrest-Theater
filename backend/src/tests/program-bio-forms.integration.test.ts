@@ -392,6 +392,40 @@ describe.sequential('program bio forms integration', () => {
     expect(submission.headshotUrl).toBe('');
   });
 
+  it('returns validation errors instead of silently dropping invalid custom questions', async () => {
+    const { show } = await createShowWithPerformance(`Custom Validation Show ${Date.now()}`);
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/forms',
+      headers: authHeaders(),
+      payload: { showId: show.id }
+    });
+    const form = createResponse.json();
+
+    const invalidPatch = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/forms/${encodeURIComponent(form.id)}`,
+      headers: authHeaders(),
+      payload: {
+        questions: {
+          customQuestions: [
+            {
+              id: 'q1',
+              label: '',
+              type: 'short_text',
+              required: false,
+              hidden: false
+            }
+          ]
+        }
+      }
+    });
+
+    expect(invalidPatch.statusCode).toBe(400);
+    expect(invalidPatch.json().error).toContain('label is required');
+  });
+
   it('syncs submissions into cast metadata and optional Student Credits records', async () => {
     const { show, performance } = await createShowWithPerformance(`Sync Show ${Date.now()}`);
 
