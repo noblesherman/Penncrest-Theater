@@ -6,6 +6,7 @@ import { env } from '../lib/env.js';
 import { logAudit } from '../lib/audit-log.js';
 import { handleRouteError } from '../lib/route-error.js';
 import {
+  deleteManagedDevice,
   getLatestMobileAppRelease,
   getManagedDeviceDetailForAdmin,
   listManagedDevicesForAdmin,
@@ -397,6 +398,32 @@ export const adminDeviceRoutes: FastifyPluginAsync = async (app) => {
       });
     } catch (err) {
       handleRouteError(reply, err, 'Failed to update mobile release metadata');
+    }
+  });
+
+  app.delete('/api/admin/devices/:id', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
+    const parsedParams = deviceIdParamSchema.safeParse(request.params || {});
+    if (!parsedParams.success) {
+      return reply.status(400).send({ error: parsedParams.error.flatten() });
+    }
+
+    try {
+      await deleteManagedDevice({
+        managedDeviceId: parsedParams.data.id,
+        actorAdminId: request.adminUser?.id || null
+      });
+
+      await logAudit({
+        actor: request.adminUser?.username || 'admin',
+        actorAdminId: request.adminUser?.id || null,
+        action: 'MOBILE_DEVICE_DELETED',
+        entityType: 'ManagedDevice',
+        entityId: parsedParams.data.id
+      });
+
+      return reply.send({ ok: true });
+    } catch (err) {
+      handleRouteError(reply, err, 'Failed to delete managed device');
     }
   });
 };

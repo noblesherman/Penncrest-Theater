@@ -136,6 +136,7 @@ export default function AdminDevicesPage() {
   const [loadingFleet, setLoadingFleet] = useState(false);
   const [loadingDevice, setLoadingDevice] = useState(false);
   const [busyAction, setBusyAction] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -332,6 +333,33 @@ export default function AdminDevicesPage() {
     }
   };
 
+  const confirmDeleteDevice = async () => {
+    if (!selectedDeviceId) {
+      setError('Select a device first');
+      return;
+    }
+
+    setBusyAction(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      await adminFetch(`/api/admin/devices/${encodeURIComponent(selectedDeviceId)}`, {
+        method: 'DELETE'
+      });
+
+      setNotice('Device deleted successfully');
+      setShowDeleteConfirm(false);
+      setSelectedDeviceId('');
+      setSelectedDevice(null);
+      await loadFleet();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete device');
+    } finally {
+      setBusyAction(false);
+    }
+  };
+
   const submitReleaseMetadata = async (event: FormEvent) => {
     event.preventDefault();
 
@@ -517,6 +545,14 @@ export default function AdminDevicesPage() {
                     className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:border-emerald-300 disabled:opacity-60"
                   >
                     Trigger App Update
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busyAction}
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:border-rose-300 disabled:opacity-60"
+                  >
+                    Delete Device
                   </button>
                 </div>
 
@@ -733,6 +769,35 @@ export default function AdminDevicesPage() {
         <p className="text-xs text-slate-500">
           Selected device: {selectedDeviceSummary.displayName || selectedDeviceSummary.deviceId} ({selectedDeviceSummary.deviceId})
         </p>
+      )}
+
+      {showDeleteConfirm && selectedDeviceSummary && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
+            <h3 className="text-lg font-semibold text-slate-900">Delete Device?</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Are you sure you want to delete <span className="font-semibold">{selectedDeviceSummary.displayName || selectedDeviceSummary.deviceId}</span>? This action cannot be undone.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                disabled={busyAction}
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busyAction}
+                onClick={() => void confirmDeleteDevice()}
+                className="flex-1 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 hover:border-rose-300 disabled:opacity-60"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

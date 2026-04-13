@@ -704,6 +704,49 @@ export async function upsertMobileAppRelease(params: {
   });
 }
 
+export async function deleteManagedDevice(params: {
+  managedDeviceId: string;
+  actorAdminId?: string | null;
+}): Promise<void> {
+  const device = await prisma.managedDevice.findUnique({
+    where: { id: params.managedDeviceId },
+    select: { id: true, displayName: true, deviceId: true }
+  });
+
+  if (!device) {
+    throw new HttpError(404, 'Device not found');
+  }
+
+  // Delete related records
+  await prisma.managedDeviceCommand.deleteMany({
+    where: { managedDeviceId: params.managedDeviceId }
+  });
+
+  await prisma.managedDeviceEvent.deleteMany({
+    where: { managedDeviceId: params.managedDeviceId }
+  });
+
+  await prisma.managedDevicePin.deleteMany({
+    where: { managedDeviceId: params.managedDeviceId }
+  });
+
+  // Delete the device
+  await prisma.managedDevice.delete({
+    where: { id: params.managedDeviceId }
+  });
+
+  await recordManagedDeviceEvent({
+    managedDeviceId: params.managedDeviceId,
+    actor: 'ADMIN',
+    actorId: params.actorAdminId || null,
+    eventType: 'DEVICE_DELETED',
+    metadata: {
+      displayName: device.displayName || null,
+      deviceId: device.deviceId
+    }
+  });
+}
+
 export async function getLatestMobileAppRelease() {
   return prisma.mobileAppRelease.findUnique({
     where: {
