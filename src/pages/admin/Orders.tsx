@@ -127,6 +127,8 @@ const STUDENT_SHOW_TICKET_OPTION_ID = 'student-show-comp';
 const MAX_TEACHER_COMP_TICKETS = 2;
 const MAX_STUDENT_COMP_TICKETS = 2;
 const CASHIER_DEFAULT_PERFORMANCE_STORAGE_KEY = 'theater_cashier_default_performance_v1';
+const TERMINAL_DISPATCH_POLL_INTERVAL_MS = 750;
+const TERMINAL_DISPATCH_REFRESH_MIN_INTERVAL_MS = 300;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -181,6 +183,10 @@ function pickComplimentarySeatIds(
     return a.number - b.number;
   });
   return new Set(ranked.slice(0, quantity).map((seat) => seat.id));
+}
+
+function isTerminalDispatchFinalStatus(status: TerminalDispatch['status']): boolean {
+  return status === 'SUCCEEDED' || status === 'FAILED' || status === 'EXPIRED' || status === 'CANCELED';
 }
 
 function normalizeSeat(raw: any): Seat {
@@ -305,6 +311,9 @@ export default function AdminOrdersPage() {
   const [loadingCashTonight, setLoadingCashTonight] = useState(false);
   const [saleRecap, setSaleRecap] = useState<InPersonSaleRecap | null>(null);
   const [saleRecapSecondsLeft, setSaleRecapSecondsLeft] = useState(0);
+  const terminalDispatchRefreshInFlightRef = useRef(false);
+  const terminalDispatchRefreshLastAtRef = useRef(0);
+  const terminalDispatchRefreshLastIdRef = useRef<string | null>(null);
 
   const sellerStatusStream = usePaymentLineStatusStream({
     queueKey: terminalDispatch?.targetDeviceId || null,
@@ -558,12 +567,40 @@ export default function AdminOrdersPage() {
   };
 
   const applyTerminalDispatchStatus = useCallback((dispatch: TerminalDispatch) => {
-    setTerminalDispatch(dispatch);
+    setTerminalDispatch((previous) => {
+      if (!previous || previous.dispatchId !== dispatch.dispatchId) return dispatch;
+      if (
+        previous.status === dispatch.status &&
+        previous.failureReason === dispatch.failureReason &&
+        previous.holdExpiresAt === dispatch.holdExpiresAt &&
+        previous.holdActive === dispatch.holdActive &&
+        previous.canRetry === dispatch.canRetry &&
+        previous.attemptCount === dispatch.attemptCount &&
+        previous.finalOrderId === dispatch.finalOrderId
+      ) {
+        return previous;
+      }
+      return dispatch;
+    });
   }, []);
 
-  const refreshTerminalDispatchStatus = useCallback(async (dispatchId: string) => {
-    const dispatch = await adminFetch<TerminalDispatch>(`/api/admin/payment-line/entry/${encodeURIComponent(dispatchId)}`);
-    applyTerminalDispatchStatus(dispatch);
+  const refreshTerminalDispatchStatus = useCallback(async (dispatchId: string, force = false) => {
+    if (!dispatchId) return;
+    if (terminalDispatchRefreshInFlightRef.current) return;
+    const now = Date.now();
+    const isSameDispatch = terminalDispatchRefreshLastIdRef.current === dispatchId;
+    if (!force && isSameDispatch && now - terminalDispatchRefreshLastAtRef.current < TERMINAL_DISPATCH_REFRESH_MIN_INTERVAL_MS) {
+      return;
+    }
+    terminalDispatchRefreshInFlightRef.current = true;
+    terminalDispatchRefreshLastAtRef.current = now;
+    terminalDispatchRefreshLastIdRef.current = dispatchId;
+    try {
+      const dispatch = await adminFetch<TerminalDispatch>(`/api/admin/payment-line/entry/${encodeURIComponent(dispatchId)}`);
+      applyTerminalDispatchStatus(dispatch);
+    } finally {
+      terminalDispatchRefreshInFlightRef.current = false;
+    }
   }, [applyTerminalDispatchStatus]);
 
   const retryTerminalDispatch = useCallback(async () => {
@@ -578,7 +615,7 @@ export default function AdminOrdersPage() {
       applyTerminalDispatchStatus(dispatch);
     } catch (e) {
       setInPersonFlowError(e instanceof Error ? e.message : 'Retry failed');
-      await refreshTerminalDispatchStatus(terminalDispatch.dispatchId).catch(() => undefined);
+      await refreshTerminalDispatchStatus(terminalDispatch.dispatchId, true).catch(() => undefined);
     } finally {
       setTerminalDispatchActionBusy(false);
     }
@@ -836,13 +873,13 @@ export default function AdminOrdersPage() {
   }, [assignForm.source, loadTerminalDevices, paymentMethod, showWizard, step]);
 
   useEffect(() => {
-    if (!terminalDispatch || !sellerStatusStream.snapshot) {
+    if (!terminalDispatch?.dispatchId || !terminalDispatch.status || !sellerStatusStream.snapshot) {
       return;
     }
 
     const nextEntry = sellerStatusStream.snapshot.entries.find((entry) => entry.entryId === terminalDispatch.dispatchId);
     if (!nextEntry) {
-      if (terminalDispatch.status === 'SUCCEEDED' || terminalDispatch.status === 'FAILED' || terminalDispatch.status === 'EXPIRED' || terminalDispatch.status === 'CANCELED') {
+      if (!sellerStatusStream.connected || isTerminalDispatchFinalStatus(terminalDispatch.status)) {
         return;
       }
       void refreshTerminalDispatchStatus(terminalDispatch.dispatchId).catch(() => undefined);
@@ -850,14 +887,21 @@ export default function AdminOrdersPage() {
     }
 
     applyTerminalDispatchStatus(mapEntryToTerminalDispatch(nextEntry));
-  }, [applyTerminalDispatchStatus, refreshTerminalDispatchStatus, sellerStatusStream.snapshot, terminalDispatch]);
+  }, [
+    applyTerminalDispatchStatus,
+    refreshTerminalDispatchStatus,
+    sellerStatusStream.connected,
+    sellerStatusStream.snapshot,
+    terminalDispatch?.dispatchId,
+    terminalDispatch?.status
+  ]);
 
   useEffect(() => {
-    if (!terminalDispatch || sellerStatusStream.connected) {
+    if (!terminalDispatch?.dispatchId || !terminalDispatch.status || sellerStatusStream.connected) {
       return;
     }
 
-    if (terminalDispatch.status === 'SUCCEEDED' || terminalDispatch.status === 'FAILED' || terminalDispatch.status === 'EXPIRED' || terminalDispatch.status === 'CANCELED') {
+    if (isTerminalDispatchFinalStatus(terminalDispatch.status)) {
       return;
     }
 
@@ -870,13 +914,13 @@ export default function AdminOrdersPage() {
     void poll();
     const timerId = window.setInterval(() => {
       void poll();
-    }, 500);
+    }, TERMINAL_DISPATCH_POLL_INTERVAL_MS);
 
     return () => {
       cancelled = true;
       window.clearInterval(timerId);
     };
-  }, [refreshTerminalDispatchStatus, sellerStatusStream.connected, terminalDispatch]);
+  }, [refreshTerminalDispatchStatus, sellerStatusStream.connected, terminalDispatch?.dispatchId, terminalDispatch?.status]);
 
   useEffect(() => {
     if (!showWizard || step === 0 || terminalDispatch || !assignForm.performanceId || !seatSelectionEnabled) {
@@ -1856,7 +1900,7 @@ export default function AdminOrdersPage() {
                   {terminalDispatch.targetDeviceName || terminalDispatch.targetDeviceId} • ${((terminalDispatch.expectedAmountCents || 0) / 100).toFixed(2)}
                 </p>
                 <p className="mt-1 text-xs font-semibold text-slate-400">
-                  Live updates: {sellerStatusStream.connected ? 'connected' : 'reconnecting (500ms refresh active)'}
+                  Live updates: {sellerStatusStream.connected ? 'connected' : `reconnecting (${TERMINAL_DISPATCH_POLL_INTERVAL_MS}ms refresh active)`}
                 </p>
               </div>
 
