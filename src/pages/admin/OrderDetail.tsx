@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { adminFetch, hasAdminRole } from '../../lib/adminAuth';
 import { useAdminSession } from './useAdminSession';
 
@@ -209,6 +209,7 @@ function formatLabel(value: string | null | undefined): string {
 
 export default function AdminOrderDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { admin } = useAdminSession();
   const [data, setData] = useState<OrderDetail | null>(null);
   const [transaction, setTransaction] = useState<StripeTransactionDetail | null>(null);
@@ -294,6 +295,24 @@ export default function AdminOrderDetailPage() {
     } finally { setActionBusy(false); }
   };
 
+  const deleteOrder = async () => {
+    if (!data) return;
+    const confirmed = window.confirm(
+      'Delete this canceled order permanently?\n\nThis cannot be undone.'
+    );
+    if (!confirmed) return;
+
+    setActionBusy(true); setError(null); setNotice(null);
+    try {
+      await adminFetch(`/api/admin/orders/${data.id}`, { method: 'DELETE' });
+      navigate('/admin/orders');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete order');
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
   const canRefund = hasAdminRole(admin.role, 'ADMIN');
 
   if (loading && !data) {
@@ -321,6 +340,7 @@ export default function AdminOrderDetailPage() {
     Boolean(data.stripeRefundStatus) &&
     !['failed', 'canceled', 'succeeded'].includes(data.stripeRefundStatus.toLowerCase());
   const showRefundAction = canRefund && !refundSettled && !refundInFlight;
+  const canDeleteOrder = hasAdminRole(admin.role, 'ADMIN') && data.status === 'CANCELED';
 
   const statusStyle = STATUS_STYLES[data.status] ?? 'bg-stone-100 text-stone-500 ring-1 ring-stone-200';
   const formattedTotal = `$${(data.amountTotal / 100).toFixed(2)}`;
@@ -716,7 +736,23 @@ export default function AdminOrderDetailPage() {
               {actionBusy ? 'Working…' : 'Refund via Stripe'}
             </button>
           )}
+
+          {canDeleteOrder && (
+            <button
+              onClick={() => { void deleteOrder(); }}
+              disabled={actionBusy}
+              className="rounded-xl border border-rose-300 bg-white px-5 py-2.5 text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {actionBusy ? 'Working…' : 'Delete order'}
+            </button>
+          )}
         </div>
+
+        {hasAdminRole(admin.role, 'ADMIN') && data.status !== 'CANCELED' && (
+          <p className="mt-4 text-xs text-stone-400">
+            Only canceled orders can be permanently deleted.
+          </p>
+        )}
 
         {refundSettled && (
           <div className="mt-4 rounded-xl border border-stone-100 bg-stone-50 px-4 py-3 text-sm text-stone-500">

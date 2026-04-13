@@ -25,7 +25,8 @@ import {
 } from '../services/terminal-dispatch-service.js';
 import {
   getStudentCreditEligibilityByStudentCode,
-  normalizeStudentVerificationCode
+  normalizeStudentVerificationCode,
+  releasePendingStudentCreditForOrderTx
 } from '../services/student-ticket-credit-service.js';
 
 const refundSchema = z.object({
@@ -1895,6 +1896,101 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
       });
     } catch (err) {
       handleRouteError(reply, err, 'Failed to refund order');
+    }
+  });
+
+  app.delete('/api/admin/orders/:id', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
+    const params = request.params as { id: string };
+
+    try {
+      const deleted = await prisma.$transaction(async (tx) => {
+        const order = await tx.order.findUnique({
+          where: { id: params.id },
+          select: {
+            id: true,
+            status: true,
+            performanceId: true,
+            amountTotal: true,
+            source: true,
+            stripeSessionId: true,
+            stripePaymentIntentId: true,
+            orderSeats: {
+              select: {
+                seatId: true
+              }
+            },
+            _count: {
+              select: {
+                orderSeats: true,
+                tickets: true
+              }
+            }
+          }
+        });
+
+        if (!order) {
+          throw new HttpError(404, 'Order not found');
+        }
+
+        if (order.status !== 'CANCELED') {
+          throw new HttpError(400, 'Only canceled orders can be permanently deleted');
+        }
+
+        await releasePendingStudentCreditForOrderTx(tx, order.id);
+
+        const seatIds = order.orderSeats
+          .map((seat) => seat.seatId)
+          .filter((seatId): seatId is string => Boolean(seatId));
+
+        if (seatIds.length > 0) {
+          await tx.seat.updateMany({
+            where: {
+              id: { in: seatIds },
+              performanceId: order.performanceId,
+              status: 'SOLD'
+            },
+            data: {
+              status: 'AVAILABLE',
+              holdSessionId: null
+            }
+          });
+        }
+
+        await tx.order.delete({
+          where: { id: order.id }
+        });
+
+        return {
+          id: order.id,
+          status: order.status,
+          amountTotal: order.amountTotal,
+          source: order.source,
+          stripeSessionId: order.stripeSessionId,
+          stripePaymentIntentId: order.stripePaymentIntentId,
+          orderSeatCount: order._count.orderSeats,
+          ticketCount: order._count.tickets
+        };
+      });
+
+      await logAudit({
+        actor: adminActor(request),
+        action: 'ORDER_DELETED',
+        entityType: 'Order',
+        entityId: deleted.id,
+        metadata: {
+          status: deleted.status,
+          amountTotal: deleted.amountTotal,
+          source: deleted.source,
+          stripeSessionId: deleted.stripeSessionId,
+          stripePaymentIntentId: deleted.stripePaymentIntentId,
+          orderSeatCount: deleted.orderSeatCount,
+          ticketCount: deleted.ticketCount
+        }
+      });
+
+      reply.send({ success: true, deleted: true });
+    } catch (err) {
+      handleRouteError(reply, err, 'Failed to delete order');
     }
   });
 };
