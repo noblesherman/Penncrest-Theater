@@ -1,8 +1,6 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
-import { loadStripe, type StripeElementsOptions } from '@stripe/stripe-js';
 import {
   AlertCircle,
   Check,
@@ -45,15 +43,6 @@ import {
 
 import { SeatMapViewport } from '../../components/SeatMapViewport';
 import {
-  PosHeader,
-  PosModeSelector,
-  PosPaymentPanel,
-  PosPerformanceSelector,
-  PosRecapPanel,
-  PosSelectedLinesPanel,
-  PosShell,
-  PosTerminalStatus,
-  PosTicketGrid,
   type PosPerformanceOption,
   type PosSaleRecapSeat,
   type PosSelectionLine,
@@ -215,83 +204,6 @@ function mapEntryToTerminalDispatch(entry: PaymentLineEntry): PosTerminalDispatc
   };
 }
 
-// ======================== MANUAL STRIPE CHARGE FORM ========================
-
-function ManualDispatchChargeForm({
-  amountCents,
-  customerName,
-  receiptEmail,
-  disabled,
-  onError,
-  onPaymentConfirmed,
-}: {
-  amountCents: number;
-  customerName: string;
-  receiptEmail: string;
-  disabled?: boolean;
-  onError: (message: string | null) => void;
-  onPaymentConfirmed: (paymentIntentId: string) => Promise<void>;
-}) {
-  const stripe = useStripe();
-  const elements = useElements();
-  const [submitting, setSubmitting] = useState(false);
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    onError(null);
-
-    if (!stripe || !elements) {
-      onError('Card form is still loading. Please try again.');
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const result = await stripe.confirmPayment({
-        elements,
-        confirmParams: {
-          payment_method_data: {
-            billing_details: { name: customerName || undefined, email: receiptEmail || undefined },
-          },
-        },
-        redirect: 'if_required',
-      });
-
-      if (result.error) throw new Error(result.error.message || 'Card charge failed.');
-
-      const intent = result.paymentIntent;
-      if (!intent?.id) throw new Error('Stripe did not return a payment intent id.');
-      if (intent.status !== 'succeeded')
-        throw new Error(`Payment is ${intent.status}. Charge must be succeeded before finalizing checkout.`);
-
-      await onPaymentConfirmed(intent.id);
-    } catch (err) {
-      onError(err instanceof Error ? err.message : 'Card charge failed.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="rounded-xl border-2 border-stone-200 bg-stone-50 p-4">
-        <PaymentElement />
-      </div>
-      <PosButton
-        type="submit"
-        variant="success"
-        size="lg"
-        fullWidth
-        disabled={disabled || submitting || !stripe || !elements}
-        isLoading={submitting}
-        icon={Ticket}
-      >
-        Charge ${(amountCents / 100).toFixed(2)}
-      </PosButton>
-    </form>
-  );
-}
-
 // ======================== MAIN POS PAGE ========================
 
 export default function AdminPosModePage() {
@@ -360,16 +272,6 @@ export default function AdminPosModePage() {
   const terminalDispatchRefreshInFlightRef = useRef(false);
   const terminalDispatchRefreshLastAtRef = useRef(0);
   const terminalDispatchRefreshLastIdRef = useRef<string | null>(null);
-
-  const manualStripePromise = useMemo(() => {
-    if (!manualCheckout?.publishableKey) return null;
-    return loadStripe(manualCheckout.publishableKey);
-  }, [manualCheckout?.publishableKey]);
-
-  const manualStripeOptions = useMemo<StripeElementsOptions | null>(() => {
-    if (!manualCheckout?.clientSecret) return null;
-    return { clientSecret: manualCheckout.clientSecret, appearance: { theme: 'stripe' } };
-  }, [manualCheckout?.clientSecret]);
 
   // ======================== DERIVED VALUES ========================
 

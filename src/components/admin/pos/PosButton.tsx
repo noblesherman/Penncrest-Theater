@@ -41,7 +41,8 @@ export function PosButton({
   className = '',
   ...props
 }: PosButtonProps) {
-  const isRenderIcon = Icon && typeof Icon === 'function';
+  // Check if Icon is a Lucide component type (function) that should be called
+  const isComponentType = Icon && typeof Icon === 'function' && 'displayName' in Icon;
 
   return (
     <motion.button
@@ -53,10 +54,10 @@ export function PosButton({
     >
       {isLoading ? (
         <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="h-5 w-5 rounded-full border-2 border-current border-t-transparent" />
-      ) : isRenderIcon ? (
+      ) : isComponentType ? (
         <Icon className="h-5 w-5" />
       ) : Icon ? (
-        Icon as ReactNode
+        <>{Icon}</>
       ) : null}
       <span>{children}</span>
     </motion.button>
