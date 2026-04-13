@@ -26,20 +26,22 @@ export function PosRecapPanel(props: PosRecapPanelProps) {
             initial={{ y: 18, opacity: 0, scale: 0.98 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 18, opacity: 0, scale: 0.98 }}
-            className="w-full max-w-2xl rounded-3xl border border-slate-700 bg-slate-950 text-slate-100 shadow-2xl"
+            className="w-full max-w-2xl rounded-3xl border border-stone-200 bg-white text-stone-900 shadow-2xl"
           >
-            <div className="flex items-start justify-between border-b border-slate-800 px-5 py-4">
+            <div className="flex items-start justify-between border-b border-stone-200 px-5 py-4">
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-300">Sale Complete</p>
-                <h3 className="mt-1 text-2xl font-black">{props.seats.length} ticket{props.seats.length === 1 ? '' : 's'} sold</h3>
-                <p className="mt-1 text-sm text-slate-300">
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">Sale Complete</p>
+                <h3 className="mt-1 text-2xl font-black" style={{ fontFamily: 'Georgia, serif' }}>
+                  {props.seats.length} ticket{props.seats.length === 1 ? '' : 's'} sold
+                </h3>
+                <p className="mt-1 text-sm text-stone-500">
                   {props.paymentMethod === 'CASH' ? 'Cash' : 'Card'} · ${(props.expectedAmountCents / 100).toFixed(2)}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={props.onClose}
-                className="rounded-full border border-slate-700 p-1.5 text-slate-300 transition hover:border-slate-500"
+                className="rounded-full border border-stone-300 p-1.5 text-stone-600 transition hover:bg-stone-100"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -48,34 +50,34 @@ export function PosRecapPanel(props: PosRecapPanelProps) {
             <div className="max-h-[45vh] overflow-y-auto px-5 py-4">
               <div className="grid gap-2 sm:grid-cols-2">
                 {props.seats.map((seat) => (
-                  <div key={seat.id} className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5">
-                    <p className="text-sm font-semibold text-slate-100">
+                  <div key={seat.id} className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5">
+                    <p className="text-sm font-semibold text-stone-900">
                       {seat.row === 'GA'
                         ? `${seat.sectionName} Ticket ${seat.number}`
                         : `${seat.sectionName} · Row ${seat.row} · Seat ${seat.number}`}
                     </p>
-                    <p className="mt-0.5 text-xs text-slate-400">{seat.ticketType}</p>
+                    <p className="mt-0.5 text-xs text-stone-500">{seat.ticketType}</p>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="flex items-center justify-between gap-2 border-t border-slate-800 px-5 py-4">
-              <p className="text-sm text-slate-300">
-                Auto-close in <span className="font-bold text-white">{props.secondsLeft}s</span>
+            <div className="flex items-center justify-between gap-2 border-t border-stone-200 px-5 py-4">
+              <p className="text-sm text-stone-600">
+                Auto-close in <span className="font-bold text-stone-900">{props.secondsLeft}s</span>
               </p>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={props.onExtend}
-                  className="rounded-xl border border-slate-600 px-3 py-2 text-xs font-bold text-slate-100 transition hover:border-slate-400"
+                  className="rounded-xl border border-stone-300 px-3 py-2 text-xs font-bold text-stone-700 transition hover:bg-stone-100"
                 >
                   +10s
                 </button>
                 <button
                   type="button"
                   onClick={props.onClose}
-                  className="rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate-900 transition hover:bg-slate-200"
+                  className="rounded-xl bg-red-700 px-3 py-2 text-xs font-bold text-white transition hover:bg-red-800"
                 >
                   Close
                 </button>

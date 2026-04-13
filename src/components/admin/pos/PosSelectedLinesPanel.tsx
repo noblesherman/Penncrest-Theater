@@ -15,11 +15,11 @@ type PosSelectedLinesPanelProps = {
 
 export function PosSelectedLinesPanel(props: PosSelectedLinesPanelProps) {
   return (
-    <div className="min-h-0 rounded-2xl border border-slate-700 bg-slate-900/70">
-      <div className="flex items-center justify-between border-b border-slate-700 px-4 py-3">
+    <div className="min-h-0 rounded-2xl border border-stone-200 bg-white">
+      <div className="flex items-center justify-between border-b border-stone-200 px-4 py-3">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Selected Lines</p>
-          <p className="text-sm font-semibold text-slate-200">
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-red-600">Step 2 · Ticket Types</p>
+          <p className="text-sm font-semibold text-stone-700">
             {props.lines.length} {props.seatSelectionEnabled ? 'seat' : 'ticket'}{props.lines.length === 1 ? '' : 's'} in cart
           </p>
         </div>
@@ -27,7 +27,7 @@ export function PosSelectedLinesPanel(props: PosSelectedLinesPanelProps) {
           type="button"
           onClick={props.onClearAll}
           disabled={!props.lines.length}
-          className="inline-flex items-center gap-1 rounded-xl border border-slate-600 px-3 py-2 text-xs font-bold text-slate-200 transition hover:border-red-400 hover:text-red-200 disabled:opacity-40"
+          className="inline-flex items-center gap-1 rounded-xl border border-stone-300 px-3 py-2 text-xs font-bold text-stone-700 transition hover:bg-stone-100 hover:text-red-700 disabled:opacity-40"
         >
           <Trash2 className="h-3.5 w-3.5" />
           Clear
@@ -35,27 +35,27 @@ export function PosSelectedLinesPanel(props: PosSelectedLinesPanelProps) {
       </div>
 
       {props.missingTicketTypeCount > 0 && (
-        <div className="border-b border-amber-400/30 bg-amber-500/10 px-4 py-2 text-xs font-semibold text-amber-100">
+        <div className="border-b border-amber-300 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-900">
           {props.missingTicketTypeCount} line{props.missingTicketTypeCount === 1 ? '' : 's'} still missing a ticket type.
         </div>
       )}
 
       <div className="max-h-[38vh] overflow-y-auto">
         {!props.lines.length ? (
-          <div className="px-4 py-6 text-sm text-slate-500">No selections yet. Add seats or GA tickets to start this sale.</div>
+          <div className="px-4 py-6 text-sm text-stone-500">No selections yet. Add seats or GA tickets to start this sale.</div>
         ) : (
-          <div className="divide-y divide-slate-800">
+          <div className="divide-y divide-stone-100">
             {props.lines.map((line) => (
               <div key={line.id} className="px-4 py-3">
                 <div className="mb-2 flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-sm font-semibold text-slate-100">{line.label}</p>
-                    <p className="text-xs text-slate-500">{line.id}</p>
+                    <p className="text-sm font-semibold text-stone-900">{line.label}</p>
+                    <p className="text-xs text-stone-500">{line.id}</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => props.onRemoveLine(line.id)}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-700 text-slate-300 transition hover:border-red-400 hover:text-red-200"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-stone-200 text-stone-600 transition hover:border-red-200 hover:text-red-700"
                     aria-label={`Remove ${line.label}`}
                   >
                     <X className="h-3.5 w-3.5" />
@@ -64,7 +64,7 @@ export function PosSelectedLinesPanel(props: PosSelectedLinesPanelProps) {
                 <select
                   value={props.ticketSelectionByLineId[line.id] || ''}
                   onChange={(event) => props.onTicketChange(line.id, event.target.value)}
-                  className="w-full rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-rose-400 focus:outline-none"
+                  className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100"
                 >
                   <option value="">Select ticket type</option>
                   {props.ticketOptions.map((tier) => (
