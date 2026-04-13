@@ -6,7 +6,20 @@ import { loadStripe, type StripeElementsOptions } from '@stripe/stripe-js';
 import { adminFetch } from '../../lib/adminAuth';
 import { apiFetch } from '../../lib/api';
 import { usePaymentLineStatusStream } from '../../hooks/usePaymentLineStatusStream';
+import { readCashierDefaultPerformanceId, writeCashierDefaultPerformanceId } from '../../hooks/useCashierDefaultPerformance';
 import type { PaymentLineEntry } from '../../lib/paymentLineTypes';
+import {
+  buildGeneralAdmissionLineIds,
+  isStudentInShowTicketName,
+  isTeacherTicketName,
+  MAX_STUDENT_COMP_TICKETS,
+  MAX_TEACHER_COMP_TICKETS,
+  naturalSort,
+  parseSeatIds,
+  pickComplimentarySeatIds,
+  STUDENT_SHOW_TICKET_OPTION_ID,
+  TEACHER_TICKET_OPTION_ID
+} from '../../lib/cashierRules';
 import { SeatMapViewport } from '../../components/SeatMapViewport';
 import {
   Search, X, Check, ChevronRight, ChevronLeft,
@@ -147,69 +160,11 @@ function mapEntryToTerminalDispatch(entry: PaymentLineEntry): TerminalDispatch {
   };
 }
 
-const TEACHER_TICKET_OPTION_ID = 'teacher-comp';
-const STUDENT_SHOW_TICKET_OPTION_ID = 'student-show-comp';
-const MAX_TEACHER_COMP_TICKETS = 2;
-const MAX_STUDENT_COMP_TICKETS = 2;
-const CASHIER_DEFAULT_PERFORMANCE_STORAGE_KEY = 'theater_cashier_default_performance_v1';
 const TERMINAL_DISPATCH_POLL_INTERVAL_MS = 750;
 const TERMINAL_DISPATCH_REFRESH_MIN_INTERVAL_MS = 300;
 const FALLBACK_STRIPE_PUBLISHABLE_KEY = (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '').trim();
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-
-const naturalSort = (a: string, b: string) =>
-  a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-
-const parseSeatIds = (input: string) =>
-  [...new Set(input.split(',').map(v => v.trim()).filter((v): v is string => Boolean(v)))];
-
-const buildGeneralAdmissionLineIds = (quantity: number) =>
-  Array.from({ length: Math.max(0, Math.min(quantity, 50)) }, (_value, index) => `ga-${index + 1}`);
-
-function readCashierDefaultPerformanceId(): string {
-  if (typeof window === 'undefined') return '';
-  try {
-    return window.localStorage.getItem(CASHIER_DEFAULT_PERFORMANCE_STORAGE_KEY) || '';
-  } catch {
-    return '';
-  }
-}
-
-function writeCashierDefaultPerformanceId(performanceId: string): void {
-  if (typeof window === 'undefined') return;
-  try {
-    if (!performanceId) {
-      window.localStorage.removeItem(CASHIER_DEFAULT_PERFORMANCE_STORAGE_KEY);
-      return;
-    }
-    window.localStorage.setItem(CASHIER_DEFAULT_PERFORMANCE_STORAGE_KEY, performanceId);
-  } catch {
-    // Ignore storage failures; cashier flow still works with in-memory state.
-  }
-}
-
-const isTeacherTicketName = (name: string) => {
-  const normalized = name.trim().toLowerCase();
-  return normalized.includes('teacher') || (normalized.includes('rtmsd') && normalized.includes('staff'));
-};
-
-const isStudentInShowTicketName = (name: string) =>
-  name.trim().toLowerCase().includes('student in show');
-
-function pickComplimentarySeatIds(
-  seats: Array<{ id: string; sectionName: string; row: string; number: number; basePriceCents: number }>,
-  quantity: number
-): Set<string> {
-  if (quantity <= 0) return new Set();
-  const ranked = [...seats].sort((a, b) => {
-    if (a.basePriceCents !== b.basePriceCents) return b.basePriceCents - a.basePriceCents;
-    if (a.sectionName !== b.sectionName) return naturalSort(a.sectionName, b.sectionName);
-    if (a.row !== b.row) return naturalSort(a.row, b.row);
-    return a.number - b.number;
-  });
-  return new Set(ranked.slice(0, quantity).map((seat) => seat.id));
-}
 
 function isTerminalDispatchFinalStatus(status: TerminalDispatch['status']): boolean {
   return status === 'SUCCEEDED' || status === 'FAILED' || status === 'EXPIRED' || status === 'CANCELED';
@@ -2007,7 +1962,7 @@ export default function AdminOrdersPage() {
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           <Link
             to={launchPosHref}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-slate-700 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-rose-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-rose-700 sm:w-auto"
           >
             <ExternalLink className="h-4 w-4" /> Launch POS Mode
           </Link>
@@ -2020,9 +1975,9 @@ export default function AdminOrdersPage() {
           <motion.button
             whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
             onClick={openCashierFlow}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-rose-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-rose-700 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900 sm:w-auto"
           >
-            <Plus className="h-4 w-4" /> Cashier checkout
+            <Plus className="h-4 w-4" /> Legacy Cashier Wizard
           </motion.button>
         </div>
       </div>

@@ -24,11 +24,23 @@ type PublicProgramBioForm = {
 
 type ProgramBioQuestions = {
   fullNameLabel: string;
+  fullNameEnabled: boolean;
+  fullNameRequired: boolean;
   schoolEmailLabel: string;
+  schoolEmailEnabled: boolean;
+  schoolEmailRequired: boolean;
   gradeLevelLabel: string;
+  gradeLevelEnabled: boolean;
+  gradeLevelRequired: boolean;
   roleInShowLabel: string;
+  roleInShowEnabled: boolean;
+  roleInShowRequired: boolean;
   bioLabel: string;
+  bioEnabled: boolean;
+  bioRequired: boolean;
   headshotLabel: string;
+  headshotEnabled: boolean;
+  headshotRequired: boolean;
   customQuestions: ProgramBioCustomQuestion[];
 };
 
@@ -64,11 +76,23 @@ const REQUIRED_SCHOOL_EMAIL_DOMAIN = 'rtmsd.org';
 
 const DEFAULT_PROGRAM_BIO_QUESTIONS: ProgramBioQuestions = {
   fullNameLabel: 'Full name',
+  fullNameEnabled: true,
+  fullNameRequired: true,
   schoolEmailLabel: 'School email',
+  schoolEmailEnabled: true,
+  schoolEmailRequired: true,
   gradeLevelLabel: 'Grade',
+  gradeLevelEnabled: true,
+  gradeLevelRequired: true,
   roleInShowLabel: 'Role in show',
+  roleInShowEnabled: true,
+  roleInShowRequired: true,
   bioLabel: 'Bio',
+  bioEnabled: true,
+  bioRequired: true,
   headshotLabel: 'Headshot upload',
+  headshotEnabled: true,
+  headshotRequired: true,
   customQuestions: []
 };
 
@@ -177,6 +201,44 @@ export default function ProgramBioFormPage() {
     () => normalizeCustomQuestions(formMeta?.questions?.customQuestions),
     [formMeta]
   );
+  const questionLabels: ProgramBioQuestions = useMemo(() => ({
+    ...DEFAULT_PROGRAM_BIO_QUESTIONS,
+    ...(formMeta?.questions || {}),
+    customQuestions
+  }), [customQuestions, formMeta?.questions]);
+  const requiredFieldSet = useMemo(
+    () => new Set(formMeta?.requiredFields || []),
+    [formMeta?.requiredFields]
+  );
+  const baseFieldConfig = useMemo(
+    () => ({
+      fullName: {
+        enabled: questionLabels.fullNameEnabled,
+        required: questionLabels.fullNameEnabled && (questionLabels.fullNameRequired || requiredFieldSet.has('fullName'))
+      },
+      schoolEmail: {
+        enabled: questionLabels.schoolEmailEnabled,
+        required: questionLabels.schoolEmailEnabled && (questionLabels.schoolEmailRequired || requiredFieldSet.has('schoolEmail'))
+      },
+      gradeLevel: {
+        enabled: questionLabels.gradeLevelEnabled,
+        required: questionLabels.gradeLevelEnabled && (questionLabels.gradeLevelRequired || requiredFieldSet.has('gradeLevel'))
+      },
+      roleInShow: {
+        enabled: questionLabels.roleInShowEnabled,
+        required: questionLabels.roleInShowEnabled && (questionLabels.roleInShowRequired || requiredFieldSet.has('roleInShow'))
+      },
+      bio: {
+        enabled: questionLabels.bioEnabled,
+        required: questionLabels.bioEnabled && (questionLabels.bioRequired || requiredFieldSet.has('bio'))
+      },
+      headshot: {
+        enabled: questionLabels.headshotEnabled,
+        required: questionLabels.headshotEnabled && (questionLabels.headshotRequired || requiredFieldSet.has('headshotDataUrl'))
+      }
+    }),
+    [questionLabels, requiredFieldSet]
+  );
   const visibleCustomQuestions = useMemo(
     () => customQuestions.filter((question) => !question.hidden),
     [customQuestions]
@@ -196,17 +258,48 @@ export default function ProgramBioFormPage() {
     event.preventDefault();
     if (!formMeta) return;
 
-    if (!hasRequiredSchoolEmailDomain(formState.schoolEmail)) {
+    const fullNameInput = baseFieldConfig.fullName.enabled ? formState.fullName.trim() : '';
+    const schoolEmailInput = baseFieldConfig.schoolEmail.enabled ? formState.schoolEmail.trim() : '';
+    const gradeLevelInput = baseFieldConfig.gradeLevel.enabled ? formState.gradeLevel : '';
+    const roleInShowInput = baseFieldConfig.roleInShow.enabled ? formState.roleInShow.trim() : '';
+    const bioInput = baseFieldConfig.bio.enabled ? formState.bio.trim() : '';
+
+    if (baseFieldConfig.fullName.required && !fullNameInput) {
+      setError(`${questionLabels.fullNameLabel} is required.`);
+      return;
+    }
+
+    if (baseFieldConfig.schoolEmail.required && !schoolEmailInput) {
+      setError(`${questionLabels.schoolEmailLabel} is required.`);
+      return;
+    }
+
+    if (schoolEmailInput && !hasRequiredSchoolEmailDomain(schoolEmailInput)) {
       setError(`Use your school email ending in @${REQUIRED_SCHOOL_EMAIL_DOMAIN}.`);
       return;
     }
 
-    if (!headshotFile) {
-      setError('Upload a headshot image.');
+    if (baseFieldConfig.gradeLevel.required && !gradeLevelInput) {
+      setError(`${questionLabels.gradeLevelLabel} is required.`);
       return;
     }
 
-    if (bioWordCount > MAX_WORDS) {
+    if (baseFieldConfig.roleInShow.required && !roleInShowInput) {
+      setError(`${questionLabels.roleInShowLabel} is required.`);
+      return;
+    }
+
+    if (baseFieldConfig.bio.required && !bioInput) {
+      setError(`${questionLabels.bioLabel} is required.`);
+      return;
+    }
+
+    if (baseFieldConfig.headshot.required && !headshotFile) {
+      setError(`${questionLabels.headshotLabel} is required.`);
+      return;
+    }
+
+    if (bioInput && bioWordCount > MAX_WORDS) {
       setError(`Bio must be ${MAX_WORDS} words or fewer.`);
       return;
     }
@@ -214,24 +307,28 @@ export default function ProgramBioFormPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const headshotDataUrl = await imageFileToDataUrl(headshotFile, 1400, 1400);
+      const headshotDataUrl = headshotFile ? await imageFileToDataUrl(headshotFile, 1400, 1400) : undefined;
       const visibleQuestionIds = new Set(visibleCustomQuestions.map((question) => question.id));
+      const customResponses = Object.fromEntries(
+        Object.entries(formState.customResponses)
+          .filter(([key]) => visibleQuestionIds.has(key))
+          .map(([key, value]) => [key, value.trim()])
+          .filter(([, value]) => value)
+      );
+
+      const payload: Record<string, unknown> = {
+        customResponses
+      };
+      if (baseFieldConfig.fullName.enabled && fullNameInput) payload.fullName = fullNameInput;
+      if (baseFieldConfig.schoolEmail.enabled && schoolEmailInput) payload.schoolEmail = schoolEmailInput;
+      if (baseFieldConfig.gradeLevel.enabled && gradeLevelInput) payload.gradeLevel = Number(gradeLevelInput);
+      if (baseFieldConfig.roleInShow.enabled && roleInShowInput) payload.roleInShow = roleInShowInput;
+      if (baseFieldConfig.bio.enabled && bioInput) payload.bio = bioInput;
+      if (baseFieldConfig.headshot.enabled && headshotDataUrl) payload.headshotDataUrl = headshotDataUrl;
+
       const submission = await apiFetch<SubmissionResult>(`/api/forms/${formMeta.publicSlug}/submissions`, {
         method: 'POST',
-        body: JSON.stringify({
-          fullName: formState.fullName.trim(),
-          schoolEmail: formState.schoolEmail.trim(),
-          gradeLevel: Number(formState.gradeLevel),
-          roleInShow: formState.roleInShow.trim(),
-          bio: formState.bio.trim(),
-          customResponses: Object.fromEntries(
-            Object.entries(formState.customResponses)
-              .filter(([key]) => visibleQuestionIds.has(key))
-              .map(([key, value]) => [key, value.trim()])
-              .filter(([, value]) => value)
-          ),
-          headshotDataUrl
-        })
+        body: JSON.stringify(payload)
       });
       setResult(submission);
     } catch (err) {
@@ -270,12 +367,6 @@ export default function ProgramBioFormPage() {
     );
   }
 
-  const questionLabels: ProgramBioQuestions = {
-    ...DEFAULT_PROGRAM_BIO_QUESTIONS,
-    ...(formMeta.questions || {}),
-    customQuestions
-  };
-
   return (
     <div className="mx-auto max-w-3xl rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
       <h1 className="text-2xl font-black text-stone-900">{formMeta.title}</h1>
@@ -289,72 +380,84 @@ export default function ProgramBioFormPage() {
         </div>
       ) : (
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-          <label className="block text-sm">
-            <span className="font-semibold text-stone-800">{questionLabels.fullNameLabel}</span>
-            <input
-              required
-              value={formState.fullName}
-              onChange={(event) => setFormState((current) => ({ ...current, fullName: event.target.value }))}
-              className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
-            />
-          </label>
-
-          <label className="block text-sm">
-            <span className="font-semibold text-stone-800">{questionLabels.schoolEmailLabel}</span>
-            <input
-              required
-              type="email"
-              value={formState.schoolEmail}
-              onChange={(event) => setFormState((current) => ({ ...current, schoolEmail: event.target.value }))}
-              className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
-              placeholder={`name@${REQUIRED_SCHOOL_EMAIL_DOMAIN}`}
-            />
-            <span className="mt-1 block text-xs text-stone-500">
-              Must end in @{REQUIRED_SCHOOL_EMAIL_DOMAIN}
-            </span>
-          </label>
-
-          <div className="grid gap-4 md:grid-cols-2">
+          {baseFieldConfig.fullName.enabled && (
             <label className="block text-sm">
-              <span className="font-semibold text-stone-800">{questionLabels.gradeLevelLabel}</span>
-              <select
-                required
-                value={formState.gradeLevel}
-                onChange={(event) => setFormState((current) => ({ ...current, gradeLevel: event.target.value }))}
-                className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
-              >
-                <option value="">Select grade</option>
-                <option value="9">9</option>
-                <option value="10">10</option>
-                <option value="11">11</option>
-                <option value="12">12</option>
-              </select>
-            </label>
-
-            <label className="block text-sm">
-              <span className="font-semibold text-stone-800">{questionLabels.roleInShowLabel}</span>
+              <span className="font-semibold text-stone-800">{questionLabels.fullNameLabel}</span>
               <input
-                required
-                value={formState.roleInShow}
-                onChange={(event) => setFormState((current) => ({ ...current, roleInShow: event.target.value }))}
+                required={baseFieldConfig.fullName.required}
+                value={formState.fullName}
+                onChange={(event) => setFormState((current) => ({ ...current, fullName: event.target.value }))}
                 className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
               />
             </label>
-          </div>
+          )}
 
-          <label className="block text-sm">
-            <span className="font-semibold text-stone-800">{questionLabels.bioLabel}</span>
-            <textarea
-              required
-              rows={6}
-              value={formState.bio}
-              onChange={(event) => setFormState((current) => ({ ...current, bio: event.target.value }))}
-              className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
-            />
-            <span className={`mt-1 block text-xs ${bioWordCount > MAX_WORDS ? 'text-red-700' : 'text-stone-500'}`}>
-              {bioWordCount}/{MAX_WORDS} words
-            </span>
-          </label>
+          {baseFieldConfig.schoolEmail.enabled && (
+            <label className="block text-sm">
+              <span className="font-semibold text-stone-800">{questionLabels.schoolEmailLabel}</span>
+              <input
+                required={baseFieldConfig.schoolEmail.required}
+                type="email"
+                value={formState.schoolEmail}
+                onChange={(event) => setFormState((current) => ({ ...current, schoolEmail: event.target.value }))}
+                className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+                placeholder={`name@${REQUIRED_SCHOOL_EMAIL_DOMAIN}`}
+              />
+              <span className="mt-1 block text-xs text-stone-500">
+                Must end in @{REQUIRED_SCHOOL_EMAIL_DOMAIN}
+              </span>
+            </label>
+          )}
+
+          {(baseFieldConfig.gradeLevel.enabled || baseFieldConfig.roleInShow.enabled) && (
+            <div className="grid gap-4 md:grid-cols-2">
+              {baseFieldConfig.gradeLevel.enabled && (
+                <label className="block text-sm">
+                  <span className="font-semibold text-stone-800">{questionLabels.gradeLevelLabel}</span>
+                  <select
+                    required={baseFieldConfig.gradeLevel.required}
+                    value={formState.gradeLevel}
+                    onChange={(event) => setFormState((current) => ({ ...current, gradeLevel: event.target.value }))}
+                    className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+                  >
+                    <option value="">Select grade</option>
+                    <option value="9">9</option>
+                    <option value="10">10</option>
+                    <option value="11">11</option>
+                    <option value="12">12</option>
+                  </select>
+                </label>
+              )}
+
+              {baseFieldConfig.roleInShow.enabled && (
+                <label className="block text-sm">
+                  <span className="font-semibold text-stone-800">{questionLabels.roleInShowLabel}</span>
+                  <input
+                    required={baseFieldConfig.roleInShow.required}
+                    value={formState.roleInShow}
+                    onChange={(event) => setFormState((current) => ({ ...current, roleInShow: event.target.value }))}
+                    className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+                  />
+                </label>
+              )}
+            </div>
+          )}
+
+          {baseFieldConfig.bio.enabled && (
+            <label className="block text-sm">
+              <span className="font-semibold text-stone-800">{questionLabels.bioLabel}</span>
+              <textarea
+                required={baseFieldConfig.bio.required}
+                rows={6}
+                value={formState.bio}
+                onChange={(event) => setFormState((current) => ({ ...current, bio: event.target.value }))}
+                className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+              />
+              <span className={`mt-1 block text-xs ${bioWordCount > MAX_WORDS ? 'text-red-700' : 'text-stone-500'}`}>
+                {bioWordCount}/{MAX_WORDS} words
+              </span>
+            </label>
+          )}
 
           {visibleCustomQuestions.map((question) => (
             <label key={question.id} className="block text-sm">
@@ -414,16 +517,18 @@ export default function ProgramBioFormPage() {
             </label>
           ))}
 
-          <label className="block text-sm">
-            <span className="font-semibold text-stone-800">{questionLabels.headshotLabel}</span>
-            <input
-              required
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              onChange={(event) => setHeadshotFile(event.target.files?.[0] || null)}
-              className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
-            />
-          </label>
+          {baseFieldConfig.headshot.enabled && (
+            <label className="block text-sm">
+              <span className="font-semibold text-stone-800">{questionLabels.headshotLabel}</span>
+              <input
+                required={baseFieldConfig.headshot.required}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                onChange={(event) => setHeadshotFile(event.target.files?.[0] || null)}
+                className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2"
+              />
+            </label>
+          )}
 
           {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
 

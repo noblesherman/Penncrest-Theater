@@ -1310,6 +1310,52 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
     }
 
     try {
+      const paymentIntent = await stripe.paymentIntents.retrieve(parsed.data.paymentIntentId);
+      if (paymentIntent.status !== 'succeeded') {
+        throw new HttpError(409, `Payment intent is ${paymentIntent.status}. It must be succeeded before checkout can complete.`);
+      }
+
+      const existingOrder = await prisma.order.findUnique({
+        where: { stripePaymentIntentId: paymentIntent.id },
+        include: {
+          orderSeats: {
+            include: {
+              seat: {
+                select: {
+                  sectionName: true,
+                  row: true,
+                  number: true
+                }
+              }
+            },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
+          }
+        }
+      });
+      if (existingOrder) {
+        return reply.send({
+          success: true,
+          alreadyCompleted: true,
+          id: existingOrder.id,
+          status: existingOrder.status,
+          source: existingOrder.source,
+          expectedAmountCents: existingOrder.amountTotal,
+          paymentMethod: 'STRIPE' as const,
+          seats: existingOrder.orderSeats.map((orderSeat, index) => ({
+            id: orderSeat.seatId || `ga-${index + 1}`,
+            label: orderSeat.seat
+              ? `${orderSeat.seat.sectionName} ${orderSeat.seat.row}-${orderSeat.seat.number}`
+              : `General Admission Ticket ${index + 1}`,
+            sectionName: orderSeat.seat?.sectionName || 'General Admission',
+            row: orderSeat.seat?.row || 'GA',
+            number: orderSeat.seat?.number ?? index + 1,
+            ticketTierId: '',
+            ticketType: orderSeat.ticketType || 'Ticket',
+            priceCents: orderSeat.price
+          }))
+        });
+      }
+
       const quote = await buildInPersonSaleQuote({
         performanceId: parsed.data.performanceId,
         seatIds: parsed.data.seatIds,
@@ -1318,11 +1364,6 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
       });
       if (quote.expectedAmountCents <= 0) {
         throw new HttpError(400, 'Manual card checkout requires a charge amount greater than $0.00');
-      }
-
-      const paymentIntent = await stripe.paymentIntents.retrieve(parsed.data.paymentIntentId);
-      if (paymentIntent.status !== 'succeeded') {
-        throw new HttpError(409, `Payment intent is ${paymentIntent.status}. It must be succeeded before checkout can complete.`);
       }
 
       const paymentSource = String(paymentIntent.metadata?.source || '');
@@ -1340,27 +1381,6 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
       }
       if (paymentIntent.amount_received < quote.expectedAmountCents) {
         throw new HttpError(409, 'Payment amount is less than the expected checkout total');
-      }
-
-      const existingOrder = await prisma.order.findUnique({
-        where: { stripePaymentIntentId: paymentIntent.id },
-        select: {
-          id: true,
-          status: true,
-          source: true
-        }
-      });
-      if (existingOrder) {
-        return reply.send({
-          success: true,
-          alreadyCompleted: true,
-          id: existingOrder.id,
-          status: existingOrder.status,
-          source: existingOrder.source,
-          expectedAmountCents: quote.expectedAmountCents,
-          paymentMethod: 'STRIPE' as const,
-          seats: quote.seats
-        });
       }
 
       const attemptId = `ipsm_${crypto.randomBytes(10).toString('hex')}`;

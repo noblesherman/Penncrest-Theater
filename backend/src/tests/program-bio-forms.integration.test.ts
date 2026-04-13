@@ -33,12 +33,14 @@ process.env.ADMIN_PASSWORD = 'program-bio-admin-password';
 process.env.STAFF_ALLOWED_DOMAIN = 'rtmsd.org';
 
 vi.mock('../lib/r2.js', () => ({
+  isR2Configured: vi.fn(() => false),
   uploadImageFromDataUrl: vi.fn(async (input: { scope: string; filenameBase?: string }) => ({
     key: `${input.scope}/${(input.filenameBase || 'headshot').replace(/\s+/g, '-').toLowerCase()}.jpg`,
     url: `https://cdn.test/${input.scope}/${(input.filenameBase || 'headshot').replace(/\s+/g, '-').toLowerCase()}.jpg`,
     size: 1024,
     mimeType: 'image/jpeg'
-  }))
+  })),
+  deleteUploadedObjectByKey: vi.fn(async () => undefined)
 }));
 
 let prisma: typeof import('../lib/prisma.js').prisma;
@@ -331,6 +333,63 @@ describe.sequential('program bio forms integration', () => {
       }
     });
     expect(submitResponse.statusCode).toBe(201);
+  });
+
+  it('allows base fields to be removed and treats remaining base fields as optional', async () => {
+    const { show } = await createShowWithPerformance(`Optional Base Fields Show ${Date.now()}`);
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/forms',
+      headers: authHeaders(),
+      payload: { showId: show.id }
+    });
+    const form = createResponse.json();
+
+    const patchResponse = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/forms/${encodeURIComponent(form.id)}`,
+      headers: authHeaders(),
+      payload: {
+        questions: {
+          fullNameEnabled: false,
+          gradeLevelEnabled: false,
+          roleInShowEnabled: false,
+          bioEnabled: false,
+          headshotEnabled: false,
+          schoolEmailEnabled: true,
+          schoolEmailRequired: false
+        }
+      }
+    });
+    expect(patchResponse.statusCode).toBe(200);
+
+    const publicFormResponse = await app.inject({
+      method: 'GET',
+      url: `/api/forms/${encodeURIComponent(form.publicSlug)}`
+    });
+    expect(publicFormResponse.statusCode).toBe(200);
+    const publicForm = publicFormResponse.json();
+    expect(publicForm.questions.fullNameEnabled).toBe(false);
+    expect(publicForm.questions.headshotEnabled).toBe(false);
+    expect(publicForm.requiredFields.includes('schoolEmail')).toBe(false);
+
+    const submitResponse = await app.inject({
+      method: 'POST',
+      url: `/api/forms/${encodeURIComponent(form.publicSlug)}/submissions`,
+      payload: {}
+    });
+    expect(submitResponse.statusCode).toBe(201);
+
+    const submission = await prisma.programBioSubmission.findFirstOrThrow({
+      where: { formId: form.id }
+    });
+    expect(submission.fullName).toBe('Unnamed student');
+    expect(submission.schoolEmail.startsWith('submission-')).toBe(true);
+    expect(submission.gradeLevel).toBe(0);
+    expect(submission.roleInShow).toBe('Unknown role');
+    expect(submission.bio).toBe('');
+    expect(submission.headshotUrl).toBe('');
   });
 
   it('syncs submissions into cast metadata and optional Student Credits records', async () => {

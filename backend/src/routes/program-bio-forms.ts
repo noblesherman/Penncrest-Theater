@@ -44,11 +44,23 @@ const programBioCustomQuestionSchema = z
 const programBioQuestionsPatchSchema = z
   .object({
     fullNameLabel: z.string().trim().min(1).max(120).optional(),
+    fullNameEnabled: z.boolean().optional(),
+    fullNameRequired: z.boolean().optional(),
     schoolEmailLabel: z.string().trim().min(1).max(120).optional(),
+    schoolEmailEnabled: z.boolean().optional(),
+    schoolEmailRequired: z.boolean().optional(),
     gradeLevelLabel: z.string().trim().min(1).max(120).optional(),
+    gradeLevelEnabled: z.boolean().optional(),
+    gradeLevelRequired: z.boolean().optional(),
     roleInShowLabel: z.string().trim().min(1).max(120).optional(),
+    roleInShowEnabled: z.boolean().optional(),
+    roleInShowRequired: z.boolean().optional(),
     bioLabel: z.string().trim().min(1).max(120).optional(),
+    bioEnabled: z.boolean().optional(),
+    bioRequired: z.boolean().optional(),
     headshotLabel: z.string().trim().min(1).max(120).optional(),
+    headshotEnabled: z.boolean().optional(),
+    headshotRequired: z.boolean().optional(),
     customQuestions: z.array(programBioCustomQuestionSchema).max(40).optional()
   })
   .strict();
@@ -68,21 +80,45 @@ type ProgramBioQuestionsPatch = z.infer<typeof programBioQuestionsPatchSchema>;
 
 type ProgramBioQuestions = {
   fullNameLabel: string;
+  fullNameEnabled: boolean;
+  fullNameRequired: boolean;
   schoolEmailLabel: string;
+  schoolEmailEnabled: boolean;
+  schoolEmailRequired: boolean;
   gradeLevelLabel: string;
+  gradeLevelEnabled: boolean;
+  gradeLevelRequired: boolean;
   roleInShowLabel: string;
+  roleInShowEnabled: boolean;
+  roleInShowRequired: boolean;
   bioLabel: string;
+  bioEnabled: boolean;
+  bioRequired: boolean;
   headshotLabel: string;
+  headshotEnabled: boolean;
+  headshotRequired: boolean;
   customQuestions: ProgramBioCustomQuestion[];
 };
 
 const PROGRAM_BIO_DEFAULT_QUESTIONS: ProgramBioQuestions = {
   fullNameLabel: 'Full name',
+  fullNameEnabled: true,
+  fullNameRequired: true,
   schoolEmailLabel: 'School email',
+  schoolEmailEnabled: true,
+  schoolEmailRequired: true,
   gradeLevelLabel: 'Grade',
+  gradeLevelEnabled: true,
+  gradeLevelRequired: true,
   roleInShowLabel: 'Role in show',
+  roleInShowEnabled: true,
+  roleInShowRequired: true,
   bioLabel: 'Bio',
+  bioEnabled: true,
+  bioRequired: true,
   headshotLabel: 'Headshot upload',
+  headshotEnabled: true,
+  headshotRequired: true,
   customQuestions: []
 };
 
@@ -108,13 +144,25 @@ const syncProgramBioFormSchema = z.object({
   syncStudentCredits: z.boolean().default(false)
 });
 
+const optionalTrimmedString = (maxLength: number) =>
+  z.preprocess((value) => {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }, z.string().max(maxLength).optional());
+
+const optionalGradeLevelSchema = z.preprocess((value) => {
+  if (value === '' || value === null || value === undefined) return undefined;
+  return value;
+}, z.coerce.number().int().min(9).max(12).optional());
+
 const publicProgramBioSubmissionSchema = z.object({
-  fullName: z.string().trim().min(1).max(120),
-  schoolEmail: z.string().trim().email().max(160),
-  gradeLevel: z.coerce.number().int().min(9).max(12),
-  roleInShow: z.string().trim().min(1).max(120),
-  bio: z.string().trim().min(1).max(2400),
-  headshotDataUrl: z.string().trim().min(1).max(9_000_000),
+  fullName: optionalTrimmedString(120),
+  schoolEmail: optionalTrimmedString(160).pipe(z.string().email().max(160).optional()),
+  gradeLevel: optionalGradeLevelSchema,
+  roleInShow: optionalTrimmedString(120),
+  bio: optionalTrimmedString(2400),
+  headshotDataUrl: optionalTrimmedString(9_000_000),
   customResponses: z.record(z.string().max(4_000)).optional()
 });
 
@@ -271,11 +319,18 @@ function normalizeProgramBioQuestions(value: Prisma.JsonValue | null | undefined
     Object.entries(labelPatch).filter(([, fieldValue]) => fieldValue !== undefined)
   ) as Omit<ProgramBioQuestions, 'customQuestions'>;
 
-  return {
+  const normalized = {
     ...PROGRAM_BIO_DEFAULT_QUESTIONS,
     ...normalizedLabels,
     customQuestions: normalizeCustomQuestions(customQuestions)
   };
+  if (!normalized.fullNameEnabled) normalized.fullNameRequired = false;
+  if (!normalized.schoolEmailEnabled) normalized.schoolEmailRequired = false;
+  if (!normalized.gradeLevelEnabled) normalized.gradeLevelRequired = false;
+  if (!normalized.roleInShowEnabled) normalized.roleInShowRequired = false;
+  if (!normalized.bioEnabled) normalized.bioRequired = false;
+  if (!normalized.headshotEnabled) normalized.headshotRequired = false;
+  return normalized;
 }
 
 function mergeProgramBioQuestions(
@@ -293,6 +348,57 @@ function mergeProgramBioQuestions(
     ...normalizedLabels,
     customQuestions: customQuestions ?? base.customQuestions
   } as Prisma.JsonObject);
+}
+
+type ProgramBioBaseFieldConfig = {
+  enabled: boolean;
+  required: boolean;
+};
+
+type ProgramBioBaseFieldConfigMap = {
+  fullName: ProgramBioBaseFieldConfig;
+  schoolEmail: ProgramBioBaseFieldConfig;
+  gradeLevel: ProgramBioBaseFieldConfig;
+  roleInShow: ProgramBioBaseFieldConfig;
+  bio: ProgramBioBaseFieldConfig;
+  headshotDataUrl: ProgramBioBaseFieldConfig;
+};
+
+function getBaseFieldConfig(questions: ProgramBioQuestions): ProgramBioBaseFieldConfigMap {
+  const config: ProgramBioBaseFieldConfigMap = {
+    fullName: {
+      enabled: questions.fullNameEnabled,
+      required: questions.fullNameEnabled && questions.fullNameRequired
+    },
+    schoolEmail: {
+      enabled: questions.schoolEmailEnabled,
+      required: questions.schoolEmailEnabled && questions.schoolEmailRequired
+    },
+    gradeLevel: {
+      enabled: questions.gradeLevelEnabled,
+      required: questions.gradeLevelEnabled && questions.gradeLevelRequired
+    },
+    roleInShow: {
+      enabled: questions.roleInShowEnabled,
+      required: questions.roleInShowEnabled && questions.roleInShowRequired
+    },
+    bio: {
+      enabled: questions.bioEnabled,
+      required: questions.bioEnabled && questions.bioRequired
+    },
+    headshotDataUrl: {
+      enabled: questions.headshotEnabled,
+      required: questions.headshotEnabled && questions.headshotRequired
+    }
+  };
+  return config;
+}
+
+function buildRequiredBaseFieldKeys(questions: ProgramBioQuestions): string[] {
+  const config = getBaseFieldConfig(questions);
+  return Object.entries(config)
+    .filter(([, field]) => field.required)
+    .map(([key]) => key);
 }
 
 function normalizeSubmissionCustomResponses(
@@ -1153,6 +1259,7 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
 
       const now = new Date();
       const questions = normalizeProgramBioQuestions(form.questionConfig);
+      const requiredFields = buildRequiredBaseFieldKeys(questions);
       reply.send({
         id: form.id,
         publicSlug: form.publicSlug,
@@ -1171,7 +1278,7 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
           id: form.show.id,
           title: form.show.title
         },
-        requiredFields: ['fullName', 'schoolEmail', 'gradeLevel', 'roleInShow', 'bio', 'headshotDataUrl']
+        requiredFields
       });
     } catch (err) {
       handleRouteError(reply, err, 'Failed to fetch form');
@@ -1209,76 +1316,126 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
         throw new HttpError(409, "This form isn't accepting responses.");
       }
 
-      const normalizedSchoolEmail = normalizeSchoolEmail(parsed.data.schoolEmail);
-      if (!hasAllowedSchoolDomain(normalizedSchoolEmail)) {
+      const questionConfig = normalizeProgramBioQuestions(form.questionConfig);
+      const baseFieldConfig = getBaseFieldConfig(questionConfig);
+      const fullNameInput = baseFieldConfig.fullName.enabled ? (parsed.data.fullName || '').trim() : '';
+      const schoolEmailInput = baseFieldConfig.schoolEmail.enabled ? normalizeSchoolEmail(parsed.data.schoolEmail || '') : '';
+      const gradeLevelInput = baseFieldConfig.gradeLevel.enabled ? parsed.data.gradeLevel : undefined;
+      const roleInShowInput = baseFieldConfig.roleInShow.enabled ? (parsed.data.roleInShow || '').trim() : '';
+      const bioInput = baseFieldConfig.bio.enabled ? (parsed.data.bio || '').trim() : '';
+      const headshotDataUrlInput = baseFieldConfig.headshotDataUrl.enabled ? parsed.data.headshotDataUrl : undefined;
+
+      if (baseFieldConfig.fullName.required && !fullNameInput) {
+        throw new HttpError(400, `${questionConfig.fullNameLabel} is required.`);
+      }
+      if (baseFieldConfig.schoolEmail.required && !schoolEmailInput) {
+        throw new HttpError(400, `${questionConfig.schoolEmailLabel} is required.`);
+      }
+      if (baseFieldConfig.gradeLevel.required && gradeLevelInput === undefined) {
+        throw new HttpError(400, `${questionConfig.gradeLevelLabel} is required.`);
+      }
+      if (baseFieldConfig.roleInShow.required && !roleInShowInput) {
+        throw new HttpError(400, `${questionConfig.roleInShowLabel} is required.`);
+      }
+      if (baseFieldConfig.bio.required && !bioInput) {
+        throw new HttpError(400, `${questionConfig.bioLabel} is required.`);
+      }
+      if (baseFieldConfig.headshotDataUrl.required && !headshotDataUrlInput) {
+        throw new HttpError(400, `${questionConfig.headshotLabel} is required.`);
+      }
+
+      if (schoolEmailInput && !hasAllowedSchoolDomain(schoolEmailInput)) {
         throw new HttpError(400, `Use your school email ending in @${env.STAFF_ALLOWED_DOMAIN}.`);
       }
 
-      if (countWords(parsed.data.bio) > PROGRAM_BIO_MAX_WORDS) {
+      if (bioInput && countWords(bioInput) > PROGRAM_BIO_MAX_WORDS) {
         throw new HttpError(400, `Bio must be ${PROGRAM_BIO_MAX_WORDS} words or fewer.`);
       }
 
-      const questionConfig = normalizeProgramBioQuestions(form.questionConfig);
       const normalizedCustomResponses = normalizeSubmissionCustomResponses(
         parsed.data.customResponses,
         questionConfig.customQuestions
       );
 
-      const uploaded = await uploadImageFromDataUrl({
-        dataUrl: parsed.data.headshotDataUrl,
-        scope: `program-bio/${form.id}`,
-        filenameBase: parsed.data.fullName
-      });
+      const uploaded = headshotDataUrlInput
+        ? await uploadImageFromDataUrl({
+            dataUrl: headshotDataUrlInput,
+            scope: `program-bio/${form.id}`,
+            filenameBase: fullNameInput || 'submission'
+          })
+        : null;
 
-      const existing = await prisma.programBioSubmission.findUnique({
-        where: {
-          formId_schoolEmail: {
-            formId: form.id,
-            schoolEmail: normalizedSchoolEmail
-          }
-        },
-        select: { id: true }
-      });
+      const normalizedFullName = fullNameInput || 'Unnamed student';
+      const normalizedRoleInShow = roleInShowInput || 'Unknown role';
+      const normalizedSchoolEmail = schoolEmailInput || `submission-${randomUUID()}@local.invalid`;
+      const normalizedGradeLevel = gradeLevelInput ?? 0;
+      const normalizedBio = bioInput || '';
+      const shouldUpsertByEmail = Boolean(baseFieldConfig.schoolEmail.enabled && schoolEmailInput);
 
-      const submission = await prisma.programBioSubmission.upsert({
-        where: {
-          formId_schoolEmail: {
-            formId: form.id,
-            schoolEmail: normalizedSchoolEmail
-          }
-        },
-        update: {
-          fullName: parsed.data.fullName,
-          schoolEmail: normalizedSchoolEmail,
-          gradeLevel: parsed.data.gradeLevel,
-          roleInShow: parsed.data.roleInShow,
-          bio: parsed.data.bio,
-          extraResponses: normalizedCustomResponses,
-          headshotUrl: uploaded.url,
-          headshotKey: uploaded.key,
-          submittedAt: new Date()
-        },
-        create: {
-          formId: form.id,
-          fullName: parsed.data.fullName,
-          schoolEmail: normalizedSchoolEmail,
-          gradeLevel: parsed.data.gradeLevel,
-          roleInShow: parsed.data.roleInShow,
-          bio: parsed.data.bio,
-          extraResponses: normalizedCustomResponses,
-          headshotUrl: uploaded.url,
-          headshotKey: uploaded.key
-        },
-        select: {
-          id: true,
-          submittedAt: true,
-          updatedAt: true
-        }
-      });
+      const sharedSubmissionPayload = {
+        fullName: normalizedFullName,
+        schoolEmail: normalizedSchoolEmail,
+        gradeLevel: normalizedGradeLevel,
+        roleInShow: normalizedRoleInShow,
+        bio: normalizedBio,
+        extraResponses: normalizedCustomResponses,
+        headshotUrl: uploaded?.url || '',
+        headshotKey: uploaded?.key || null
+      };
 
-      reply.status(existing ? 200 : 201).send({
+      let updatedExisting = false;
+      const submission = shouldUpsertByEmail
+        ? await (async () => {
+            const existing = await prisma.programBioSubmission.findUnique({
+              where: {
+                formId_schoolEmail: {
+                  formId: form.id,
+                  schoolEmail: normalizedSchoolEmail
+                }
+              },
+              select: { id: true }
+            });
+
+            const upserted = await prisma.programBioSubmission.upsert({
+              where: {
+                formId_schoolEmail: {
+                  formId: form.id,
+                  schoolEmail: normalizedSchoolEmail
+                }
+              },
+              update: {
+                ...sharedSubmissionPayload,
+                submittedAt: new Date()
+              },
+              create: {
+                formId: form.id,
+                ...sharedSubmissionPayload
+              },
+              select: {
+                id: true,
+                submittedAt: true,
+                updatedAt: true
+              }
+            });
+
+            updatedExisting = Boolean(existing);
+            return upserted;
+          })()
+        : await prisma.programBioSubmission.create({
+            data: {
+              formId: form.id,
+              ...sharedSubmissionPayload
+            },
+            select: {
+              id: true,
+              submittedAt: true,
+              updatedAt: true
+            }
+          });
+
+      reply.status(updatedExisting ? 200 : 201).send({
         submissionId: submission.id,
-        updatedExisting: Boolean(existing),
+        updatedExisting,
         submittedAt: submission.submittedAt,
         updatedAt: submission.updatedAt
       });

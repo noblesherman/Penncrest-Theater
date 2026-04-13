@@ -27,6 +27,7 @@ process.env.APP_BASE_URL = 'http://localhost:5173';
 process.env.FRONTEND_ORIGIN = 'http://localhost:5173';
 process.env.STRIPE_SECRET_KEY = 'sk_test_terminal_dispatch';
 process.env.STRIPE_WEBHOOK_SECRET = 'whsec_terminal_dispatch';
+process.env.STRIPE_PUBLISHABLE_KEY = 'pk_test_terminal_dispatch';
 process.env.JWT_SECRET = 'terminal-dispatch-secret-12345';
 process.env.ADMIN_USERNAME = 'terminal-admin';
 process.env.ADMIN_PASSWORD = 'terminal-admin-password';
@@ -699,6 +700,180 @@ describe.sequential('terminal dispatch integration', () => {
     const afterRetry = await prisma.terminalPaymentDispatch.findUniqueOrThrow({ where: { id: dispatchId } });
     expect(afterRetry.stripePaymentIntentId).toBeTruthy();
     expect(afterRetry.stripePaymentIntentId).not.toBe(beforeRetry.stripePaymentIntentId);
+  });
+
+  it('payment-line endpoints expose failed -> retry -> canceled transitions', async () => {
+    const fixture = await createPerformanceFixture({ seatCount: 1, tierPriceCents: 2400 });
+    const deviceId = `device_payment_line_${Date.now()}`;
+    await registerDevice(deviceId, 'Payment Line iPhone');
+
+    const seatId = fixture.seats[0]!.id;
+    const enqueueResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/payment-line/enqueue',
+      headers: authHeaders(),
+      payload: {
+        performanceId: fixture.performance.id,
+        seatIds: [seatId],
+        ticketSelectionBySeatId: buildTicketSelection([seatId], fixture.tier.id),
+        customerName: 'Queue Guest',
+        deviceId
+      }
+    });
+
+    expect(enqueueResponse.statusCode).toBe(201);
+    const entryId = enqueueResponse.json().entryId as string;
+    expect(enqueueResponse.json().status).toBe('PENDING');
+
+    const failResponse = await app.inject({
+      method: 'POST',
+      url: `/api/mobile/payment-line/entry/${encodeURIComponent(entryId)}/fail`,
+      headers: authHeaders(),
+      payload: {
+        deviceId,
+        failureReason: 'Reader timeout'
+      }
+    });
+    expect(failResponse.statusCode).toBe(200);
+    expect(failResponse.json().status).toBe('FAILED');
+    expect(failResponse.json().canRetry).toBe(true);
+
+    const retryResponse = await app.inject({
+      method: 'POST',
+      url: `/api/admin/payment-line/entry/${encodeURIComponent(entryId)}/retry-now`,
+      headers: authHeaders()
+    });
+    expect(retryResponse.statusCode).toBe(200);
+    expect(retryResponse.json().status).toBe('PENDING');
+    expect(retryResponse.json().attemptCount).toBe(2);
+
+    const cancelResponse = await app.inject({
+      method: 'POST',
+      url: `/api/admin/payment-line/entry/${encodeURIComponent(entryId)}/cancel`,
+      headers: authHeaders()
+    });
+    expect(cancelResponse.statusCode).toBe(200);
+    expect(cancelResponse.json().status).toBe('CANCELED');
+  });
+
+  it('manual-complete is idempotent for the same successful payment intent', async () => {
+    const fixture = await createPerformanceFixture({ seatCount: 1, tierPriceCents: 2600 });
+    const seatId = fixture.seats[0]!.id;
+    const ticketSelectionBySeatId = buildTicketSelection([seatId], fixture.tier.id);
+
+    const intentResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/orders/in-person/manual-intent',
+      headers: authHeaders(),
+      payload: {
+        performanceId: fixture.performance.id,
+        seatIds: [seatId],
+        ticketSelectionBySeatId,
+        customerName: 'Manual Guest'
+      }
+    });
+    expect(intentResponse.statusCode).toBe(200);
+    const paymentIntentId = intentResponse.json().paymentIntentId as string;
+    markPaymentIntentSucceeded(paymentIntentId);
+
+    const firstComplete = await app.inject({
+      method: 'POST',
+      url: '/api/admin/orders/in-person/manual-complete',
+      headers: authHeaders(),
+      payload: {
+        performanceId: fixture.performance.id,
+        seatIds: [seatId],
+        ticketSelectionBySeatId,
+        customerName: 'Manual Guest',
+        paymentIntentId
+      }
+    });
+    expect(firstComplete.statusCode).toBe(201);
+    const orderId = firstComplete.json().id as string;
+    expect(orderId).toBeTruthy();
+
+    const secondComplete = await app.inject({
+      method: 'POST',
+      url: '/api/admin/orders/in-person/manual-complete',
+      headers: authHeaders(),
+      payload: {
+        performanceId: fixture.performance.id,
+        seatIds: [seatId],
+        ticketSelectionBySeatId,
+        customerName: 'Manual Guest',
+        paymentIntentId
+      }
+    });
+    expect(secondComplete.statusCode).toBe(200);
+    expect(secondComplete.json().alreadyCompleted).toBe(true);
+    expect(secondComplete.json().id).toBe(orderId);
+
+    const orderCount = await prisma.order.count({
+      where: {
+        stripePaymentIntentId: paymentIntentId
+      }
+    });
+    expect(orderCount).toBe(1);
+  });
+
+  it('applies teacher and student comp edge-case pricing caps in quotes', async () => {
+    const fixture = await createPerformanceFixture({ seatCount: 3, tierPriceCents: 3000 });
+    const seatIds = fixture.seats.map((seat) => seat.id);
+
+    await prisma.seat.update({ where: { id: seatIds[0] }, data: { price: 1000 } });
+    await prisma.seat.update({ where: { id: seatIds[1] }, data: { price: 2000 } });
+    await prisma.seat.update({ where: { id: seatIds[2] }, data: { price: 3000 } });
+
+    const teacherSelection = Object.fromEntries(seatIds.map((seatId) => [seatId, 'teacher-comp']));
+    const teacherQuote = await app.inject({
+      method: 'POST',
+      url: '/api/admin/orders/in-person/quote',
+      headers: authHeaders(),
+      payload: {
+        performanceId: fixture.performance.id,
+        seatIds,
+        ticketSelectionBySeatId: teacherSelection
+      }
+    });
+
+    expect(teacherQuote.statusCode).toBe(200);
+    expect(teacherQuote.json().expectedAmountCents).toBe(1000);
+    const teacherCompCount = teacherQuote.json().seats.filter((seat: any) => seat.ticketType === 'Teacher Comp').length;
+    expect(teacherCompCount).toBe(2);
+
+    await prisma.performance.update({
+      where: { id: fixture.performance.id },
+      data: { familyFreeTicketEnabled: true }
+    });
+    await prisma.studentTicketCredit.create({
+      data: {
+        showId: fixture.performance.showId,
+        studentName: 'Student One',
+        studentEmail: 'student1',
+        allocatedTickets: 5,
+        usedTickets: 0,
+        pendingTickets: 0,
+        isActive: true
+      }
+    });
+
+    const studentSelection = Object.fromEntries(seatIds.map((seatId) => [seatId, 'student-show-comp']));
+    const studentQuote = await app.inject({
+      method: 'POST',
+      url: '/api/admin/orders/in-person/quote',
+      headers: authHeaders(),
+      payload: {
+        performanceId: fixture.performance.id,
+        seatIds,
+        ticketSelectionBySeatId: studentSelection,
+        studentCode: 'student1'
+      }
+    });
+
+    expect(studentQuote.statusCode).toBe(200);
+    expect(studentQuote.json().expectedAmountCents).toBe(1000);
+    const studentCompCount = studentQuote.json().seats.filter((seat: any) => seat.ticketType === 'Student Comp').length;
+    expect(studentCompCount).toBe(2);
   });
 
   it('expired dispatch transitions to EXPIRED and releases held seats', async () => {

@@ -25,11 +25,23 @@ type ProgramBioFormSummary = {
 
 type ProgramBioQuestions = {
   fullNameLabel: string;
+  fullNameEnabled: boolean;
+  fullNameRequired: boolean;
   schoolEmailLabel: string;
+  schoolEmailEnabled: boolean;
+  schoolEmailRequired: boolean;
   gradeLevelLabel: string;
+  gradeLevelEnabled: boolean;
+  gradeLevelRequired: boolean;
   roleInShowLabel: string;
+  roleInShowEnabled: boolean;
+  roleInShowRequired: boolean;
   bioLabel: string;
+  bioEnabled: boolean;
+  bioRequired: boolean;
   headshotLabel: string;
+  headshotEnabled: boolean;
+  headshotRequired: boolean;
   customQuestions: ProgramBioCustomQuestion[];
 };
 
@@ -80,11 +92,23 @@ type FormScope = 'active' | 'archived' | 'all';
 
 const DEFAULT_PROGRAM_BIO_QUESTIONS: ProgramBioQuestions = {
   fullNameLabel: 'Full name',
+  fullNameEnabled: true,
+  fullNameRequired: true,
   schoolEmailLabel: 'School email',
+  schoolEmailEnabled: true,
+  schoolEmailRequired: true,
   gradeLevelLabel: 'Grade',
+  gradeLevelEnabled: true,
+  gradeLevelRequired: true,
   roleInShowLabel: 'Role in show',
+  roleInShowEnabled: true,
+  roleInShowRequired: true,
   bioLabel: 'Bio',
+  bioEnabled: true,
+  bioRequired: true,
   headshotLabel: 'Headshot upload',
+  headshotEnabled: true,
+  headshotRequired: true,
   customQuestions: [],
 };
 
@@ -117,7 +141,14 @@ function normalizeQuestions(questions: Partial<ProgramBioQuestions> | undefined)
             q.id && q.label && (q.type !== 'multiple_choice' || q.options.length >= 2)
         )
     : [];
-  return { ...DEFAULT_PROGRAM_BIO_QUESTIONS, ...(questions || {}), customQuestions };
+  const merged = { ...DEFAULT_PROGRAM_BIO_QUESTIONS, ...(questions || {}), customQuestions };
+  if (!merged.fullNameEnabled) merged.fullNameRequired = false;
+  if (!merged.schoolEmailEnabled) merged.schoolEmailRequired = false;
+  if (!merged.gradeLevelEnabled) merged.gradeLevelRequired = false;
+  if (!merged.roleInShowEnabled) merged.roleInShowRequired = false;
+  if (!merged.bioEnabled) merged.bioRequired = false;
+  if (!merged.headshotEnabled) merged.headshotRequired = false;
+  return merged;
 }
 
 function makeCustomQuestionId(): string {
@@ -164,6 +195,57 @@ function toSlugSafe(value: string): string {
 // ── Shared input styles ──
 const inputCls = 'w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 placeholder:text-stone-400 focus:border-stone-400 focus:outline-none transition';
 const labelCls = 'block text-xs font-semibold uppercase tracking-wider text-stone-500 mb-1.5';
+
+const PROGRAM_BIO_BASE_FIELD_ROWS = [
+  {
+    id: 'fullName',
+    display: 'Full Name',
+    labelKey: 'fullNameLabel',
+    enabledKey: 'fullNameEnabled',
+    requiredKey: 'fullNameRequired'
+  },
+  {
+    id: 'schoolEmail',
+    display: 'School Email',
+    labelKey: 'schoolEmailLabel',
+    enabledKey: 'schoolEmailEnabled',
+    requiredKey: 'schoolEmailRequired'
+  },
+  {
+    id: 'gradeLevel',
+    display: 'Grade Level',
+    labelKey: 'gradeLevelLabel',
+    enabledKey: 'gradeLevelEnabled',
+    requiredKey: 'gradeLevelRequired'
+  },
+  {
+    id: 'roleInShow',
+    display: 'Role in Show',
+    labelKey: 'roleInShowLabel',
+    enabledKey: 'roleInShowEnabled',
+    requiredKey: 'roleInShowRequired'
+  },
+  {
+    id: 'bio',
+    display: 'Bio',
+    labelKey: 'bioLabel',
+    enabledKey: 'bioEnabled',
+    requiredKey: 'bioRequired'
+  },
+  {
+    id: 'headshot',
+    display: 'Headshot',
+    labelKey: 'headshotLabel',
+    enabledKey: 'headshotEnabled',
+    requiredKey: 'headshotRequired'
+  }
+] as const satisfies Array<{
+  id: string;
+  display: string;
+  labelKey: keyof ProgramBioQuestions;
+  enabledKey: keyof ProgramBioQuestions;
+  requiredKey: keyof ProgramBioQuestions;
+}>;
 
 export default function ProgramBioFormsPanel() {
   const [forms, setForms] = useState<ProgramBioFormSummary[]>([]);
@@ -788,27 +870,57 @@ export default function ProgramBioFormsPanel() {
                     <div className="space-y-6">
                       <div>
                         <p className="text-sm font-semibold text-stone-700 mb-1">Base Fields</p>
-                        <p className="text-xs text-stone-400 mb-4">These fields are always included. You can rename their labels.</p>
+                        <p className="text-xs text-stone-400 mb-4">Enable, disable, or rename base fields. Disabled fields are hidden from students.</p>
                         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                          {(
-                            [
-                              ['fullNameLabel', 'Full Name'],
-                              ['schoolEmailLabel', 'School Email'],
-                              ['gradeLevelLabel', 'Grade Level'],
-                              ['roleInShowLabel', 'Role in Show'],
-                              ['bioLabel', 'Bio'],
-                              ['headshotLabel', 'Headshot'],
-                            ] as [keyof ProgramBioQuestions, string][]
-                          ).map(([field, display]) => (
-                            <div key={field}>
-                              <label className={labelCls}>{display}</label>
+                          {PROGRAM_BIO_BASE_FIELD_ROWS.map((field) => (
+                            <div key={field.id} className={`rounded-xl border p-3 ${selectedDraft.questions[field.enabledKey] ? 'border-stone-200 bg-white' : 'border-stone-200 bg-stone-50/80'}`}>
+                              <div className="mb-2 flex items-center justify-between gap-2">
+                                <span className="text-xs font-semibold uppercase tracking-wider text-stone-500">{field.display}</span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateSelectedDraftQuestions((questions) => {
+                                      const isEnabled = Boolean(questions[field.enabledKey]);
+                                      return {
+                                        ...questions,
+                                        [field.enabledKey]: !isEnabled,
+                                        [field.requiredKey]: !isEnabled ? true : false
+                                      };
+                                    })
+                                  }
+                                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                                    selectedDraft.questions[field.enabledKey]
+                                      ? 'border border-red-100 bg-white text-red-600 hover:bg-red-50'
+                                      : 'border border-stone-200 bg-white text-stone-700 hover:bg-stone-100'
+                                  }`}
+                                >
+                                  {selectedDraft.questions[field.enabledKey] ? 'Remove' : 'Restore'}
+                                </button>
+                              </div>
+                              <label className={labelCls}>Label</label>
                               <input
-                                value={selectedDraft.questions[field] as string}
+                                value={selectedDraft.questions[field.labelKey] as string}
                                 onChange={(e) =>
-                                  updateSelectedDraftQuestions((q) => ({ ...q, [field]: e.target.value }))
+                                  updateSelectedDraftQuestions((questions) => ({ ...questions, [field.labelKey]: e.target.value }))
                                 }
                                 className={inputCls}
+                                disabled={!selectedDraft.questions[field.enabledKey]}
                               />
+                              <label className={`mt-2 inline-flex items-center gap-2 text-xs font-medium ${selectedDraft.questions[field.enabledKey] ? 'text-stone-600' : 'text-stone-400'}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(selectedDraft.questions[field.requiredKey])}
+                                  disabled={!selectedDraft.questions[field.enabledKey]}
+                                  onChange={(event) =>
+                                    updateSelectedDraftQuestions((questions) => ({
+                                      ...questions,
+                                      [field.requiredKey]: event.target.checked
+                                    }))
+                                  }
+                                  className="accent-red-700"
+                                />
+                                Required
+                              </label>
                             </div>
                           ))}
                         </div>
