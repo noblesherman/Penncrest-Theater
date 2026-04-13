@@ -10,13 +10,10 @@ import {
   Search, X, Check, ChevronRight, ChevronLeft,
   Hash, Ticket, Plus, ExternalLink, AlertCircle,
   CheckCircle2, RefreshCw, CreditCard, Banknote,
-  ArrowRight, MapPin, Tag, Users, Zap, Clock,
-  TrendingUp, Filter, MoreHorizontal, Circle
+  ArrowRight, MapPin, Tag, Users
 } from 'lucide-react';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TYPES
-// ─────────────────────────────────────────────────────────────────────────────
+// ── types ────────────────────────────────────────────────────────────────────
 
 type Order = {
   id: string; status: string;
@@ -30,9 +27,14 @@ type Order = {
 type PricingTier = { id: string; name: string; priceCents: number; };
 type CashierTicketOption = { id: string; name: string; priceCents: number; isSynthetic?: boolean; };
 type Performance = {
-  id: string; title: string; startsAt: string; isFundraiser?: boolean;
+  id: string;
+  title: string;
+  startsAt: string;
+  isFundraiser?: boolean;
   pricingTiers: PricingTier[];
-  staffCompsEnabled?: boolean; studentCompTicketsEnabled?: boolean; seatSelectionEnabled?: boolean;
+  staffCompsEnabled?: boolean;
+  studentCompTicketsEnabled?: boolean;
+  seatSelectionEnabled?: boolean;
 };
 type Seat = {
   id: string; sectionName: string; row: string; number: number;
@@ -46,50 +48,79 @@ type AssignForm = {
   seatIdsInput: string; gaQuantityInput: string; ticketType: string; sendEmail: boolean;
 };
 type CashierSelectionLine = {
-  id: string; label: string; sectionName: string; row: string; number: number; seatPriceCents: number;
+  id: string;
+  label: string;
+  sectionName: string;
+  row: string;
+  number: number;
+  seatPriceCents: number;
 };
 type InPersonCashTonightSummary = {
   totalCashCents: number; saleCount: number;
   nightStartIso: string; nightEndIso: string; performanceId: string | null;
 };
 type InPersonFinalizeSeatSummary = {
-  id: string; sectionName: string; row: string; number: number; ticketType: string; priceCents: number;
+  id: string;
+  sectionName: string;
+  row: string;
+  number: number;
+  ticketType: string;
+  priceCents: number;
 };
 type InPersonSaleRecap = {
-  expectedAmountCents: number; paymentMethod: 'STRIPE' | 'CASH';
-  seats: InPersonFinalizeSeatSummary[]; expiresAtMs: number;
+  expectedAmountCents: number;
+  paymentMethod: 'STRIPE' | 'CASH';
+  seats: InPersonFinalizeSeatSummary[];
+  expiresAtMs: number;
 };
 type TerminalDevice = {
-  deviceId: string; name: string; lastHeartbeatAt: string; isBusy: boolean;
+  deviceId: string;
+  name: string;
+  lastHeartbeatAt: string;
+  isBusy: boolean;
 };
 type TerminalDispatch = {
   dispatchId: string;
   status: 'PENDING' | 'DELIVERED' | 'PROCESSING' | 'FAILED' | 'SUCCEEDED' | 'EXPIRED' | 'CANCELED';
-  failureReason?: string | null; holdExpiresAt: string; holdActive: boolean; canRetry: boolean;
-  expectedAmountCents: number; currency: string; attemptCount: number;
-  finalOrderId?: string | null; targetDeviceId: string; targetDeviceName?: string | null;
-  seatCount: number; seats: InPersonFinalizeSeatSummary[];
+  failureReason?: string | null;
+  holdExpiresAt: string;
+  holdActive: boolean;
+  canRetry: boolean;
+  expectedAmountCents: number;
+  currency: string;
+  attemptCount: number;
+  finalOrderId?: string | null;
+  targetDeviceId: string;
+  targetDeviceName?: string | null;
+  seatCount: number;
+  seats: InPersonFinalizeSeatSummary[];
 };
 
 function mapEntryToTerminalDispatch(entry: PaymentLineEntry): TerminalDispatch {
   return {
-    dispatchId: entry.entryId, status: entry.status,
-    failureReason: entry.failureReason, holdExpiresAt: entry.holdExpiresAt,
-    holdActive: entry.holdActive, canRetry: entry.canRetry,
-    expectedAmountCents: entry.expectedAmountCents, currency: entry.currency,
-    attemptCount: entry.attemptCount, finalOrderId: entry.finalOrderId,
-    targetDeviceId: entry.targetDeviceId, targetDeviceName: entry.targetDeviceName,
+    dispatchId: entry.entryId,
+    status: entry.status,
+    failureReason: entry.failureReason,
+    holdExpiresAt: entry.holdExpiresAt,
+    holdActive: entry.holdActive,
+    canRetry: entry.canRetry,
+    expectedAmountCents: entry.expectedAmountCents,
+    currency: entry.currency,
+    attemptCount: entry.attemptCount,
+    finalOrderId: entry.finalOrderId,
+    targetDeviceId: entry.targetDeviceId,
+    targetDeviceName: entry.targetDeviceName,
     seatCount: entry.seatCount,
-    seats: entry.seats.map((s) => ({
-      id: s.id, sectionName: s.sectionName, row: s.row,
-      number: s.number, ticketType: s.ticketType, priceCents: s.priceCents
+    seats: entry.seats.map((seat) => ({
+      id: seat.id,
+      sectionName: seat.sectionName,
+      row: seat.row,
+      number: seat.number,
+      ticketType: seat.ticketType,
+      priceCents: seat.priceCents
     }))
   };
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CONSTANTS
-// ─────────────────────────────────────────────────────────────────────────────
 
 const TEACHER_TICKET_OPTION_ID = 'teacher-comp';
 const STUDENT_SHOW_TICKET_OPTION_ID = 'student-show-comp';
@@ -97,15 +128,7 @@ const MAX_TEACHER_COMP_TICKETS = 2;
 const MAX_STUDENT_COMP_TICKETS = 2;
 const CASHIER_DEFAULT_PERFORMANCE_STORAGE_KEY = 'theater_cashier_default_performance_v1';
 
-const STEPS = [
-  { id: 'show',    label: 'Performance', icon: Ticket },
-  { id: 'seats',   label: 'Seats',       icon: MapPin },
-  { id: 'tickets', label: 'Checkout',    icon: Tag },
-];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
+// ── helpers ──────────────────────────────────────────────────────────────────
 
 const naturalSort = (a: string, b: string) =>
   a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
@@ -114,26 +137,35 @@ const parseSeatIds = (input: string) =>
   [...new Set(input.split(',').map(v => v.trim()).filter((v): v is string => Boolean(v)))];
 
 const buildGeneralAdmissionLineIds = (quantity: number) =>
-  Array.from({ length: Math.max(0, Math.min(quantity, 50)) }, (_, i) => `ga-${i + 1}`);
+  Array.from({ length: Math.max(0, Math.min(quantity, 50)) }, (_value, index) => `ga-${index + 1}`);
 
-const readCashierDefaultPerformanceId = (): string => {
+function readCashierDefaultPerformanceId(): string {
   if (typeof window === 'undefined') return '';
-  try { return window.localStorage.getItem(CASHIER_DEFAULT_PERFORMANCE_STORAGE_KEY) || ''; }
-  catch { return ''; }
-};
+  try {
+    return window.localStorage.getItem(CASHIER_DEFAULT_PERFORMANCE_STORAGE_KEY) || '';
+  } catch {
+    return '';
+  }
+}
 
-const writeCashierDefaultPerformanceId = (performanceId: string): void => {
+function writeCashierDefaultPerformanceId(performanceId: string): void {
   if (typeof window === 'undefined') return;
   try {
-    if (!performanceId) { window.localStorage.removeItem(CASHIER_DEFAULT_PERFORMANCE_STORAGE_KEY); return; }
+    if (!performanceId) {
+      window.localStorage.removeItem(CASHIER_DEFAULT_PERFORMANCE_STORAGE_KEY);
+      return;
+    }
     window.localStorage.setItem(CASHIER_DEFAULT_PERFORMANCE_STORAGE_KEY, performanceId);
-  } catch { /* ignore */ }
-};
+  } catch {
+    // Ignore storage failures; cashier flow still works with in-memory state.
+  }
+}
 
 const isTeacherTicketName = (name: string) => {
-  const n = name.trim().toLowerCase();
-  return n.includes('teacher') || (n.includes('rtmsd') && n.includes('staff'));
+  const normalized = name.trim().toLowerCase();
+  return normalized.includes('teacher') || (normalized.includes('rtmsd') && normalized.includes('staff'));
 };
+
 const isStudentInShowTicketName = (name: string) =>
   name.trim().toLowerCase().includes('student in show');
 
@@ -148,7 +180,7 @@ function pickComplimentarySeatIds(
     if (a.row !== b.row) return naturalSort(a.row, b.row);
     return a.number - b.number;
   });
-  return new Set(ranked.slice(0, quantity).map(s => s.id));
+  return new Set(ranked.slice(0, quantity).map((seat) => seat.id));
 }
 
 function normalizeSeat(raw: any): Seat {
@@ -158,178 +190,127 @@ function normalizeSeat(raw: any): Seat {
   const sectionOffset = raw?.sectionName === 'LEFT' ? 0 : raw?.sectionName === 'CENTER' ? 700 : 1400;
   const rowCode = String(raw?.row || 'A').charCodeAt(0) || 65;
   return {
-    id: String(raw?.id || ''), sectionName: String(raw?.sectionName || 'Unknown'),
-    row: String(raw?.row || ''), number: Number(raw?.number || 0),
+    id: String(raw?.id || ''),
+    sectionName: String(raw?.sectionName || 'Unknown'),
+    row: String(raw?.row || ''),
+    number: Number(raw?.number || 0),
     x: Number.isFinite(Number(raw?.x)) ? Number(raw.x) : sectionOffset + Number(raw?.number || 0) * 36,
     y: Number.isFinite(Number(raw?.y)) ? Number(raw.y) : (rowCode - 65) * 40,
-    price: Number(raw?.price || 0), status,
-    isAccessible: Boolean(raw?.isAccessible), isCompanion: Boolean(raw?.isCompanion),
+    price: Number(raw?.price || 0),
+    status,
+    isAccessible: Boolean(raw?.isAccessible),
+    isCompanion: Boolean(raw?.isCompanion),
     companionForSeatId: raw?.companionForSeatId ?? null,
   };
 }
 
-const fmtDollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
-const fmtDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STATUS / SOURCE METADATA
-// ─────────────────────────────────────────────────────────────────────────────
-
-const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
-  PAID:     { label: 'Paid',     color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
-  PENDING:  { label: 'Pending',  color: 'text-amber-700',   bg: 'bg-amber-50 border-amber-200'     },
-  REFUNDED: { label: 'Refunded', color: 'text-slate-500',   bg: 'bg-slate-50 border-slate-200'     },
-  CANCELED: { label: 'Canceled', color: 'text-red-600',     bg: 'bg-red-50 border-red-200'         },
+const STATUS_META: Record<string, { label: string; dot: string; text: string; bg: string }> = {
+  PAID:     { label: 'Paid',     dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50 ring-emerald-200' },
+  PENDING:  { label: 'Pending',  dot: 'bg-amber-400',   text: 'text-amber-700',   bg: 'bg-amber-50 ring-amber-200'    },
+  REFUNDED: { label: 'Refunded', dot: 'bg-slate-400',   text: 'text-slate-600',   bg: 'bg-slate-50 ring-slate-200'    },
+  CANCELED: { label: 'Canceled', dot: 'bg-red-400',     text: 'text-red-600',     bg: 'bg-red-50 ring-red-200'        },
 };
 
-const SOURCE_META: Record<string, { label: string; color: string }> = {
-  ONLINE:       { label: 'Online',  color: 'text-blue-700'   },
-  DOOR:         { label: 'Door',    color: 'text-violet-700' },
-  COMP:         { label: 'Comp',    color: 'text-slate-500'  },
-  STAFF_FREE:   { label: 'Staff',   color: 'text-amber-700'  },
-  STAFF_COMP:   { label: 'Staff',   color: 'text-amber-700'  },
-  FAMILY_FREE:  { label: 'Family',  color: 'text-pink-700'   },
-  STUDENT_COMP: { label: 'Student', color: 'text-indigo-700' },
+const SOURCE_META: Record<string, { label: string; bg: string; text: string }> = {
+  ONLINE:       { label: 'Online',       bg: 'bg-blue-50 ring-blue-200',    text: 'text-blue-700'   },
+  DOOR:         { label: 'Door',         bg: 'bg-violet-50 ring-violet-200', text: 'text-violet-700' },
+  COMP:         { label: 'Comp',         bg: 'bg-slate-100 ring-slate-200',  text: 'text-slate-600'  },
+  STAFF_FREE:   { label: 'Staff',        bg: 'bg-amber-50 ring-amber-200',   text: 'text-amber-700'  },
+  STAFF_COMP:   { label: 'Staff',        bg: 'bg-amber-50 ring-amber-200',   text: 'text-amber-700'  },
+  FAMILY_FREE:  { label: 'Family',       bg: 'bg-pink-50 ring-pink-200',     text: 'text-pink-700'   },
+  STUDENT_COMP: { label: 'Student',      bg: 'bg-indigo-50 ring-indigo-200', text: 'text-indigo-700' },
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SMALL COMPONENTS
-// ─────────────────────────────────────────────────────────────────────────────
-
-function StatusPill({ status }: { status: string }) {
-  const m = STATUS_META[status] ?? { label: status, color: 'text-slate-500', bg: 'bg-slate-50 border-slate-200' };
+function Badge({ label, bg, text, dot }: { label: string; bg: string; text: string; dot?: string }) {
   return (
-    <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-bold tracking-wide uppercase ${m.color} ${m.bg}`}>
-      {m.label}
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${bg} ${text}`}>
+      {dot && <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />}
+      {label}
     </span>
   );
 }
 
-function SourceTag({ source }: { source: string }) {
-  const m = SOURCE_META[source] ?? { label: source, color: 'text-slate-500' };
-  return <span className={`text-[11px] font-semibold uppercase tracking-wide ${m.color}`}>{m.label}</span>;
-}
+const STEPS = [
+  { id: 'show',    label: 'Performance', icon: Ticket },
+  { id: 'seats',   label: 'Seats',       icon: MapPin  },
+  { id: 'tickets', label: 'Checkout',    icon: Tag     },
+];
 
-function Label({ children }: { children: ReactNode }) {
-  return <p className="mb-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">{children}</p>;
-}
+// ── base input styles ─────────────────────────────────────────────────────────
 
-function Alert({ type, children }: { type: 'error' | 'warn' | 'info'; children: ReactNode }) {
-  const styles = {
-    error: 'border-red-200 bg-red-50 text-red-700',
-    warn: 'border-amber-200 bg-amber-50 text-amber-800',
-    info: 'border-blue-200 bg-blue-50 text-blue-800',
-  }[type];
-  const icons = { error: AlertCircle, warn: AlertCircle, info: AlertCircle };
-  const Icon = icons[type];
+const baseInput = [
+  'w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900',
+  'placeholder:text-slate-300 transition',
+  'focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100',
+].join(' ');
+
+const baseSelect = baseInput + ' cursor-pointer';
+
+// ── label helper ──────────────────────────────────────────────────────────────
+
+function FieldLabel({ children }: { children: ReactNode }) {
   return (
-    <div className={`flex items-start gap-2.5 rounded-xl border px-4 py-3 text-sm ${styles}`}>
-      <Icon className="mt-0.5 h-4 w-4 flex-shrink-0" />
-      <span>{children}</span>
+    <p className="mb-2 text-xs font-bold uppercase tracking-widest text-slate-400">{children}</p>
+  );
+}
+
+// ── section card ─────────────────────────────────────────────────────────────
+
+function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={`rounded-2xl border border-slate-100 bg-white ${className}`}>
+      {children}
     </div>
   );
 }
 
-// ── Input styles ─────────────────────────────────────────────────────────────
-const inp = 'w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-300 transition focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200';
-const sel = inp + ' cursor-pointer';
-
-// ── Toggle ────────────────────────────────────────────────────────────────────
-function Toggle({ on, onToggle, label }: { on: boolean; onToggle: () => void; label: string }) {
-  return (
-    <label className="flex cursor-pointer items-center gap-3">
-      <button
-        type="button"
-        onClick={onToggle}
-        className={`relative h-5 w-9 flex-shrink-0 rounded-full transition-colors ${on ? 'bg-slate-900' : 'bg-slate-200'}`}
-        role="switch"
-        aria-checked={on}
-      >
-        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-4' : 'translate-x-0.5'}`} />
-      </button>
-      <span className="text-sm text-slate-700">{label}</span>
-    </label>
-  );
-}
-
-// ── Btn ────────────────────────────────────────────────────────────────────
-function Btn({
-  onClick, disabled, children, variant = 'primary', size = 'md', className = '', type = 'button'
-}: {
-  onClick?: () => void; disabled?: boolean; children: ReactNode;
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
-  size?: 'sm' | 'md' | 'lg'; className?: string; type?: 'button' | 'submit';
-}) {
-  const variantCls = {
-    primary:   'bg-slate-900 text-white hover:bg-slate-700 disabled:bg-slate-300',
-    secondary: 'bg-white border border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50',
-    ghost:     'text-slate-500 hover:bg-slate-100 hover:text-slate-800',
-    danger:    'bg-red-600 text-white hover:bg-red-700 disabled:bg-red-300',
-  }[variant];
-  const sizeCls = { sm: 'px-3 py-1.5 text-xs', md: 'px-4 py-2.5 text-sm', lg: 'px-6 py-3 text-sm' }[size];
-  return (
-    <button
-      type={type}
-      onClick={onClick}
-      disabled={disabled}
-      className={`inline-flex items-center justify-center gap-1.5 rounded-lg font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${variantCls} ${sizeCls} ${className}`}
-    >
-      {children}
-    </button>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MAIN COMPONENT
-// ─────────────────────────────────────────────────────────────────────────────
+// ── main ─────────────────────────────────────────────────────────────────────
 
 export default function AdminOrdersPage() {
-  // ── Core data state ────────────────────────────────────────────────────────
-  const [rows,          setRows]          = useState<Order[]>([]);
-  const [query,         setQuery]         = useState('');
-  const [status,        setStatus]        = useState('');
-  const [sourceFilter,  setSourceFilter]  = useState('');
-  const [scope,         setScope]         = useState<'active' | 'archived' | 'all'>('active');
-  const [performances,  setPerformances]  = useState<Performance[]>([]);
-  const [loadingRows,   setLoadingRows]   = useState(false);
-  const [submitting,    setSubmitting]    = useState(false);
-  const [error,         setError]         = useState<string | null>(null);
-  const [notice,        setNotice]        = useState<string | null>(null);
-
-  // ── Wizard state ────────────────────────────────────────────────────────────
-  const [showWizard,    setShowWizard]    = useState(false);
-  const [step,          setStep]          = useState(0);
-  const [dir,           setDir]           = useState<1 | -1>(1);
-  const [showPerfPicker, setShowPerfPicker] = useState(false);
-  const [perfPickerDraftId, setPerfPickerDraftId] = useState('');
-
-  // ── Seat picker state ───────────────────────────────────────────────────────
+  const [rows,         setRows]         = useState<Order[]>([]);
+  const [query,        setQuery]        = useState('');
+  const [status,       setStatus]       = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
+  const [scope,        setScope]        = useState<'active' | 'archived' | 'all'>('active');
+  const [performances, setPerformances] = useState<Performance[]>([]);
+  const [loadingRows,  setLoadingRows]  = useState(false);
+  const [submitting,   setSubmitting]   = useState(false);
+  const [error,        setError]        = useState<string | null>(null);
+  const [notice,       setNotice]       = useState<string | null>(null);
+  const [showWizard,   setShowWizard]   = useState(false);
+  const [showCashierPerformancePicker, setShowCashierPerformancePicker] = useState(false);
+  const [cashierPerformanceDraftId, setCashierPerformanceDraftId] = useState('');
+  const [step,         setStep]         = useState(0);
+  const [dir,          setDir]          = useState<1 | -1>(1);
   const didAutoOpenSeatPickerRef = useRef(false);
   const selectedSeatIdsRef = useRef<string[]>([]);
   const [seatPickerOpen,  setSeatPickerOpen]  = useState(false);
   const [seats,           setSeats]           = useState<Seat[]>([]);
   const [loadingSeats,    setLoadingSeats]    = useState(false);
   const [seatPickerError, setSeatPickerError] = useState<string | null>(null);
-  const [activeSection,   setActiveSection]   = useState('All');
+  const [activeSection,   setActiveSection]   = useState<string>('All');
   const [ticketSelectionBySeatId, setTicketSelectionBySeatId] = useState<Record<string, string>>({});
+  const [inPersonFlowError, setInPersonFlowError] = useState<string | null>(null);
+  const [inPersonSubmitting, setInPersonSubmitting] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'STRIPE' | 'CASH'>('STRIPE');
+  const [receiptEmail, setReceiptEmail] = useState('');
+  const [sendReceipt, setSendReceipt] = useState(false);
+  const [studentCode, setStudentCode] = useState('');
+  const [terminalDevices, setTerminalDevices] = useState<TerminalDevice[]>([]);
+  const [loadingTerminalDevices, setLoadingTerminalDevices] = useState(false);
+  const [selectedTerminalDeviceId, setSelectedTerminalDeviceId] = useState('');
+  const [terminalDispatch, setTerminalDispatch] = useState<TerminalDispatch | null>(null);
+  const [terminalDispatchActionBusy, setTerminalDispatchActionBusy] = useState(false);
+  const [cashTonight, setCashTonight] = useState<InPersonCashTonightSummary | null>(null);
+  const [loadingCashTonight, setLoadingCashTonight] = useState(false);
+  const [saleRecap, setSaleRecap] = useState<InPersonSaleRecap | null>(null);
+  const [saleRecapSecondsLeft, setSaleRecapSecondsLeft] = useState(0);
 
-  // ── In-person / payment state ───────────────────────────────────────────────
-  const [inPersonFlowError,   setInPersonFlowError]   = useState<string | null>(null);
-  const [inPersonSubmitting,  setInPersonSubmitting]  = useState(false);
-  const [paymentMethod,       setPaymentMethod]       = useState<'STRIPE' | 'CASH'>('STRIPE');
-  const [receiptEmail,        setReceiptEmail]        = useState('');
-  const [sendReceipt,         setSendReceipt]         = useState(false);
-  const [studentCode,         setStudentCode]         = useState('');
-  const [terminalDevices,     setTerminalDevices]     = useState<TerminalDevice[]>([]);
-  const [loadingTerminals,    setLoadingTerminals]    = useState(false);
-  const [selectedTerminalId,  setSelectedTerminalId]  = useState('');
-  const [terminalDispatch,    setTerminalDispatch]    = useState<TerminalDispatch | null>(null);
-  const [dispatchBusy,        setDispatchBusy]        = useState(false);
-  const [cashTonight,         setCashTonight]         = useState<InPersonCashTonightSummary | null>(null);
-  const [loadingCashTonight,  setLoadingCashTonight]  = useState(false);
-  const [saleRecap,           setSaleRecap]           = useState<InPersonSaleRecap | null>(null);
-  const [saleRecapSecsLeft,   setSaleRecapSecsLeft]   = useState(0);
+  const sellerStatusStream = usePaymentLineStatusStream({
+    queueKey: terminalDispatch?.targetDeviceId || null,
+    sellerEntryId: terminalDispatch?.dispatchId || null,
+    enabled: Boolean(terminalDispatch?.targetDeviceId)
+  });
 
   const [assignForm, setAssignForm] = useState<AssignForm>({
     performanceId: '', source: 'DOOR',
@@ -337,26 +318,17 @@ export default function AdminOrdersPage() {
     seatIdsInput: '', gaQuantityInput: '1', ticketType: '', sendEmail: false,
   });
 
-  // ── Seller status stream ────────────────────────────────────────────────────
-  const sellerStatusStream = usePaymentLineStatusStream({
-    queueKey: terminalDispatch?.targetDeviceId || null,
-    sellerEntryId: terminalDispatch?.dispatchId || null,
-    enabled: Boolean(terminalDispatch?.targetDeviceId)
-  });
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // DATA LOADING
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── data loading ───────────────────────────────────────────────────────────
 
   const load = async () => {
     setLoadingRows(true); setError(null);
     try {
-      const p = new URLSearchParams();
-      if (query.trim()) p.set('q', query.trim());
-      if (status) p.set('status', status);
-      if (sourceFilter) p.set('source', sourceFilter);
-      p.set('scope', scope);
-      setRows(await adminFetch<Order[]>(`/api/admin/orders?${p.toString()}`));
+      const params = new URLSearchParams();
+      if (query.trim()) params.set('q', query.trim());
+      if (status) params.set('status', status);
+      if (sourceFilter) params.set('source', sourceFilter);
+      params.set('scope', scope);
+      setRows(await adminFetch<Order[]>(`/api/admin/orders?${params.toString()}`));
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load orders'); }
     finally { setLoadingRows(false); }
   };
@@ -364,56 +336,398 @@ export default function AdminOrdersPage() {
   const loadPerformances = async () => {
     try {
       const items = await adminFetch<Array<{
-        id: string; title: string; startsAt: string;
-        isArchived?: boolean; isFundraiser?: boolean;
+        id: string;
+        title: string;
+        startsAt: string;
+        isArchived?: boolean;
+        isFundraiser?: boolean;
         pricingTiers?: PricingTier[];
-        staffCompsEnabled?: boolean; studentCompTicketsEnabled?: boolean; seatSelectionEnabled?: boolean;
+        staffCompsEnabled?: boolean;
+        studentCompTicketsEnabled?: boolean;
+        seatSelectionEnabled?: boolean;
       }>>('/api/admin/performances?scope=active&kind=all');
-      const mapped = items.filter(i => !i.isArchived).map(i => ({
-        id: i.id, title: i.title, startsAt: i.startsAt,
-        isFundraiser: Boolean(i.isFundraiser),
-        pricingTiers: i.pricingTiers || [],
-        staffCompsEnabled: Boolean(i.staffCompsEnabled),
-        studentCompTicketsEnabled: Boolean(i.studentCompTicketsEnabled),
-        seatSelectionEnabled: i.seatSelectionEnabled !== false,
-      }));
+      const mapped = items.filter(i => !i.isArchived)
+        .map(i => ({
+          id: i.id,
+          title: i.title,
+          startsAt: i.startsAt,
+          isFundraiser: Boolean(i.isFundraiser),
+          pricingTiers: i.pricingTiers || [],
+          staffCompsEnabled: Boolean(i.staffCompsEnabled),
+          studentCompTicketsEnabled: Boolean(i.studentCompTicketsEnabled),
+          seatSelectionEnabled: i.seatSelectionEnabled !== false,
+        }));
       setPerformances(mapped);
       if (mapped.length > 0) {
-        const stored = readCashierDefaultPerformanceId();
+        const storedPerformanceId = readCashierDefaultPerformanceId();
+        const fallbackPerformanceId = mapped[0].id;
         setAssignForm(prev => {
-          const next =
+          const nextPerformanceId =
             mapped.some(r => r.id === prev.performanceId) ? prev.performanceId
-            : mapped.some(r => r.id === stored) ? stored
-            : mapped[0].id;
-          return { ...prev, performanceId: next };
+            : mapped.some(r => r.id === storedPerformanceId) ? storedPerformanceId
+            : fallbackPerformanceId;
+          return { ...prev, performanceId: nextPerformanceId };
         });
       }
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load performances'); }
+  };
+
+  useEffect(() => { void Promise.all([load(), loadPerformances()]); }, []);
+  useEffect(() => { void load(); }, [scope]);
+
+  const search = (e: FormEvent) => { e.preventDefault(); void load(); };
+
+  // ── assign ─────────────────────────────────────────────────────────────────
+
+  const assignOrder = async () => {
+    setError(null); setNotice(null);
+    if (!assignForm.performanceId || selectionIds.length === 0) {
+      setError(seatSelectionEnabled ? 'Choose a performance and provide at least one seat ID.' : 'Choose a performance and enter at least one GA ticket.');
+      return;
+    }
+    if (assignForm.source !== 'COMP') {
+      setError('Door sales must use the in-person finalize flow.'); return;
+    }
+    if (assignForm.sendEmail && !assignForm.customerEmail.trim()) {
+      setError('Enter an email address to send comp tickets.'); return;
+    }
+    if (missingTicketTypeCount > 0) {
+      setError(`Choose a ticket type for every selected ${seatSelectionEnabled ? 'seat' : 'ticket'} before assigning checkout.`); return;
+    }
+    const ticketTypeBySeatId = Object.fromEntries(
+      selectionIds.map((id) => [id, ticketSelectionBySeatId[id] || 'Comp'])
+    );
+    const priceBySeatId = Object.fromEntries(selectionIds.map(id => [id, 0]));
+    const fallbackName = assignForm.customerName.trim() || 'Comp Guest';
+    const fallbackEmail = assignForm.customerEmail.trim().toLowerCase() || `comp+${Date.now()}@boxoffice.local`;
+    setSubmitting(true);
+    try {
+      await adminFetch('/api/admin/orders/assign', {
+        method: 'POST',
+        body: JSON.stringify({
+          performanceId: assignForm.performanceId,
+          seatIds: selectionIds,
+          customerName: fallbackName, customerEmail: fallbackEmail,
+          ticketTypeBySeatId, priceBySeatId,
+          source: assignForm.source,
+          sendEmail: Boolean(assignForm.sendEmail && assignForm.customerEmail.trim())
+        }),
+      });
+      setAssignForm(prev => ({ ...prev, customerName: '', customerEmail: '', seatIdsInput: '', gaQuantityInput: '1', ticketType: '' }));
+      setNotice(`Assigned ${selectionIds.length} ${seatSelectionEnabled ? 'seat' : 'ticket'}${selectionIds.length === 1 ? '' : 's'} successfully.`);
+      startCashierLoop(assignForm.performanceId);
+      void load();
+      void loadSeatsForPerformance(assignForm.performanceId, { showLoading: false, syncSelection: false });
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to assign seats'); }
+    finally { setSubmitting(false); }
   };
 
   const loadCashTonight = useCallback(async (performanceId: string) => {
     if (!performanceId) { setCashTonight(null); return; }
     setLoadingCashTonight(true);
     try {
-      const p = new URLSearchParams({ performanceId });
-      setCashTonight(await adminFetch<InPersonCashTonightSummary>(`/api/admin/orders/in-person/cash-tonight?${p.toString()}`));
+      const params = new URLSearchParams({ performanceId });
+      const summary = await adminFetch<InPersonCashTonightSummary>(`/api/admin/orders/in-person/cash-tonight?${params.toString()}`);
+      setCashTonight(summary);
     } catch { setCashTonight(null); }
     finally { setLoadingCashTonight(false); }
   }, []);
 
   const loadTerminalDevices = useCallback(async () => {
-    setLoadingTerminals(true);
+    setLoadingTerminalDevices(true);
     try {
       const payload = await adminFetch<{ devices: TerminalDevice[] }>('/api/admin/orders/in-person/terminal/devices');
       setTerminalDevices(payload.devices);
-      setSelectedTerminalId(prev => {
-        if (prev && payload.devices.some(d => d.deviceId === prev)) return prev;
+      setSelectedTerminalDeviceId(prev => {
+        if (prev && payload.devices.some((device) => device.deviceId === prev)) return prev;
         return payload.devices[0]?.deviceId || '';
       });
     } catch {
-      setTerminalDevices([]); setSelectedTerminalId('');
-    } finally { setLoadingTerminals(false); }
+      setTerminalDevices([]);
+      setSelectedTerminalDeviceId('');
+    } finally {
+      setLoadingTerminalDevices(false);
+    }
   }, []);
+
+  const finalizeInPersonSale = async () => {
+    setError(null); setNotice(null); setInPersonFlowError(null);
+    if (!assignForm.performanceId || selectionIds.length === 0) {
+      setError(seatSelectionEnabled ? 'Choose a performance and provide at least one seat ID.' : 'Choose a performance and enter at least one GA ticket.');
+      return;
+    }
+    if (selectedTicketOptions.length === 0) {
+      setError('No ticket pricing tiers are configured for this performance.'); return;
+    }
+    if (missingTicketTypeCount > 0) {
+      setError(`Choose a ticket type for every selected ${seatSelectionEnabled ? 'seat' : 'ticket'} before completing checkout.`); return;
+    }
+    if (hasMixedCompSelection) {
+      setInPersonFlowError('Teacher and Student in Show complimentary tickets cannot be mixed in one order.'); return;
+    }
+    const normalizedStudentCode = studentCode.trim().toLowerCase().replace(/\s+/g, '');
+    if (hasStudentInShowCompSelection && !normalizedStudentCode) {
+      setInPersonFlowError('Student code is required when Student in Show tickets are selected.'); return;
+    }
+    const normalizedReceiptEmail = receiptEmail.trim().toLowerCase();
+    if (sendReceipt && !normalizedReceiptEmail) {
+      setInPersonFlowError('Enter an email address before sending a receipt.'); return;
+    }
+
+    if (paymentMethod === 'STRIPE') {
+      if (!selectedTerminalDeviceId) {
+        setInPersonFlowError('Select an active payment phone before sending card payment.');
+        return;
+      }
+      setInPersonSubmitting(true);
+      try {
+        const dispatch = await adminFetch<TerminalDispatch>('/api/admin/payment-line/enqueue', {
+          method: 'POST',
+          body: JSON.stringify({
+            performanceId: assignForm.performanceId,
+            seatIds: selectionIds,
+            ticketSelectionBySeatId,
+            receiptEmail: normalizedReceiptEmail || undefined,
+            sendReceipt,
+            customerName: assignForm.customerName.trim() || undefined,
+            studentCode: hasStudentInShowCompSelection ? normalizedStudentCode : undefined,
+            deviceId: selectedTerminalDeviceId
+          })
+        });
+        setTerminalDispatch(dispatch);
+      } catch (e) {
+        setInPersonFlowError(e instanceof Error ? e.message : 'Failed to send sale to payment line');
+      } finally {
+        setInPersonSubmitting(false);
+      }
+      return;
+    }
+
+    setInPersonSubmitting(true);
+    try {
+      const result = await adminFetch<{
+        expectedAmountCents: number;
+        paymentMethod: 'STRIPE' | 'CASH';
+        seats: InPersonFinalizeSeatSummary[];
+      }>('/api/admin/orders/in-person/finalize', {
+        method: 'POST',
+        body: JSON.stringify({
+          performanceId: assignForm.performanceId,
+          seatIds: selectionIds,
+          ticketSelectionBySeatId, paymentMethod,
+          receiptEmail: normalizedReceiptEmail || undefined,
+          sendReceipt, customerName: assignForm.customerName.trim() || undefined,
+          studentCode: hasStudentInShowCompSelection ? normalizedStudentCode : undefined
+        })
+      });
+      setSaleRecap({
+        expectedAmountCents: result.expectedAmountCents,
+        paymentMethod: result.paymentMethod,
+        seats: result.seats,
+        expiresAtMs: Date.now() + 10000
+      });
+      setAssignForm(prev => ({ ...prev, customerName: '', customerEmail: '', seatIdsInput: '', gaQuantityInput: '1', ticketType: '' }));
+      setTicketSelectionBySeatId({});
+      setNotice(
+        `${paymentMethod === 'CASH' ? 'Cash' : 'Stripe'} sale completed — ${selectionIds.length} ${seatSelectionEnabled ? 'seat' : 'ticket'}${selectionIds.length === 1 ? '' : 's'} · $${(result.expectedAmountCents / 100).toFixed(2)}`
+      );
+      startCashierLoop(assignForm.performanceId);
+      void load();
+    } catch (e) {
+      setInPersonFlowError(e instanceof Error ? e.message : 'Failed to finalize in-person sale');
+    } finally { setInPersonSubmitting(false); }
+  };
+
+  const finalizeSuccessfulTerminalDispatch = (dispatch: TerminalDispatch) => {
+    const isGeneralAdmissionDispatch = dispatch.seats.every((seat) => seat.row === 'GA');
+    setSaleRecap({
+      expectedAmountCents: dispatch.expectedAmountCents,
+      paymentMethod: 'STRIPE',
+      seats: dispatch.seats,
+      expiresAtMs: Date.now() + 10000
+    });
+    setAssignForm(prev => ({ ...prev, customerName: '', customerEmail: '', seatIdsInput: '', gaQuantityInput: '1', ticketType: '' }));
+    setTicketSelectionBySeatId({});
+    setNotice(
+      `Stripe sale completed — ${dispatch.seatCount} ${isGeneralAdmissionDispatch ? 'ticket' : 'seat'}${dispatch.seatCount === 1 ? '' : 's'} · $${(dispatch.expectedAmountCents / 100).toFixed(2)}`
+    );
+    setTerminalDispatch(null);
+    startCashierLoop(assignForm.performanceId);
+    void load();
+    void loadSeatsForPerformance(assignForm.performanceId, { showLoading: false, syncSelection: false });
+  };
+
+  const applyTerminalDispatchStatus = useCallback((dispatch: TerminalDispatch) => {
+    setTerminalDispatch(dispatch);
+  }, []);
+
+  const refreshTerminalDispatchStatus = useCallback(async (dispatchId: string) => {
+    const dispatch = await adminFetch<TerminalDispatch>(`/api/admin/payment-line/entry/${encodeURIComponent(dispatchId)}`);
+    applyTerminalDispatchStatus(dispatch);
+  }, [applyTerminalDispatchStatus]);
+
+  const retryTerminalDispatch = useCallback(async () => {
+    if (!terminalDispatch) return;
+    setTerminalDispatchActionBusy(true);
+    setInPersonFlowError(null);
+    try {
+      const dispatch = await adminFetch<TerminalDispatch>(
+        `/api/admin/payment-line/entry/${encodeURIComponent(terminalDispatch.dispatchId)}/retry-now`,
+        { method: 'POST' }
+      );
+      applyTerminalDispatchStatus(dispatch);
+    } catch (e) {
+      setInPersonFlowError(e instanceof Error ? e.message : 'Retry failed');
+      await refreshTerminalDispatchStatus(terminalDispatch.dispatchId).catch(() => undefined);
+    } finally {
+      setTerminalDispatchActionBusy(false);
+    }
+  }, [applyTerminalDispatchStatus, refreshTerminalDispatchStatus, terminalDispatch]);
+
+  const cancelTerminalDispatch = useCallback(async () => {
+    if (!terminalDispatch) return;
+    setTerminalDispatchActionBusy(true);
+    try {
+      const dispatch = await adminFetch<TerminalDispatch>(
+        `/api/admin/payment-line/entry/${encodeURIComponent(terminalDispatch.dispatchId)}/cancel`,
+        { method: 'POST' }
+      );
+      setTerminalDispatch(dispatch.status === 'CANCELED' ? null : dispatch);
+    } catch (e) {
+      setInPersonFlowError(e instanceof Error ? e.message : 'Cancel failed');
+    } finally {
+      setTerminalDispatchActionBusy(false);
+    }
+  }, [terminalDispatch]);
+
+  // ── wizard nav ─────────────────────────────────────────────────────────────
+
+  const goTo = (next: number) => { setDir(next > step ? 1 : -1); setStep(next); setError(null); };
+
+  const resetInPersonFlow = () => {
+    setInPersonFlowError(null); setInPersonSubmitting(false);
+    setPaymentMethod('STRIPE'); setReceiptEmail(''); setSendReceipt(false);
+    setStudentCode('');
+    setTerminalDevices([]);
+    setLoadingTerminalDevices(false);
+    setSelectedTerminalDeviceId('');
+    setTerminalDispatch(null);
+    setTerminalDispatchActionBusy(false);
+    setCashTonight(null); setLoadingCashTonight(false);
+  };
+
+  function closeWizard() {
+    setShowWizard(false); setStep(0); setError(null);
+    setSeatPickerOpen(false); setSeatPickerError(null);
+    setTicketSelectionBySeatId({}); resetInPersonFlow();
+  }
+
+  function startCashierLoop(performanceId: string) {
+    if (!performanceId) {
+      setError('No active performances available for cashier checkout.');
+      return;
+    }
+
+    writeCashierDefaultPerformanceId(performanceId);
+    didAutoOpenSeatPickerRef.current = false;
+    setAssignForm((prev) => ({
+      ...prev,
+      performanceId,
+      customerName: '',
+      customerEmail: '',
+      seatIdsInput: '',
+      gaQuantityInput: '1',
+      ticketType: '',
+      sendEmail: false
+    }));
+    setTicketSelectionBySeatId({});
+    resetInPersonFlow();
+    setShowCashierPerformancePicker(false);
+    setSeatPickerError(null);
+    setSeatPickerOpen(false);
+    setShowWizard(true);
+    setDir(1);
+    setStep(0);
+    setError(null);
+    void loadSeatsForPerformance(performanceId, { showLoading: false, syncSelection: false });
+  }
+
+  const openCashierFlow = () => {
+    if (performances.length === 0) {
+      setError('No active performances available for cashier checkout.');
+      return;
+    }
+    const fallbackPerformanceId = performances[0]?.id || '';
+    const nextDraftId =
+      performances.some((item) => item.id === assignForm.performanceId)
+        ? assignForm.performanceId
+        : performances.some((item) => item.id === readCashierDefaultPerformanceId())
+          ? readCashierDefaultPerformanceId()
+          : fallbackPerformanceId;
+    setCashierPerformanceDraftId(nextDraftId);
+    if (nextDraftId) {
+      startCashierLoop(nextDraftId);
+      return;
+    }
+    setShowCashierPerformancePicker(true);
+    setError(null);
+  };
+
+  const confirmCashierPerformanceSelection = () => {
+    const chosenPerformanceId =
+      performances.some((item) => item.id === cashierPerformanceDraftId)
+        ? cashierPerformanceDraftId
+        : performances[0]?.id || '';
+    if (!chosenPerformanceId) {
+      setError('No active performances available for cashier checkout.');
+      setShowCashierPerformancePicker(false);
+      return;
+    }
+
+    startCashierLoop(chosenPerformanceId);
+  };
+
+  useEffect(() => {
+    if (!saleRecap) {
+      setSaleRecapSecondsLeft(0);
+      return;
+    }
+
+    const updateCountdown = () => {
+      const secondsLeft = Math.max(0, Math.ceil((saleRecap.expiresAtMs - Date.now()) / 1000));
+      setSaleRecapSecondsLeft(secondsLeft);
+      if (secondsLeft <= 0) {
+        setSaleRecap(null);
+      }
+    };
+
+    updateCountdown();
+    const timerId = window.setInterval(updateCountdown, 250);
+    return () => window.clearInterval(timerId);
+  }, [saleRecap]);
+
+  const handleWizardNext = () => {
+    if (step === 0) { goTo(1); return; }
+    if (step === 1) {
+      if (selectionIds.length === 0) {
+        setError(seatSelectionEnabled ? 'Select at least one seat to continue.' : 'Enter at least one GA ticket to continue.');
+        if (seatSelectionEnabled) setSeatPickerOpen(true);
+        return;
+      }
+      goTo(2); return;
+    }
+    goTo(step + 1);
+  };
+
+  const moveOnFromSeatPicker = () => {
+    if (step === 1) {
+      if (seatIds.length === 0) { setSeatPickerError('Select at least one seat before moving on.'); return; }
+      setSeatPickerOpen(false); goTo(2); return;
+    }
+    setSeatPickerOpen(false);
+  };
+
+  // ── seat loading ───────────────────────────────────────────────────────────
 
   const loadSeatsForPerformance = useCallback(async (
     performanceId: string,
@@ -434,26 +748,37 @@ export default function AdminOrdersPage() {
         const seatList = Array.isArray(publicSeats) ? publicSeats : publicSeats.seats;
         nextSeats = seatList.map(normalizeSeat);
       }
+
       setSeats(nextSeats);
       setSeatPickerError(null);
 
       const currentSeatIds = selectedSeatIdsRef.current;
       if (syncSelection && currentSeatIds.length > 0) {
-        const unavailable = new Set(nextSeats.filter(s => s.status !== 'available').map(s => s.id));
-        const removed = currentSeatIds.filter(id => unavailable.has(id));
-        if (removed.length > 0) {
-          setAssignForm(prev => ({
+        const unavailableSeatIds = new Set(
+          nextSeats
+            .filter((seat) => seat.status !== 'available')
+            .map((seat) => seat.id)
+        );
+        const removedSeatIds = currentSeatIds.filter((seatId) => unavailableSeatIds.has(seatId));
+
+        if (removedSeatIds.length > 0) {
+          setAssignForm((prev) => ({
             ...prev,
-            seatIdsInput: parseSeatIds(prev.seatIdsInput).filter(id => !unavailable.has(id)).join(', ')
+            seatIdsInput: parseSeatIds(prev.seatIdsInput)
+              .filter((seatId) => !unavailableSeatIds.has(seatId))
+              .join(', ')
           }));
-          setTicketSelectionBySeatId(prev => {
+          setTicketSelectionBySeatId((prev) => {
             const next = { ...prev };
-            removed.forEach(id => { delete next[id]; });
+            removedSeatIds.forEach((seatId) => {
+              delete next[seatId];
+            });
             return next;
           });
-          setError(removed.length === 1
-            ? 'A selected seat is no longer available — seating chart refreshed.'
-            : `${removed.length} selected seats are no longer available — seating chart refreshed.`
+          setError(
+            removedSeatIds.length === 1
+              ? 'A selected seat is no longer available. The seating chart was refreshed.'
+              : `${removedSeatIds.length} selected seats are no longer available. The seating chart was refreshed.`
           );
         }
       }
@@ -464,27 +789,36 @@ export default function AdminOrdersPage() {
     }
   }, []);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // DERIVED STATE
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── derived state ──────────────────────────────────────────────────────────
 
   const seatIds = useMemo(() => parseSeatIds(assignForm.seatIdsInput), [assignForm.seatIdsInput]);
   const gaTicketQuantity = useMemo(() => {
-    const p = Number.parseInt(assignForm.gaQuantityInput, 10);
-    return Number.isFinite(p) ? Math.max(0, Math.min(p, 50)) : 0;
+    const parsed = Number.parseInt(assignForm.gaQuantityInput, 10);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.max(0, Math.min(parsed, 50));
   }, [assignForm.gaQuantityInput]);
-
   const selectedPerformance = performances.find(p => p.id === assignForm.performanceId);
   const seatSelectionEnabled = selectedPerformance?.seatSelectionEnabled !== false;
   const selectionIds = useMemo(
-    () => seatSelectionEnabled ? seatIds : buildGeneralAdmissionLineIds(gaTicketQuantity),
+    () => (seatSelectionEnabled ? seatIds : buildGeneralAdmissionLineIds(gaTicketQuantity)),
     [gaTicketQuantity, seatIds, seatSelectionEnabled]
   );
-  const selectedSeatIdSet = useMemo(() => new Set(seatIds), [seatIds]);
 
-  // ── Effects ─────────────────────────────────────────────────────────────────
-  useEffect(() => { void Promise.all([load(), loadPerformances()]); }, []);
-  useEffect(() => { void load(); }, [scope]);
+  useEffect(() => {
+    selectedSeatIdsRef.current = seatIds;
+  }, [seatIds]);
+
+  useEffect(() => {
+    if (!showWizard || step !== 1 || !seatSelectionEnabled) setSeatPickerOpen(false);
+  }, [seatSelectionEnabled, showWizard, step]);
+
+  useEffect(() => {
+    if (!showWizard || step !== 1 || !seatSelectionEnabled) { didAutoOpenSeatPickerRef.current = false; return; }
+    if (didAutoOpenSeatPickerRef.current || seatPickerOpen || seatIds.length > 0) return;
+    didAutoOpenSeatPickerRef.current = true;
+    setSeatPickerOpen(true);
+  }, [seatIds.length, seatPickerOpen, seatSelectionEnabled, showWizard, step]);
+
   useEffect(() => { setActiveSection('All'); setSeatPickerError(null); setSeats([]); }, [assignForm.performanceId]);
   useEffect(() => {
     if (!seatSelectionEnabled || !seatPickerOpen || !assignForm.performanceId) return;
@@ -495,108 +829,232 @@ export default function AdminOrdersPage() {
     void loadCashTonight(assignForm.performanceId);
   }, [assignForm.performanceId, assignForm.source, loadCashTonight, showWizard]);
   useEffect(() => {
-    if (!showWizard || assignForm.source !== 'DOOR' || paymentMethod !== 'STRIPE' || step !== 2) return;
-    void loadTerminalDevices();
-  }, [assignForm.source, loadTerminalDevices, paymentMethod, showWizard, step]);
-  useEffect(() => { if (!showWizard || step !== 1 || !seatSelectionEnabled) setSeatPickerOpen(false); }, [seatSelectionEnabled, showWizard, step]);
-  useEffect(() => {
-    if (!showWizard || step !== 1 || !seatSelectionEnabled) { didAutoOpenSeatPickerRef.current = false; return; }
-    if (didAutoOpenSeatPickerRef.current || seatPickerOpen || seatIds.length > 0) return;
-    didAutoOpenSeatPickerRef.current = true;
-    setSeatPickerOpen(true);
-  }, [seatIds.length, seatPickerOpen, seatSelectionEnabled, showWizard, step]);
-  useEffect(() => { selectedSeatIdsRef.current = seatIds; }, [seatIds]);
-  useEffect(() => {
-    if (!showWizard || step === 0 || terminalDispatch || !assignForm.performanceId || !seatSelectionEnabled) return;
-    const id = window.setInterval(() => {
-      void loadSeatsForPerformance(assignForm.performanceId, { showLoading: false, syncSelection: true }).catch(() => undefined);
-    }, 5000);
-    return () => window.clearInterval(id);
-  }, [assignForm.performanceId, loadSeatsForPerformance, seatSelectionEnabled, showWizard, step, terminalDispatch]);
-
-  // ── Terminal dispatch stream sync ─────────────────────────────────────────
-  const applyTerminalDispatchStatus = useCallback((dispatch: TerminalDispatch) => {
-    setTerminalDispatch(dispatch);
-  }, []);
-  const refreshTerminalDispatchStatus = useCallback(async (dispatchId: string) => {
-    const dispatch = await adminFetch<TerminalDispatch>(`/api/admin/payment-line/entry/${encodeURIComponent(dispatchId)}`);
-    applyTerminalDispatchStatus(dispatch);
-  }, [applyTerminalDispatchStatus]);
-
-  useEffect(() => {
-    if (!terminalDispatch || !sellerStatusStream.snapshot) return;
-    const entry = sellerStatusStream.snapshot.entries.find(e => e.entryId === terminalDispatch.dispatchId);
-    if (!entry) {
-      const terminal = ['SUCCEEDED','FAILED','EXPIRED','CANCELED'].includes(terminalDispatch.status);
-      if (!terminal) void refreshTerminalDispatchStatus(terminalDispatch.dispatchId).catch(() => undefined);
+    if (!showWizard || assignForm.source !== 'DOOR' || paymentMethod !== 'STRIPE' || step !== 2) {
       return;
     }
-    applyTerminalDispatchStatus(mapEntryToTerminalDispatch(entry));
+    void loadTerminalDevices();
+  }, [assignForm.source, loadTerminalDevices, paymentMethod, showWizard, step]);
+
+  useEffect(() => {
+    if (!terminalDispatch || !sellerStatusStream.snapshot) {
+      return;
+    }
+
+    const nextEntry = sellerStatusStream.snapshot.entries.find((entry) => entry.entryId === terminalDispatch.dispatchId);
+    if (!nextEntry) {
+      if (terminalDispatch.status === 'SUCCEEDED' || terminalDispatch.status === 'FAILED' || terminalDispatch.status === 'EXPIRED' || terminalDispatch.status === 'CANCELED') {
+        return;
+      }
+      void refreshTerminalDispatchStatus(terminalDispatch.dispatchId).catch(() => undefined);
+      return;
+    }
+
+    applyTerminalDispatchStatus(mapEntryToTerminalDispatch(nextEntry));
   }, [applyTerminalDispatchStatus, refreshTerminalDispatchStatus, sellerStatusStream.snapshot, terminalDispatch]);
 
   useEffect(() => {
-    if (!terminalDispatch || sellerStatusStream.connected) return;
-    const terminal = ['SUCCEEDED','FAILED','EXPIRED','CANCELED'].includes(terminalDispatch.status);
-    if (terminal) return;
+    if (!terminalDispatch || sellerStatusStream.connected) {
+      return;
+    }
+
+    if (terminalDispatch.status === 'SUCCEEDED' || terminalDispatch.status === 'FAILED' || terminalDispatch.status === 'EXPIRED' || terminalDispatch.status === 'CANCELED') {
+      return;
+    }
+
     let cancelled = false;
-    const poll = async () => { if (cancelled) return; await refreshTerminalDispatchStatus(terminalDispatch.dispatchId).catch(() => undefined); };
+    const poll = async () => {
+      if (cancelled) return;
+      await refreshTerminalDispatchStatus(terminalDispatch.dispatchId).catch(() => undefined);
+    };
+
     void poll();
-    const id = window.setInterval(() => void poll(), 500);
-    return () => { cancelled = true; window.clearInterval(id); };
+    const timerId = window.setInterval(() => {
+      void poll();
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timerId);
+    };
   }, [refreshTerminalDispatchStatus, sellerStatusStream.connected, terminalDispatch]);
 
-  // ── Sale recap countdown ──────────────────────────────────────────────────
   useEffect(() => {
-    if (!saleRecap) { setSaleRecapSecsLeft(0); return; }
-    const tick = () => {
-      const left = Math.max(0, Math.ceil((saleRecap.expiresAtMs - Date.now()) / 1000));
-      setSaleRecapSecsLeft(left);
-      if (left <= 0) setSaleRecap(null);
-    };
-    tick();
-    const id = window.setInterval(tick, 250);
-    return () => window.clearInterval(id);
-  }, [saleRecap]);
+    if (!showWizard || step === 0 || terminalDispatch || !assignForm.performanceId || !seatSelectionEnabled) {
+      return;
+    }
+
+    const timerId = window.setInterval(() => {
+      void loadSeatsForPerformance(assignForm.performanceId, {
+        showLoading: false,
+        syncSelection: true
+      }).catch(() => undefined);
+    }, 5000);
+
+    return () => window.clearInterval(timerId);
+  }, [assignForm.performanceId, loadSeatsForPerformance, seatSelectionEnabled, showWizard, step, terminalDispatch]);
+
+  const selectedSeatIdSet = useMemo(() => new Set(seatIds), [seatIds]);
+
+  const updateSelectedSeatIds = useCallback((updater: (current: string[]) => string[]) => {
+    setAssignForm(prev => {
+      const current = parseSeatIds(prev.seatIdsInput);
+      const next = [...new Set(updater(current))];
+      return { ...prev, seatIdsInput: next.join(', ') };
+    });
+  }, []);
+
+  const toggleSeat = useCallback((id: string) => {
+    updateSelectedSeatIds(current =>
+      current.includes(id) ? current.filter(s => s !== id) : [...current, id]
+    );
+  }, [updateSelectedSeatIds]);
 
   const sections = useMemo(() => [...new Set(seats.map(s => s.sectionName))].sort(naturalSort), [seats]);
-  const visibleSeats = useMemo(() => seats.filter(s => activeSection === 'All' || s.sectionName === activeSection), [activeSection, seats]);
+  useEffect(() => { if (activeSection !== 'All' && !sections.includes(activeSection)) setActiveSection('All'); }, [activeSection, sections]);
+
+  const visibleSeats = useMemo(
+    () => seats.filter(s => activeSection === 'All' || s.sectionName === activeSection),
+    [activeSection, seats]
+  );
+
   const seatById = useMemo(() => new Map(seats.map(s => [s.id, s])), [seats]);
   const hasAccessibleSelection = useMemo(() => seatIds.some(id => Boolean(seatById.get(id)?.isAccessible)), [seatById, seatIds]);
+
   const selectedMappedSeats = useMemo(
     () => seatIds.map(id => seatById.get(id)).filter((s): s is Seat => Boolean(s))
       .sort((a, b) => naturalSort(a.sectionName, b.sectionName) || naturalSort(a.row, b.row) || a.number - b.number),
     [seatById, seatIds]
   );
-  const selectedUnknownSeatIds = useMemo(() => seatIds.filter(id => !seatById.has(id)), [seatById, seatIds]);
-  const selectedTerminalDevice = useMemo(() => terminalDevices.find(d => d.deviceId === selectedTerminalId) || null, [selectedTerminalId, terminalDevices]);
 
+  const selectedUnknownSeatIds = useMemo(() => seatIds.filter(id => !seatById.has(id)), [seatById, seatIds]);
+
+  const selectedTerminalDevice = useMemo(
+    () => terminalDevices.find((device) => device.deviceId === selectedTerminalDeviceId) || null,
+    [selectedTerminalDeviceId, terminalDevices]
+  );
+  const dispatchInlineStatus = useMemo<{
+    title: string;
+    detail: string;
+    tone: 'danger' | 'success' | 'neutral';
+  }>(() => {
+    const streamEntry = sellerStatusStream.sellerPayload.sellerEntry;
+    // Only trust seller stream-derived status when the stream is currently connected.
+    // When disconnected, the stream payload can be stale and must not override polled dispatch status.
+    if (sellerStatusStream.connected && streamEntry) {
+      if (streamEntry.uiState === 'WAITING_FOR_PAYMENT') {
+        const ahead = streamEntry.position && streamEntry.position > 0 ? streamEntry.position - 1 : null;
+        return {
+          title: 'Not your turn',
+          detail: ahead === null ? 'Phone is currently in use. Stay in line.' : `${ahead} ahead. Phone is currently in use.`,
+          tone: 'danger'
+        };
+      }
+      if (streamEntry.uiState === 'ACTIVE_PAYMENT') {
+        return { title: 'Ready to pay', detail: 'Phone is ready now. Indicate to pay.', tone: 'success' };
+      }
+      if (streamEntry.uiState === 'PAYMENT_SUCCESS') {
+        return { title: 'Payment approved', detail: 'Checkout completed successfully.', tone: 'success' };
+      }
+      if (streamEntry.uiState === 'PAYMENT_FAILED') {
+        return { title: 'Payment failed', detail: streamEntry.failureReason || 'Terminal payment failed.', tone: 'danger' };
+      }
+      if (streamEntry.uiState === 'CANCELED') {
+        return { title: 'Canceled', detail: 'This sale was canceled before payment completed.', tone: 'neutral' };
+      }
+    }
+
+    if (!terminalDispatch) {
+      return { title: 'Dispatch pending', detail: 'Waiting for terminal confirmation.', tone: 'neutral' };
+    }
+
+    if (terminalDispatch.status === 'PENDING' || terminalDispatch.status === 'DELIVERED') {
+      return { title: 'Not your turn', detail: 'Sent to terminal. Waiting for phone availability.', tone: 'danger' };
+    }
+    if (terminalDispatch.status === 'PROCESSING') {
+      return { title: 'Ready to pay', detail: 'Phone is collecting payment now. Indicate to pay.', tone: 'success' };
+    }
+    if (terminalDispatch.status === 'SUCCEEDED') {
+      return { title: 'Payment approved', detail: 'Checkout completed successfully.', tone: 'success' };
+    }
+    if (terminalDispatch.status === 'FAILED') {
+      return { title: 'Payment failed', detail: terminalDispatch.failureReason || 'Terminal payment failed.', tone: 'danger' };
+    }
+    if (terminalDispatch.status === 'EXPIRED') {
+      return { title: 'Dispatch expired', detail: 'Payment window expired before completion.', tone: 'danger' };
+    }
+    return { title: 'Dispatch canceled', detail: 'This sale was canceled before payment completed.', tone: 'neutral' };
+  }, [sellerStatusStream.connected, sellerStatusStream.sellerPayload.sellerEntry, terminalDispatch]);
+  const dispatchInlineStatusClasses = useMemo(() => {
+    if (dispatchInlineStatus.tone === 'success') {
+      return {
+        container: 'border-emerald-300 bg-emerald-50',
+        kicker: 'text-emerald-700',
+        title: 'text-emerald-900',
+        detail: 'text-emerald-800'
+      };
+    }
+    if (dispatchInlineStatus.tone === 'danger') {
+      return {
+        container: 'border-red-300 bg-red-50',
+        kicker: 'text-red-700',
+        title: 'text-red-900',
+        detail: 'text-red-800'
+      };
+    }
+    return {
+      container: 'border-slate-200 bg-slate-50',
+      kicker: 'text-slate-500',
+      title: 'text-slate-900',
+      detail: 'text-slate-600'
+    };
+  }, [dispatchInlineStatus.tone]);
   const selectedTicketOptions = useMemo<CashierTicketOption[]>(() => {
-    if (!selectedPerformance || !selectedPerformance.pricingTiers.length) return [];
-    const options: CashierTicketOption[] = selectedPerformance.pricingTiers.map(t => ({ id: t.id, name: t.name, priceCents: t.priceCents }));
-    if (selectedPerformance.staffCompsEnabled && !options.some(o => o.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketName(o.name))) {
-      options.push({ id: TEACHER_TICKET_OPTION_ID, name: 'RTMSD STAFF', priceCents: 0, isSynthetic: true });
+    if (!selectedPerformance) return [];
+    if (selectedPerformance.pricingTiers.length === 0) return [];
+    const options: CashierTicketOption[] = selectedPerformance.pricingTiers.map((tier) => ({
+      id: tier.id,
+      name: tier.name,
+      priceCents: tier.priceCents,
+    }));
+
+    const hasTeacherOption = options.some((option) => option.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketName(option.name));
+    if (selectedPerformance.staffCompsEnabled && !hasTeacherOption) {
+      options.push({
+        id: TEACHER_TICKET_OPTION_ID,
+        name: 'RTMSD STAFF',
+        priceCents: 0,
+        isSynthetic: true,
+      });
     }
-    if (selectedPerformance.studentCompTicketsEnabled && !options.some(o => o.id === STUDENT_SHOW_TICKET_OPTION_ID || isStudentInShowTicketName(o.name))) {
-      options.push({ id: STUDENT_SHOW_TICKET_OPTION_ID, name: 'Student in Show', priceCents: 0, isSynthetic: true });
+
+    const hasStudentOption = options.some((option) => option.id === STUDENT_SHOW_TICKET_OPTION_ID || isStudentInShowTicketName(option.name));
+    if (selectedPerformance.studentCompTicketsEnabled && !hasStudentOption) {
+      options.push({
+        id: STUDENT_SHOW_TICKET_OPTION_ID,
+        name: 'Student in Show',
+        priceCents: 0,
+        isSynthetic: true,
+      });
     }
+
     return options;
   }, [selectedPerformance]);
-
   const primaryTicketTier = selectedTicketOptions[0] || null;
   const primaryStandardTicketTier = useMemo(
-    () => selectedTicketOptions.find(o => !o.isSynthetic) || primaryTicketTier,
+    () => selectedTicketOptions.find((option) => !option.isSynthetic) || primaryTicketTier,
     [primaryTicketTier, selectedTicketOptions]
   );
 
   useEffect(() => {
     if (selectionIds.length === 0) { setTicketSelectionBySeatId({}); return; }
-    const defaultId = selectedTicketOptions[0]?.id || '';
+    const defaultTierId = selectedTicketOptions[0]?.id || '';
     setTicketSelectionBySeatId(prev => {
       const next: Record<string, string> = {};
-      selectionIds.forEach(id => {
-        const cur = prev[id];
+      selectionIds.forEach(seatId => {
+        const cur = prev[seatId];
         const valid = Boolean(cur && selectedTicketOptions.some(t => t.id === cur));
-        next[id] = valid ? cur : defaultId;
+        if (valid) { next[seatId] = cur; return; }
+        if (defaultTierId) next[seatId] = defaultTierId;
       });
       return next;
     });
@@ -609,20 +1067,27 @@ export default function AdminOrdersPage() {
 
   const selectedLines = useMemo<CashierSelectionLine[]>(() => {
     if (seatSelectionEnabled) {
-      return selectedMappedSeats.map(s => ({
-        id: s.id, label: `${s.sectionName} · Row ${s.row} · #${s.number}`,
-        sectionName: s.sectionName, row: s.row, number: s.number, seatPriceCents: Math.max(0, s.price)
+      return selectedMappedSeats.map((seat) => ({
+        id: seat.id,
+        label: `${seat.sectionName} · Row ${seat.row} · #${seat.number}`,
+        sectionName: seat.sectionName,
+        row: seat.row,
+        number: seat.number,
+        seatPriceCents: Math.max(0, seat.price)
       }));
     }
-    return selectionIds.map((id, i) => ({
-      id, label: `General Admission #${i + 1}`,
-      sectionName: 'General Admission', row: 'GA', number: i + 1,
+    return selectionIds.map((lineId, index) => ({
+      id: lineId,
+      label: `General Admission Ticket ${index + 1}`,
+      sectionName: 'General Admission',
+      row: 'GA',
+      number: index + 1,
       seatPriceCents: Math.max(0, primaryStandardTicketTier?.priceCents || 0)
     }));
   }, [primaryStandardTicketTier, seatSelectionEnabled, selectedMappedSeats, selectionIds]);
 
   const selectedSeatsWithTier = useMemo(
-    () => selectedLines.map(line => ({
+    () => selectedLines.map((line) => ({
       line,
       tier: selectedTicketOptions.find(t => t.id === ticketSelectionBySeatId[line.id]) || null
     })),
@@ -630,11 +1095,17 @@ export default function AdminOrdersPage() {
   );
 
   const teacherSelectedSeatIds = useMemo(
-    () => selectedSeatsWithTier.filter(item => item.tier && (item.tier.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketName(item.tier.name))).map(i => i.line.id),
+    () =>
+      selectedSeatsWithTier
+        .filter((item) => item.tier && (item.tier.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketName(item.tier.name)))
+        .map((item) => item.line.id),
     [selectedSeatsWithTier]
   );
   const studentInShowSelectedSeatIds = useMemo(
-    () => selectedSeatsWithTier.filter(item => item.tier && (item.tier.id === STUDENT_SHOW_TICKET_OPTION_ID || isStudentInShowTicketName(item.tier.name))).map(i => i.line.id),
+    () =>
+      selectedSeatsWithTier
+        .filter((item) => item.tier && (item.tier.id === STUDENT_SHOW_TICKET_OPTION_ID || isStudentInShowTicketName(item.tier.name)))
+        .map((item) => item.line.id),
     [selectedSeatsWithTier]
   );
   const hasTeacherCompSelection = teacherSelectedSeatIds.length > 0;
@@ -642,32 +1113,70 @@ export default function AdminOrdersPage() {
   const hasMixedCompSelection = hasTeacherCompSelection && hasStudentInShowCompSelection;
 
   const selectedSeatsWithPricing = useMemo(() => {
-    let priced = selectedSeatsWithTier.map(item => {
-      const isTeacher = Boolean(item.tier && (item.tier.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketName(item.tier.name)));
-      const isStudent = Boolean(item.tier && (item.tier.id === STUDENT_SHOW_TICKET_OPTION_ID || isStudentInShowTicketName(item.tier.name)));
-      const base = item.tier ? Math.max(0, item.tier.isSynthetic ? item.line.seatPriceCents : item.tier.priceCents) : 0;
-      return { line: item.line, tier: item.tier, basePriceCents: base, finalPriceCents: base, lineLabel: item.tier?.name || 'Unassigned', isTeacher, isStudent };
+    let priced = selectedSeatsWithTier.map((item) => {
+      const isTeacherTicket = Boolean(item.tier && (item.tier.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketName(item.tier.name)));
+      const isStudentTicket = Boolean(item.tier && (item.tier.id === STUDENT_SHOW_TICKET_OPTION_ID || isStudentInShowTicketName(item.tier.name)));
+      const basePriceCents = item.tier
+        ? Math.max(0, item.tier.isSynthetic ? item.line.seatPriceCents : item.tier.priceCents)
+        : 0;
+      return {
+        line: item.line,
+        tier: item.tier,
+        basePriceCents,
+        finalPriceCents: basePriceCents,
+        lineLabel: item.tier?.name || 'Unassigned',
+        isTeacherTicket,
+        isStudentTicket,
+      };
     });
+
     if (hasTeacherCompSelection && !hasStudentInShowCompSelection) {
-      const compIds = pickComplimentarySeatIds(
-        priced.filter(i => i.isTeacher).map(i => ({ id: i.line.id, sectionName: i.line.sectionName, row: i.line.row, number: i.line.number, basePriceCents: i.basePriceCents })),
-        Math.min(MAX_TEACHER_COMP_TICKETS, teacherSelectedSeatIds.length)
+      const teacherSeats = priced.filter((item) => item.isTeacherTicket);
+      const complimentarySeatIds = pickComplimentarySeatIds(
+        teacherSeats.map((item) => ({
+          id: item.line.id,
+          sectionName: item.line.sectionName,
+          row: item.line.row,
+          number: item.line.number,
+          basePriceCents: item.basePriceCents
+        })),
+        Math.min(MAX_TEACHER_COMP_TICKETS, teacherSeats.length)
       );
-      priced = priced.map(i => i.isTeacher && compIds.has(i.line.id) ? { ...i, finalPriceCents: 0, lineLabel: 'Teacher Comp' } : i);
+      priced = priced.map((item) =>
+        item.isTeacherTicket && complimentarySeatIds.has(item.line.id)
+          ? { ...item, finalPriceCents: 0, lineLabel: 'Teacher Comp' }
+          : item
+      );
     }
+
     if (hasStudentInShowCompSelection && !hasTeacherCompSelection) {
-      const compIds = pickComplimentarySeatIds(
-        priced.filter(i => i.isStudent).map(i => ({ id: i.line.id, sectionName: i.line.sectionName, row: i.line.row, number: i.line.number, basePriceCents: i.basePriceCents })),
-        Math.min(MAX_STUDENT_COMP_TICKETS, studentInShowSelectedSeatIds.length)
+      const studentSeats = priced.filter((item) => item.isStudentTicket);
+      const complimentarySeatIds = pickComplimentarySeatIds(
+        studentSeats.map((item) => ({
+          id: item.line.id,
+          sectionName: item.line.sectionName,
+          row: item.line.row,
+          number: item.line.number,
+          basePriceCents: item.basePriceCents
+        })),
+        Math.min(MAX_STUDENT_COMP_TICKETS, studentSeats.length)
       );
-      priced = priced.map(i => i.isStudent && compIds.has(i.line.id) ? { ...i, finalPriceCents: 0, lineLabel: 'Student Comp' } : i);
+      priced = priced.map((item) =>
+        item.isStudentTicket && complimentarySeatIds.has(item.line.id)
+          ? { ...item, finalPriceCents: 0, lineLabel: 'Student Comp' }
+          : item
+      );
     }
+
     return priced;
-  }, [hasStudentInShowCompSelection, hasTeacherCompSelection, selectedSeatsWithTier, studentInShowSelectedSeatIds.length, teacherSelectedSeatIds.length]);
+  }, [hasStudentInShowCompSelection, hasTeacherCompSelection, selectedSeatsWithTier]);
 
-  const subtotalCents = useMemo(() => selectedSeatsWithPricing.reduce((s, i) => s + i.finalPriceCents, 0), [selectedSeatsWithPricing]);
+  const selectedTierSubtotalCents = useMemo(
+    () => selectedSeatsWithPricing.reduce((sum, item) => sum + item.finalPriceCents, 0),
+    [selectedSeatsWithPricing]
+  );
 
-  const tierBreakdown = useMemo(() => {
+  const selectedTierBreakdown = useMemo(() => {
     const counts = new Map<string, { name: string; priceCents: number; count: number }>();
     selectedSeatsWithPricing.forEach(item => {
       const key = `${item.lineLabel}:${item.finalPriceCents}`;
@@ -678,334 +1187,149 @@ export default function AdminOrdersPage() {
     return [...counts.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }));
   }, [selectedSeatsWithPricing]);
 
-  const fmtTierOption = useCallback((tier: CashierTicketOption) => {
-    if (tier.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketName(tier.name))
-      return `${tier.name} — first ${MAX_TEACHER_COMP_TICKETS} free`;
-    if (tier.id === STUDENT_SHOW_TICKET_OPTION_ID || isStudentInShowTicketName(tier.name))
-      return `${tier.name} — first ${MAX_STUDENT_COMP_TICKETS} free`;
-    return `${tier.name} — ${fmtDollars(tier.priceCents)}`;
+  const formatTicketOptionLabel = useCallback((tier: CashierTicketOption) => {
+    if (tier.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketName(tier.name)) {
+      return `${tier.name} · first ${MAX_TEACHER_COMP_TICKETS} free`;
+    }
+    if (tier.id === STUDENT_SHOW_TICKET_OPTION_ID || isStudentInShowTicketName(tier.name)) {
+      return `${tier.name} · first ${MAX_STUDENT_COMP_TICKETS} free`;
+    }
+    return `${tier.name} · $${(tier.priceCents / 100).toFixed(2)}`;
   }, []);
 
-  // ── Dispatch inline status ────────────────────────────────────────────────
-  const dispatchStatus = useMemo<{ title: string; detail: string; tone: 'success' | 'danger' | 'neutral' }>(() => {
-    const entry = sellerStatusStream.sellerPayload.sellerEntry;
-    if (sellerStatusStream.connected && entry) {
-      if (entry.uiState === 'WAITING_FOR_PAYMENT') {
-        const ahead = entry.position && entry.position > 0 ? entry.position - 1 : null;
-        return { title: 'Queued', detail: ahead === null ? 'Phone is busy — stay in line.' : `${ahead} ahead of you.`, tone: 'neutral' };
-      }
-      if (entry.uiState === 'ACTIVE_PAYMENT') return { title: 'Ready to pay', detail: 'Phone is live. Indicate to customer.', tone: 'success' };
-      if (entry.uiState === 'PAYMENT_SUCCESS') return { title: 'Approved', detail: 'Payment completed successfully.', tone: 'success' };
-      if (entry.uiState === 'PAYMENT_FAILED') return { title: 'Failed', detail: entry.failureReason || 'Terminal payment failed.', tone: 'danger' };
-      if (entry.uiState === 'CANCELED') return { title: 'Canceled', detail: 'Sale was canceled before payment.', tone: 'neutral' };
-    }
-    if (!terminalDispatch) return { title: 'Pending', detail: 'Waiting for terminal confirmation.', tone: 'neutral' };
-    if (terminalDispatch.status === 'PENDING' || terminalDispatch.status === 'DELIVERED') return { title: 'Queued', detail: 'Sent — waiting for phone availability.', tone: 'neutral' };
-    if (terminalDispatch.status === 'PROCESSING') return { title: 'Ready to pay', detail: 'Phone is collecting payment.', tone: 'success' };
-    if (terminalDispatch.status === 'SUCCEEDED') return { title: 'Approved', detail: 'Payment completed successfully.', tone: 'success' };
-    if (terminalDispatch.status === 'FAILED') return { title: 'Failed', detail: terminalDispatch.failureReason || 'Terminal payment failed.', tone: 'danger' };
-    if (terminalDispatch.status === 'EXPIRED') return { title: 'Expired', detail: 'Payment window closed before completion.', tone: 'danger' };
-    return { title: 'Canceled', detail: 'Sale was canceled before payment.', tone: 'neutral' };
-  }, [sellerStatusStream.connected, sellerStatusStream.sellerPayload.sellerEntry, terminalDispatch]);
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // ACTIONS
-  // ─────────────────────────────────────────────────────────────────────────
-
-  const search = (e: FormEvent) => { e.preventDefault(); void load(); };
-
-  const goTo = (next: number) => { setDir(next > step ? 1 : -1); setStep(next); setError(null); };
-
-  const resetInPersonFlow = () => {
-    setInPersonFlowError(null); setInPersonSubmitting(false);
-    setPaymentMethod('STRIPE'); setReceiptEmail(''); setSendReceipt(false); setStudentCode('');
-    setTerminalDevices([]); setLoadingTerminals(false); setSelectedTerminalId('');
-    setTerminalDispatch(null); setDispatchBusy(false);
-    setCashTonight(null); setLoadingCashTonight(false);
-  };
-
-  const closeWizard = () => {
-    setShowWizard(false); setStep(0); setError(null);
-    setSeatPickerOpen(false); setSeatPickerError(null);
-    setTicketSelectionBySeatId({}); resetInPersonFlow();
-  };
-
-  const startCashierLoop = (performanceId: string) => {
-    if (!performanceId) { setError('No active performances available.'); return; }
-    writeCashierDefaultPerformanceId(performanceId);
-    didAutoOpenSeatPickerRef.current = false;
-    setAssignForm(prev => ({ ...prev, performanceId, customerName: '', customerEmail: '', seatIdsInput: '', gaQuantityInput: '1', ticketType: '', sendEmail: false }));
-    setTicketSelectionBySeatId({});
-    resetInPersonFlow();
-    setShowPerfPicker(false); setSeatPickerError(null); setSeatPickerOpen(false);
-    setShowWizard(true); setDir(1); setStep(0); setError(null);
-    void loadSeatsForPerformance(performanceId, { showLoading: false, syncSelection: false });
-  };
-
-  const openCashierFlow = () => {
-    if (!performances.length) { setError('No active performances available.'); return; }
-    const stored = readCashierDefaultPerformanceId();
-    const next =
-      performances.some(p => p.id === assignForm.performanceId) ? assignForm.performanceId
-      : performances.some(p => p.id === stored) ? stored
-      : performances[0]?.id || '';
-    setPerfPickerDraftId(next);
-    if (next) { startCashierLoop(next); return; }
-    setShowPerfPicker(true); setError(null);
-  };
-
-  const handleWizardNext = () => {
-    if (step === 0) { goTo(1); return; }
-    if (step === 1) {
-      if (selectionIds.length === 0) {
-        setError(seatSelectionEnabled ? 'Select at least one seat to continue.' : 'Enter at least one GA ticket to continue.');
-        if (seatSelectionEnabled) setSeatPickerOpen(true);
-        return;
-      }
-      goTo(2);
-    }
-  };
-
-  const moveOnFromSeatPicker = () => {
-    if (step === 1) {
-      if (seatIds.length === 0) { setSeatPickerError('Select at least one seat before continuing.'); return; }
-      setSeatPickerOpen(false); goTo(2); return;
-    }
-    setSeatPickerOpen(false);
-  };
-
-  const toggleSeat = useCallback((id: string) => {
-    setAssignForm(prev => {
-      const current = parseSeatIds(prev.seatIdsInput);
-      const next = current.includes(id) ? current.filter(s => s !== id) : [...current, id];
-      return { ...prev, seatIdsInput: [...new Set(next)].join(', ') };
-    });
-  }, []);
-
-  const assignOrder = async () => {
-    setError(null); setNotice(null);
-    if (!assignForm.performanceId || selectionIds.length === 0) {
-      setError(seatSelectionEnabled ? 'Choose a performance and at least one seat.' : 'Choose a performance and enter ticket count.');
-      return;
-    }
-    if (assignForm.source !== 'COMP') { setError('Door sales must use the in-person finalize flow.'); return; }
-    if (assignForm.sendEmail && !assignForm.customerEmail.trim()) { setError('Enter an email to send comp tickets.'); return; }
-    if (missingTicketTypeCount > 0) { setError('Assign a ticket type to every seat before continuing.'); return; }
-    const ticketTypeBySeatId = Object.fromEntries(selectionIds.map(id => [id, ticketSelectionBySeatId[id] || 'Comp']));
-    const priceBySeatId = Object.fromEntries(selectionIds.map(id => [id, 0]));
-    setSubmitting(true);
-    try {
-      await adminFetch('/api/admin/orders/assign', {
-        method: 'POST',
-        body: JSON.stringify({
-          performanceId: assignForm.performanceId,
-          seatIds: selectionIds,
-          customerName: assignForm.customerName.trim() || 'Comp Guest',
-          customerEmail: assignForm.customerEmail.trim().toLowerCase() || `comp+${Date.now()}@boxoffice.local`,
-          ticketTypeBySeatId, priceBySeatId, source: assignForm.source,
-          sendEmail: Boolean(assignForm.sendEmail && assignForm.customerEmail.trim())
-        }),
-      });
-      setNotice(`Assigned ${selectionIds.length} ${seatSelectionEnabled ? 'seat' : 'ticket'}${selectionIds.length !== 1 ? 's' : ''} successfully.`);
-      startCashierLoop(assignForm.performanceId);
-      void load(); void loadSeatsForPerformance(assignForm.performanceId, { showLoading: false, syncSelection: false });
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to assign seats'); }
-    finally { setSubmitting(false); }
-  };
-
-  const finalizeInPersonSale = async () => {
-    setError(null); setNotice(null); setInPersonFlowError(null);
-    if (!assignForm.performanceId || selectionIds.length === 0) {
-      setError(seatSelectionEnabled ? 'Choose a performance and at least one seat.' : 'Choose a performance and enter ticket count.');
-      return;
-    }
-    if (!selectedTicketOptions.length) { setError('No pricing tiers configured for this performance.'); return; }
-    if (missingTicketTypeCount > 0) { setError('Assign a ticket type to every seat before checkout.'); return; }
-    if (hasMixedCompSelection) { setInPersonFlowError('Teacher and Student in Show comps cannot be mixed in one order.'); return; }
-    const normalizedCode = studentCode.trim().toLowerCase().replace(/\s+/g, '');
-    if (hasStudentInShowCompSelection && !normalizedCode) { setInPersonFlowError('Student code is required for Student in Show tickets.'); return; }
-    const normalizedEmail = receiptEmail.trim().toLowerCase();
-    if (sendReceipt && !normalizedEmail) { setInPersonFlowError('Enter an email address to send receipt.'); return; }
-
-    if (paymentMethod === 'STRIPE') {
-      if (!selectedTerminalId) { setInPersonFlowError('Select a payment terminal before sending card payment.'); return; }
-      setInPersonSubmitting(true);
-      try {
-        const dispatch = await adminFetch<TerminalDispatch>('/api/admin/payment-line/enqueue', {
-          method: 'POST',
-          body: JSON.stringify({
-            performanceId: assignForm.performanceId, seatIds: selectionIds,
-            ticketSelectionBySeatId, receiptEmail: normalizedEmail || undefined,
-            sendReceipt, customerName: assignForm.customerName.trim() || undefined,
-            studentCode: hasStudentInShowCompSelection ? normalizedCode : undefined,
-            deviceId: selectedTerminalId
-          })
-        });
-        setTerminalDispatch(dispatch);
-      } catch (e) { setInPersonFlowError(e instanceof Error ? e.message : 'Failed to send to payment line'); }
-      finally { setInPersonSubmitting(false); }
-      return;
-    }
-
-    setInPersonSubmitting(true);
-    try {
-      const result = await adminFetch<{ expectedAmountCents: number; paymentMethod: 'STRIPE'|'CASH'; seats: InPersonFinalizeSeatSummary[] }>(
-        '/api/admin/orders/in-person/finalize',
-        { method: 'POST', body: JSON.stringify({
-          performanceId: assignForm.performanceId, seatIds: selectionIds,
-          ticketSelectionBySeatId, paymentMethod,
-          receiptEmail: normalizedEmail || undefined, sendReceipt,
-          customerName: assignForm.customerName.trim() || undefined,
-          studentCode: hasStudentInShowCompSelection ? normalizedCode : undefined
-        })}
-      );
-      setSaleRecap({ expectedAmountCents: result.expectedAmountCents, paymentMethod: result.paymentMethod, seats: result.seats, expiresAtMs: Date.now() + 10000 });
-      setNotice(`${paymentMethod === 'CASH' ? 'Cash' : 'Card'} sale — ${selectionIds.length} ${seatSelectionEnabled ? 'seat' : 'ticket'}${selectionIds.length !== 1 ? 's' : ''} · ${fmtDollars(result.expectedAmountCents)}`);
-      startCashierLoop(assignForm.performanceId);
-      void load();
-    } catch (e) { setInPersonFlowError(e instanceof Error ? e.message : 'Failed to finalize sale'); }
-    finally { setInPersonSubmitting(false); }
-  };
-
-  const finalizeSuccessfulTerminalDispatch = (dispatch: TerminalDispatch) => {
-    setSaleRecap({ expectedAmountCents: dispatch.expectedAmountCents, paymentMethod: 'STRIPE', seats: dispatch.seats, expiresAtMs: Date.now() + 10000 });
-    setNotice(`Card sale — ${dispatch.seatCount} seat${dispatch.seatCount !== 1 ? 's' : ''} · ${fmtDollars(dispatch.expectedAmountCents)}`);
-    setTerminalDispatch(null);
-    startCashierLoop(assignForm.performanceId);
-    void load(); void loadSeatsForPerformance(assignForm.performanceId, { showLoading: false, syncSelection: false });
-  };
-
-  const retryTerminalDispatch = useCallback(async () => {
-    if (!terminalDispatch) return;
-    setDispatchBusy(true); setInPersonFlowError(null);
-    try {
-      const d = await adminFetch<TerminalDispatch>(`/api/admin/payment-line/entry/${encodeURIComponent(terminalDispatch.dispatchId)}/retry-now`, { method: 'POST' });
-      applyTerminalDispatchStatus(d);
-    } catch (e) {
-      setInPersonFlowError(e instanceof Error ? e.message : 'Retry failed');
-      await refreshTerminalDispatchStatus(terminalDispatch.dispatchId).catch(() => undefined);
-    } finally { setDispatchBusy(false); }
-  }, [applyTerminalDispatchStatus, refreshTerminalDispatchStatus, terminalDispatch]);
-
-  const cancelTerminalDispatch = useCallback(async () => {
-    if (!terminalDispatch) return;
-    setDispatchBusy(true);
-    try {
-      const d = await adminFetch<TerminalDispatch>(`/api/admin/payment-line/entry/${encodeURIComponent(terminalDispatch.dispatchId)}/cancel`, { method: 'POST' });
-      setTerminalDispatch(d.status === 'CANCELED' ? null : d);
-    } catch (e) { setInPersonFlowError(e instanceof Error ? e.message : 'Cancel failed'); }
-    finally { setDispatchBusy(false); }
-  }, [terminalDispatch]);
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // WIZARD STEP CONTENT
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── wizard step content ────────────────────────────────────────────────────
 
   const wizardSteps = [
 
-    /* ─── STEP 0: Performance ─── */
-    <div key="show" className="space-y-6">
+    /* ── STEP 0: Performance ── */
+    <div key="show" className="space-y-5">
       <div>
-        <Label>Performance</Label>
+        <FieldLabel>Performance</FieldLabel>
         <select
           value={assignForm.performanceId}
-          onChange={e => { setAssignForm({ ...assignForm, performanceId: e.target.value }); writeCashierDefaultPerformanceId(e.target.value); }}
-          className={sel}
+          onChange={e => {
+            const nextPerformanceId = e.target.value;
+            setAssignForm({ ...assignForm, performanceId: nextPerformanceId });
+            writeCashierDefaultPerformanceId(nextPerformanceId);
+          }}
+          className={baseSelect}
         >
           {performances.map(p => (
             <option key={p.id} value={p.id}>
-              {p.title}{p.isFundraiser ? ' [Fundraiser]' : ''} — {fmtDate(p.startsAt)}
+              {p.title}
+              {p.isFundraiser ? ' [Fundraiser]' : ''}
+              {' — '}
+              {new Date(p.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
             </option>
           ))}
         </select>
       </div>
 
       <div>
-        <Label>Order type</Label>
-        <div className="grid grid-cols-2 gap-2">
+        <FieldLabel>Order type</FieldLabel>
+        <div className="grid grid-cols-2 gap-3">
           {(['DOOR', 'COMP'] as const).map(src => (
             <button
               key={src}
               type="button"
               onClick={() => setAssignForm({ ...assignForm, source: src })}
-              className={`rounded-lg border-2 px-4 py-3 text-left transition ${
-                assignForm.source === src ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white hover:border-slate-300'
+              className={`group relative overflow-hidden rounded-2xl border-2 px-5 py-4 text-left transition-all ${
+                assignForm.source === src
+                  ? 'border-rose-600 bg-rose-50'
+                  : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
               }`}
             >
-              <div className={`text-sm font-bold ${assignForm.source === src ? 'text-white' : 'text-slate-800'}`}>
-                {src === 'DOOR' ? '🎟 Door Sale' : '🎁 Comp'}
+              <div className={`mb-1 text-sm font-bold ${assignForm.source === src ? 'text-rose-700' : 'text-slate-700'}`}>
+                {src === 'DOOR' ? 'Door Sale' : 'Comp'}
               </div>
-              <div className={`mt-0.5 text-xs ${assignForm.source === src ? 'text-slate-300' : 'text-slate-400'}`}>
-                {src === 'DOOR' ? 'Paid in-person checkout' : 'Complimentary — no charge'}
+              <div className={`text-xs ${assignForm.source === src ? 'text-rose-500' : 'text-slate-400'}`}>
+                {src === 'DOOR' ? 'Paid in-person checkout' : 'Complimentary ticket'}
               </div>
+              {assignForm.source === src && (
+                <div className="absolute right-3 top-3">
+                  <div className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-600">
+                    <Check className="h-3 w-3 text-white" />
+                  </div>
+                </div>
+              )}
             </button>
           ))}
         </div>
       </div>
 
       {selectedTicketOptions.length > 0 ? (
-        <div>
-          <Label>Available pricing</Label>
-          <div className="flex flex-wrap gap-2">
-            {selectedTicketOptions.map(opt => (
-              <span key={opt.id} className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
-                {fmtTierOption(opt)}
+        <Card className="p-4">
+          <FieldLabel>Pricing tiers</FieldLabel>
+          <div className="flex flex-wrap gap-2 mt-2">
+            {selectedTicketOptions.map(option => (
+              <span key={option.id} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700">
+                {formatTicketOptionLabel(option)}
               </span>
             ))}
           </div>
-        </div>
+        </Card>
       ) : (
-        <Alert type="warn">No pricing tiers configured. Add them in Performances before checkout.</Alert>
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+          No pricing tiers found. Add pricing tiers in Performances before cashier checkout.
+        </div>
       )}
     </div>,
 
-    /* ─── STEP 1: Seats ─── */
+    /* ── STEP 1: Seats ── */
     <div key="seats" className="space-y-4">
       <div>
-        <div className="mb-2 flex items-center justify-between">
-          <Label>{seatSelectionEnabled ? 'Seat selection' : 'Ticket quantity'}</Label>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <FieldLabel>{seatSelectionEnabled ? 'Selected seats' : 'Ticket quantity'}</FieldLabel>
           <div className="flex gap-2">
-            {seatSelectionEnabled && (
-              <Btn
-                size="sm" variant="primary"
-                onClick={() => { if (!assignForm.performanceId) { setError('Choose a performance first.'); return; } setSeatPickerOpen(true); setSeatPickerError(null); }}
-              >
-                <MapPin className="h-3 w-3" /> Open map
-              </Btn>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (!assignForm.performanceId) { setError('Choose a performance first.'); return; }
+                setSeatPickerOpen(true); setSeatPickerError(null);
+              }}
+              disabled={!seatSelectionEnabled}
+              className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700"
+            >
+              <MapPin className="h-3.5 w-3.5" /> Open seat map
+            </button>
             {seatSelectionEnabled && seatIds.length > 0 && (
-              <Btn size="sm" variant="ghost" onClick={() => setAssignForm({ ...assignForm, seatIdsInput: '' })}>
-                <X className="h-3 w-3" /> Clear
-              </Btn>
+              <button
+                type="button"
+                onClick={() => setAssignForm({ ...assignForm, seatIdsInput: '' })}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-50"
+              >
+                <X className="h-3.5 w-3.5" /> Clear all
+              </button>
             )}
           </div>
         </div>
-
         {seatSelectionEnabled ? (
           <input
             value={assignForm.seatIdsInput}
             onChange={e => setAssignForm({ ...assignForm, seatIdsInput: e.target.value })}
             placeholder="Paste seat IDs: A1, A2, B3…"
-            className={inp}
+            className={baseInput}
           />
         ) : (
           <input
-            type="number" min={1} max={50}
+            type="number"
+            min={1}
+            max={50}
             value={assignForm.gaQuantityInput}
             onChange={e => setAssignForm({ ...assignForm, gaQuantityInput: e.target.value.replace(/[^\d]/g, '') })}
-            placeholder="Ticket quantity"
-            className={inp}
+            placeholder="Enter ticket quantity"
+            className={baseInput}
           />
         )}
-
         {seatSelectionEnabled && seatIds.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
+          <div className="mt-3 flex flex-wrap gap-2">
             {seatIds.map(id => (
               <button
                 key={id}
                 type="button"
                 onClick={() => toggleSeat(id)}
-                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-mono font-medium text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-sans font-semibold text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
               >
                 {id} <X className="h-3 w-3" />
               </button>
@@ -1014,37 +1338,42 @@ export default function AdminOrdersPage() {
         )}
       </div>
 
-      {/* Summary card */}
-      <div className="rounded-xl border border-slate-200 overflow-hidden">
+      <Card>
         {[
           { label: 'Performance', value: selectedPerformance?.title ?? '—' },
           { label: 'Type', value: assignForm.source === 'DOOR' ? 'Door Sale' : 'Comp' },
           {
-            label: seatSelectionEnabled ? 'Seats' : 'Tickets',
+            label: seatSelectionEnabled ? 'Seats selected' : 'Tickets selected',
             value: selectionIds.length > 0
-              ? <span className="font-bold text-slate-900">{selectionIds.length} selected</span>
-              : <span className="text-amber-600">None selected</span>
+              ? <span className="font-bold text-slate-900">{selectionIds.length} {seatSelectionEnabled ? 'seat' : 'ticket'}{selectionIds.length !== 1 ? 's' : ''}</span>
+              : <span className="font-semibold text-amber-600">{seatSelectionEnabled ? 'None selected' : 'No tickets entered'}</span>
           },
         ].map(({ label, value }, i, arr) => (
-          <div key={label} className={`flex items-center justify-between px-4 py-3 text-sm ${i < arr.length - 1 ? 'border-b border-slate-100' : ''}`}>
+          <div key={label} className={`flex items-center justify-between px-5 py-3.5 text-sm ${i < arr.length - 1 ? 'border-b border-slate-100' : ''}`}>
             <span className="text-slate-400">{label}</span>
-            <span className="text-right font-medium text-slate-700">{value}</span>
+            <span className="text-right font-semibold text-slate-700">{value}</span>
           </div>
         ))}
-      </div>
+      </Card>
     </div>,
 
-    /* ─── STEP 2: Checkout ─── */
+    /* ── STEP 2: Checkout ── */
     <div key="tickets" className="space-y-5">
       {!selectionIds.length ? (
-        <Alert type="warn">{seatSelectionEnabled ? 'Go back and select at least one seat.' : 'Go back and enter ticket quantity.'}</Alert>
-      ) : !selectedTicketOptions.length ? (
-        <Alert type="warn">No pricing tiers configured for this performance.</Alert>
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+          {seatSelectionEnabled ? 'Go back and select at least one seat.' : 'Go back and enter at least one GA ticket.'}
+        </div>
+      ) : selectedTicketOptions.length === 0 ? (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+          No pricing tiers configured for this performance.
+        </div>
       ) : (
         <>
           {/* Quick apply */}
           <div>
-            <Label>Quick-assign all</Label>
+            <FieldLabel>Quick-apply to all {seatSelectionEnabled ? 'seats' : 'tickets'}</FieldLabel>
             <div className="flex flex-wrap gap-2">
               {selectedTicketOptions.map(tier => (
                 <button
@@ -1057,402 +1386,439 @@ export default function AdminOrdersPage() {
                       return next;
                     });
                   }}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:border-slate-900 hover:bg-slate-900 hover:text-white"
+                  className={`rounded-xl border-2 px-4 py-2 text-sm font-semibold transition ${
+                    tier.id === primaryTicketTier?.id
+                      ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                  }`}
                 >
-                  {fmtTierOption(tier)}
+                  {formatTicketOptionLabel(tier)}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Per-seat assignment */}
-          <div className="rounded-xl border border-slate-200 overflow-hidden">
-            {selectedLines.map((line, i) => (
-              <div
-                key={line.id}
-                className={`flex items-center justify-between gap-3 px-4 py-2.5 ${i < selectedLines.length - 1 ? 'border-b border-slate-100' : ''}`}
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-800 truncate">{line.label}</p>
-                  <p className="text-[11px] font-mono text-slate-400">{line.id}</p>
+          {/* Per-seat type selection */}
+          <Card className="divide-y divide-slate-100 overflow-hidden">
+            {selectedLines.map(line => (
+              <div key={line.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">
+                    {line.label}
+                  </p>
+                  <p className="text-xs font-sans text-slate-400">{line.id}</p>
                 </div>
                 <select
                   value={ticketSelectionBySeatId[line.id] || ''}
                   onChange={e => setTicketSelectionBySeatId(prev => ({ ...prev, [line.id]: e.target.value }))}
-                  className="min-w-[160px] rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:border-slate-900 focus:outline-none"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100 sm:w-56"
                 >
                   <option value="">Select type…</option>
-                  {selectedTicketOptions.map(t => <option key={t.id} value={t.id}>{fmtTierOption(t)}</option>)}
+                  {selectedTicketOptions.map(tier => (
+                    <option key={tier.id} value={tier.id}>
+                      {formatTicketOptionLabel(tier)}
+                    </option>
+                  ))}
                 </select>
               </div>
             ))}
-          </div>
+          </Card>
 
           {/* Order summary */}
-          <div className="rounded-xl border border-slate-200 overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-2.5">
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Summary</span>
+          <Card className="overflow-hidden">
+            <div className="flex items-center justify-between bg-slate-50 px-5 py-3 border-b border-slate-100">
+              <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Order summary</p>
               {missingTicketTypeCount > 0
-                ? <span className="text-xs font-medium text-amber-600">{missingTicketTypeCount} unassigned</span>
-                : <span className="flex items-center gap-1 text-xs font-medium text-emerald-600"><Check className="h-3 w-3" /> All set</span>
+                ? <span className="text-xs font-semibold text-amber-600">{missingTicketTypeCount} {seatSelectionEnabled ? 'seat' : 'ticket'}{missingTicketTypeCount !== 1 ? 's' : ''} unassigned</span>
+                : <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600"><Check className="h-3 w-3" /> All assigned</span>
               }
             </div>
-            <div className="divide-y divide-slate-50 px-4">
-              {tierBreakdown.map(item => (
-                <div key={item.name} className="flex items-center justify-between py-2.5 text-sm">
+            <div className="divide-y divide-slate-50 px-5">
+              {selectedTierBreakdown.map(item => (
+                <div key={item.name} className="flex items-center justify-between py-3 text-sm">
                   <span className="text-slate-600">{item.name} <span className="text-slate-400">×{item.count}</span></span>
-                  <span className="font-semibold">{fmtDollars(item.priceCents * item.count)}</span>
+                  <span className="font-semibold text-slate-900">${((item.priceCents * item.count) / 100).toFixed(2)}</span>
                 </div>
               ))}
             </div>
-            <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-4 py-3">
-              <span className="text-xs font-black uppercase tracking-widest text-slate-400">Total</span>
-              <span className="text-2xl font-black tracking-tight text-slate-900">{fmtDollars(subtotalCents)}</span>
+            <div className="flex items-end justify-between bg-slate-50 px-5 py-4 border-t border-slate-100">
+              <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Total</p>
+              <p className="text-3xl font-black tracking-tight text-slate-900">${(selectedTierSubtotalCents / 100).toFixed(2)}</p>
             </div>
             {hasMixedCompSelection && (
-              <div className="border-t border-red-100 bg-red-50 px-4 py-2.5 text-xs font-medium text-red-700">
-                ⚠️ Teacher and Student comps cannot be mixed in one order.
+              <div className="border-t border-red-100 bg-red-50 px-5 py-3 text-xs font-semibold text-red-700">
+                Teacher and Student in Show complimentary tickets cannot be mixed in one order.
               </div>
             )}
-          </div>
+          </Card>
 
-          {/* Comp section */}
+          {/* Comp guest + email section */}
           {assignForm.source === 'COMP' && (
-            <div className="rounded-xl border border-slate-200 overflow-hidden">
-              <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5">
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Guest & delivery</span>
+            <Card className="overflow-hidden">
+              <div className="bg-slate-50 px-5 py-3 border-b border-slate-100">
+                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Guest & delivery</p>
               </div>
-              <div className="space-y-4 p-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <input type="text" value={assignForm.customerName} onChange={e => setAssignForm({ ...assignForm, customerName: e.target.value })} placeholder="Guest name (optional)" className={inp} />
-                  <input type="email" value={assignForm.customerEmail} onChange={e => setAssignForm({ ...assignForm, customerEmail: e.target.value })} placeholder="guest@email.com" className={inp} />
+              <div className="p-5 space-y-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <input
+                    type="text"
+                    value={assignForm.customerName}
+                    onChange={e => setAssignForm({ ...assignForm, customerName: e.target.value })}
+                    placeholder="Guest name (optional)"
+                    className={baseInput}
+                  />
+                  <input
+                    type="email"
+                    value={assignForm.customerEmail}
+                    onChange={e => setAssignForm({ ...assignForm, customerEmail: e.target.value })}
+                    placeholder="guest@email.com"
+                    className={baseInput}
+                  />
                 </div>
-                <Toggle on={assignForm.sendEmail} onToggle={() => setAssignForm(p => ({ ...p, sendEmail: !p.sendEmail }))} label="Send confirmation email" />
+
+                <label className="flex cursor-pointer items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setAssignForm(prev => ({ ...prev, sendEmail: !prev.sendEmail }))}
+                    className={`relative h-6 w-11 flex-shrink-0 rounded-full transition-colors ${assignForm.sendEmail ? 'bg-rose-600' : 'bg-slate-200'}`}
+                  >
+                    <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${assignForm.sendEmail ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                  <span className="text-sm font-semibold text-slate-700">Send comp tickets by email</span>
+                </label>
+
                 {assignForm.sendEmail && !assignForm.customerEmail.trim() && (
-                  <p className="text-xs text-amber-700">Enter an email above to enable delivery.</p>
+                  <p className="text-xs font-semibold text-amber-700">
+                    Enter an email address above before assigning this comp order.
+                  </p>
                 )}
               </div>
-            </div>
+            </Card>
           )}
 
-          {/* Door payment section */}
+          {/* Payment section — door only */}
           {assignForm.source === 'DOOR' && (
-            <div className="rounded-xl border border-slate-200 overflow-hidden">
-              <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5">
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Payment & receipt</span>
+            <Card className="overflow-hidden">
+              <div className="bg-slate-50 px-5 py-3 border-b border-slate-100">
+                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Payment & receipt</p>
               </div>
-              <div className="space-y-4 p-4">
-                {/* Payment method toggle */}
-                <div className="grid grid-cols-2 gap-2">
-                  {([['STRIPE', '💳 Card'], ['CASH', '💵 Cash']] as const).map(([m, label]) => (
+              <div className="p-5 space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  {([['STRIPE', 'Card', CreditCard], ['CASH', 'Cash', Banknote]] as const).map(([method, label, Icon]) => (
                     <button
-                      key={m}
+                      key={method}
                       type="button"
-                      onClick={() => setPaymentMethod(m)}
-                      className={`rounded-lg border-2 py-2.5 text-sm font-semibold transition ${paymentMethod === m ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}
+                      onClick={() => setPaymentMethod(method)}
+                      className={`flex items-center justify-center gap-2 rounded-xl border-2 py-3 text-sm font-bold transition ${
+                        paymentMethod === method
+                          ? 'border-rose-600 bg-rose-50 text-rose-700'
+                          : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                      }`}
                     >
+                      <Icon className="h-4 w-4" />
                       {label}
                     </button>
                   ))}
                 </div>
 
                 {paymentMethod === 'STRIPE' && (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <Label>Terminal</Label>
-                      <Btn size="sm" variant="ghost" onClick={() => void loadTerminalDevices()}>
-                        <RefreshCw className={`h-3 w-3 ${loadingTerminals ? 'animate-spin' : ''}`} /> Refresh
-                      </Btn>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <FieldLabel>Terminal device</FieldLabel>
+                      <button
+                        type="button"
+                        onClick={() => void loadTerminalDevices()}
+                        className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-100"
+                      >
+                        <RefreshCw className={`h-3 w-3 ${loadingTerminalDevices ? 'animate-spin' : ''}`} />
+                        Refresh
+                      </button>
                     </div>
-                    <select value={selectedTerminalId} onChange={e => setSelectedTerminalId(e.target.value)} className={sel}>
-                      {!terminalDevices.length && <option value="">No terminals found</option>}
-                      {terminalDevices.map(d => (
-                        <option key={d.deviceId} value={d.deviceId}>{d.name}{d.isBusy ? ' (Busy)' : ''}</option>
+                    <select
+                      value={selectedTerminalDeviceId}
+                      onChange={e => setSelectedTerminalDeviceId(e.target.value)}
+                      className={baseSelect}
+                    >
+                      {!terminalDevices.length && <option value="">No active terminals found</option>}
+                      {terminalDevices.map(device => (
+                        <option key={device.deviceId} value={device.deviceId}>
+                          {device.name}{device.isBusy ? ' (Busy)' : ''}
+                        </option>
                       ))}
                     </select>
+                    <p className="text-xs text-slate-500">
+                      Send card collection to an active phone in Terminal Station mode.
+                    </p>
                     {selectedTerminalDevice?.isBusy && (
-                      <p className="text-xs text-amber-700">Terminal is busy — new entries will queue.</p>
+                      <p className="text-xs font-semibold text-amber-700">
+                        Payment in progress now. New entries will join the line.
+                      </p>
                     )}
                   </div>
                 )}
 
-                {/* Cash tonight */}
-                <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm">
-                  {loadingCashTonight
-                    ? <span className="text-slate-400">Loading cash total…</span>
-                    : <span className="text-slate-600">Cash tonight: <strong className="text-slate-900">{fmtDollars(cashTonight?.totalCashCents || 0)}</strong> <span className="text-slate-400">({cashTonight?.saleCount || 0} sale{cashTonight?.saleCount !== 1 ? 's' : ''})</span></span>
-                  }
+                <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  {loadingCashTonight ? (
+                    <span className="text-slate-400">Loading cash total…</span>
+                  ) : (
+                    <span>
+                      Cash collected tonight:{' '}
+                      <strong className="text-slate-900">${((cashTonight?.totalCashCents || 0) / 100).toFixed(2)}</strong>
+                      <span className="ml-1 text-slate-400">({cashTonight?.saleCount || 0} sale{(cashTonight?.saleCount || 0) !== 1 ? 's' : ''})</span>
+                    </span>
+                  )}
                 </div>
 
                 {hasStudentInShowCompSelection && (
-                  <div>
-                    <Label>Student code</Label>
-                    <input type="text" value={studentCode} onChange={e => setStudentCode(e.target.value)} placeholder="e.g. jsmith" className={inp} />
-                    <p className="mt-1 text-xs text-slate-400">Required for Student in Show comp tickets.</p>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <FieldLabel>Student code</FieldLabel>
+                    <input
+                      type="text"
+                      value={studentCode}
+                      onChange={e => setStudentCode(e.target.value)}
+                      placeholder="Student code on file (e.g. jsmith)"
+                      className={baseInput}
+                    />
+                    <p className="mt-2 text-xs text-slate-500">
+                      Student in Show comp seats still require the student code check.
+                    </p>
                   </div>
                 )}
 
-                <div className="space-y-2">
-                  <Toggle on={sendReceipt} onToggle={() => setSendReceipt(p => !p)} label="Send email receipt" />
+                <div>
+                  <label className="flex cursor-pointer items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setSendReceipt(p => !p)}
+                      className={`relative h-6 w-11 flex-shrink-0 rounded-full transition-colors ${sendReceipt ? 'bg-rose-600' : 'bg-slate-200'}`}
+                    >
+                      <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${sendReceipt ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                    <span className="text-sm font-semibold text-slate-700">Send email receipt</span>
+                  </label>
                   <AnimatePresence>
                     {sendReceipt && (
-                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-                        <input type="email" value={receiptEmail} onChange={e => setReceiptEmail(e.target.value)} placeholder="customer@email.com" className={inp} />
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <input
+                          type="email"
+                          value={receiptEmail}
+                          onChange={e => setReceiptEmail(e.target.value)}
+                          placeholder="customer@email.com"
+                          className={baseInput + ' mt-3'}
+                        />
                       </motion.div>
                     )}
                   </AnimatePresence>
                 </div>
 
-                {inPersonFlowError && <Alert type="error">{inPersonFlowError}</Alert>}
+                {inPersonFlowError && (
+                  <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                    {inPersonFlowError}
+                  </div>
+                )}
               </div>
-            </div>
+            </Card>
           )}
         </>
       )}
     </div>,
   ];
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // RENDER
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-4xl space-y-5 font-['DM_Sans',system-ui,sans-serif]">
+    <div className="max-w-3xl space-y-6">
 
-      {/* ── Page header ── */}
-      <div className="flex items-start justify-between gap-4">
+      {/* Page header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-slate-900">Orders</h1>
-          <p className="text-sm text-slate-400">Search, manage, and process ticket orders.</p>
+          <h1 className="text-[1.75rem] font-black tracking-tight text-slate-900" style={{ fontFamily: "var(--font-sans)" }}>Orders</h1>
+          <p className="mt-1 text-sm text-slate-400">Search, manage, and process ticket orders.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           <Link
             to="/admin/devices"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900 sm:w-auto"
           >
-            <ExternalLink className="h-3.5 w-3.5" /> Devices
+            <ExternalLink className="h-4 w-4" /> Device Control
           </Link>
           <motion.button
             whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
             onClick={openCashierFlow}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-rose-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-rose-700 sm:w-auto"
           >
             <Plus className="h-4 w-4" /> Cashier checkout
           </motion.button>
         </div>
       </div>
 
-      {/* ── Global notices ── */}
+      {/* Toast notices */}
       <AnimatePresence>
         {notice && (
-          <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-            className="flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
+          <motion.div
+            initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+            className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
           >
             <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
             <span className="flex-1">{notice}</span>
-            <button onClick={() => setNotice(null)} className="text-emerald-400 hover:text-emerald-600"><X className="h-4 w-4" /></button>
+            <button onClick={() => setNotice(null)} className="text-emerald-400 transition hover:text-emerald-600">
+              <X className="h-4 w-4" />
+            </button>
           </motion.div>
         )}
         {error && !showWizard && (
-          <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-            className="flex items-center gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          <motion.div
+            initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+            className="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
           >
             <AlertCircle className="h-4 w-4 flex-shrink-0" />
             <span className="flex-1">{error}</span>
-            <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600"><X className="h-4 w-4" /></button>
+            <button onClick={() => setError(null)} className="text-red-400 transition hover:text-red-600">
+              <X className="h-4 w-4" />
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ── Filters + search ── */}
-      <form onSubmit={search} className="flex flex-wrap gap-2">
-        <div className="relative min-w-[220px] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-300" />
-          <input
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="Name, email, or order ID…"
-            className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-3.5 text-sm placeholder:text-slate-300 transition focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200"
-          />
-        </div>
-        <select value={status} onChange={e => setStatus(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-slate-900 focus:outline-none">
-          <option value="">All statuses</option>
-          <option value="PAID">Paid</option>
-          <option value="PENDING">Pending</option>
-          <option value="REFUNDED">Refunded</option>
-          <option value="CANCELED">Canceled</option>
-        </select>
-        <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-slate-900 focus:outline-none">
-          <option value="">All sources</option>
-          <option value="ONLINE">Online</option>
-          <option value="DOOR">Door</option>
-          <option value="COMP">Comp</option>
-          <option value="STAFF_FREE">Staff</option>
-          <option value="STUDENT_COMP">Student</option>
-        </select>
-        <div className="flex rounded-lg border border-slate-200 overflow-hidden bg-white">
-          {(['active', 'archived', 'all'] as const).map(s => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setScope(s)}
-              className={`px-3 py-2 text-xs font-medium capitalize transition ${scope === s ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-        <Btn type="submit" variant="primary" size="md">
-          <Search className="h-3.5 w-3.5" /> Search
-        </Btn>
-      </form>
-
-      {/* ── Orders table ── */}
-      {loadingRows ? (
-        <div className="flex items-center justify-center gap-2 py-16 text-sm text-slate-400">
-          <RefreshCw className="h-4 w-4 animate-spin" /> Loading…
-        </div>
-      ) : rows.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 py-16 text-center">
-          <Users className="h-8 w-8 text-slate-200" />
-          <p className="text-sm font-semibold text-slate-400">No orders found</p>
-          <p className="text-xs text-slate-300">Try adjusting your filters</p>
-        </div>
-      ) : (
-        <div className="rounded-xl border border-slate-200 overflow-hidden">
-          {/* Table header */}
-          <div className="grid grid-cols-[1fr_auto_auto_auto_80px] gap-4 border-b border-slate-200 bg-slate-50 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-400">
-            <span>Customer</span>
-            <span className="hidden sm:block">Performance</span>
-            <span>Source</span>
-            <span>Status</span>
-            <span className="text-right">Amount</span>
-          </div>
-          {/* Rows */}
-          <div className="divide-y divide-slate-100">
-            {rows.map((order, idx) => (
-              <motion.div
-                key={order.id}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: idx * 0.015 }}
-                className="group grid grid-cols-[1fr_auto_auto_auto_80px] items-center gap-4 px-4 py-3 transition hover:bg-slate-50"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-slate-900">{order.customerName}</p>
-                  <p className="truncate text-xs text-slate-400">{order.email}</p>
-                  <p className="font-mono text-[10px] text-slate-300">{order.id}</p>
-                </div>
-                <div className="hidden min-w-0 sm:block">
-                  <p className="max-w-[180px] truncate text-xs font-medium text-slate-600">{order.performanceTitle}</p>
-                  <p className="text-xs text-slate-400">{fmtDate(order.createdAt)}</p>
-                </div>
-                <div className="flex flex-col items-start gap-1">
-                  <SourceTag source={order.source} />
-                  {order.source === 'DOOR' && order.inPersonPaymentMethod && (
-                    <span className="text-[10px] font-medium text-slate-400">{order.inPersonPaymentMethod === 'CASH' ? '💵 Cash' : '💳 Card'}</span>
-                  )}
-                </div>
-                <StatusPill status={order.status} />
-                <div className="text-right">
-                  <p className="text-sm font-black text-slate-900">{fmtDollars(order.amountTotal)}</p>
-                  <p className="text-xs text-slate-400">{order.ticketCount} tkt{order.ticketCount !== 1 ? 's' : ''}</p>
-                </div>
-                {/* invisible expand — whole row is hoverable, View link appears */}
-                <Link
-                  to={`/admin/orders/${order.id}`}
-                  className="absolute inset-0 opacity-0"
-                  aria-label={`View order ${order.id}`}
-                />
-              </motion.div>
-            ))}
-          </div>
-          <div className="border-t border-slate-100 bg-slate-50 px-4 py-2.5 text-xs text-slate-400">
-            {rows.length} order{rows.length !== 1 ? 's' : ''}
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────────────
-          MODALS
-      ───────────────────────────────────────────────────────────────────── */}
-
-      {/* ── Performance picker ── */}
       <AnimatePresence>
-        {showPerfPicker && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        {showCashierPerformancePicker && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[65] flex items-end justify-center bg-black/40 backdrop-blur-sm sm:items-center sm:p-4"
           >
-            <motion.div initial={{ scale: 0.97, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.97, opacity: 0 }}
-              className="w-full max-w-sm rounded-2xl bg-white shadow-2xl border border-slate-200"
+            <motion.div
+              initial={{ y: 18, opacity: 0, scale: 0.98 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 18, opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              className="w-full rounded-t-3xl border border-slate-100 bg-white shadow-2xl sm:max-w-lg sm:rounded-3xl"
             >
-              <div className="border-b border-slate-100 px-5 py-4">
-                <p className="text-xs font-black uppercase tracking-widest text-slate-400">Cashier setup</p>
-                <h2 className="mt-1 text-lg font-black text-slate-900">Choose performance</h2>
+              <div className="border-b border-slate-100 px-5 pb-4 pt-5">
+                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Cashier Setup</p>
+                <h2 className="mt-1 text-xl font-black text-slate-900">Choose performance</h2>
+                <p className="mt-1 text-sm text-slate-500">This selection will be remembered as your cashier default.</p>
               </div>
-              <div className="p-5">
-                <Label>Performance</Label>
-                <select value={perfPickerDraftId} onChange={e => setPerfPickerDraftId(e.target.value)} className={sel}>
-                  {performances.map(p => (
-                    <option key={p.id} value={p.id}>{p.title}{p.isFundraiser ? ' [Fundraiser]' : ''} — {fmtDate(p.startsAt)}</option>
+
+              <div className="px-5 py-5">
+                <FieldLabel>Performance</FieldLabel>
+                <select
+                  value={cashierPerformanceDraftId}
+                  onChange={(e) => setCashierPerformanceDraftId(e.target.value)}
+                  className={baseSelect}
+                >
+                  {performances.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title}
+                      {p.isFundraiser ? ' [Fundraiser]' : ''}
+                      {' — '}
+                      {new Date(p.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </option>
                   ))}
                 </select>
               </div>
-              <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-3">
-                <Btn variant="secondary" onClick={() => setShowPerfPicker(false)}>Cancel</Btn>
-                <Btn variant="primary" onClick={() => {
-                  const id = performances.some(p => p.id === perfPickerDraftId) ? perfPickerDraftId : performances[0]?.id || '';
-                  if (!id) { setError('No active performances.'); setShowPerfPicker(false); return; }
-                  startCashierLoop(id);
-                }}>
-                  Continue <ArrowRight className="h-3.5 w-3.5" />
-                </Btn>
+
+              <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-4">
+                <button
+                  type="button"
+                  onClick={() => setShowCashierPerformancePicker(false)}
+                  className="inline-flex items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmCashierPerformanceSelection}
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-rose-600 px-5 py-2 text-sm font-bold text-white transition hover:bg-rose-700"
+                >
+                  Continue
+                  <ArrowRight className="h-4 w-4" />
+                </button>
               </div>
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
 
-      {/* ── Sale recap ── */}
-      <AnimatePresence>
         {saleRecap && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4"
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
           >
-            <motion.div initial={{ scale: 0.97, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.97, opacity: 0 }}
-              className="w-full max-w-xl rounded-2xl bg-white shadow-2xl border border-slate-200"
+            <motion.div
+              initial={{ y: 14, opacity: 0, scale: 0.98 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 14, opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              className="w-full max-w-2xl rounded-3xl border border-slate-200 bg-white shadow-2xl"
             >
-              <div className="flex items-start justify-between border-b border-slate-100 px-6 py-5">
+              <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-6 py-5">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100">
-                      <Check className="h-4 w-4 text-emerald-700" />
-                    </div>
-                    <div>
-                      <p className="font-black text-slate-900">{saleRecap.seats.length} ticket{saleRecap.seats.length !== 1 ? 's' : ''} sold</p>
-                      <p className="text-sm text-slate-500">{saleRecap.paymentMethod === 'CASH' ? 'Cash' : 'Card'} · {fmtDollars(saleRecap.expectedAmountCents)}</p>
-                    </div>
-                  </div>
+                  <p className="text-sm font-bold uppercase tracking-widest text-slate-400">Seat write-down</p>
+                  <h2 className="mt-1 text-2xl font-black text-slate-900">
+                    {saleRecap.seats.length} ticket{saleRecap.seats.length === 1 ? '' : 's'} sold
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {saleRecap.paymentMethod === 'CASH' ? 'Cash' : 'Card'} • ${(saleRecap.expectedAmountCents / 100).toFixed(2)}
+                  </p>
                 </div>
-                <button onClick={() => setSaleRecap(null)} className="text-slate-300 hover:text-slate-600"><X className="h-5 w-5" /></button>
+                <button
+                  type="button"
+                  onClick={() => setSaleRecap(null)}
+                  className="rounded-full p-1.5 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
-              <div className="max-h-[42dvh] overflow-y-auto px-6 py-4">
+
+              <div className="max-h-[48dvh] overflow-y-auto px-6 py-5">
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {saleRecap.seats.map(seat => (
-                    <div key={seat.id} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                      <p className="text-sm font-semibold text-slate-900">
-                        {seat.row === 'GA' ? `GA Ticket ${seat.number}` : `${seat.sectionName} · Row ${seat.row} · #${seat.number}`}
+                  {saleRecap.seats.map((seat) => (
+                    <div key={seat.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
+                      <p className="text-sm font-bold text-slate-900">
+                        {seat.row === 'GA'
+                          ? `${seat.sectionName} Ticket ${seat.number}`
+                          : `${seat.sectionName} · Row ${seat.row} · Seat ${seat.number}`}
                       </p>
-                      <p className="text-xs text-slate-500">{seat.ticketType} · {fmtDollars(seat.priceCents)}</p>
+                      <p className="text-xs text-slate-500">{seat.ticketType}</p>
                     </div>
                   ))}
                 </div>
               </div>
-              <div className="flex items-center justify-between border-t border-slate-100 px-6 py-3">
-                <p className="text-sm text-slate-400">Closes in <span className="font-semibold text-slate-700">{saleRecapSecsLeft}s</span></p>
-                <div className="flex gap-2">
-                  <Btn variant="secondary" size="sm" onClick={() => setSaleRecap(p => p ? { ...p, expiresAtMs: Math.max(p.expiresAtMs, Date.now()) + 10000 } : p)}>+10s</Btn>
-                  <Btn variant="primary" size="sm" onClick={() => setSaleRecap(null)}>Close</Btn>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-6 py-4">
+                <p className="text-sm font-semibold text-slate-500">
+                  Auto-close in <span className="text-slate-900">{saleRecapSecondsLeft}s</span>
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSaleRecap((prev) =>
+                        prev
+                          ? { ...prev, expiresAtMs: Math.max(prev.expiresAtMs, Date.now()) + 10000 }
+                          : prev
+                      )
+                    }
+                    className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    Give me 10 seconds longer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSaleRecap(null)}
+                    className="inline-flex items-center justify-center rounded-full bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
+                  >
+                    Close
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -1460,75 +1826,101 @@ export default function AdminOrdersPage() {
         )}
       </AnimatePresence>
 
-      {/* ── Terminal dispatch ── */}
       <AnimatePresence>
         {terminalDispatch && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4"
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
           >
-            <motion.div initial={{ scale: 0.97, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.97, opacity: 0 }}
-              className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200"
+            <motion.div
+              initial={{ y: 12, opacity: 0, scale: 0.98 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 12, opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white shadow-2xl"
             >
               <div className="border-b border-slate-100 px-6 py-5">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Terminal</p>
-                <h2 className="mt-1 text-xl font-black text-slate-900">
-                  {terminalDispatch.status === 'PENDING' && 'Queued'}
-                  {terminalDispatch.status === 'DELIVERED' && 'Delivered'}
+                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Terminal dispatch</p>
+                <h2 className="mt-1 text-2xl font-black text-slate-900">
+                  {terminalDispatch.status === 'PENDING' && 'Sent to terminal'}
+                  {terminalDispatch.status === 'DELIVERED' && 'Terminal received'}
                   {terminalDispatch.status === 'PROCESSING' && 'Processing payment'}
                   {terminalDispatch.status === 'FAILED' && 'Payment failed'}
-                  {terminalDispatch.status === 'SUCCEEDED' && 'Payment approved ✓'}
-                  {terminalDispatch.status === 'EXPIRED' && 'Expired'}
-                  {terminalDispatch.status === 'CANCELED' && 'Canceled'}
+                  {terminalDispatch.status === 'SUCCEEDED' && 'Payment approved'}
+                  {terminalDispatch.status === 'EXPIRED' && 'Dispatch expired'}
+                  {terminalDispatch.status === 'CANCELED' && 'Dispatch canceled'}
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  {terminalDispatch.targetDeviceName || terminalDispatch.targetDeviceId} · {fmtDollars(terminalDispatch.expectedAmountCents)}
+                  {terminalDispatch.targetDeviceName || terminalDispatch.targetDeviceId} • ${((terminalDispatch.expectedAmountCents || 0) / 100).toFixed(2)}
                 </p>
-                <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-400">
-                  <span className={`h-1.5 w-1.5 rounded-full ${sellerStatusStream.connected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                  {sellerStatusStream.connected ? 'Live' : 'Polling'}
+                <p className="mt-1 text-xs font-semibold text-slate-400">
+                  Live updates: {sellerStatusStream.connected ? 'connected' : 'reconnecting (500ms refresh active)'}
                 </p>
               </div>
 
-              <div className="space-y-3 px-6 py-4">
-                {/* Status card */}
-                <div className={`rounded-xl border px-4 py-3 ${
-                  dispatchStatus.tone === 'success' ? 'border-emerald-200 bg-emerald-50'
-                  : dispatchStatus.tone === 'danger' ? 'border-red-200 bg-red-50'
-                  : 'border-slate-200 bg-slate-50'
-                }`}>
-                  <p className={`text-xs font-black uppercase tracking-widest ${dispatchStatus.tone === 'success' ? 'text-emerald-600' : dispatchStatus.tone === 'danger' ? 'text-red-600' : 'text-slate-400'}`}>
-                    Status
-                  </p>
-                  <p className={`mt-1 font-bold ${dispatchStatus.tone === 'success' ? 'text-emerald-900' : dispatchStatus.tone === 'danger' ? 'text-red-900' : 'text-slate-800'}`}>
-                    {dispatchStatus.title}
-                  </p>
-                  <p className={`text-sm ${dispatchStatus.tone === 'success' ? 'text-emerald-700' : dispatchStatus.tone === 'danger' ? 'text-red-700' : 'text-slate-600'}`}>
-                    {dispatchStatus.detail}
-                  </p>
-                </div>
-
-                <p className="text-xs text-slate-400">
+              <div className="space-y-3 px-6 py-5 text-sm text-slate-600">
+                <p>
                   Attempt {terminalDispatch.attemptCount} · Hold expires {new Date(terminalDispatch.holdExpiresAt).toLocaleTimeString()}
                 </p>
-                {terminalDispatch.failureReason && <Alert type="error">{terminalDispatch.failureReason}</Alert>}
-                {inPersonFlowError && <Alert type="error">{inPersonFlowError}</Alert>}
+                {terminalDispatch.failureReason && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-red-700">
+                    {terminalDispatch.failureReason}
+                  </div>
+                )}
+                {inPersonFlowError && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-red-700">
+                    {inPersonFlowError}
+                  </div>
+                )}
+                <div className={`rounded-xl border px-3.5 py-3 ${dispatchInlineStatusClasses.container}`}>
+                  <p className={`text-[11px] font-bold uppercase tracking-widest ${dispatchInlineStatusClasses.kicker}`}>Checkout status</p>
+                  <p className={`mt-1 text-base font-bold ${dispatchInlineStatusClasses.title}`}>{dispatchInlineStatus.title}</p>
+                  <p className={`mt-1 text-sm ${dispatchInlineStatusClasses.detail}`}>{dispatchInlineStatus.detail}</p>
+                </div>
               </div>
 
-              <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 px-6 py-4">
                 {terminalDispatch.status === 'FAILED' && terminalDispatch.canRetry && (
-                  <Btn variant="secondary" onClick={retryTerminalDispatch} disabled={dispatchBusy}>Retry</Btn>
+                  <button
+                    type="button"
+                    onClick={retryTerminalDispatch}
+                    disabled={terminalDispatchActionBusy}
+                    className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+                  >
+                    Retry
+                  </button>
                 )}
+
                 {terminalDispatch.status === 'SUCCEEDED' ? (
-                  <Btn variant="primary" onClick={() => finalizeSuccessfulTerminalDispatch(terminalDispatch)}>
-                    Continue <ArrowRight className="h-3.5 w-3.5" />
-                  </Btn>
+                  <button
+                    type="button"
+                    onClick={() => finalizeSuccessfulTerminalDispatch(terminalDispatch)}
+                    className="inline-flex items-center justify-center rounded-full bg-rose-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700"
+                  >
+                    Continue
+                  </button>
                 ) : (
                   <>
-                    {!['EXPIRED', 'CANCELED'].includes(terminalDispatch.status) && (
-                      <Btn variant="secondary" onClick={cancelTerminalDispatch} disabled={dispatchBusy}>Cancel sale</Btn>
+                    {terminalDispatch.status !== 'EXPIRED' && terminalDispatch.status !== 'CANCELED' && (
+                      <button
+                        type="button"
+                        onClick={cancelTerminalDispatch}
+                        disabled={terminalDispatchActionBusy}
+                        className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+                      >
+                        Cancel sale
+                      </button>
                     )}
-                    {['FAILED', 'EXPIRED', 'CANCELED'].includes(terminalDispatch.status) && (
-                      <Btn variant="primary" onClick={() => setTerminalDispatch(null)}>Close</Btn>
+                    {(terminalDispatch.status === 'FAILED' || terminalDispatch.status === 'EXPIRED' || terminalDispatch.status === 'CANCELED') && (
+                      <button
+                        type="button"
+                        onClick={() => setTerminalDispatch(null)}
+                        className="inline-flex items-center justify-center rounded-full bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
+                      >
+                        Close
+                      </button>
                     )}
                   </>
                 )}
@@ -1541,100 +1933,135 @@ export default function AdminOrdersPage() {
       {/* ── Checkout Wizard ── */}
       <AnimatePresence>
         {showWizard && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4"
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm sm:items-center sm:p-4"
           >
             <motion.div
-              initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }}
-              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-              className="flex h-[100dvh] w-full flex-col bg-white shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:max-w-xl sm:rounded-2xl sm:overflow-hidden"
+              initial={{ y: 24, opacity: 0, scale: 0.97 }}
+              animate={{ y: 0,  opacity: 1, scale: 1    }}
+              exit={{    y: 24, opacity: 0, scale: 0.97 }}
+              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              className="flex h-[100dvh] w-full flex-col bg-white shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:max-w-xl sm:rounded-3xl sm:overflow-hidden"
             >
-              {/* Header */}
-              <div className="flex-shrink-0 border-b border-slate-100 px-5 py-4">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Cashier</p>
-                    <p className="font-bold text-slate-900">{STEPS[step].label}</p>
-                  </div>
-                  <button onClick={closeWizard} className="rounded-lg p-1.5 text-slate-300 hover:bg-slate-100 hover:text-slate-600">
+              {/* Wizard header */}
+              <div className="flex-shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
+                <div className="mb-4 flex items-center justify-between">
+                  <p className="font-bold text-slate-900" style={{ fontFamily: "var(--font-sans)" }}>Cashier Checkout</p>
+                  <button
+                    onClick={closeWizard}
+                    className="rounded-full p-1.5 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600"
+                  >
                     <X className="h-5 w-5" />
                   </button>
                 </div>
                 {/* Step indicator */}
-                <div className="flex gap-1.5">
+                <div className="flex items-center gap-1">
                   {STEPS.map((s, i) => {
-                    const done = i < step; const active = i === step;
+                    const done = i < step, active = i === step;
                     return (
                       <button
                         key={s.id}
                         type="button"
                         onClick={() => goTo(i)}
-                        className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-semibold transition ${
-                          active ? 'bg-slate-900 text-white' : done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400 hover:text-slate-600'
+                        className={`flex flex-1 items-center justify-center gap-1.5 rounded-full py-2 text-xs font-bold transition-all ${
+                          active ? 'bg-rose-600 text-white' :
+                          done   ? 'bg-emerald-50 text-emerald-700' :
+                                   'text-slate-400 hover:text-slate-600'
                         }`}
                       >
-                        {done ? <Check className="h-3 w-3" /> : <s.icon className="h-3 w-3" />}
+                        {done
+                          ? <Check className="h-3 w-3" />
+                          : <s.icon className="h-3 w-3" />
+                        }
                         <span className="hidden sm:inline">{s.label}</span>
                       </button>
                     );
                   })}
                 </div>
+                <div className="mt-3 h-1 w-full rounded-full bg-slate-100 overflow-hidden">
+                  <motion.div
+                    className="h-full rounded-full bg-rose-500"
+                    animate={{ width: `${((step + 1) / STEPS.length) * 100}%` }}
+                    transition={{ duration: 0.3, ease: 'easeInOut' }}
+                  />
+                </div>
               </div>
 
-              {/* Body */}
+              {/* Wizard body */}
               <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.div
                     key={step}
-                    initial={{ x: dir * 24, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: dir * -24, opacity: 0 }}
-                    transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                    initial={{ x: dir * 28, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: dir * -28, opacity: 0 }}
+                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
                   >
                     {wizardSteps[step]}
                   </motion.div>
                 </AnimatePresence>
+
                 <AnimatePresence>
                   {error && showWizard && (
-                    <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mt-4">
-                      <Alert type="error">{error}</Alert>
+                    <motion.div
+                      initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                      className="mt-4 flex items-start gap-2.5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                    >
+                      <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                      {error}
                     </motion.div>
                   )}
                 </AnimatePresence>
               </div>
 
-              {/* Footer */}
-              <div className="flex-shrink-0 border-t border-slate-100 px-5 py-4">
+              {/* Wizard footer */}
+              <div className="flex-shrink-0 border-t border-slate-100 bg-white px-5 py-4">
                 <div className="flex items-center justify-between gap-3">
-                  <Btn variant="secondary" onClick={() => goTo(step - 1)} disabled={step === 0}>
+                  <button
+                    type="button"
+                    onClick={() => goTo(step - 1)}
+                    disabled={step === 0}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-50 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-30"
+                  >
                     <ChevronLeft className="h-4 w-4" /> Back
-                  </Btn>
-                  <span className="text-xs text-slate-300 font-mono">{step + 1}/{STEPS.length}</span>
+                  </button>
+
+                  <span className="text-xs font-semibold text-slate-300">{step + 1} / {STEPS.length}</span>
+
                   {step < STEPS.length - 1 ? (
-                    <Btn variant="primary" onClick={handleWizardNext}>
-                      {step === 0 ? 'Choose seats' : 'Checkout'}
+                    <button
+                      type="button"
+                      onClick={handleWizardNext}
+                      className="inline-flex min-w-[160px] items-center justify-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
+                    >
+                      {step === 0 ? 'Choose seats' : 'Set ticket types'}
                       <ArrowRight className="h-4 w-4" />
-                    </Btn>
+                    </button>
                   ) : assignForm.source === 'DOOR' ? (
                     <motion.button
                       type="button"
                       onClick={finalizeInPersonSale}
-                      disabled={inPersonSubmitting || (paymentMethod === 'STRIPE' && !selectedTerminalId)}
-                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-                      className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-50"
+                      disabled={inPersonSubmitting || (paymentMethod === 'STRIPE' && !selectedTerminalDeviceId)}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.97 }}
+                      className="inline-flex min-w-[180px] items-center justify-center gap-2 rounded-full bg-rose-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700 disabled:opacity-60"
                     >
                       <Check className="h-4 w-4" />
                       {inPersonSubmitting
                         ? (paymentMethod === 'STRIPE' ? 'Sending…' : 'Processing…')
-                        : paymentMethod === 'STRIPE'
-                          ? `Send · ${fmtDollars(subtotalCents)}`
-                          : `Collect · ${fmtDollars(subtotalCents)}`}
+                        : (paymentMethod === 'STRIPE'
+                          ? `Send to Payment Line · $${(selectedTierSubtotalCents / 100).toFixed(2)}`
+                          : `Collect $${(selectedTierSubtotalCents / 100).toFixed(2)}`)}
                     </motion.button>
                   ) : (
                     <motion.button
                       type="button"
                       onClick={assignOrder}
                       disabled={submitting}
-                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-                      className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-50"
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.97 }}
+                      className="inline-flex min-w-[160px] items-center justify-center gap-2 rounded-full bg-rose-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700 disabled:opacity-60"
                     >
                       <Check className="h-4 w-4" />
                       {submitting ? 'Assigning…' : 'Assign comp'}
@@ -1650,76 +2077,118 @@ export default function AdminOrdersPage() {
       {/* ── Seat Picker Modal ── */}
       <AnimatePresence>
         {showWizard && seatPickerOpen && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 sm:items-center sm:p-4"
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4"
           >
             <motion.div
-              initial={{ scale: 0.97, opacity: 0, y: 12 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.97, opacity: 0, y: 12 }}
+              initial={{ scale: 0.96, opacity: 0, y: 16 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.96, opacity: 0, y: 16 }}
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="flex h-[92dvh] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:h-auto sm:max-h-[90dvh] sm:max-w-5xl sm:rounded-2xl"
+              className="flex h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:h-auto sm:max-h-[90dvh] sm:max-w-5xl sm:rounded-3xl"
             >
-              {/* Header */}
-              <div className="flex-shrink-0 border-b border-slate-100 px-5 py-4">
+              {/* Seat picker header */}
+              <div className="flex-shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-bold text-slate-900">Select seats</p>
-                    <p className="text-xs text-slate-400">{selectedPerformance?.title ?? '—'} · {seatIds.length} selected</p>
+                    <p className="font-bold text-slate-900" style={{ fontFamily: "var(--font-sans)" }}>Select seats</p>
+                    <p className="mt-0.5 text-xs text-slate-400">
+                      {selectedPerformance?.title ?? 'No performance selected'}
+                    </p>
                   </div>
-                  <div className="flex gap-2">
-                    <Btn size="sm" variant="primary" onClick={moveOnFromSeatPicker}>Done <ChevronRight className="h-3.5 w-3.5" /></Btn>
-                    <button onClick={() => setSeatPickerOpen(false)} className="rounded-lg p-1.5 text-slate-300 hover:bg-slate-100 hover:text-slate-600"><X className="h-5 w-5" /></button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={moveOnFromSeatPicker}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-rose-700"
+                    >
+                      Done <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSeatPickerOpen(false)}
+                      className="rounded-full p-1.5 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
                   </div>
                 </div>
-                <div className="mt-3 flex items-center gap-2">
-                  <Btn size="sm" variant="ghost" onClick={() => void loadSeatsForPerformance(assignForm.performanceId)}>
-                    <RefreshCw className={`h-3.5 w-3.5 ${loadingSeats ? 'animate-spin' : ''}`} /> Refresh
-                  </Btn>
-                  {seatPickerError && <p className="text-xs text-red-600">{seatPickerError}</p>}
+                <div className="mt-3 flex items-center gap-3 text-xs text-slate-400">
+                  <button
+                    type="button"
+                    onClick={() => void loadSeatsForPerformance(assignForm.performanceId)}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 font-semibold text-slate-500 transition hover:bg-slate-50"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" /> Refresh
+                  </button>
+                  <span className="font-semibold text-slate-700">{seatIds.length} seat{seatIds.length !== 1 ? 's' : ''} selected</span>
                 </div>
               </div>
 
               {/* Section tabs */}
-              <div className="flex-shrink-0 border-b border-slate-100 px-5 py-2.5">
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {['All', ...sections].map(sec => (
+              <div className="flex-shrink-0 border-b border-slate-100 px-5 py-3">
+                <div className="flex flex-wrap gap-1.5">
+                  {['All', ...sections].map(section => (
                     <button
-                      key={sec}
+                      key={section}
                       type="button"
-                      onClick={() => setActiveSection(sec)}
-                      className={`rounded-md px-3 py-1 text-xs font-medium transition ${activeSection === sec ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                      onClick={() => setActiveSection(section)}
+                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                        activeSection === section
+                          ? 'bg-slate-900 text-white'
+                          : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                      }`}
                     >
-                      {sec}
+                      {section}
                     </button>
                   ))}
                 </div>
-                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
                   {[
-                    ['Available', 'bg-white border border-slate-300'],
-                    ['Held', 'bg-amber-300'], ['Sold', 'bg-slate-300'], ['Blocked', 'bg-red-300'],
-                    ['Selected', 'bg-emerald-500'], ['Accessible', 'bg-blue-400'], ['Companion', 'bg-cyan-400'],
+                    ['Available', 'bg-white border-2 border-slate-300'],
+                    ['Held',      'bg-amber-300'],
+                    ['Sold',      'bg-slate-300'],
+                    ['Blocked',   'bg-red-300'],
+                    ['Selected',  'bg-emerald-500'],
+                    ['Accessible','bg-blue-400'],
+                    ['Companion', 'bg-cyan-400'],
                   ].map(([label, cls]) => (
-                    <span key={label} className="inline-flex items-center gap-1 text-[11px] text-slate-400">
-                      <span className={`h-2 w-2 rounded-sm ${cls}`} />{label}
+                    <span key={label} className="inline-flex items-center gap-1.5 text-xs text-slate-400">
+                      <span className={`h-2 w-2 rounded-full ${cls}`} />{label}
                     </span>
                   ))}
                 </div>
               </div>
 
-              {/* Map */}
-              <div className="min-h-0 flex-1 px-5 py-3">
-                <div className="h-full overflow-hidden rounded-xl border border-slate-100">
+              {seatPickerError && (
+                <div className="px-5 pt-3">
+                  <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0" /> {seatPickerError}
+                  </div>
+                </div>
+              )}
+
+              {/* Seat map */}
+              <div className="min-h-0 flex-1 px-5 pb-2 pt-3">
+                <div className="h-full overflow-hidden rounded-2xl border border-slate-100">
                   <SeatMapViewport
-                    seats={seats} visibleSeats={visibleSeats}
-                    loading={loadingSeats} loadingLabel="Loading…" emptyText="No seats."
-                    resetKey={assignForm.performanceId || 'seat-map'}
+                    seats={seats}
+                    visibleSeats={visibleSeats}
+                    loading={loadingSeats}
+                    loadingLabel="Loading seats…"
+                    emptyText="No seats for this performance."
+                    resetKey={assignForm.performanceId || 'admin-orders-seat-map'}
                     containerClassName="h-[420px] sm:h-full"
                     verticalAlign="top"
                     controlsClassName="absolute bottom-4 right-4 z-30 flex flex-col gap-2"
                     renderSeat={({ seat, x, y }) => {
                       const isSelected = selectedSeatIdSet.has(seat.id);
-                      const unavailable = seat.status === 'held' || seat.status === 'sold' || seat.status === 'blocked';
-                      const companionOk = !seat.isCompanion || isSelected || (seat.companionForSeatId ? selectedSeatIdSet.has(seat.companionForSeatId) : hasAccessibleSelection);
-                      const selectable = !unavailable && companionOk;
+                      const isUnavailable = seat.status === 'held' || seat.status === 'sold' || seat.status === 'blocked';
+                      const companionOk =
+                        !seat.isCompanion || isSelected ||
+                        (seat.companionForSeatId ? selectedSeatIdSet.has(seat.companionForSeatId) : hasAccessibleSelection);
+                      const selectable = !isUnavailable && companionOk;
                       return (
                         <button
                           key={seat.id}
@@ -1729,16 +2198,22 @@ export default function AdminOrdersPage() {
                           style={{ left: `${x}px`, top: `${y}px` }}
                           title={`${seat.id} · ${seat.sectionName} ${seat.row}-${seat.number} · ${seat.status}`}
                           className={[
-                            'seat-button absolute flex h-8 w-8 items-center justify-center rounded-t-lg rounded-b-md text-[10px] font-bold transition-all md:h-10 md:w-10',
-                            isSelected ? 'z-10 scale-110 bg-emerald-500 text-white shadow-lg ring-2 ring-emerald-300'
-                            : unavailable ? 'cursor-not-allowed bg-slate-200 text-slate-400'
-                            : seat.isCompanion ? 'border-2 border-cyan-400 bg-cyan-100 text-cyan-700 hover:-translate-y-1 hover:shadow-md'
-                            : seat.isAccessible ? 'border-2 border-blue-400 bg-blue-100 text-blue-700 hover:-translate-y-1 hover:shadow-md'
-                            : 'border-2 border-slate-200 bg-white text-slate-600 hover:-translate-y-1 hover:border-slate-900 hover:shadow-md'
+                            'seat-button absolute flex h-8 w-8 items-center justify-center rounded-t-lg rounded-b-md text-[10px] font-bold transition-all duration-150 md:h-10 md:w-10',
+                            isSelected
+                              ? 'z-10 scale-110 bg-emerald-500 text-white shadow-lg ring-2 ring-emerald-300'
+                              : isUnavailable
+                                ? 'cursor-not-allowed bg-slate-200 text-slate-400'
+                                : seat.status === 'held'
+                                  ? 'border-2 border-amber-300 bg-amber-100 text-amber-700 hover:-translate-y-1 hover:shadow-md'
+                                  : seat.isCompanion
+                                    ? 'border-2 border-cyan-400 bg-cyan-100 text-cyan-700 hover:-translate-y-1 hover:shadow-md'
+                                    : seat.isAccessible
+                                      ? 'border-2 border-blue-400 bg-blue-100 text-blue-700 hover:-translate-y-1 hover:shadow-md'
+                                      : 'border-2 border-slate-200 bg-white text-slate-600 hover:-translate-y-1 hover:border-rose-400 hover:shadow-md'
                           ].join(' ')}
                         >
-                          <div className={`absolute -left-0.5 bottom-1 h-3.5 w-0.5 rounded-full opacity-40 ${isSelected ? 'bg-emerald-600' : seat.isCompanion ? 'bg-cyan-500' : seat.isAccessible ? 'bg-blue-500' : 'bg-slate-300'}`} />
-                          <div className={`absolute -right-0.5 bottom-1 h-3.5 w-0.5 rounded-full opacity-40 ${isSelected ? 'bg-emerald-600' : seat.isCompanion ? 'bg-cyan-500' : seat.isAccessible ? 'bg-blue-500' : 'bg-slate-300'}`} />
+                          <div className={`absolute -left-1 bottom-1 h-4 w-1 rounded-full opacity-40 ${isSelected ? 'bg-emerald-600' : seat.isCompanion ? 'bg-cyan-500' : seat.isAccessible ? 'bg-blue-500' : 'bg-slate-300'}`} />
+                          <div className={`absolute -right-1 bottom-1 h-4 w-1 rounded-full opacity-40 ${isSelected ? 'bg-emerald-600' : seat.isCompanion ? 'bg-cyan-500' : seat.isAccessible ? 'bg-blue-500' : 'bg-slate-300'}`} />
                           {seat.number}
                         </button>
                       );
@@ -1747,33 +2222,45 @@ export default function AdminOrdersPage() {
                 </div>
               </div>
 
-              {/* Footer */}
-              <div className="flex-shrink-0 border-t border-slate-100 px-5 py-3">
-                <div className="mb-3 flex flex-wrap gap-2 min-h-[32px]">
-                  {selectedMappedSeats.length === 0 && selectedUnknownSeatIds.length === 0
-                    ? <p className="text-sm text-slate-400">No seats selected yet.</p>
-                    : <>
-                        {selectedMappedSeats.map(seat => (
-                          <button key={seat.id} type="button" onClick={() => toggleSeat(seat.id)}
-                            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-mono text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700"
-                          >
-                            {seat.sectionName} {seat.row}-{seat.number} <X className="h-2.5 w-2.5" />
-                          </button>
-                        ))}
-                        {selectedUnknownSeatIds.map(id => (
-                          <button key={id} type="button" onClick={() => toggleSeat(id)}
-                            className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-mono text-amber-700 transition hover:bg-amber-100"
-                          >
-                            {id} <X className="h-2.5 w-2.5" />
-                          </button>
-                        ))}
-                      </>
-                  }
+              {/* Seat picker footer */}
+              <div className="flex-shrink-0 border-t border-slate-100 px-5 py-4">
+                <div className="mb-3 min-h-[32px]">
+                  {selectedMappedSeats.length === 0 && selectedUnknownSeatIds.length === 0 ? (
+                    <p className="text-sm text-slate-400">No seats selected yet.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedMappedSeats.map(seat => (
+                        <button
+                          key={seat.id}
+                          type="button"
+                          onClick={() => toggleSeat(seat.id)}
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-rose-100 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
+                        >
+                          {seat.sectionName} {seat.row}-{seat.number}
+                          <X className="h-3 w-3" />
+                        </button>
+                      ))}
+                      {selectedUnknownSeatIds.map(id => (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => toggleSeat(id)}
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 transition hover:bg-amber-100"
+                        >
+                          {id} <X className="h-3 w-3" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex justify-end">
-                  <Btn variant="primary" onClick={moveOnFromSeatPicker}>
-                    Confirm {seatIds.length > 0 ? `${seatIds.length} seat${seatIds.length !== 1 ? 's' : ''}` : 'seats'} <ChevronRight className="h-4 w-4" />
-                  </Btn>
+                  <button
+                    type="button"
+                    onClick={moveOnFromSeatPicker}
+                    className="inline-flex items-center gap-2 rounded-full bg-rose-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700"
+                  >
+                    Confirm seats <ChevronRight className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -1781,6 +2268,127 @@ export default function AdminOrdersPage() {
         )}
       </AnimatePresence>
 
+      {/* ── Search bar ── */}
+      <form onSubmit={search} className="flex flex-wrap gap-2">
+        <div className="relative min-w-[200px] flex-1">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search by name, email, or order ID…"
+            className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 placeholder:text-slate-300 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+          />
+        </div>
+
+        <select
+          value={status}
+          onChange={e => setStatus(e.target.value)}
+          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100 sm:w-auto"
+        >
+          <option value="">All statuses</option>
+          <option value="PENDING">Pending</option>
+          <option value="PAID">Paid</option>
+          <option value="REFUNDED">Refunded</option>
+          <option value="CANCELED">Canceled</option>
+        </select>
+
+        <select
+          value={sourceFilter}
+          onChange={e => setSourceFilter(e.target.value)}
+          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100 sm:w-auto"
+        >
+          <option value="">All sources</option>
+          <option value="ONLINE">Online</option>
+          <option value="DOOR">Door</option>
+          <option value="COMP">Comp</option>
+          <option value="STAFF_FREE">Staff</option>
+          <option value="STAFF_COMP">Staff Comp</option>
+          <option value="STUDENT_COMP">Student</option>
+        </select>
+
+        <div className="flex rounded-xl border border-slate-200 overflow-hidden bg-white">
+          {(['active', 'archived', 'all'] as const).map(s => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setScope(s)}
+              className={`px-3 py-2 text-xs font-semibold capitalize transition ${
+                scope === s ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+
+        <button className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700 sm:w-auto">
+          <Search className="h-3.5 w-3.5" /> Search
+        </button>
+      </form>
+
+      {/* ── Orders list ── */}
+      {loadingRows ? (
+        <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-400">
+          <RefreshCw className="h-4 w-4 animate-spin" /> Loading orders…
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-3xl border border-dashed border-slate-200 py-16 text-center">
+          <Users className="h-8 w-8 text-slate-200" />
+          <p className="text-sm font-semibold text-slate-400">No orders found</p>
+          <p className="text-xs text-slate-300">Try adjusting your search or filters</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((order, idx) => {
+            const statusMeta = STATUS_META[order.status] ?? { label: order.status, dot: 'bg-slate-400', text: 'text-slate-600', bg: 'bg-slate-50 ring-slate-200' };
+            const sourceMeta = SOURCE_META[order.source] ?? { label: order.source, bg: 'bg-slate-100 ring-slate-200', text: 'text-slate-600' };
+            return (
+              <motion.div
+                key={order.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.025 }}
+                className="group flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 transition hover:border-slate-200 hover:shadow-sm sm:flex-row sm:items-center sm:justify-between"
+              >
+                {/* Left: info */}
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge label={statusMeta.label} bg={statusMeta.bg} text={statusMeta.text} dot={statusMeta.dot} />
+                    <Badge label={sourceMeta.label} bg={sourceMeta.bg} text={sourceMeta.text} />
+                    {order.source === 'DOOR' && order.inPersonPaymentMethod && (
+                      <Badge
+                        label={order.inPersonPaymentMethod === 'CASH' ? 'Cash' : 'Card'}
+                        bg={order.inPersonPaymentMethod === 'CASH' ? 'bg-emerald-50 ring-emerald-200' : 'bg-blue-50 ring-blue-200'}
+                        text={order.inPersonPaymentMethod === 'CASH' ? 'text-emerald-700' : 'text-blue-700'}
+                      />
+                    )}
+                    <span className="font-sans text-xs text-slate-300">{order.id}</span>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-800">{order.customerName}</p>
+                  <p className="text-xs text-slate-400">{order.email}</p>
+                  <p className="text-xs text-slate-400">
+                    {order.performanceTitle} · {new Date(order.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </p>
+                </div>
+
+                {/* Right: amount + link */}
+                <div className="flex items-center justify-between gap-6 sm:flex-col sm:items-end sm:justify-start">
+                  <div className="sm:text-right">
+                    <p className="text-lg font-black tracking-tight text-slate-900">${(order.amountTotal / 100).toFixed(2)}</p>
+                    <p className="text-xs text-slate-400">{order.ticketCount} ticket{order.ticketCount !== 1 ? 's' : ''}</p>
+                  </div>
+                  <Link
+                    to={`/admin/orders/${order.id}`}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                  >
+                    View <ExternalLink className="h-3 w-3" />
+                  </Link>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
