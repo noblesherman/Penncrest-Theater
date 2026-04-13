@@ -116,8 +116,37 @@ if (!parsed.success) {
 
 export const env = parsed.data;
 
+function expandAllowedOriginVariants(origin: string): string[] {
+  const variants = new Set<string>();
+
+  try {
+    const parsedOrigin = new URL(origin);
+    variants.add(parsedOrigin.origin);
+
+    if (parsedOrigin.hostname === 'localhost' || parsedOrigin.hostname === '127.0.0.1') {
+      return [...variants];
+    }
+
+    const port = parsedOrigin.port ? `:${parsedOrigin.port}` : '';
+    if (parsedOrigin.hostname.startsWith('www.')) {
+      variants.add(`${parsedOrigin.protocol}//${parsedOrigin.hostname.slice(4)}${port}`);
+      return [...variants];
+    }
+
+    if (parsedOrigin.hostname.split('.').length === 2) {
+      variants.add(`${parsedOrigin.protocol}//www.${parsedOrigin.hostname}${port}`);
+    }
+  } catch {
+    variants.add(origin.trim());
+  }
+
+  return [...variants];
+}
+
 export function getAllowedOrigins(): string[] {
-  return [...new Set([env.APP_BASE_URL, 'http://localhost:5173', 'http://localhost:3000', ...env.FRONTEND_ORIGIN.split(',')])]
+  return [env.APP_BASE_URL, 'http://localhost:5173', 'http://localhost:3000', ...env.FRONTEND_ORIGIN.split(',')]
+    .flatMap((origin) => expandAllowedOriginVariants(origin.trim()))
+    .filter(Boolean)
     .map((v) => v.trim())
     .filter(Boolean);
 }
