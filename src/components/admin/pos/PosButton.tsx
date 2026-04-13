@@ -1,4 +1,4 @@
-import { ReactNode, ButtonHTMLAttributes } from 'react';
+import { ReactNode, ButtonHTMLAttributes, isValidElement, type ElementType } from 'react';
 import { motion } from 'motion/react';
 import { LucideIcon } from 'lucide-react';
 
@@ -41,8 +41,18 @@ export function PosButton({
   className = '',
   ...props
 }: PosButtonProps) {
-  // Check if Icon is a Lucide component type (function) that should be called
-  const isComponentType = Icon && typeof Icon === 'function' && 'displayName' in Icon;
+  const renderIcon = () => {
+    if (!Icon) return null;
+    if (isValidElement(Icon)) return Icon;
+
+    // React component references (including forwardRef objects) should be created as elements.
+    if (typeof Icon === 'function' || (typeof Icon === 'object' && Icon !== null && '$$typeof' in Icon)) {
+      const IconComponent = Icon as ElementType<{ className?: string }>;
+      return <IconComponent className="h-5 w-5" />;
+    }
+
+    return <>{Icon}</>;
+  };
 
   return (
     <motion.button
@@ -54,11 +64,8 @@ export function PosButton({
     >
       {isLoading ? (
         <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="h-5 w-5 rounded-full border-2 border-current border-t-transparent" />
-      ) : isComponentType ? (
-        <Icon className="h-5 w-5" />
-      ) : Icon ? (
-        <>{Icon}</>
       ) : null}
+      {!isLoading ? renderIcon() : null}
       <span>{children}</span>
     </motion.button>
   );
