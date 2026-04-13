@@ -870,7 +870,7 @@ export default function AdminOrdersPage() {
     void poll();
     const timerId = window.setInterval(() => {
       void poll();
-    }, 3_000);
+    }, 500);
 
     return () => {
       cancelled = true;
@@ -938,7 +938,9 @@ export default function AdminOrdersPage() {
     tone: 'danger' | 'success' | 'neutral';
   }>(() => {
     const streamEntry = sellerStatusStream.sellerPayload.sellerEntry;
-    if (streamEntry) {
+    // Only trust seller stream-derived status when the stream is currently connected.
+    // When disconnected, the stream payload can be stale and must not override polled dispatch status.
+    if (sellerStatusStream.connected && streamEntry) {
       if (streamEntry.uiState === 'WAITING_FOR_PAYMENT') {
         const ahead = streamEntry.position && streamEntry.position > 0 ? streamEntry.position - 1 : null;
         return {
@@ -981,7 +983,7 @@ export default function AdminOrdersPage() {
       return { title: 'Dispatch expired', detail: 'Payment window expired before completion.', tone: 'danger' };
     }
     return { title: 'Dispatch canceled', detail: 'This sale was canceled before payment completed.', tone: 'neutral' };
-  }, [sellerStatusStream.sellerPayload.sellerEntry, terminalDispatch]);
+  }, [sellerStatusStream.connected, sellerStatusStream.sellerPayload.sellerEntry, terminalDispatch]);
   const dispatchInlineStatusClasses = useMemo(() => {
     if (dispatchInlineStatus.tone === 'success') {
       return {
@@ -1854,7 +1856,7 @@ export default function AdminOrdersPage() {
                   {terminalDispatch.targetDeviceName || terminalDispatch.targetDeviceId} • ${((terminalDispatch.expectedAmountCents || 0) / 100).toFixed(2)}
                 </p>
                 <p className="mt-1 text-xs font-semibold text-slate-400">
-                  Live updates: {sellerStatusStream.connected ? 'connected' : 'reconnecting (auto-refresh active)'}
+                  Live updates: {sellerStatusStream.connected ? 'connected' : 'reconnecting (500ms refresh active)'}
                 </p>
               </div>
 
