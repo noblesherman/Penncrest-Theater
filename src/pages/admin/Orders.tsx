@@ -853,6 +853,32 @@ export default function AdminOrdersPage() {
   }, [applyTerminalDispatchStatus, refreshTerminalDispatchStatus, sellerStatusStream.snapshot, terminalDispatch]);
 
   useEffect(() => {
+    if (!terminalDispatch || sellerStatusStream.connected) {
+      return;
+    }
+
+    if (terminalDispatch.status === 'SUCCEEDED' || terminalDispatch.status === 'FAILED' || terminalDispatch.status === 'EXPIRED' || terminalDispatch.status === 'CANCELED') {
+      return;
+    }
+
+    let cancelled = false;
+    const poll = async () => {
+      if (cancelled) return;
+      await refreshTerminalDispatchStatus(terminalDispatch.dispatchId).catch(() => undefined);
+    };
+
+    void poll();
+    const timerId = window.setInterval(() => {
+      void poll();
+    }, 3_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timerId);
+    };
+  }, [refreshTerminalDispatchStatus, sellerStatusStream.connected, terminalDispatch]);
+
+  useEffect(() => {
     if (!showWizard || step === 0 || terminalDispatch || !assignForm.performanceId || !seatSelectionEnabled) {
       return;
     }
@@ -906,25 +932,51 @@ export default function AdminOrdersPage() {
     () => terminalDevices.find((device) => device.deviceId === selectedTerminalDeviceId) || null,
     [selectedTerminalDeviceId, terminalDevices]
   );
-  const sellerStatusUrl = useMemo(() => {
-    if (!terminalDispatch) return null;
-    const queueKey = encodeURIComponent(terminalDispatch.targetDeviceId);
-    const entryId = encodeURIComponent(terminalDispatch.dispatchId);
-    return `/admin/payment-line/seller?queueKey=${queueKey}&entryId=${entryId}`;
-  }, [terminalDispatch]);
-  const sellerOverlayUrl = useMemo(
-    () => (sellerStatusUrl ? `${sellerStatusUrl}&overlay=1` : null),
-    [sellerStatusUrl]
-  );
-  const wallboardUrl = useMemo(() => {
-    if (!terminalDispatch) return null;
-    const queueKey = encodeURIComponent(terminalDispatch.targetDeviceId);
-    return `/admin/payment-line/wallboard?queueKey=${queueKey}`;
-  }, [terminalDispatch]);
-  const wallboardOverlayUrl = useMemo(
-    () => (wallboardUrl ? `${wallboardUrl}&overlay=1` : null),
-    [wallboardUrl]
-  );
+  const dispatchInlineStatus = useMemo(() => {
+    const streamEntry = sellerStatusStream.sellerPayload.sellerEntry;
+    if (streamEntry) {
+      if (streamEntry.uiState === 'WAITING_FOR_PAYMENT') {
+        const ahead = streamEntry.position && streamEntry.position > 0 ? streamEntry.position - 1 : null;
+        return {
+          title: 'In line',
+          detail: ahead === null ? 'Phone is currently in use. We will prompt to pay automatically.' : `${ahead} ahead. Phone is currently in use.`
+        };
+      }
+      if (streamEntry.uiState === 'ACTIVE_PAYMENT') {
+        return { title: 'Your turn', detail: 'Phone is ready now. Indicate to pay.' };
+      }
+      if (streamEntry.uiState === 'PAYMENT_SUCCESS') {
+        return { title: 'Payment approved', detail: 'Checkout completed successfully.' };
+      }
+      if (streamEntry.uiState === 'PAYMENT_FAILED') {
+        return { title: 'Payment failed', detail: streamEntry.failureReason || 'Terminal payment failed.' };
+      }
+      if (streamEntry.uiState === 'CANCELED') {
+        return { title: 'Canceled', detail: 'This sale was canceled before payment completed.' };
+      }
+    }
+
+    if (!terminalDispatch) {
+      return { title: 'Dispatch pending', detail: 'Waiting for terminal confirmation.' };
+    }
+
+    if (terminalDispatch.status === 'PENDING' || terminalDispatch.status === 'DELIVERED') {
+      return { title: 'In line', detail: 'Sent to terminal. Waiting for phone availability.' };
+    }
+    if (terminalDispatch.status === 'PROCESSING') {
+      return { title: 'Your turn', detail: 'Phone is collecting payment now. Indicate to pay.' };
+    }
+    if (terminalDispatch.status === 'SUCCEEDED') {
+      return { title: 'Payment approved', detail: 'Checkout completed successfully.' };
+    }
+    if (terminalDispatch.status === 'FAILED') {
+      return { title: 'Payment failed', detail: terminalDispatch.failureReason || 'Terminal payment failed.' };
+    }
+    if (terminalDispatch.status === 'EXPIRED') {
+      return { title: 'Dispatch expired', detail: 'Payment window expired before completion.' };
+    }
+    return { title: 'Dispatch canceled', detail: 'This sale was canceled before payment completed.' };
+  }, [sellerStatusStream.sellerPayload.sellerEntry, terminalDispatch]);
   const selectedTicketOptions = useMemo<CashierTicketOption[]>(() => {
     if (!selectedPerformance) return [];
     if (selectedPerformance.pricingTiers.length === 0) return [];
@@ -1772,8 +1824,8 @@ export default function AdminOrdersPage() {
                 <p className="mt-1 text-sm text-slate-500">
                   {terminalDispatch.targetDeviceName || terminalDispatch.targetDeviceId} • ${((terminalDispatch.expectedAmountCents || 0) / 100).toFixed(2)}
                 </p>
-                <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  Realtime {sellerStatusStream.connected ? 'Connected' : 'Reconnecting'}
+                <p className="mt-1 text-xs font-semibold text-slate-400">
+                  Live updates: {sellerStatusStream.connected ? 'connected' : 'reconnecting (auto-refresh active)'}
                 </p>
               </div>
 
@@ -1791,43 +1843,10 @@ export default function AdminOrdersPage() {
                     {inPersonFlowError}
                   </div>
                 )}
-                <div className="flex flex-wrap items-center gap-2">
-                  {sellerStatusUrl ? (
-                    <Link
-                      to={sellerStatusUrl}
-                      className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-100"
-                    >
-                      Seller Status
-                    </Link>
-                  ) : null}
-                  {sellerOverlayUrl ? (
-                    <a
-                      href={sellerOverlayUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-100"
-                    >
-                      Seller Overlay
-                    </a>
-                  ) : null}
-                  {wallboardUrl ? (
-                    <Link
-                      to={wallboardUrl}
-                      className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-100"
-                    >
-                      Wallboard
-                    </Link>
-                  ) : null}
-                  {wallboardOverlayUrl ? (
-                    <a
-                      href={wallboardOverlayUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-100"
-                    >
-                      Wallboard Overlay
-                    </a>
-                  ) : null}
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Checkout status</p>
+                  <p className="mt-1 text-base font-bold text-slate-900">{dispatchInlineStatus.title}</p>
+                  <p className="mt-1 text-sm text-slate-600">{dispatchInlineStatus.detail}</p>
                 </div>
               </div>
 
