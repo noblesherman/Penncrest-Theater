@@ -932,51 +932,80 @@ export default function AdminOrdersPage() {
     () => terminalDevices.find((device) => device.deviceId === selectedTerminalDeviceId) || null,
     [selectedTerminalDeviceId, terminalDevices]
   );
-  const dispatchInlineStatus = useMemo(() => {
+  const dispatchInlineStatus = useMemo<{
+    title: string;
+    detail: string;
+    tone: 'danger' | 'success' | 'neutral';
+  }>(() => {
     const streamEntry = sellerStatusStream.sellerPayload.sellerEntry;
     if (streamEntry) {
       if (streamEntry.uiState === 'WAITING_FOR_PAYMENT') {
         const ahead = streamEntry.position && streamEntry.position > 0 ? streamEntry.position - 1 : null;
         return {
-          title: 'In line',
-          detail: ahead === null ? 'Phone is currently in use. We will prompt to pay automatically.' : `${ahead} ahead. Phone is currently in use.`
+          title: 'Not your turn',
+          detail: ahead === null ? 'Phone is currently in use. Stay in line.' : `${ahead} ahead. Phone is currently in use.`,
+          tone: 'danger'
         };
       }
       if (streamEntry.uiState === 'ACTIVE_PAYMENT') {
-        return { title: 'Your turn', detail: 'Phone is ready now. Indicate to pay.' };
+        return { title: 'Ready to pay', detail: 'Phone is ready now. Indicate to pay.', tone: 'success' };
       }
       if (streamEntry.uiState === 'PAYMENT_SUCCESS') {
-        return { title: 'Payment approved', detail: 'Checkout completed successfully.' };
+        return { title: 'Payment approved', detail: 'Checkout completed successfully.', tone: 'success' };
       }
       if (streamEntry.uiState === 'PAYMENT_FAILED') {
-        return { title: 'Payment failed', detail: streamEntry.failureReason || 'Terminal payment failed.' };
+        return { title: 'Payment failed', detail: streamEntry.failureReason || 'Terminal payment failed.', tone: 'danger' };
       }
       if (streamEntry.uiState === 'CANCELED') {
-        return { title: 'Canceled', detail: 'This sale was canceled before payment completed.' };
+        return { title: 'Canceled', detail: 'This sale was canceled before payment completed.', tone: 'neutral' };
       }
     }
 
     if (!terminalDispatch) {
-      return { title: 'Dispatch pending', detail: 'Waiting for terminal confirmation.' };
+      return { title: 'Dispatch pending', detail: 'Waiting for terminal confirmation.', tone: 'neutral' };
     }
 
     if (terminalDispatch.status === 'PENDING' || terminalDispatch.status === 'DELIVERED') {
-      return { title: 'In line', detail: 'Sent to terminal. Waiting for phone availability.' };
+      return { title: 'Not your turn', detail: 'Sent to terminal. Waiting for phone availability.', tone: 'danger' };
     }
     if (terminalDispatch.status === 'PROCESSING') {
-      return { title: 'Your turn', detail: 'Phone is collecting payment now. Indicate to pay.' };
+      return { title: 'Ready to pay', detail: 'Phone is collecting payment now. Indicate to pay.', tone: 'success' };
     }
     if (terminalDispatch.status === 'SUCCEEDED') {
-      return { title: 'Payment approved', detail: 'Checkout completed successfully.' };
+      return { title: 'Payment approved', detail: 'Checkout completed successfully.', tone: 'success' };
     }
     if (terminalDispatch.status === 'FAILED') {
-      return { title: 'Payment failed', detail: terminalDispatch.failureReason || 'Terminal payment failed.' };
+      return { title: 'Payment failed', detail: terminalDispatch.failureReason || 'Terminal payment failed.', tone: 'danger' };
     }
     if (terminalDispatch.status === 'EXPIRED') {
-      return { title: 'Dispatch expired', detail: 'Payment window expired before completion.' };
+      return { title: 'Dispatch expired', detail: 'Payment window expired before completion.', tone: 'danger' };
     }
-    return { title: 'Dispatch canceled', detail: 'This sale was canceled before payment completed.' };
+    return { title: 'Dispatch canceled', detail: 'This sale was canceled before payment completed.', tone: 'neutral' };
   }, [sellerStatusStream.sellerPayload.sellerEntry, terminalDispatch]);
+  const dispatchInlineStatusClasses = useMemo(() => {
+    if (dispatchInlineStatus.tone === 'success') {
+      return {
+        container: 'border-emerald-300 bg-emerald-50',
+        kicker: 'text-emerald-700',
+        title: 'text-emerald-900',
+        detail: 'text-emerald-800'
+      };
+    }
+    if (dispatchInlineStatus.tone === 'danger') {
+      return {
+        container: 'border-red-300 bg-red-50',
+        kicker: 'text-red-700',
+        title: 'text-red-900',
+        detail: 'text-red-800'
+      };
+    }
+    return {
+      container: 'border-slate-200 bg-slate-50',
+      kicker: 'text-slate-500',
+      title: 'text-slate-900',
+      detail: 'text-slate-600'
+    };
+  }, [dispatchInlineStatus.tone]);
   const selectedTicketOptions = useMemo<CashierTicketOption[]>(() => {
     if (!selectedPerformance) return [];
     if (selectedPerformance.pricingTiers.length === 0) return [];
@@ -1843,10 +1872,10 @@ export default function AdminOrdersPage() {
                     {inPersonFlowError}
                   </div>
                 )}
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
-                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Checkout status</p>
-                  <p className="mt-1 text-base font-bold text-slate-900">{dispatchInlineStatus.title}</p>
-                  <p className="mt-1 text-sm text-slate-600">{dispatchInlineStatus.detail}</p>
+                <div className={`rounded-xl border px-3.5 py-3 ${dispatchInlineStatusClasses.container}`}>
+                  <p className={`text-[11px] font-bold uppercase tracking-widest ${dispatchInlineStatusClasses.kicker}`}>Checkout status</p>
+                  <p className={`mt-1 text-base font-bold ${dispatchInlineStatusClasses.title}`}>{dispatchInlineStatus.title}</p>
+                  <p className={`mt-1 text-sm ${dispatchInlineStatusClasses.detail}`}>{dispatchInlineStatus.detail}</p>
                 </div>
               </div>
 
