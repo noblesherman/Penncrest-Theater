@@ -160,6 +160,10 @@ function normalizeOptionsText(value: string): string[] {
   return Array.from(new Set(value.split('\n').map((l) => l.trim()).filter(Boolean)));
 }
 
+function parseOptionsTextLines(value: string): string[] {
+  return value.split('\n');
+}
+
 function normalizeCustomQuestionsForSave(customQuestions: ProgramBioCustomQuestion[]): ProgramBioCustomQuestion[] {
   return customQuestions.map((question) => ({
     ...question,
@@ -1094,7 +1098,7 @@ export default function ProgramBioFormsPanel() {
                                         updateSelectedDraftQuestions((questions) => ({
                                           ...questions,
                                           customQuestions: questions.customQuestions.map((item) =>
-                                            item.id === q.id ? { ...item, options: normalizeOptionsText(e.target.value) } : item
+                                            item.id === q.id ? { ...item, options: parseOptionsTextLines(e.target.value) } : item
                                           ),
                                         }))
                                       }
