@@ -8,7 +8,6 @@ import {
   backToLineMobilePaymentLineEntry,
   cancelMobilePaymentLineEntry,
   completeMobilePaymentLineEntry,
-  createTerminalDispatchManualPaymentIntent,
   failMobilePaymentLineEntry,
   fetchMobilePaymentLineSnapshot,
   heartbeatMobilePaymentLine,
@@ -24,25 +23,17 @@ import { useAuth } from '../auth/AuthContext';
 import { PaymentModeBadge } from '../components/PaymentModeBadge';
 import { TERMINAL_MOCK_MODE } from '../config';
 import type { RootStackParamList } from '../navigation/types';
-import { stripePaymentSheet } from '../payments/stripePaymentSheet';
 import { useTerminal } from '../terminal/terminal';
 import { TAP_TO_PAY_DEVICE_LABEL, TAP_TO_PAY_DISPLAY_NAME, TAP_TO_PAY_PERMISSION_HINT } from '../terminal/tapToPay';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'TerminalStation'>;
 
-type DispatchPaymentChoice = 'tap' | 'manual';
-type PaymentPath = 'tap' | 'manual' | 'unknown';
-
-type DispatchChoiceEntry = {
-  dispatchId: string;
-};
+type PaymentPath = 'tap' | 'unknown';
 
 const DEVICE_ID_KEY = 'theater.mobile.terminal.deviceId';
 const TERMINAL_NAME_KEY = 'theater.mobile.terminal.name';
 const DEFAULT_TERMINAL_NAME = 'Box Office Terminal';
-const STRIPE_PAYMENT_SHEET_RETURN_URL = 'theatermobile://stripe-redirect';
-const AUTO_TAP_TO_PAY_SECONDS = 5;
-const AUTO_TAP_TO_PAY_DELAY_MS = AUTO_TAP_TO_PAY_SECONDS * 1000;
+const AUTO_START_RETRY_DELAY_MS = 5_000;
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -54,7 +45,6 @@ function generateDeviceId(): string {
 
 function mapPaymentPathToTelemetry(path: PaymentPath): 'TAP_TO_PAY' | 'MANUAL' | 'UNKNOWN' {
   if (path === 'tap') return 'TAP_TO_PAY';
-  if (path === 'manual') return 'MANUAL';
   return 'UNKNOWN';
 }
 
@@ -89,19 +79,15 @@ export function TerminalStationScreen(_props: Props) {
   const [lastFailureReason, setLastFailureReason] = useState<string | null>(null);
   const [lastFailurePath, setLastFailurePath] = useState<PaymentPath>('unknown');
   const [operatorBusy, setOperatorBusy] = useState(false);
-  const [dispatchChoiceDispatchId, setDispatchChoiceDispatchId] = useState<string | null>(null);
-  const [dispatchChoiceSecondsRemaining, setDispatchChoiceSecondsRemaining] = useState<number>(0);
   const [clockNowMs, setClockNowMs] = useState(() => Date.now());
 
   const terminalInitPromiseRef = useRef<Promise<void> | null>(null);
   const terminalInitializedRef = useRef(false);
   const readerConnectedRef = useRef(false);
-  const dispatchChoiceResolverRef = useRef<((choice: DispatchPaymentChoice) => void) | null>(null);
-  const dispatchChoiceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const dispatchChoiceIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const canceledDispatchIdRef = useRef<string | null>(null);
   const processingEntryIdRef = useRef<string | null>(null);
   const lineSessionRef = useRef<PaymentLineSession | null>(null);
+  const autoStartBlockedUntilRef = useRef(0);
 
   useEffect(() => {
     lineSessionRef.current = lineSession;
@@ -149,56 +135,6 @@ export function TerminalStationScreen(_props: Props) {
 
     return () => clearInterval(id);
   }, []);
-
-  const clearDispatchChoicePrompt = useCallback(() => {
-    if (dispatchChoiceTimeoutRef.current) {
-      clearTimeout(dispatchChoiceTimeoutRef.current);
-      dispatchChoiceTimeoutRef.current = null;
-    }
-    if (dispatchChoiceIntervalRef.current) {
-      clearInterval(dispatchChoiceIntervalRef.current);
-      dispatchChoiceIntervalRef.current = null;
-    }
-    setDispatchChoiceDispatchId(null);
-    setDispatchChoiceSecondsRemaining(0);
-  }, []);
-
-  const settleDispatchChoice = useCallback(
-    (choice: DispatchPaymentChoice) => {
-      const resolver = dispatchChoiceResolverRef.current;
-      dispatchChoiceResolverRef.current = null;
-      clearDispatchChoicePrompt();
-      if (resolver) {
-        resolver(choice);
-      }
-    },
-    [clearDispatchChoicePrompt]
-  );
-
-  const waitForDispatchChoice = useCallback(
-    async (entry: DispatchChoiceEntry): Promise<DispatchPaymentChoice> =>
-      new Promise((resolve) => {
-        settleDispatchChoice('tap');
-
-        dispatchChoiceResolverRef.current = resolve;
-        setDispatchChoiceDispatchId(entry.dispatchId);
-        setDispatchChoiceSecondsRemaining(AUTO_TAP_TO_PAY_SECONDS);
-
-        dispatchChoiceIntervalRef.current = setInterval(() => {
-          setDispatchChoiceSecondsRemaining((prev) => {
-            if (prev <= 1) {
-              return 1;
-            }
-            return prev - 1;
-          });
-        }, 1000);
-
-        dispatchChoiceTimeoutRef.current = setTimeout(() => {
-          settleDispatchChoice('tap');
-        }, AUTO_TAP_TO_PAY_DELAY_MS);
-      }),
-    [settleDispatchChoice]
-  );
 
   const reportTelemetry = useCallback(
     async (params: {
@@ -373,48 +309,6 @@ export function TerminalStationScreen(_props: Props) {
     readerConnectedRef.current = true;
   }, [ensurePlatformPermissions, ensureTerminalInitialized, terminal]);
 
-  const collectManualPaymentWithPaymentSheet = useCallback(
-    async (entry: PaymentLineEntryState): Promise<string | null> => {
-      if (!token || !deviceId) {
-        throw new Error('Terminal context missing for manual payment');
-      }
-      if (!stripePaymentSheet.isAvailable) {
-        throw new Error('Secure manual card entry is unavailable in this app build.');
-      }
-
-      const manualIntent = await createTerminalDispatchManualPaymentIntent(token, {
-        dispatchId: entry.entryId,
-        deviceId
-      });
-
-      await stripePaymentSheet.initStripe({
-        publishableKey: manualIntent.publishableKey
-      });
-
-      const initResult = await stripePaymentSheet.initPaymentSheet({
-        merchantDisplayName: 'Penncrest Theater',
-        paymentIntentClientSecret: manualIntent.clientSecret,
-        allowsDelayedPaymentMethods: false,
-        returnURL: STRIPE_PAYMENT_SHEET_RETURN_URL
-      });
-      if (initResult.error) {
-        throw new Error(initResult.error.message || 'Unable to initialize secure card entry');
-      }
-
-      const paymentSheetResult = await stripePaymentSheet.presentPaymentSheet();
-      if (paymentSheetResult.error) {
-        const code = String(paymentSheetResult.error.code || '').toLowerCase();
-        if (code === 'canceled' || code === 'cancelled') {
-          return null;
-        }
-        throw new Error(paymentSheetResult.error.message || 'Manual payment failed');
-      }
-
-      return manualIntent.paymentIntentId;
-    },
-    [deviceId, token]
-  );
-
   const runMockTapToPayAnimation = useCallback(async () => {
     const steps = [
       `Tap to Pay demo: Hold card near ${TAP_TO_PAY_DEVICE_LABEL}...`,
@@ -471,63 +365,8 @@ export function TerminalStationScreen(_props: Props) {
         }
 
         throwIfCanceled();
-
-        setStatusMessage(
-          `Choose payment method. Tap to Pay starts automatically in ${AUTO_TAP_TO_PAY_SECONDS} seconds if no selection is made.`
-        );
-        paymentPath = await waitForDispatchChoice({ dispatchId: entry.entryId });
-
-        throwIfCanceled();
-
-        if (paymentPath === 'manual') {
-          if (!stripePaymentSheet.isAvailable) {
-            throw new Error('Manual card entry is unavailable in this app build.');
-          }
-
-          await reportTelemetry({
-            dispatchId: entry.entryId,
-            paymentIntentId,
-            stage: 'manual_payment_sheet_open',
-            paymentMethod: 'MANUAL'
-          });
-
-          setStatusMessage('Opening secure manual card entry...');
-          const manualPaymentIntentId = await collectManualPaymentWithPaymentSheet(entry);
-          if (!manualPaymentIntentId) {
-            throw new Error('Manual card entry canceled');
-          }
-          paymentIntentId = manualPaymentIntentId;
-
-          throwIfCanceled();
-
-          await reportTelemetry({
-            dispatchId: entry.entryId,
-            paymentIntentId,
-            stage: 'manual_payment_confirmed',
-            paymentMethod: 'MANUAL'
-          });
-
-          setStatusMessage('Finalizing manual payment...');
-          const completion = await completeMobilePaymentLineEntry(token, {
-            entryId: entry.entryId,
-            deviceId,
-            paymentIntentId
-          });
-
-          setLastOrderId(completion.orderId || null);
-          setStatusMessage('Manual payment approved and order finalized.');
-          setLineSession(null);
-          await refreshLineSnapshot().catch(() => undefined);
-          await reportTelemetry({
-            dispatchId: entry.entryId,
-            paymentIntentId,
-            stage: 'dispatch_completed',
-            paymentMethod: 'MANUAL'
-          });
-          return;
-        }
-
         paymentPath = 'tap';
+        setStatusMessage(`Preparing ${TAP_TO_PAY_DISPLAY_NAME}...`);
         await reportTelemetry({
           dispatchId: entry.entryId,
           paymentIntentId,
@@ -582,7 +421,7 @@ export function TerminalStationScreen(_props: Props) {
 
         throwIfCanceled();
 
-        setStatusMessage('Present card for payment...');
+        setStatusMessage('Indicate to pay: present card or phone now.');
         await reportTelemetry({
           dispatchId: entry.entryId,
           paymentIntentId,
@@ -651,12 +490,7 @@ export function TerminalStationScreen(_props: Props) {
           return;
         }
 
-        const failureMessageBase =
-          paymentPath === 'manual'
-            ? `Manual card entry failed: ${rawMessage}`
-            : paymentPath === 'tap'
-              ? `Tap to Pay failed: ${rawMessage}`
-              : rawMessage;
+        const failureMessageBase = paymentPath === 'tap' ? `Tap to Pay failed: ${rawMessage}` : rawMessage;
 
         setError(failureMessageBase);
         setStatusMessage(failureMessageBase);
@@ -681,7 +515,6 @@ export function TerminalStationScreen(_props: Props) {
         setLineSession(null);
         await refreshLineSnapshot().catch(() => undefined);
       } finally {
-        clearDispatchChoicePrompt();
         if (canceledDispatchIdRef.current === entry.entryId) {
           canceledDispatchIdRef.current = null;
         }
@@ -689,8 +522,6 @@ export function TerminalStationScreen(_props: Props) {
       }
     },
     [
-      clearDispatchChoicePrompt,
-      collectManualPaymentWithPaymentSheet,
       deviceId,
       ensureConnectedReader,
       isTerminalMockMode,
@@ -698,8 +529,7 @@ export function TerminalStationScreen(_props: Props) {
       reportTelemetry,
       runMockTapToPayAnimation,
       terminal,
-      token,
-      waitForDispatchChoice
+      token
     ]
   );
 
@@ -708,13 +538,6 @@ export function TerminalStationScreen(_props: Props) {
   useEffect(() => {
     processPaymentEntryRef.current = processPaymentEntry;
   }, [processPaymentEntry]);
-
-  useEffect(
-    () => () => {
-      settleDispatchChoice('tap');
-    },
-    [settleDispatchChoice]
-  );
 
   const registerAndPersist = useCallback(async () => {
     if (!token || !deviceId) {
@@ -745,8 +568,12 @@ export function TerminalStationScreen(_props: Props) {
     }
   }, [deviceId, refreshLineSnapshot, terminalName, token]);
 
-  const startNextPayment = useCallback(async () => {
+  const startNextPayment = useCallback(async (mode: 'auto' | 'manual' = 'manual') => {
     if (!token || !deviceId) {
+      return;
+    }
+
+    if (mode === 'auto' && Date.now() < autoStartBlockedUntilRef.current) {
       return;
     }
 
@@ -756,16 +583,22 @@ export function TerminalStationScreen(_props: Props) {
 
     try {
       const response = await startMobilePaymentLine(token, { deviceId });
+      autoStartBlockedUntilRef.current = 0;
       setLineSnapshot(response.snapshot);
       setLineSession(response.session);
 
       if (response.session) {
-        setStatusMessage(`Started payment line session for ${formatSellerLabel(response.snapshot.entries.find((entry) => entry.entryId === response.session?.activeEntryId) || null)}.`);
+        setStatusMessage(
+          `Now serving ${formatSellerLabel(response.snapshot.entries.find((entry) => entry.entryId === response.session?.activeEntryId) || null)}.`
+        );
       } else {
         setStatusMessage('No waiting payments in line.');
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to start payment line';
+      if (mode === 'auto') {
+        autoStartBlockedUntilRef.current = Date.now() + AUTO_START_RETRY_DELAY_MS;
+      }
       setError(message);
       setStatusMessage(message);
     } finally {
@@ -813,7 +646,6 @@ export function TerminalStationScreen(_props: Props) {
     setOperatorBusy(true);
     setError(null);
     canceledDispatchIdRef.current = dispatchId;
-    settleDispatchChoice('tap');
 
     try {
       await cancelMobilePaymentLineEntry(token, {
@@ -834,7 +666,7 @@ export function TerminalStationScreen(_props: Props) {
     } finally {
       setOperatorBusy(false);
     }
-  }, [activeLineEntry?.entryId, deviceId, lastFailedDispatchId, refreshLineSnapshot, settleDispatchChoice, token]);
+  }, [activeLineEntry?.entryId, deviceId, lastFailedDispatchId, refreshLineSnapshot, token]);
 
   useEffect(() => {
     if (!token || !deviceId || !savedTerminalName) {
@@ -883,6 +715,34 @@ export function TerminalStationScreen(_props: Props) {
       return () => undefined;
     }, [deviceId, refreshLineSnapshot, token])
   );
+
+  useEffect(() => {
+    if (!token || !deviceId || lineSession) {
+      return;
+    }
+
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const snapshot = await fetchMobilePaymentLineSnapshot(token, deviceId);
+        if (cancelled) {
+          return;
+        }
+        setLineSnapshot(snapshot);
+      } catch {
+      }
+    };
+
+    void poll();
+    const timer = setInterval(() => {
+      void poll();
+    }, 4_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [deviceId, lineSession, token]);
 
   useEffect(() => {
     if (!token || !deviceId || !lineSession?.sessionId) {
@@ -935,6 +795,31 @@ export function TerminalStationScreen(_props: Props) {
   }, [deviceId, lineSession?.heartbeatIntervalSeconds, lineSession?.sessionId, token]);
 
   useEffect(() => {
+    if (!token || !deviceId || lineSession || startingPayment || processing || registering || operatorBusy) {
+      return;
+    }
+
+    const waitingCount = lineSnapshot?.waitingCount ?? 0;
+    const hasActiveEntry = activeLineEntry?.uiState === 'ACTIVE_PAYMENT';
+    if (!hasActiveEntry && waitingCount <= 0) {
+      return;
+    }
+
+    void startNextPayment('auto');
+  }, [
+    activeLineEntry?.uiState,
+    deviceId,
+    lineSession,
+    lineSnapshot?.waitingCount,
+    operatorBusy,
+    processing,
+    registering,
+    startNextPayment,
+    startingPayment,
+    token
+  ]);
+
+  useEffect(() => {
     if (!lineSession || !activeLineEntry || activeLineEntry.uiState !== 'ACTIVE_PAYMENT') {
       return;
     }
@@ -952,18 +837,13 @@ export function TerminalStationScreen(_props: Props) {
     });
   }, [activeLineEntry, lineSession, processing]);
 
-  const isDispatchChoiceVisible = Boolean(
-    activeLineEntry && dispatchChoiceDispatchId === activeLineEntry.entryId && activeLineEntry.uiState === 'ACTIVE_PAYMENT'
-  );
-  const isManualPaymentAvailable = stripePaymentSheet.isAvailable;
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <Text style={styles.brandTag}>Penncrest Theater</Text>
           <Text style={styles.title}>Terminal{`\n`}<Text style={styles.titleAccent}>Station</Text></Text>
-          <Text style={styles.subtitle}>This device runs payment-line sessions and defaults to {TAP_TO_PAY_DISPLAY_NAME} after 5 seconds.</Text>
+          <Text style={styles.subtitle}>This device auto-runs payment line sessions with {TAP_TO_PAY_DISPLAY_NAME}.</Text>
           <PaymentModeBadge />
           <View style={styles.divider} />
         </View>
@@ -1026,17 +906,7 @@ export function TerminalStationScreen(_props: Props) {
               <Text style={styles.metricValue}>{nextSellerLabel}</Text>
             </View>
           </View>
-          <Pressable
-            style={[styles.button, (startingPayment || processing) && styles.buttonDisabled]}
-            disabled={startingPayment || processing}
-            onPress={() => void startNextPayment()}
-          >
-            {startingPayment ? (
-              <ActivityIndicator size="small" color="#f5d98b" />
-            ) : (
-              <Text style={styles.buttonLabel}>{lineSession ? 'Refresh Active Session' : 'Start Next Payment'}</Text>
-            )}
-          </Pressable>
+          {startingPayment ? <ActivityIndicator size="small" color="#f5d98b" /> : null}
           {lineSession ? (
             <Text style={styles.recoveryText}>Heartbeat every {lineSession.heartbeatIntervalSeconds}s · Session {lineSession.sessionId.slice(0, 10)}</Text>
           ) : null}
@@ -1068,7 +938,7 @@ export function TerminalStationScreen(_props: Props) {
             <Text style={styles.label}>Operator Controls</Text>
             {lastFailedDispatchId ? (
               <View style={styles.failureBox}>
-                <Text style={styles.failureTitle}>Last failure ({lastFailurePath === 'manual' ? 'Manual Card Entry' : lastFailurePath === 'tap' ? 'Tap to Pay' : 'Unknown'})</Text>
+                <Text style={styles.failureTitle}>Last failure ({lastFailurePath === 'tap' ? 'Tap to Pay' : 'Unknown'})</Text>
                 <Text style={styles.failureText}>{lastFailureReason || 'Terminal payment failed.'}</Text>
                 <Text style={styles.failureText}>Entry ID: {lastFailedDispatchId}</Text>
               </View>
@@ -1100,27 +970,6 @@ export function TerminalStationScreen(_props: Props) {
           </View>
         ) : null}
 
-        {isDispatchChoiceVisible ? (
-          <View style={styles.card}>
-            <Text style={styles.label}>Payment Method</Text>
-            <Text style={styles.value}>Tap to Pay will auto-start in {dispatchChoiceSecondsRemaining}s.</Text>
-            {!isManualPaymentAvailable ? (
-              <Text style={styles.availabilityHint}>Manual payment is unavailable in this build. Tap to Pay will be used.</Text>
-            ) : null}
-            <View style={styles.actionRow}>
-              <Pressable
-                style={[styles.actionButton, styles.secondaryActionButton, !isManualPaymentAvailable && styles.actionButtonDisabled]}
-                onPress={() => settleDispatchChoice('manual')}
-                disabled={!isManualPaymentAvailable}
-              >
-                <Text style={styles.secondaryActionLabel}>{isManualPaymentAvailable ? 'Manual Payment' : 'Manual Unavailable'}</Text>
-              </Pressable>
-              <Pressable style={[styles.actionButton, styles.primaryActionButton]} onPress={() => settleDispatchChoice('tap')}>
-                <Text style={styles.primaryActionLabel}>Tap to Pay</Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -1367,11 +1216,5 @@ const styles = StyleSheet.create({
   },
   actionButtonDisabled: {
     opacity: 0.45
-  },
-  availabilityHint: {
-    marginTop: 6,
-    color: 'rgba(254,202,202,0.9)',
-    fontFamily: 'Georgia',
-    fontSize: 12
   }
 });

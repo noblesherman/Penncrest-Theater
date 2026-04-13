@@ -1,5 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { completePayment } from '../api/mobile';
@@ -28,10 +28,11 @@ export function TapToPayScreen({ navigation, route }: Props) {
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState('Ready to initialize terminal');
+  const [statusMessage, setStatusMessage] = useState('Preparing Tap to Pay...');
   const [didInitialize, setDidInitialize] = useState(false);
   const terminalInitPromiseRef = useRef<Promise<void> | null>(null);
   const terminalInitializedRef = useRef(false);
+  const autoRunStartedRef = useRef(false);
 
   const readerCount = terminal.discoveredReaders.length;
   const hasConnectedReader = Boolean(terminal.connectedReader);
@@ -100,91 +101,6 @@ export function TapToPayScreen({ navigation, route }: Props) {
 
   const totalLabel = useMemo(() => `$${(sale.amountTotalCents / 100).toFixed(2)}`, [sale.amountTotalCents]);
 
-  const discoverTapToPay = async () => {
-    setError(null);
-    setBusy(true);
-    try {
-      await ensurePlatformPermissions();
-      setStatusMessage('Discovering Tap to Pay reader...');
-      const result = await terminal.discoverReaders({
-        discoveryMethod: 'tapToPay',
-        simulated: false
-      });
-
-      if (result.error) {
-        throw new Error(result.error.message || 'Reader discovery failed');
-      }
-
-      setStatusMessage(`Discovery complete (${terminal.discoveredReaders.length} reader(s))`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Reader discovery failed');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const connectTapToPayReader = async () => {
-    setError(null);
-    setBusy(true);
-
-    try {
-      await ensureTerminalInitialized();
-      if (terminal.connectedReader) {
-        setStatusMessage('Tap to Pay connected');
-        return;
-      }
-
-      const reader = terminal.discoveredReaders[0];
-      setStatusMessage('Fetching Stripe location...');
-      const locationsResult = await terminal.getLocations({ limit: 1 });
-      if (locationsResult.error) {
-        throw new Error(locationsResult.error.message || 'Unable to fetch Stripe locations');
-      }
-
-      const locationId = locationsResult.locations?.[0]?.id;
-      if (!locationId) {
-        throw new Error('No Stripe Terminal location available. Configure one in Stripe Dashboard.');
-      }
-
-      if (terminal.easyConnect) {
-        setStatusMessage('Connecting to Tap to Pay...');
-        const easyConnectResult = await terminal.easyConnect({
-          discoveryMethod: 'tapToPay',
-          simulated: false,
-          locationId,
-          autoReconnectOnUnexpectedDisconnect: true
-        });
-        if (easyConnectResult.error) {
-          throw new Error(easyConnectResult.error.message || 'Could not connect reader');
-        }
-        setStatusMessage('Tap to Pay connected');
-        return;
-      }
-
-      if (!reader) {
-        throw new Error('No Tap to Pay reader found. Run discovery first.');
-      }
-
-      setStatusMessage('Connecting to Tap to Pay...');
-      const connectResult = await terminal.connectReader({
-        discoveryMethod: 'tapToPay',
-        reader,
-        locationId,
-        autoReconnectOnUnexpectedDisconnect: true
-      });
-
-      if (connectResult.error) {
-        throw new Error(connectResult.error.message || 'Could not connect reader');
-      }
-
-      setStatusMessage('Tap to Pay connected');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Connection failed');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const ensureConnectedReader = async () => {
     if (!terminal.isAvailable) {
       throw new Error('Stripe Terminal is unavailable in this app build.');
@@ -246,7 +162,7 @@ export function TapToPayScreen({ navigation, route }: Props) {
     }
   };
 
-  const collectAndConfirmPayment = async () => {
+  const collectAndConfirmPayment = useCallback(async () => {
     if (!token) return;
 
     setError(null);
@@ -291,7 +207,7 @@ export function TapToPayScreen({ navigation, route }: Props) {
         throw new Error(retrieved.error?.message || 'Unable to retrieve payment intent');
       }
 
-      setStatusMessage('Present card or tap device...');
+      setStatusMessage('Indicate to pay: present card or phone now.');
       const collected = await terminal.collectPaymentMethod({ paymentIntent: retrieved.paymentIntent });
       if (collected.error || !collected.paymentIntent) {
         throw new Error(collected.error?.message || 'Payment method collection failed');
@@ -317,7 +233,24 @@ export function TapToPayScreen({ navigation, route }: Props) {
     } finally {
       setBusy(false);
     }
-  };
+  }, [ensureConnectedReader, isTerminalMockMode, navigation, sale.clientSecret, sale.paymentIntentId, terminal, token]);
+
+  useEffect(() => {
+    if (autoRunStartedRef.current || !token) {
+      return;
+    }
+
+    if (!didInitialize) {
+      return;
+    }
+
+    if (!isTerminalMockMode && !terminal.isAvailable) {
+      return;
+    }
+
+    autoRunStartedRef.current = true;
+    void collectAndConfirmPayment();
+  }, [collectAndConfirmPayment, didInitialize, isTerminalMockMode, terminal.isAvailable, token]);
 
   return (
     <SafeAreaView style={screenStyles.safeArea}>
@@ -359,14 +292,13 @@ export function TapToPayScreen({ navigation, route }: Props) {
         </View>
 
         {busy ? <ActivityIndicator size="large" color="#0EA5E9" style={{ marginBottom: 12 }} /> : null}
-
-        <LargeButton label="1. Discover Reader" onPress={discoverTapToPay} disabled={busy || !terminal.isAvailable || isTerminalMockMode} />
-        <LargeButton label="2. Connect Reader" onPress={connectTapToPayReader} disabled={busy || !terminal.isAvailable || isTerminalMockMode} />
-        <LargeButton
-          label="3. Collect + Confirm"
-          onPress={collectAndConfirmPayment}
-          disabled={busy || (!terminal.isAvailable && !isTerminalMockMode)}
-        />
+        {error ? (
+          <LargeButton
+            label="Retry Payment"
+            onPress={collectAndConfirmPayment}
+            disabled={busy || (!terminal.isAvailable && !isTerminalMockMode)}
+          />
+        ) : null}
       </View>
     </SafeAreaView>
   );

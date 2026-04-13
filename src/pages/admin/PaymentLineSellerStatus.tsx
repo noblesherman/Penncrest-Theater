@@ -3,8 +3,8 @@ import { useMemo } from 'react';
 import { usePaymentLineStatusStream } from '../../hooks/usePaymentLineStatusStream';
 
 const STATUS_LABEL: Record<string, string> = {
-  WAITING_FOR_PAYMENT: 'Waiting For Payment',
-  ACTIVE_PAYMENT: 'Active Payment',
+  WAITING_FOR_PAYMENT: 'In Line - Waiting For Phone',
+  ACTIVE_PAYMENT: 'Your Turn - Indicate To Pay',
   PAYMENT_SUCCESS: 'Payment Success',
   PAYMENT_FAILED: 'Payment Failed',
   CANCELED: 'Canceled'
