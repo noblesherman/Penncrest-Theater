@@ -464,6 +464,24 @@ export default function AdminOrdersPage() {
     }
   }, []);
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // DERIVED STATE
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const seatIds = useMemo(() => parseSeatIds(assignForm.seatIdsInput), [assignForm.seatIdsInput]);
+  const gaTicketQuantity = useMemo(() => {
+    const p = Number.parseInt(assignForm.gaQuantityInput, 10);
+    return Number.isFinite(p) ? Math.max(0, Math.min(p, 50)) : 0;
+  }, [assignForm.gaQuantityInput]);
+
+  const selectedPerformance = performances.find(p => p.id === assignForm.performanceId);
+  const seatSelectionEnabled = selectedPerformance?.seatSelectionEnabled !== false;
+  const selectionIds = useMemo(
+    () => seatSelectionEnabled ? seatIds : buildGeneralAdmissionLineIds(gaTicketQuantity),
+    [gaTicketQuantity, seatIds, seatSelectionEnabled]
+  );
+  const selectedSeatIdSet = useMemo(() => new Set(seatIds), [seatIds]);
+
   // ── Effects ─────────────────────────────────────────────────────────────────
   useEffect(() => { void Promise.all([load(), loadPerformances()]); }, []);
   useEffect(() => { void load(); }, [scope]);
@@ -540,24 +558,6 @@ export default function AdminOrdersPage() {
     return () => window.clearInterval(id);
   }, [saleRecap]);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // DERIVED STATE
-  // ─────────────────────────────────────────────────────────────────────────
-
-  const seatIds = useMemo(() => parseSeatIds(assignForm.seatIdsInput), [assignForm.seatIdsInput]);
-  const gaTicketQuantity = useMemo(() => {
-    const p = Number.parseInt(assignForm.gaQuantityInput, 10);
-    return Number.isFinite(p) ? Math.max(0, Math.min(p, 50)) : 0;
-  }, [assignForm.gaQuantityInput]);
-
-  const selectedPerformance = performances.find(p => p.id === assignForm.performanceId);
-  const seatSelectionEnabled = selectedPerformance?.seatSelectionEnabled !== false;
-  const selectionIds = useMemo(
-    () => seatSelectionEnabled ? seatIds : buildGeneralAdmissionLineIds(gaTicketQuantity),
-    [gaTicketQuantity, seatIds, seatSelectionEnabled]
-  );
-
-  const selectedSeatIdSet = useMemo(() => new Set(seatIds), [seatIds]);
   const sections = useMemo(() => [...new Set(seats.map(s => s.sectionName))].sort(naturalSort), [seats]);
   const visibleSeats = useMemo(() => seats.filter(s => activeSection === 'All' || s.sectionName === activeSection), [activeSection, seats]);
   const seatById = useMemo(() => new Map(seats.map(s => [s.id, s])), [seats]);
