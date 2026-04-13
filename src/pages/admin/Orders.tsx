@@ -483,34 +483,35 @@ export default function AdminOrdersPage() {
       setInPersonFlowError('Enter an email address before sending a receipt.'); return;
     }
 
-    if (paymentMethod === 'STRIPE') {
-      if (!selectedTerminalDeviceId) {
-        setInPersonFlowError('Select an active payment phone before sending card payment.');
+      const effectivePaymentMethod: 'STRIPE' | 'CASH' = isComplimentaryDoorCheckout ? 'CASH' : paymentMethod;
+      if (effectivePaymentMethod === 'STRIPE') {
+        if (!selectedTerminalDeviceId) {
+          setInPersonFlowError('Select an active payment phone before sending card payment.');
+          return;
+        }
+        setInPersonSubmitting(true);
+        try {
+          const dispatch = await adminFetch<TerminalDispatch>('/api/admin/payment-line/enqueue', {
+            method: 'POST',
+            body: JSON.stringify({
+              performanceId: assignForm.performanceId,
+              seatIds: selectionIds,
+              ticketSelectionBySeatId,
+              receiptEmail: normalizedReceiptEmail || undefined,
+              sendReceipt,
+              customerName: assignForm.customerName.trim() || undefined,
+              studentCode: hasStudentInShowCompSelection ? normalizedStudentCode : undefined,
+              deviceId: selectedTerminalDeviceId
+            })
+          });
+          setTerminalDispatch(dispatch);
+        } catch (e) {
+          setInPersonFlowError(e instanceof Error ? e.message : 'Failed to send sale to payment line');
+        } finally {
+          setInPersonSubmitting(false);
+        }
         return;
       }
-      setInPersonSubmitting(true);
-      try {
-        const dispatch = await adminFetch<TerminalDispatch>('/api/admin/payment-line/enqueue', {
-          method: 'POST',
-          body: JSON.stringify({
-            performanceId: assignForm.performanceId,
-            seatIds: selectionIds,
-            ticketSelectionBySeatId,
-            receiptEmail: normalizedReceiptEmail || undefined,
-            sendReceipt,
-            customerName: assignForm.customerName.trim() || undefined,
-            studentCode: hasStudentInShowCompSelection ? normalizedStudentCode : undefined,
-            deviceId: selectedTerminalDeviceId
-          })
-        });
-        setTerminalDispatch(dispatch);
-      } catch (e) {
-        setInPersonFlowError(e instanceof Error ? e.message : 'Failed to send sale to payment line');
-      } finally {
-        setInPersonSubmitting(false);
-      }
-      return;
-    }
 
     setInPersonSubmitting(true);
     try {
@@ -523,7 +524,7 @@ export default function AdminOrdersPage() {
         body: JSON.stringify({
           performanceId: assignForm.performanceId,
           seatIds: selectionIds,
-          ticketSelectionBySeatId, paymentMethod,
+          ticketSelectionBySeatId, paymentMethod: effectivePaymentMethod,
           receiptEmail: normalizedReceiptEmail || undefined,
           sendReceipt, customerName: assignForm.customerName.trim() || undefined,
           studentCode: hasStudentInShowCompSelection ? normalizedStudentCode : undefined
@@ -538,7 +539,7 @@ export default function AdminOrdersPage() {
       setAssignForm(prev => ({ ...prev, customerName: '', customerEmail: '', seatIdsInput: '', gaQuantityInput: '1', ticketType: '' }));
       setTicketSelectionBySeatId({});
       setNotice(
-        `${paymentMethod === 'CASH' ? 'Cash' : 'Stripe'} sale completed — ${selectionIds.length} ${seatSelectionEnabled ? 'seat' : 'ticket'}${selectionIds.length === 1 ? '' : 's'} · $${(result.expectedAmountCents / 100).toFixed(2)}`
+          `${result.paymentMethod === 'CASH' ? 'Cash' : 'Stripe'} sale completed — ${selectionIds.length} ${seatSelectionEnabled ? 'seat' : 'ticket'}${selectionIds.length === 1 ? '' : 's'} · $${(result.expectedAmountCents / 100).toFixed(2)}`
       );
       startCashierLoop(assignForm.performanceId);
       void load();
@@ -1219,6 +1220,8 @@ export default function AdminOrdersPage() {
     () => selectedSeatsWithPricing.reduce((sum, item) => sum + item.finalPriceCents, 0),
     [selectedSeatsWithPricing]
   );
+
+  const isComplimentaryDoorCheckout = assignForm.source === 'DOOR' && selectedTierSubtotalCents === 0;
 
   const selectedTierBreakdown = useMemo(() => {
     const counts = new Map<string, { name: string; priceCents: number; count: number }>();
@@ -2086,17 +2089,19 @@ export default function AdminOrdersPage() {
                     <motion.button
                       type="button"
                       onClick={finalizeInPersonSale}
-                      disabled={inPersonSubmitting || (paymentMethod === 'STRIPE' && !selectedTerminalDeviceId)}
+                      disabled={inPersonSubmitting || (paymentMethod === 'STRIPE' && !isComplimentaryDoorCheckout && !selectedTerminalDeviceId)}
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.97 }}
                       className="inline-flex min-w-[180px] items-center justify-center gap-2 rounded-full bg-rose-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700 disabled:opacity-60"
                     >
                       <Check className="h-4 w-4" />
                       {inPersonSubmitting
-                        ? (paymentMethod === 'STRIPE' ? 'Sending…' : 'Processing…')
-                        : (paymentMethod === 'STRIPE'
-                          ? `Send to Payment Line · $${(selectedTierSubtotalCents / 100).toFixed(2)}`
-                          : `Collect $${(selectedTierSubtotalCents / 100).toFixed(2)}`)}
+                        ? (paymentMethod === 'STRIPE' && !isComplimentaryDoorCheckout ? 'Sending…' : 'Processing…')
+                        : (isComplimentaryDoorCheckout
+                          ? `Complete complimentary sale · $${(selectedTierSubtotalCents / 100).toFixed(2)}`
+                          : paymentMethod === 'STRIPE'
+                            ? `Send to Payment Line · $${(selectedTierSubtotalCents / 100).toFixed(2)}`
+                            : `Collect $${(selectedTierSubtotalCents / 100).toFixed(2)}`)}
                     </motion.button>
                   ) : (
                     <motion.button
