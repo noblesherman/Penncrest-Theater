@@ -38,7 +38,6 @@ const AdminPerformancesPage = lazy(() => import('./pages/admin/Performances'));
 const AdminArchivePage = lazy(() => import('./pages/admin/Archive'));
 const AdminSeatsPage = lazy(() => import('./pages/admin/Seats'));
 const AdminOrdersPage = lazy(() => import('./pages/admin/Orders'));
-const AdminPosModePage = lazy(() => import('./pages/admin/PosMode'));
 const AdminScannerPage = lazy(() => import('./pages/admin/Scanner'));
 const AdminScannerLivePage = lazy(() => import('./pages/admin/ScannerLive'));
 const AdminOrderDetailPage = lazy(() => import('./pages/admin/OrderDetail'));
@@ -88,7 +87,7 @@ export default function App() {
               <Route path="/booking/:performanceId" element={<Booking />} />
               <Route path="/admin" element={<AdminLayout />}>
                 <Route path="scanner/live" element={<AdminScannerLivePage />} />
-                <Route path="orders/pos" element={<AdminPosModePage />} />
+                <Route path="orders/pos" element={<Navigate to="/admin/orders" replace />} />
                 <Route element={<RouteTransitionOutlet />}>
                   <Route index element={<Navigate to="/admin/dashboard" replace />} />
                   <Route path="dashboard" element={<AdminDashboardPage />} />

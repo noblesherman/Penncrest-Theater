@@ -1946,10 +1946,6 @@ export default function AdminOrdersPage() {
   ];
 
   // ── render ─────────────────────────────────────────────────────────────────
-  const launchPosHref = assignForm.performanceId
-    ? `/admin/orders/pos?performanceId=${encodeURIComponent(assignForm.performanceId)}`
-    : '/admin/orders/pos';
-
   return (
     <div className="max-w-3xl space-y-6">
 
@@ -1960,12 +1956,6 @@ export default function AdminOrdersPage() {
           <p className="mt-1 text-sm text-slate-400">Search, manage, and process ticket orders.</p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-          <Link
-            to={launchPosHref}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-rose-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-rose-700 sm:w-auto"
-          >
-            <ExternalLink className="h-4 w-4" /> Launch POS Mode
-          </Link>
           <Link
             to="/admin/devices"
             className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900 sm:w-auto"
