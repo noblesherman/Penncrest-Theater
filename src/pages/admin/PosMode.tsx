@@ -1476,7 +1476,9 @@ export default function AdminPosModePage() {
                             size="lg"
                             onClick={() => setAssignForm({ ...assignForm, gaQuantityInput: String(Math.max(0, gaTicketQuantity - 1)) })}
                             icon={Minus}
-                          />
+                          >
+                            Decrease
+                          </PosButton>
                           <div className="flex-1 rounded-lg border-2 border-stone-200 bg-stone-50 py-3 text-center text-3xl font-black text-stone-900">
                             {gaTicketQuantity}
                           </div>
@@ -1485,7 +1487,9 @@ export default function AdminPosModePage() {
                             size="lg"
                             onClick={() => setAssignForm({ ...assignForm, gaQuantityInput: String(Math.min(50, gaTicketQuantity + 1)) })}
                             icon={Plus}
-                          />
+                          >
+                            Increase
+                          </PosButton>
                         </div>
                       </div>
                     )}
@@ -1514,7 +1518,7 @@ export default function AdminPosModePage() {
                         <h2 className="text-xl font-bold">Select Seats</h2>
                         <p className="text-sm text-stone-600">{seatIds.length} seat{seatIds.length !== 1 ? 's' : ''} selected</p>
                       </div>
-                      <PosButton variant="ghost" onClick={() => setSeatPickerOpen(false)} icon={X} />
+                      <PosButton variant="ghost" onClick={() => setSeatPickerOpen(false)} icon={X}>Close</PosButton>
                     </div>
 
                     {loadingSeats ? (
