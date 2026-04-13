@@ -14,6 +14,11 @@ import {
   RefreshCw,
   Ticket,
   X,
+  ShoppingCart,
+  CreditCard,
+  Banknote,
+  LogOut,
+  ArrowRight,
 } from 'lucide-react';
 
 import { adminFetch } from '../../lib/adminAuth';
@@ -55,6 +60,12 @@ import {
   type PosTerminalDispatch,
   type PosTerminalDevice,
   type PosTicketOption,
+  PosStepper,
+  PosButton,
+  PosInput,
+  PosSelect,
+  PosCard,
+  PosAlert,
 } from '../../components/admin/pos';
 
 // ======================== TYPES ========================
@@ -263,17 +274,20 @@ function ManualDispatchChargeForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="rounded-2xl border border-stone-300 bg-stone-50 p-4">
+      <div className="rounded-xl border-2 border-stone-200 bg-stone-50 p-4">
         <PaymentElement />
       </div>
-      <button
+      <PosButton
         type="submit"
+        variant="success"
+        size="lg"
+        fullWidth
         disabled={disabled || submitting || !stripe || !elements}
-        className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-red-700 py-3.5 text-sm font-semibold text-white transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+        isLoading={submitting}
+        icon={Ticket}
       >
-        {submitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Ticket className="h-4 w-4" />}
         Charge ${(amountCents / 100).toFixed(2)}
-      </button>
+      </PosButton>
     </form>
   );
 }

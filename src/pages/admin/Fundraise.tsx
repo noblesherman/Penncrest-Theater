@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
 import { loadStripe, type StripeElementsOptions } from '@stripe/stripe-js';
 import { AnimatePresence, motion } from 'motion/react';
+import { createPortal } from 'react-dom';
 import {
   Calendar,
   CalendarClock,
@@ -1595,223 +1596,230 @@ export default function AdminFundraisePage() {
         </div>
       )}
 
-      <AnimatePresence>
-        {showWizard ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm sm:items-center sm:p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.93, opacity: 0, y: 16 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.93, opacity: 0, y: 16 }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-              className="flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl sm:max-w-lg sm:rounded-3xl"
-            >
-              <div className="mb-0 border-b border-stone-100 px-4 pb-4 pt-5 sm:px-6 flex-shrink-0">
-                <div className="mb-4 flex items-center justify-between">
-                  <p className="font-bold text-stone-900">{editingId ? 'Edit Fundraising Event' : 'New Fundraising Event'}</p>
-                  <button
-                    type="button"
-                    onClick={closeWizard}
-                    className="rounded-full p-1 text-stone-300 transition hover:bg-stone-50 hover:text-stone-600"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {STEPS.map((wizardStep, idx) => {
-                    const Icon = wizardStep.icon;
-                    const done = idx < step;
-                    const active = idx === step;
-                    return (
-                      <button
-                        key={wizardStep.id}
-                        type="button"
-                        onClick={() => goTo(idx)}
-                        className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${
-                          active
-                            ? 'bg-red-700 text-white shadow-sm'
-                            : done
-                              ? 'border border-green-200 bg-green-50 text-green-700'
-                              : 'bg-stone-100 text-stone-400 hover:bg-stone-200'
-                        }`}
-                      >
-                        {done ? <Check className="h-3 w-3" /> : <Icon className="h-3 w-3" />}
-                        <span className="hidden sm:inline">{wizardStep.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-                <AnimatePresence mode="wait" initial={false}>
+      {typeof document !== 'undefined'
+        ? createPortal(
+            <>
+              <AnimatePresence>
+                {showWizard ? (
                   <motion.div
-                    key={step}
-                    initial={{ x: dir * 32, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    exit={{ x: dir * -32, opacity: 0 }}
-                    transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm sm:items-center sm:p-4"
                   >
-                    {stepContent[step]}
+                    <motion.div
+                      initial={{ scale: 0.93, opacity: 0, y: 16 }}
+                      animate={{ scale: 1, opacity: 1, y: 0 }}
+                      exit={{ scale: 0.93, opacity: 0, y: 16 }}
+                      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                      className="flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl sm:max-w-lg sm:rounded-3xl"
+                    >
+                      <div className="mb-0 border-b border-stone-100 px-4 pb-4 pt-5 sm:px-6 flex-shrink-0">
+                        <div className="mb-4 flex items-center justify-between">
+                          <p className="font-bold text-stone-900">{editingId ? 'Edit Fundraising Event' : 'New Fundraising Event'}</p>
+                          <button
+                            type="button"
+                            onClick={closeWizard}
+                            className="rounded-full p-1 text-stone-300 transition hover:bg-stone-50 hover:text-stone-600"
+                          >
+                            <X className="h-5 w-5" />
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {STEPS.map((wizardStep, idx) => {
+                            const Icon = wizardStep.icon;
+                            const done = idx < step;
+                            const active = idx === step;
+                            return (
+                              <button
+                                key={wizardStep.id}
+                                type="button"
+                                onClick={() => goTo(idx)}
+                                className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${
+                                  active
+                                    ? 'bg-red-700 text-white shadow-sm'
+                                    : done
+                                      ? 'border border-green-200 bg-green-50 text-green-700'
+                                      : 'bg-stone-100 text-stone-400 hover:bg-stone-200'
+                                }`}
+                              >
+                                {done ? <Check className="h-3 w-3" /> : <Icon className="h-3 w-3" />}
+                                <span className="hidden sm:inline">{wizardStep.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+                        <AnimatePresence mode="wait" initial={false}>
+                          <motion.div
+                            key={step}
+                            initial={{ x: dir * 32, opacity: 0 }}
+                            animate={{ x: 0, opacity: 1 }}
+                            exit={{ x: dir * -32, opacity: 0 }}
+                            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                          >
+                            {stepContent[step]}
+                          </motion.div>
+                        </AnimatePresence>
+                      </div>
+
+                      <div className="flex-shrink-0 border-t border-stone-100 bg-stone-50/60 px-4 py-4 sm:px-6">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <button
+                            type="button"
+                            onClick={() => goTo(step - 1)}
+                            disabled={step === 0}
+                            className="flex items-center gap-1 text-sm font-semibold text-stone-400 transition hover:text-stone-800 disabled:cursor-not-allowed disabled:opacity-25"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                            Back
+                          </button>
+                          <span className="text-xs text-stone-300">
+                            {step + 1} / {STEPS.length}
+                          </span>
+                          {step < STEPS.length - 1 ? (
+                            <button
+                              type="button"
+                              onClick={() => goTo(step + 1)}
+                              className="flex items-center gap-1.5 rounded-full bg-stone-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-stone-800"
+                            >
+                              Next
+                              <ChevronRight className="h-4 w-4" />
+                            </button>
+                          ) : (
+                            <motion.button
+                              type="button"
+                              onClick={() => void saveEvent()}
+                              whileHover={{ scale: 1.03 }}
+                              whileTap={{ scale: 0.97 }}
+                              disabled={saving}
+                              className="flex items-center gap-1.5 rounded-full bg-red-700 px-5 py-2 text-sm font-semibold text-white shadow-sm shadow-red-100 transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <Save className="h-4 w-4" />
+                              {saving ? 'Saving...' : editingId ? 'Save Changes' : 'Create Event'}
+                            </motion.button>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
                   </motion.div>
-                </AnimatePresence>
-              </div>
+                ) : null}
+              </AnimatePresence>
 
-              <div className="flex-shrink-0 border-t border-stone-100 bg-stone-50/60 px-4 py-4 sm:px-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={() => goTo(step - 1)}
-                    disabled={step === 0}
-                    className="flex items-center gap-1 text-sm font-semibold text-stone-400 transition hover:text-stone-800 disabled:cursor-not-allowed disabled:opacity-25"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Back
-                  </button>
-                  <span className="text-xs text-stone-300">
-                    {step + 1} / {STEPS.length}
-                  </span>
-                  {step < STEPS.length - 1 ? (
-                    <button
-                      type="button"
-                      onClick={() => goTo(step + 1)}
-                      className="flex items-center gap-1.5 rounded-full bg-stone-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-stone-800"
-                    >
-                      Next
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
-                  ) : (
-                    <motion.button
-                      type="button"
-                      onClick={() => void saveEvent()}
-                      whileHover={{ scale: 1.03 }}
-                      whileTap={{ scale: 0.97 }}
-                      disabled={saving}
-                      className="flex items-center gap-1.5 rounded-full bg-red-700 px-5 py-2 text-sm font-semibold text-white shadow-sm shadow-red-100 transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <Save className="h-4 w-4" />
-                      {saving ? 'Saving...' : editingId ? 'Save Changes' : 'Create Event'}
-                    </motion.button>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showSponsorWizard ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm sm:items-center sm:p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.93, opacity: 0, y: 16 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.93, opacity: 0, y: 16 }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-              className="flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl sm:max-w-lg sm:rounded-3xl"
-            >
-              <div className="mb-0 border-b border-stone-100 px-4 pb-4 pt-5 sm:px-6 flex-shrink-0">
-                <div className="mb-4 flex items-center justify-between">
-                  <p className="font-bold text-stone-900">{sponsorEditingId ? 'Edit Sponsor' : 'New Sponsor'}</p>
-                  <button
-                    type="button"
-                    onClick={closeSponsorWizard}
-                    className="rounded-full p-1 text-stone-300 transition hover:bg-stone-50 hover:text-stone-600"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {SPONSOR_STEPS.map((wizardStep, idx) => {
-                    const Icon = wizardStep.icon;
-                    const done = idx < sponsorStep;
-                    const active = idx === sponsorStep;
-                    return (
-                      <button
-                        key={wizardStep.id}
-                        type="button"
-                        onClick={() => goToSponsorStep(idx)}
-                        className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${
-                          active
-                            ? 'bg-red-700 text-white shadow-sm'
-                            : done
-                              ? 'border border-green-200 bg-green-50 text-green-700'
-                              : 'bg-stone-100 text-stone-400 hover:bg-stone-200'
-                        }`}
-                      >
-                        {done ? <Check className="h-3 w-3" /> : <Icon className="h-3 w-3" />}
-                        <span className="hidden sm:inline">{wizardStep.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-                <AnimatePresence mode="wait" initial={false}>
+              <AnimatePresence>
+                {showSponsorWizard ? (
                   <motion.div
-                    key={sponsorStep}
-                    initial={{ x: sponsorDir * 32, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    exit={{ x: sponsorDir * -32, opacity: 0 }}
-                    transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm sm:items-center sm:p-4"
                   >
-                    {sponsorStepContent[sponsorStep]}
-                  </motion.div>
-                </AnimatePresence>
-              </div>
+                    <motion.div
+                      initial={{ scale: 0.93, opacity: 0, y: 16 }}
+                      animate={{ scale: 1, opacity: 1, y: 0 }}
+                      exit={{ scale: 0.93, opacity: 0, y: 16 }}
+                      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                      className="flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl sm:max-w-lg sm:rounded-3xl"
+                    >
+                      <div className="mb-0 border-b border-stone-100 px-4 pb-4 pt-5 sm:px-6 flex-shrink-0">
+                        <div className="mb-4 flex items-center justify-between">
+                          <p className="font-bold text-stone-900">{sponsorEditingId ? 'Edit Sponsor' : 'New Sponsor'}</p>
+                          <button
+                            type="button"
+                            onClick={closeSponsorWizard}
+                            className="rounded-full p-1 text-stone-300 transition hover:bg-stone-50 hover:text-stone-600"
+                          >
+                            <X className="h-5 w-5" />
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {SPONSOR_STEPS.map((wizardStep, idx) => {
+                            const Icon = wizardStep.icon;
+                            const done = idx < sponsorStep;
+                            const active = idx === sponsorStep;
+                            return (
+                              <button
+                                key={wizardStep.id}
+                                type="button"
+                                onClick={() => goToSponsorStep(idx)}
+                                className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${
+                                  active
+                                    ? 'bg-red-700 text-white shadow-sm'
+                                    : done
+                                      ? 'border border-green-200 bg-green-50 text-green-700'
+                                      : 'bg-stone-100 text-stone-400 hover:bg-stone-200'
+                                }`}
+                              >
+                                {done ? <Check className="h-3 w-3" /> : <Icon className="h-3 w-3" />}
+                                <span className="hidden sm:inline">{wizardStep.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
 
-              <div className="flex-shrink-0 border-t border-stone-100 bg-stone-50/60 px-4 py-4 sm:px-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={() => goToSponsorStep(sponsorStep - 1)}
-                    disabled={sponsorStep === 0}
-                    className="flex items-center gap-1 text-sm font-semibold text-stone-400 transition hover:text-stone-800 disabled:cursor-not-allowed disabled:opacity-25"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Back
-                  </button>
-                  <span className="text-xs text-stone-300">
-                    {sponsorStep + 1} / {SPONSOR_STEPS.length}
-                  </span>
-                  {sponsorStep < SPONSOR_STEPS.length - 1 ? (
-                    <button
-                      type="button"
-                      onClick={() => goToSponsorStep(sponsorStep + 1)}
-                      className="flex items-center gap-1.5 rounded-full bg-stone-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-stone-800"
-                    >
-                      Next
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
-                  ) : (
-                    <motion.button
-                      type="button"
-                      onClick={() => void saveSponsor()}
-                      whileHover={{ scale: 1.03 }}
-                      whileTap={{ scale: 0.97 }}
-                      disabled={sponsorSaving}
-                      className="flex items-center gap-1.5 rounded-full bg-red-700 px-5 py-2 text-sm font-semibold text-white shadow-sm shadow-red-100 transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <Save className="h-4 w-4" />
-                      {sponsorSaving ? 'Saving...' : sponsorEditingId ? 'Save Sponsor' : 'Create Sponsor'}
-                    </motion.button>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+                      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+                        <AnimatePresence mode="wait" initial={false}>
+                          <motion.div
+                            key={sponsorStep}
+                            initial={{ x: sponsorDir * 32, opacity: 0 }}
+                            animate={{ x: 0, opacity: 1 }}
+                            exit={{ x: sponsorDir * -32, opacity: 0 }}
+                            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                          >
+                            {sponsorStepContent[sponsorStep]}
+                          </motion.div>
+                        </AnimatePresence>
+                      </div>
+
+                      <div className="flex-shrink-0 border-t border-stone-100 bg-stone-50/60 px-4 py-4 sm:px-6">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <button
+                            type="button"
+                            onClick={() => goToSponsorStep(sponsorStep - 1)}
+                            disabled={sponsorStep === 0}
+                            className="flex items-center gap-1 text-sm font-semibold text-stone-400 transition hover:text-stone-800 disabled:cursor-not-allowed disabled:opacity-25"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                            Back
+                          </button>
+                          <span className="text-xs text-stone-300">
+                            {sponsorStep + 1} / {SPONSOR_STEPS.length}
+                          </span>
+                          {sponsorStep < SPONSOR_STEPS.length - 1 ? (
+                            <button
+                              type="button"
+                              onClick={() => goToSponsorStep(sponsorStep + 1)}
+                              className="flex items-center gap-1.5 rounded-full bg-stone-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-stone-800"
+                            >
+                              Next
+                              <ChevronRight className="h-4 w-4" />
+                            </button>
+                          ) : (
+                            <motion.button
+                              type="button"
+                              onClick={() => void saveSponsor()}
+                              whileHover={{ scale: 1.03 }}
+                              whileTap={{ scale: 0.97 }}
+                              disabled={sponsorSaving}
+                              className="flex items-center gap-1.5 rounded-full bg-red-700 px-5 py-2 text-sm font-semibold text-white shadow-sm shadow-red-100 transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <Save className="h-4 w-4" />
+                              {sponsorSaving ? 'Saving...' : sponsorEditingId ? 'Save Sponsor' : 'Create Sponsor'}
+                            </motion.button>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+            </>,
+            document.body
+          )
+        : null}
     </div>
   );
 }
