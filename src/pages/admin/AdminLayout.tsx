@@ -204,6 +204,7 @@ export default function AdminLayout() {
 
   const pathname = location.pathname;
   const isScannerLive = pathname === '/admin/scanner/live' || pathname.startsWith('/admin/scanner/live/');
+  const isPosMode = pathname === '/admin/orders/pos' || pathname.startsWith('/admin/orders/pos/');
   const isPaymentLineOverlay =
     (pathname === '/admin/payment-line/seller' || pathname === '/admin/payment-line/wallboard') &&
     new URLSearchParams(location.search).get('overlay') === '1';
@@ -239,7 +240,7 @@ export default function AdminLayout() {
     return <Navigate to={fallbackRoute} replace />;
   }
 
-  if (isScannerLive || isPaymentLineOverlay) {
+  if (isScannerLive || isPaymentLineOverlay || isPosMode) {
     return <Outlet context={outletContext} />;
   }
 
