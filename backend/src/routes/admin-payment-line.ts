@@ -1,9 +1,11 @@
 import { FastifyPluginAsync } from 'fastify';
+import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { handleRouteError } from '../lib/route-error.js';
 import { HttpError } from '../lib/http-error.js';
 import { prisma } from '../lib/prisma.js';
-import { env } from '../lib/env.js';
+import { env, getAllowedOrigins } from '../lib/env.js';
+import { isAllowedOrigin } from '../plugins/cors.js';
 import {
   backToLineEntry,
   cancelPaymentLineEntry,
@@ -45,6 +47,16 @@ const eventsQuerySchema = z.object({
 });
 
 export const adminPaymentLineRoutes: FastifyPluginAsync = async (app) => {
+  const allowedOrigins = getAllowedOrigins();
+  const applySseCorsHeaders = (origin: unknown, reply: FastifyReply) => {
+    if (typeof origin !== 'string' || !isAllowedOrigin(origin, allowedOrigins)) {
+      return;
+    }
+    reply.raw.setHeader('Access-Control-Allow-Origin', origin);
+    reply.raw.setHeader('Vary', 'Origin');
+    reply.raw.setHeader('Access-Control-Allow-Credentials', 'true');
+  };
+
   app.post('/api/admin/payment-line/enqueue', { preHandler: app.authenticateAdmin }, async (request, reply) => {
     const parsed = enqueueSchema.safeParse(request.body || {});
     if (!parsed.success) {
@@ -264,6 +276,7 @@ export const adminPaymentLineRoutes: FastifyPluginAsync = async (app) => {
         throw new HttpError(403, 'Account inactive');
       }
 
+      applySseCorsHeaders(request.headers.origin, reply);
       reply.raw.setHeader('Content-Type', 'text/event-stream');
       reply.raw.setHeader('Cache-Control', 'no-cache');
       reply.raw.setHeader('Connection', 'keep-alive');

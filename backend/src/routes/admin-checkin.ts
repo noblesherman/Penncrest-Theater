@@ -1,9 +1,12 @@
 import crypto from 'node:crypto';
 import { FastifyPluginAsync } from 'fastify';
+import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { handleRouteError } from '../lib/route-error.js';
 import { HttpError } from '../lib/http-error.js';
+import { getAllowedOrigins } from '../lib/env.js';
+import { isAllowedOrigin } from '../plugins/cors.js';
 import { createTicketSignature } from '../lib/qr.js';
 import { logAudit } from '../lib/audit-log.js';
 
@@ -545,6 +548,16 @@ async function computeCheckInAnalytics(performanceId: string) {
 }
 
 export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
+  const allowedOrigins = getAllowedOrigins();
+  const applySseCorsHeaders = (origin: unknown, reply: FastifyReply) => {
+    if (typeof origin !== 'string' || !isAllowedOrigin(origin, allowedOrigins)) {
+      return;
+    }
+    reply.raw.setHeader('Access-Control-Allow-Origin', origin);
+    reply.raw.setHeader('Vary', 'Origin');
+    reply.raw.setHeader('Access-Control-Allow-Credentials', 'true');
+  };
+
   app.get('/api/admin/check-in/events/token', { preHandler: app.authenticateAdmin }, async (request, reply) => {
     const parsed = summaryQuerySchema.safeParse(request.query || {});
     if (!parsed.success) {
@@ -714,6 +727,7 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
         throw new HttpError(403, 'Account inactive');
       }
 
+      applySseCorsHeaders(request.headers.origin, reply);
       reply.raw.setHeader('Content-Type', 'text/event-stream');
       reply.raw.setHeader('Cache-Control', 'no-cache');
       reply.raw.setHeader('Connection', 'keep-alive');
