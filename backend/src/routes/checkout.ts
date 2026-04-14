@@ -35,12 +35,17 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
       }
 
       try {
-        if (parsed.data.checkoutMode === 'PAID') {
-          const queued = await enqueuePaidCheckout(parsed.data);
+        const payload = {
+          ...parsed.data,
+          clientIpAddress: parsed.data.clientIpAddress || getClientIp(request)
+        };
+
+        if (payload.checkoutMode === 'PAID') {
+          const queued = await enqueuePaidCheckout(payload);
           return reply.send(queued);
         }
 
-        const result = await executeCheckoutRequest(parsed.data);
+        const result = await executeCheckoutRequest(payload);
         return reply.send(result);
       } catch (err) {
         if (err instanceof Stripe.errors.StripeError) {

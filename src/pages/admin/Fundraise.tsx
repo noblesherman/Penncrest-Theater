@@ -59,6 +59,7 @@ type EventForm = {
   notes: string;
   tiersText: string;
   seatSelectionEnabled: boolean;
+  generalAdmissionCapacity: string;
 };
 
 type FundraisingSponsor = {
@@ -123,6 +124,9 @@ const inputClass =
 const labelClass = 'block text-xs font-bold uppercase tracking-widest text-stone-400 mb-2';
 const DONATION_PRESET_AMOUNTS_CENTS = [500, 1000, 2000, 3000];
 const FALLBACK_STRIPE_PUBLISHABLE_KEY = (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '').trim();
+const GENERAL_ADMISSION_CAPACITY_MIN = 1;
+const GENERAL_ADMISSION_CAPACITY_MAX = 5000;
+const GENERAL_ADMISSION_CAPACITY_DEFAULT = 250;
 
 const STEPS = [
   { id: 'event', label: 'The Event', icon: Calendar },
@@ -147,7 +151,8 @@ function createInitialForm(): EventForm {
     venue: 'Penncrest High School Auditorium',
     notes: '',
     tiersText: 'Adult:1800\nStudent:1200',
-    seatSelectionEnabled: true
+    seatSelectionEnabled: true,
+    generalAdmissionCapacity: String(GENERAL_ADMISSION_CAPACITY_DEFAULT)
   };
 }
 
@@ -428,7 +433,8 @@ export default function AdminFundraisePage() {
       venue: event.venue,
       notes: event.notes || '',
       tiersText: event.pricingTiers.map((tier) => `${tier.name}:${tier.priceCents}`).join('\n'),
-      seatSelectionEnabled: event.seatSelectionEnabled !== false
+      seatSelectionEnabled: event.seatSelectionEnabled !== false,
+      generalAdmissionCapacity: String(Math.max(event.seatsTotal, GENERAL_ADMISSION_CAPACITY_MIN))
     });
     setNotice(`Editing "${event.title}".`);
     setError(null);
@@ -471,6 +477,22 @@ export default function AdminFundraisePage() {
       setError('Add at least one pricing tier in Name:PriceCents format.');
       return;
     }
+    const generalAdmissionCapacity = Number.parseInt(form.generalAdmissionCapacity, 10);
+    if (!form.seatSelectionEnabled) {
+      if (!Number.isInteger(generalAdmissionCapacity)) {
+        setError('Enter a whole number for general admission ticket capacity.');
+        return;
+      }
+      if (
+        generalAdmissionCapacity < GENERAL_ADMISSION_CAPACITY_MIN ||
+        generalAdmissionCapacity > GENERAL_ADMISSION_CAPACITY_MAX
+      ) {
+        setError(
+          `General admission ticket capacity must be between ${GENERAL_ADMISSION_CAPACITY_MIN} and ${GENERAL_ADMISSION_CAPACITY_MAX}.`
+        );
+        return;
+      }
+    }
 
     setSaving(true);
     setError(null);
@@ -487,6 +509,7 @@ export default function AdminFundraisePage() {
       staffTicketLimit: 2,
       studentCompTicketsEnabled: false,
       seatSelectionEnabled: form.seatSelectionEnabled,
+      generalAdmissionCapacity: !form.seatSelectionEnabled ? generalAdmissionCapacity : undefined,
       venue: form.venue.trim() || 'Penncrest High School Auditorium',
       notes: form.notes.trim() || undefined,
       pricingTiers: tiers
@@ -929,6 +952,30 @@ export default function AdminFundraisePage() {
           </button>
         </div>
       </div>
+      <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">
+          General Admission Ticket Capacity
+        </label>
+        <input
+          type="number"
+          min={GENERAL_ADMISSION_CAPACITY_MIN}
+          max={GENERAL_ADMISSION_CAPACITY_MAX}
+          value={form.generalAdmissionCapacity}
+          onChange={(event) =>
+            setForm((prev) => ({
+              ...prev,
+              generalAdmissionCapacity: event.target.value
+            }))
+          }
+          disabled={form.seatSelectionEnabled}
+          className={`${inputClass} disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400`}
+        />
+        <p className="mt-2 text-xs text-stone-500">
+          {form.seatSelectionEnabled
+            ? 'Turn off seat selection to enforce a fixed ticket count for this fundraiser.'
+            : `This event will cap sales at this many general admission tickets.`}
+        </p>
+      </div>
     </div>,
 
     <div key="review" className="space-y-4">
@@ -958,6 +1005,10 @@ export default function AdminFundraisePage() {
           {
             label: 'Seat selection',
             value: form.seatSelectionEnabled ? 'Enabled' : 'Auto-assign mode'
+          },
+          {
+            label: 'GA ticket capacity',
+            value: form.seatSelectionEnabled ? 'Not used' : form.generalAdmissionCapacity || 'Missing'
           }
         ].map(({ label, value }) => (
           <div key={label} className="flex flex-col gap-1 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -1213,6 +1264,7 @@ export default function AdminFundraisePage() {
           ) : (
             events.map((event, idx) => {
               const pct = event.seatsTotal > 0 ? Math.round((event.seatsSold / event.seatsTotal) * 100) : 0;
+              const inventoryLabel = event.seatSelectionEnabled ? 'seats' : 'tickets';
               const isSelected = event.id === selectedEvent?.id;
               return (
                 <motion.div
@@ -1265,7 +1317,7 @@ export default function AdminFundraisePage() {
                     <div className="mt-2.5">
                       <div className="mb-1 flex justify-between text-xs text-stone-400">
                         <span>
-                          {event.seatsSold} / {event.seatsTotal} seats
+                          {event.seatsSold} / {event.seatsTotal} {inventoryLabel}
                         </span>
                         <span className={pct >= 90 ? 'font-bold text-red-500' : pct >= 60 ? 'font-semibold text-amber-500' : ''}>
                           {pct}%

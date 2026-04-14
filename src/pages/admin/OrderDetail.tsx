@@ -31,6 +31,13 @@ type OrderDetail = {
   tickets: Array<{ publicId: string; seatId: string }>;
   stripeRefundStatus?: string | null;
   refundRequestedAt?: string | null;
+  registrationSubmission?: {
+    id: string;
+    submittedAt: string;
+    responseJson: unknown;
+    form?: { id: string; formName: string } | null;
+    formVersion?: { id: string; versionNumber: number } | null;
+  } | null;
 };
 
 type StripeTransactionDetail = {
@@ -711,6 +718,26 @@ export default function AdminOrderDetailPage() {
           </div>
         </Card>
       </div>
+
+      {data.registrationSubmission && (
+        <Card className="p-5">
+          <SectionLabel>Registration Form</SectionLabel>
+          <div className="space-y-2">
+            <p className="text-sm text-stone-700">
+              {data.registrationSubmission.form?.formName || 'Event Registration Form'}
+              {data.registrationSubmission.formVersion?.versionNumber
+                ? ` • Version ${data.registrationSubmission.formVersion.versionNumber}`
+                : ''}
+            </p>
+            <p className="text-xs text-stone-500">
+              Submitted {formatDateTime(data.registrationSubmission.submittedAt)}
+            </p>
+            <pre className="max-h-80 overflow-auto rounded-xl border border-stone-200 bg-stone-50 p-3 text-xs text-stone-700">
+              {JSON.stringify(data.registrationSubmission.responseJson, null, 2)}
+            </pre>
+          </div>
+        </Card>
+      )}
 
       {/* ── Actions ── */}
       <Card className="p-5">

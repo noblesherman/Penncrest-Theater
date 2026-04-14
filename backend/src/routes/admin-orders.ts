@@ -892,7 +892,23 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
         include: {
           performance: { include: { show: true } },
           orderSeats: { include: { seat: true }, orderBy: { createdAt: 'asc' } },
-          tickets: { include: { seat: true }, orderBy: { createdAt: 'asc' } }
+          tickets: { include: { seat: true }, orderBy: { createdAt: 'asc' } },
+          registrationSubmission: {
+            include: {
+              form: {
+                select: {
+                  id: true,
+                  formName: true
+                }
+              },
+              formVersion: {
+                select: {
+                  id: true,
+                  versionNumber: true
+                }
+              }
+            }
+          }
         }
       });
 

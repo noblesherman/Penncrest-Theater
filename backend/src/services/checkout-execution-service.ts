@@ -1,4 +1,4 @@
-import { StudentCreditVerificationMethod } from '@prisma/client';
+import { Prisma, StudentCreditVerificationMethod } from '@prisma/client';
 import type { z } from 'zod';
 import Stripe from 'stripe';
 import { checkoutRequestSchema } from '../schemas/checkout.js';
@@ -20,6 +20,12 @@ import {
   reserveStudentCreditForOrderTx
 } from './student-ticket-credit-service.js';
 import { validateTeacherCompPromoCode } from './teacher-comp-promo-code-service.js';
+import {
+  normalizeEventRegistrationDefinition,
+  normalizeEventRegistrationSettings,
+  validateEventRegistrationSubmission,
+  type ValidatedEventRegistrationSubmission
+} from '../lib/event-registration-form.js';
 
 export type CheckoutRequestPayload = z.infer<typeof checkoutRequestSchema>;
 
@@ -60,6 +66,10 @@ const TEACHER_TICKET_OPTION_ID = 'teacher-comp';
 const STUDENT_SHOW_TICKET_OPTION_ID = 'student-show-comp';
 const MAX_TEACHER_COMP_TICKETS = 2;
 const MAX_STUDENT_COMP_TICKETS = 2;
+
+function toPrismaJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
 
 function naturalSeatSort(
   a: { sectionName: string; row: string; number: number },
@@ -121,19 +131,39 @@ export async function executeCheckoutRequest(payload: CheckoutRequestPayload): P
     customerEmail,
     customerName,
     customerPhone,
-    attendeeNames
+    attendeeNames,
+    registrationSubmission,
+    clientIpAddress
   } = payload;
   const uniqueSeatIds = [...new Set(seatIds)];
   const isStudentCompCheckout = checkoutMode === 'STUDENT_COMP';
 
   let createdOrderId: string | null = null;
   let createdPaymentIntentId: string | null = null;
+  let validatedRegistrationSubmission: ValidatedEventRegistrationSubmission | null = null;
+  let registrationFormBinding: { formId: string; formVersionId: string } | null = null;
 
   try {
     const [performance, holdSession] = await Promise.all([
       prisma.performance.findFirst({
         where: { id: performanceId, isArchived: false },
-        include: { show: true, pricingTiers: true }
+        include: {
+          show: true,
+          pricingTiers: true,
+          registrationForm: {
+            select: {
+              id: true,
+              status: true,
+              publishedVersion: {
+                select: {
+                  id: true,
+                  settingsJson: true,
+                  definitionJson: true
+                }
+              }
+            }
+          }
+        }
       }),
       prisma.holdSession.findUnique({
         where: { holdToken },
@@ -147,6 +177,43 @@ export async function executeCheckoutRequest(payload: CheckoutRequestPayload): P
 
     if (!performance) {
       throw new HttpError(404, 'Performance not found');
+    }
+
+    const registrationForm = performance.registrationForm;
+    const publishedRegistrationFormVersion =
+      performance.isFundraiser &&
+      registrationForm?.status === 'PUBLISHED' &&
+      registrationForm.publishedVersion
+        ? registrationForm.publishedVersion
+        : null;
+
+    if (registrationForm && publishedRegistrationFormVersion) {
+      const registrationSettings = normalizeEventRegistrationSettings(
+        publishedRegistrationFormVersion.settingsJson as Prisma.JsonValue
+      );
+
+      if (registrationSettings.enabled) {
+        if (!registrationSubmission) {
+          throw new HttpError(400, 'Registration form is required before checkout.');
+        }
+
+        const registrationDefinition = normalizeEventRegistrationDefinition(
+          publishedRegistrationFormVersion.definitionJson as Prisma.JsonValue
+        );
+
+        validatedRegistrationSubmission = validateEventRegistrationSubmission({
+          definition: registrationDefinition,
+          settings: registrationSettings,
+          ticketQuantity: uniqueSeatIds.length,
+          payload: registrationSubmission,
+          expectedFormVersionId: publishedRegistrationFormVersion.id,
+          ipAddress: clientIpAddress || null
+        });
+        registrationFormBinding = {
+          formId: registrationForm.id,
+          formVersionId: publishedRegistrationFormVersion.id
+        };
+      }
     }
 
     if (!performance.isPublished || (performance.onlineSalesStartsAt && performance.onlineSalesStartsAt > new Date())) {
@@ -415,6 +482,18 @@ export async function executeCheckoutRequest(payload: CheckoutRequestPayload): P
         });
       }
 
+      if (validatedRegistrationSubmission && registrationFormBinding) {
+        await prisma.eventRegistrationSubmission.create({
+          data: {
+            orderId: order.id,
+            performanceId,
+            formId: registrationFormBinding.formId,
+            formVersionId: registrationFormBinding.formVersionId,
+            responseJson: toPrismaJson(validatedRegistrationSubmission)
+          }
+        });
+      }
+
       return {
         orderId: order.id,
         orderAccessToken: order.accessToken,
@@ -460,6 +539,18 @@ export async function executeCheckoutRequest(payload: CheckoutRequestPayload): P
           studentTicketCreditId,
           quantity: studentComplimentaryQuantity,
           verificationMethod: StudentCreditVerificationMethod.CODE
+        });
+      }
+
+      if (validatedRegistrationSubmission && registrationFormBinding) {
+        await tx.eventRegistrationSubmission.create({
+          data: {
+            orderId: createdOrder.id,
+            performanceId,
+            formId: registrationFormBinding.formId,
+            formVersionId: registrationFormBinding.formVersionId,
+            responseJson: toPrismaJson(validatedRegistrationSubmission)
+          }
         });
       }
 

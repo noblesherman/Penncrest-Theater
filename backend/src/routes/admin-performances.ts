@@ -68,6 +68,7 @@ const createPerformanceSchema = z.object({
   studentCompTicketsEnabled: z.boolean().optional(),
   familyFreeTicketEnabled: z.boolean().optional(),
   seatSelectionEnabled: z.boolean().optional(),
+  generalAdmissionCapacity: z.number().int().min(1).max(5000).optional(),
   venue: z.string().min(1),
   notes: z.string().optional(),
   pricingTiers: z.array(tierSchema).min(1),
@@ -86,6 +87,13 @@ const deletePerformanceQuerySchema = z.object({
     .union([z.literal('1'), z.literal('true'), z.literal('0'), z.literal('false')])
     .optional()
 });
+
+const GENERAL_ADMISSION_SECTION_NAME = 'General Admission';
+const GENERAL_ADMISSION_ROW_LABEL = 'GA';
+const GENERAL_ADMISSION_CAPACITY_FALLBACK = 250;
+const GENERAL_ADMISSION_GRID_COLUMNS = 25;
+const GENERAL_ADMISSION_GRID_STEP = 24;
+const GENERAL_ADMISSION_GRID_OFFSET = 32;
 
 function buildDefaultSeats(performanceId: string): Array<{
   performanceId: string;
@@ -126,6 +134,157 @@ function buildDefaultSeats(performanceId: string): Array<{
   });
 
   return seats;
+}
+
+function resolveDefaultSeatPriceCents(tiers: Array<{ priceCents: number }>): number {
+  const prices = tiers
+    .map((tier) => Math.round(tier.priceCents))
+    .filter((priceCents) => Number.isFinite(priceCents) && priceCents > 0);
+
+  if (prices.length === 0) {
+    return 1800;
+  }
+
+  return Math.min(...prices);
+}
+
+function buildGeneralAdmissionSeatRows(params: {
+  performanceId: string;
+  startNumber: number;
+  count: number;
+  priceCents: number;
+}): Array<{
+  performanceId: string;
+  row: string;
+  number: number;
+  sectionName: string;
+  x: number;
+  y: number;
+  price: number;
+  isAccessible: boolean;
+  isCompanion: boolean;
+}> {
+  return Array.from({ length: params.count }, (_, index) => {
+    const seatNumber = params.startNumber + index;
+    const gridIndex = seatNumber - 1;
+    const column = gridIndex % GENERAL_ADMISSION_GRID_COLUMNS;
+    const rowIndex = Math.floor(gridIndex / GENERAL_ADMISSION_GRID_COLUMNS);
+
+    return {
+      performanceId: params.performanceId,
+      row: GENERAL_ADMISSION_ROW_LABEL,
+      number: seatNumber,
+      sectionName: GENERAL_ADMISSION_SECTION_NAME,
+      x: GENERAL_ADMISSION_GRID_OFFSET + column * GENERAL_ADMISSION_GRID_STEP,
+      y: GENERAL_ADMISSION_GRID_OFFSET + rowIndex * GENERAL_ADMISSION_GRID_STEP,
+      price: params.priceCents,
+      isAccessible: false,
+      isCompanion: false
+    };
+  });
+}
+
+async function syncGeneralAdmissionSeatCapacityTx(
+  tx: Prisma.TransactionClient,
+  params: {
+    performanceId: string;
+    targetCapacity: number;
+    priceCentsForNewSeats: number;
+  }
+): Promise<{ added: number; removed: number; total: number }> {
+  const targetCapacity = Math.max(1, Math.round(params.targetCapacity));
+  const seats = await tx.seat.findMany({
+    where: { performanceId: params.performanceId },
+    select: {
+      id: true,
+      status: true,
+      sectionName: true,
+      row: true,
+      number: true
+    }
+  });
+
+  const currentCapacity = seats.length;
+  if (currentCapacity === targetCapacity) {
+    return { added: 0, removed: 0, total: currentCapacity };
+  }
+
+  if (currentCapacity < targetCapacity) {
+    const additionalCount = targetCapacity - currentCapacity;
+    const usedGaNumbers = new Set(
+      seats
+        .filter(
+          (seat) =>
+            seat.sectionName === GENERAL_ADMISSION_SECTION_NAME &&
+            seat.row === GENERAL_ADMISSION_ROW_LABEL &&
+            seat.number > 0
+        )
+        .map((seat) => seat.number)
+    );
+
+    const rowsToCreate: Array<{
+      performanceId: string;
+      row: string;
+      number: number;
+      sectionName: string;
+      x: number;
+      y: number;
+      price: number;
+      isAccessible: boolean;
+      isCompanion: boolean;
+    }> = [];
+
+    let nextGaNumber = 1;
+    while (rowsToCreate.length < additionalCount) {
+      if (!usedGaNumbers.has(nextGaNumber)) {
+        rowsToCreate.push(
+          ...buildGeneralAdmissionSeatRows({
+            performanceId: params.performanceId,
+            startNumber: nextGaNumber,
+            count: 1,
+            priceCents: params.priceCentsForNewSeats
+          })
+        );
+        usedGaNumbers.add(nextGaNumber);
+      }
+      nextGaNumber += 1;
+    }
+
+    await tx.seat.createMany({ data: rowsToCreate });
+    return { added: rowsToCreate.length, removed: 0, total: targetCapacity };
+  }
+
+  const removeCount = currentCapacity - targetCapacity;
+  const removableSeats = seats.filter((seat) => seat.status === 'AVAILABLE');
+  if (removableSeats.length < removeCount) {
+    const lockedOrSoldCount = currentCapacity - removableSeats.length;
+    throw new HttpError(
+      409,
+      `Cannot set fundraiser ticket capacity below ${lockedOrSoldCount} because sold or held tickets already exist.`
+    );
+  }
+
+  const seatsToDelete = removableSeats
+    .sort((a, b) => {
+      const aGa =
+        a.sectionName === GENERAL_ADMISSION_SECTION_NAME && a.row === GENERAL_ADMISSION_ROW_LABEL ? 1 : 0;
+      const bGa =
+        b.sectionName === GENERAL_ADMISSION_SECTION_NAME && b.row === GENERAL_ADMISSION_ROW_LABEL ? 1 : 0;
+
+      if (aGa !== bGa) return bGa - aGa;
+      if (a.sectionName !== b.sectionName) return b.sectionName.localeCompare(a.sectionName);
+      if (a.row !== b.row) return b.row.localeCompare(a.row, undefined, { numeric: true, sensitivity: 'base' });
+      return b.number - a.number;
+    })
+    .slice(0, removeCount);
+
+  await tx.seat.deleteMany({
+    where: {
+      id: { in: seatsToDelete.map((seat) => seat.id) }
+    }
+  });
+
+  return { added: 0, removed: seatsToDelete.length, total: targetCapacity };
 }
 
 function buildStudentCodeFromName(name: string): string {
@@ -613,6 +772,13 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
         });
 
         const performanceIds: string[] = [];
+        const defaultSeatPriceCents = resolveDefaultSeatPriceCents(payload.pricingTiers);
+        const shouldUseGeneralAdmissionCapacity =
+          Boolean(payload.isFundraiser ?? false) && (payload.seatSelectionEnabled ?? true) === false;
+        const generalAdmissionCapacity = shouldUseGeneralAdmissionCapacity
+          ? payload.generalAdmissionCapacity ?? GENERAL_ADMISSION_CAPACITY_FALLBACK
+          : null;
+
         for (const scheduleEntry of scheduleEntries) {
           const performance = await tx.performance.create({
             data: {
@@ -647,7 +813,15 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
           });
 
           await tx.seat.createMany({
-            data: buildDefaultSeats(performance.id)
+            data:
+              shouldUseGeneralAdmissionCapacity && generalAdmissionCapacity
+                ? buildGeneralAdmissionSeatRows({
+                    performanceId: performance.id,
+                    startNumber: 1,
+                    count: generalAdmissionCapacity,
+                    priceCents: defaultSeatPriceCents
+                  })
+                : buildDefaultSeats(performance.id)
           });
         }
 
@@ -728,6 +902,15 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
         payload.studentCompTicketsEnabled ?? payload.familyFreeTicketEnabled;
 
       const studentCompSync = await prisma.$transaction(async (tx) => {
+        const nextIsFundraiser = payload.isFundraiser ?? existing.isFundraiser;
+        const nextSeatSelectionEnabled = payload.seatSelectionEnabled ?? existing.seatSelectionEnabled;
+        if (payload.generalAdmissionCapacity !== undefined && (!nextIsFundraiser || nextSeatSelectionEnabled)) {
+          throw new HttpError(
+            400,
+            'General admission ticket capacity can only be set for fundraising events with seat selection turned off.'
+          );
+        }
+
         await tx.performance.update({
           where: { id: params.id },
           data: {
@@ -858,6 +1041,21 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
               name: tier.name,
               priceCents: tier.priceCents
             }))
+          });
+        }
+
+        if (nextIsFundraiser && nextSeatSelectionEnabled === false && payload.generalAdmissionCapacity !== undefined) {
+          const pricingSource = payload.pricingTiers
+            ? payload.pricingTiers
+            : await tx.pricingTier.findMany({
+                where: { performanceId: params.id },
+                select: { priceCents: true }
+              });
+          const defaultSeatPriceCents = resolveDefaultSeatPriceCents(pricingSource);
+          await syncGeneralAdmissionSeatCapacityTx(tx, {
+            performanceId: params.id,
+            targetCapacity: payload.generalAdmissionCapacity,
+            priceCentsForNewSeats: defaultSeatPriceCents
           });
         }
 

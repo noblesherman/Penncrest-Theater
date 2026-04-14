@@ -90,6 +90,10 @@ function randomPollDelayMs(): number {
   return minMs + Math.floor(Math.random() * (maxMs - minMs + 1));
 }
 
+function toPrismaJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
 function asPayload(jsonValue: Prisma.JsonValue): CheckoutRequestPayload {
   const parsed = checkoutRequestSchema.safeParse(jsonValue);
   if (!parsed.success) {
@@ -263,7 +267,7 @@ export async function enqueuePaidCheckout(payload: CheckoutRequestPayload): Prom
     const defaultExpiry = new Date(now.getTime() + queueMaxWaitMs());
     const upsertWaitingState = {
       performanceId: payload.performanceId,
-      requestPayloadJson: payload,
+      requestPayloadJson: toPrismaJson(payload),
       status: 'WAITING' as const,
       expiresAt: defaultExpiry,
       processingStartedAt: null,

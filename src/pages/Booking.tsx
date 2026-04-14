@@ -17,9 +17,11 @@ import {
   X
 } from 'lucide-react';
 import { SeatMapViewport } from '../components/SeatMapViewport';
+import EventRegistrationCheckoutForm from '../components/EventRegistrationCheckoutForm';
 import { apiFetch } from '../lib/api';
 import { getClientToken } from '../lib/clientToken';
 import { buildConfirmationPath, rememberOrderAccessToken } from '../lib/orderAccess';
+import type { EventRegistrationPublicFormResponse, EventRegistrationSubmissionPayload } from '../lib/eventRegistrationForm';
 
 interface Seat {
   id: string;
@@ -53,6 +55,7 @@ type PerformanceDetails = {
   pricingTiers: PricingTier[];
   studentCompTicketsEnabled?: boolean;
   seatSelectionEnabled?: boolean;
+  registrationFormRequired?: boolean;
 };
 
 type CheckoutStep = 1 | 2 | 3;
@@ -307,6 +310,9 @@ export default function Booking() {
   const [teacherPromoCode, setTeacherPromoCode] = useState('');
   const [pendingStripePayment, setPendingStripePayment] = useState<PendingStripePayment | null>(null);
   const [checkoutQueue, setCheckoutQueue] = useState<CheckoutQueueState | null>(null);
+  const [registrationForm, setRegistrationForm] = useState<Extract<EventRegistrationPublicFormResponse, { enabled: true }> | null>(null);
+  const [registrationPayload, setRegistrationPayload] = useState<EventRegistrationSubmissionPayload | null>(null);
+  const [registrationValid, setRegistrationValid] = useState(true);
 
   const fetchSeats = useCallback(async () => {
     if (!performanceId) return;
@@ -336,6 +342,22 @@ export default function Booking() {
       setPricingTiers([]);
       setStudentCompTicketsEnabled(false);
       setSeatSelectionEnabled(true);
+    }
+  }, [performanceId]);
+
+  const fetchRegistrationForm = useCallback(async () => {
+    if (!performanceId) return;
+
+    try {
+      const response = await apiFetch<EventRegistrationPublicFormResponse>(`/api/performances/${performanceId}/registration-form`);
+      if (response.enabled) {
+        setRegistrationForm(response);
+        return;
+      }
+      setRegistrationForm(null);
+    } catch (err) {
+      console.error('Failed to fetch registration form', err);
+      setRegistrationForm(null);
     }
   }, [performanceId]);
 
@@ -375,6 +397,7 @@ export default function Booking() {
   useEffect(() => {
     void fetchSeats();
     void fetchPerformanceDetails();
+    void fetchRegistrationForm();
 
     let stopped = false;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -405,7 +428,7 @@ export default function Booking() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (pollTimer) clearTimeout(pollTimer);
     };
-  }, [fetchPerformanceDetails, fetchSeats]);
+  }, [fetchPerformanceDetails, fetchRegistrationForm, fetchSeats]);
 
   useEffect(() => {
     if (selectedSeatIds.length === 0 && !holdToken) return;
@@ -508,6 +531,11 @@ export default function Booking() {
     if (!checkoutQueue) return;
     setCheckoutQueue(null);
   }, [checkoutQueue, currentStep]);
+
+  useEffect(() => {
+    setRegistrationPayload(null);
+    setRegistrationValid(!registrationForm);
+  }, [registrationForm?.versionId, registrationForm]);
 
   const handleSeatClick = (seat: Seat) => {
     if (!seatSelectionEnabled) {
@@ -709,6 +737,12 @@ export default function Booking() {
       return;
     }
 
+    if (registrationRequired && (!registrationValid || !registrationPayload)) {
+      setStepError('Complete the registration form before checkout.');
+      setCurrentStep(3);
+      return;
+    }
+
     setProcessing(true);
     setStepError(null);
     setPendingStripePayment(null);
@@ -761,7 +795,8 @@ export default function Booking() {
             customerEmail: effectiveCustomerEmail,
             customerName: effectiveCustomerName,
             customerPhone: effectiveCustomerPhone,
-            teacherPromoCode: normalizedTeacherPromoCode
+            teacherPromoCode: normalizedTeacherPromoCode,
+            registrationSubmission: registrationRequired ? registrationPayload : undefined
           })
         });
       } else if (isStudentInShowCheckout) {
@@ -799,7 +834,8 @@ export default function Booking() {
             customerEmail: effectiveCustomerEmail,
             customerName: effectiveCustomerName,
             customerPhone: effectiveCustomerPhone,
-            studentCode: normalizedStudentCode
+            studentCode: normalizedStudentCode,
+            registrationSubmission: registrationRequired ? registrationPayload : undefined
           })
         });
       } else {
@@ -830,7 +866,8 @@ export default function Booking() {
             clientToken: clientTokenRef.current,
             customerEmail: effectiveCustomerEmail,
             customerName: effectiveCustomerName,
-            customerPhone: effectiveCustomerPhone
+            customerPhone: effectiveCustomerPhone,
+            registrationSubmission: registrationRequired ? registrationPayload : undefined
           })
         });
       }
@@ -1097,9 +1134,11 @@ export default function Booking() {
   const teacherCompAppliedCount = complimentaryTeacherSeatIds.size;
   const studentCompAppliedCount = complimentaryStudentSeatIds.size;
   const checkoutUnitLabel = seatSelectionEnabled ? 'seat' : 'ticket';
+  const registrationRequired = Boolean(registrationForm);
 
   const canContinueToTypes = selectedSeats.length > 0;
   const canContinueToCheckout = selectedSeats.length > 0 && missingTicketTypeCount === 0;
+  const canSubmitCheckout = selectedSeats.length > 0 && (!registrationRequired || registrationValid);
 
   const goToStepTwo = () => {
     if (!canContinueToTypes) {
@@ -1808,6 +1847,19 @@ export default function Booking() {
                         </label>
                       </div>
 
+                      {registrationForm ? (
+                        <EventRegistrationCheckoutForm
+                          form={registrationForm}
+                          ticketQuantity={selectedSeatIds.length}
+                          storageKey={`event-registration:${performanceId || 'event'}:${registrationForm.versionId}`}
+                          disabled={Boolean(pendingStripePayment) || processing}
+                          onValidityChange={({ valid, payload }) => {
+                            setRegistrationValid(valid);
+                            setRegistrationPayload(payload);
+                          }}
+                        />
+                      ) : null}
+
                       <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                         <button
                           onClick={() => {
@@ -1823,7 +1875,7 @@ export default function Booking() {
                         {!pendingStripePayment && (
                           <button
                             onClick={handleCheckout}
-                            disabled={processing || selectedSeats.length === 0}
+                            disabled={processing || !canSubmitCheckout}
                             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-red-800 transition-colors sm:w-auto"
                           >
                             <CreditCard className="w-4 h-4" />
@@ -1940,6 +1992,19 @@ export default function Booking() {
                         )}
                       </div>
 
+                      {registrationForm ? (
+                        <EventRegistrationCheckoutForm
+                          form={registrationForm}
+                          ticketQuantity={selectedSeatIds.length}
+                          storageKey={`event-registration:${performanceId || 'event'}:${registrationForm.versionId}`}
+                          disabled={Boolean(pendingStripePayment) || processing}
+                          onValidityChange={({ valid, payload }) => {
+                            setRegistrationValid(valid);
+                            setRegistrationPayload(payload);
+                          }}
+                        />
+                      ) : null}
+
                       <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center">
                         <button
                           onClick={() => {
@@ -1955,7 +2020,7 @@ export default function Booking() {
                         {!pendingStripePayment && (
                           <button
                             onClick={handleCheckout}
-                            disabled={processing || selectedSeats.length === 0}
+                            disabled={processing || !canSubmitCheckout}
                             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-red-800 transition-colors sm:w-auto"
                           >
                             <CreditCard className="w-4 h-4" />

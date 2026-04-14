@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { eventRegistrationSubmissionSchema } from '../lib/event-registration-form.js';
 
 export const checkoutRequestSchema = z.object({
   performanceId: z.string().min(1),
@@ -21,5 +22,7 @@ export const checkoutRequestSchema = z.object({
   customerEmail: z.string().email(),
   customerName: z.string().min(1),
   customerPhone: z.string().min(7).max(40),
-  attendeeNames: z.record(z.string().min(1), z.string().min(1).max(80)).optional()
+  attendeeNames: z.record(z.string().min(1), z.string().min(1).max(80)).optional(),
+  registrationSubmission: eventRegistrationSubmissionSchema.optional(),
+  clientIpAddress: z.string().max(120).optional()
 });

@@ -224,6 +224,16 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
         include: {
           show: true,
           pricingTiers: true,
+          registrationForm: {
+            select: {
+              status: true,
+              publishedVersion: {
+                select: {
+                  settingsJson: true
+                }
+              }
+            }
+          },
           seats: {
             select: {
               sectionName: true,
@@ -284,6 +294,11 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
         staffTicketLimit: performance.staffTicketLimit,
         studentCompTicketsEnabled: performance.familyFreeTicketEnabled,
         seatSelectionEnabled: performance.seatSelectionEnabled,
+        registrationFormRequired:
+          performance.isFundraiser &&
+          performance.registrationForm?.status === 'PUBLISHED' &&
+          Boolean(performance.registrationForm.publishedVersion) &&
+          (performance.registrationForm.publishedVersion?.settingsJson as any)?.enabled === true,
         venue: performance.venue,
         notes: performance.notes,
         show: {

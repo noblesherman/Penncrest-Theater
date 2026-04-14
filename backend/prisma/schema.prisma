@@ -174,6 +174,12 @@ enum ManagedDeviceEventActor {
   SYSTEM
 }
 
+enum EventRegistrationFormStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
 model AdminUser {
   id           String    @id @default(cuid())
   username     String    @unique
@@ -395,6 +401,8 @@ model Performance {
   studentTicketCreditTransactions StudentTicketCreditTransaction[]
   terminalPaymentDispatches TerminalPaymentDispatch[]
   checkoutQueueItems CheckoutQueueItem[]
+  registrationForm EventRegistrationForm?
+  registrationSubmissions EventRegistrationSubmission[]
 
   @@index([showId])
   @@index([startsAt])
@@ -518,6 +526,7 @@ model Order {
   studentTicketCreditTransactions StudentTicketCreditTransaction[]
   terminalDispatchFinalizations TerminalPaymentDispatch[] @relation("TerminalDispatchFinalOrder")
   checkoutQueueItems CheckoutQueueItem[]
+  registrationSubmission EventRegistrationSubmission?
 
   @@index([performanceId])
   @@index([userId])
@@ -527,6 +536,65 @@ model Order {
   @@index([source, inPersonPaymentMethod, createdAt])
   @@index([studentTicketCreditId])
   @@index([accessToken])
+}
+
+model EventRegistrationForm {
+  id                  String                      @id @default(cuid())
+  performanceId       String                      @unique
+  performance         Performance                 @relation(fields: [performanceId], references: [id], onDelete: Cascade)
+  formName            String                      @default("Event Registration Form")
+  internalDescription String?
+  status              EventRegistrationFormStatus @default(DRAFT)
+  settingsJson        Json
+  draftDefinitionJson Json
+  publishedVersionId  String?
+  publishedVersion    EventRegistrationFormVersion? @relation("EventRegistrationFormPublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
+  versions            EventRegistrationFormVersion[]
+  submissions         EventRegistrationSubmission[]
+  createdByAdminId    String?
+  updatedByAdminId    String?
+  archivedAt          DateTime?
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
+
+  @@index([status, updatedAt])
+}
+
+model EventRegistrationFormVersion {
+  id                  String                      @id @default(cuid())
+  formId              String
+  form                EventRegistrationForm       @relation(fields: [formId], references: [id], onDelete: Cascade)
+  publishedForForms   EventRegistrationForm[]     @relation("EventRegistrationFormPublishedVersion")
+  versionNumber       Int
+  formName            String
+  settingsJson        Json
+  definitionJson      Json
+  publishedAt         DateTime                    @default(now())
+  createdByAdminId    String?
+  createdAt           DateTime                    @default(now())
+  submissions         EventRegistrationSubmission[]
+
+  @@unique([formId, versionNumber])
+  @@index([formId, publishedAt])
+}
+
+model EventRegistrationSubmission {
+  id            String                     @id @default(cuid())
+  orderId       String                     @unique
+  order         Order                      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  performanceId String
+  performance   Performance                @relation(fields: [performanceId], references: [id], onDelete: Restrict)
+  formId        String
+  form          EventRegistrationForm      @relation(fields: [formId], references: [id], onDelete: Restrict)
+  formVersionId String
+  formVersion   EventRegistrationFormVersion @relation(fields: [formVersionId], references: [id], onDelete: Restrict)
+  responseJson  Json
+  submittedAt   DateTime                   @default(now())
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
+
+  @@index([performanceId, submittedAt])
+  @@index([formId, submittedAt])
 }
 
 model CheckoutQueueItem {
