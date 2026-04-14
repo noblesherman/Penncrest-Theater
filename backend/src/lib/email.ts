@@ -4,7 +4,7 @@ import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { env, isSmtpConfigured } from './env.js';
 
-type TicketEmailTicket = {
+export type TicketEmailTicket = {
   publicId: string;
   row: string;
   number: number;
@@ -14,7 +14,7 @@ type TicketEmailTicket = {
   attendeeName?: string | null;
 };
 
-type TicketEmailPayload = {
+export type TicketEmailPayload = {
   orderId: string;
   customerName: string;
   customerEmail: string;

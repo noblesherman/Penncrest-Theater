@@ -1,10 +1,11 @@
 import crypto from 'node:crypto';
-import { InPersonPaymentMethod, OrderSource, Prisma } from '@prisma/client';
+import { InPersonPaymentMethod, OrderSource, Prisma, TicketType } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { HttpError } from '../lib/http-error.js';
 import { buildQrPayload } from '../lib/qr.js';
 import { generateOrderAccessToken } from '../lib/order-access.js';
-import { sendTicketsEmail } from '../lib/email.js';
+import type { TicketEmailPayload } from '../lib/email.js';
+import { enqueueTicketEmailOutbox } from './ticket-email-outbox-service.js';
 
 type AssignedOrderParams = {
   performanceId: string;
@@ -275,34 +276,82 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
 
     const createdTicketIds: string[] = [];
     const autoCheckInAt = params.source === 'DOOR' ? new Date() : null;
-
-    for (const assignment of seatAssignments) {
+    const ticketRows = seatAssignments.map((assignment) => {
+      const issuedTicketType: TicketType =
+        params.source === 'STAFF_COMP' || params.source === 'STAFF_FREE'
+          ? 'STAFF_COMP'
+          : params.source === 'STUDENT_COMP' && assignment.isComplimentary
+            ? 'STUDENT_COMP'
+            : 'PAID';
       const ticketId = crypto.randomUUID();
       const qrSecret = crypto.randomBytes(16).toString('hex');
-      await tx.ticket.create({
-        data: {
-          id: ticketId,
-          orderId: createdOrder.id,
-          performanceId: params.performanceId,
-          userId: params.userId,
-          seatId: isGeneralAdmissionNoSeatLinks ? null : assignment.seat.id,
-          type:
-            params.source === 'STAFF_COMP' || params.source === 'STAFF_FREE'
-              ? 'STAFF_COMP'
-              : params.source === 'STUDENT_COMP' && assignment.isComplimentary
-                ? 'STUDENT_COMP'
-                : 'PAID',
-          priceCents: assignment.price,
-          status: 'ISSUED',
-          publicId: crypto.randomBytes(8).toString('hex'),
-          qrSecret,
-          qrPayload: buildQrPayload(ticketId, qrSecret),
-          checkedInAt: autoCheckInAt,
-          checkedInBy: autoCheckInAt ? 'BOX_OFFICE_AUTO' : null,
-          checkInGate: autoCheckInAt ? 'BOX_OFFICE' : null
-        }
+      return {
+        id: ticketId,
+        orderId: createdOrder.id,
+        performanceId: params.performanceId,
+        userId: params.userId || null,
+        seatId: isGeneralAdmissionNoSeatLinks ? null : assignment.seat.id,
+        type: issuedTicketType,
+        priceCents: assignment.price,
+        status: 'ISSUED' as const,
+        publicId: crypto.randomBytes(8).toString('hex'),
+        qrSecret,
+        qrPayload: buildQrPayload(ticketId, qrSecret),
+        checkedInAt: autoCheckInAt,
+        checkedInBy: autoCheckInAt ? 'BOX_OFFICE_AUTO' : null,
+        checkInGate: autoCheckInAt ? 'BOX_OFFICE' : null,
+        ticketType: assignment.ticketType,
+        attendeeName: assignment.attendeeName,
+        row: assignment.seat.row,
+        number: assignment.seat.number,
+        sectionName: assignment.seat.sectionName
+      };
+    });
+
+    await tx.ticket.createMany({
+      data: ticketRows.map((row) => ({
+        id: row.id,
+        orderId: row.orderId,
+        performanceId: row.performanceId,
+        userId: row.userId,
+        seatId: row.seatId,
+        type: row.type,
+        priceCents: row.priceCents,
+        status: row.status,
+        publicId: row.publicId,
+        qrSecret: row.qrSecret,
+        qrPayload: row.qrPayload,
+        checkedInAt: row.checkedInAt,
+        checkedInBy: row.checkedInBy,
+        checkInGate: row.checkInGate
+      }))
+    });
+
+    createdTicketIds.push(...ticketRows.map((row) => row.id));
+
+    if (params.sendEmail) {
+      const emailPayload: TicketEmailPayload = {
+        orderId: createdOrder.id,
+        customerName: name,
+        customerEmail: email,
+        showTitle: performance.title || performance.show.title,
+        startsAtIso: performance.startsAt.toISOString(),
+        venue: performance.venue,
+        tickets: ticketRows.map((row, index) => ({
+          publicId: row.publicId,
+          row: isGeneralAdmissionNoSeatLinks ? '' : row.row,
+          number: isGeneralAdmissionNoSeatLinks ? index + 1 : row.number,
+          sectionName: isGeneralAdmissionNoSeatLinks ? 'General Admission' : row.sectionName,
+          seatLabel: isGeneralAdmissionNoSeatLinks ? `General Admission Ticket ${index + 1}` : null,
+          ticketType: row.ticketType || null,
+          attendeeName: row.attendeeName || null
+        }))
+      };
+
+      await enqueueTicketEmailOutbox(tx, {
+        orderId: createdOrder.id,
+        payload: emailPayload
       });
-      createdTicketIds.push(ticketId);
     }
 
     if (params.staffCompRedemptionUserId) {
@@ -333,41 +382,6 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
 
   if (!order) {
     throw new HttpError(500, 'Failed to create assigned order');
-  }
-
-  if (params.sendEmail) {
-    const isGeneralAdmission = order.performance.seatSelectionEnabled === false;
-    const orderSeatBySeatId = new Map(
-      order.orderSeats
-        .filter((seat) => Boolean(seat.seatId))
-        .map((seat) => [seat.seatId as string, seat])
-    );
-    const generalAdmissionOrderSeats = order.orderSeats.filter((seat) => !seat.seatId);
-    let generalAdmissionSeatCursor = 0;
-
-    await sendTicketsEmail({
-      orderId: order.id,
-      customerName: order.customerName,
-      customerEmail: order.email,
-      showTitle: order.performance.title || order.performance.show.title,
-      startsAtIso: order.performance.startsAt.toISOString(),
-      venue: order.performance.venue,
-      tickets: order.tickets.map((ticket, index) => {
-        const matchedOrderSeat =
-          (ticket.seatId ? orderSeatBySeatId.get(ticket.seatId) : null) ||
-          generalAdmissionOrderSeats[generalAdmissionSeatCursor++] ||
-          order.orderSeats[index];
-        return {
-          publicId: ticket.publicId,
-          row: isGeneralAdmission ? '' : ticket.seat?.row || '',
-          number: isGeneralAdmission ? index + 1 : ticket.seat?.number || index + 1,
-          sectionName: isGeneralAdmission ? 'General Admission' : ticket.seat?.sectionName || 'Unassigned Seat',
-          seatLabel: isGeneralAdmission ? `General Admission Ticket ${index + 1}` : null,
-          ticketType: matchedOrderSeat?.ticketType || null,
-          attendeeName: matchedOrderSeat?.attendeeName || null
-        };
-      })
-    });
   }
 
   return order;

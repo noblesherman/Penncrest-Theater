@@ -378,6 +378,8 @@ async function getHealthDiagnosticsMetrics(now: Date): Promise<{
 
 export const healthRoutes: FastifyPluginAsync = async (app) => {
   app.get('/health', async () => ({ status: 'ok' }));
+  app.get('/health/live', async () => ({ status: 'ok' }));
+  app.get('/api/health', async () => ({ status: 'ok' }));
 
   app.get('/api/health/ready', async (_request, reply) => {
     const requestStartedAt = process.hrtime.bigint();
@@ -442,7 +444,7 @@ export const healthRoutes: FastifyPluginAsync = async (app) => {
         },
         system: getSystemSnapshot(),
         diagnostics: {
-          path: '/api/health/diagnostics',
+          path: '/health/diag',
           cacheTtlSeconds: env.HEALTH_DIAGNOSTICS_CACHE_TTL_SECONDS
         }
       };
@@ -483,16 +485,20 @@ export const healthRoutes: FastifyPluginAsync = async (app) => {
         },
         system: getSystemSnapshot(),
         diagnostics: {
-          path: '/api/health/diagnostics',
+          path: '/health/diag',
           cacheTtlSeconds: env.HEALTH_DIAGNOSTICS_CACHE_TTL_SECONDS
         }
       });
     }
   });
 
-  app.get('/api/health/diagnostics', async (_request, reply) => reply.redirect('/api/health', 307));
+  app.get(
+    '/api/health/diagnostics',
+    { preHandler: app.authenticateAdmin },
+    async (_request, reply) => reply.redirect('/health/diag', 307)
+  );
 
-  app.get('/api/health', async (_request, reply) => {
+  app.get('/health/diag', { preHandler: app.authenticateAdmin }, async (_request, reply) => {
     const requestStartedAt = process.hrtime.bigint();
     const now = new Date();
     const { r2Config, stripeStatus, stripeMode, emailStatus, googleOauthStatus, microsoftOauthStatus } =

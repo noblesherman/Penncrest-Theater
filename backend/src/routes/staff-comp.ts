@@ -3,9 +3,12 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { HttpError } from '../lib/http-error.js';
 import { handleRouteError } from '../lib/route-error.js';
+import { getClientIp } from '../lib/client-ip.js';
+import { hashRedeemCode, normalizeRedeemCode } from '../lib/staff-code.js';
 import { createAssignedOrder } from '../services/order-assignment.js';
 import { logAudit } from '../lib/audit-log.js';
 import { validateTeacherCompPromoCode } from '../services/teacher-comp-promo-code-service.js';
+import { evaluateStaffCompReserveGuards, recordStaffCompReserveAttempt } from '../services/staff-comp-reserve-security.js';
 
 const reserveStaffCompSchema = z.object({
   performanceId: z.string().min(1),
@@ -15,6 +18,42 @@ const reserveStaffCompSchema = z.object({
   seatId: z.string().min(1).optional(),
   attendeeName: z.string().trim().min(1).max(80).optional()
 });
+
+function classifyReserveFailureReason(err: unknown): string {
+  if (!(err instanceof HttpError)) {
+    return 'UNHANDLED_ERROR';
+  }
+
+  if (err.statusCode === 400 && err.message.toLowerCase().includes('promo code')) {
+    return 'INVALID_PROMO_CODE';
+  }
+
+  if (err.statusCode === 400 && err.message.toLowerCase().includes('sales are')) {
+    return 'SALES_WINDOW_CLOSED';
+  }
+
+  if (err.statusCode === 400 && err.message.toLowerCase().includes('seat')) {
+    return 'SEAT_VALIDATION_FAILED';
+  }
+
+  if (err.statusCode === 404) {
+    return 'ENTITY_NOT_FOUND';
+  }
+
+  if (err.statusCode === 409) {
+    return 'STATE_CONFLICT';
+  }
+
+  if (err.statusCode === 429) {
+    return 'RATE_LIMITED';
+  }
+
+  if (err.statusCode >= 500) {
+    return 'SERVER_ERROR';
+  }
+
+  return `HTTP_${err.statusCode}`;
+}
 
 export const staffCompRoutes: FastifyPluginAsync = async (app) => {
   app.post(
@@ -33,11 +72,61 @@ export const staffCompRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(400).send({ error: parsed.error.flatten() });
       }
 
+      const now = new Date();
+      const normalizedCustomerEmail = parsed.data.customerEmail.trim().toLowerCase();
+      const normalizedCustomerName = parsed.data.customerName.trim();
+      const normalizedPromoCode = normalizeRedeemCode(parsed.data.teacherPromoCode);
+      const promoCodeHash = hashRedeemCode(normalizedPromoCode);
+      const clientIp = getClientIp(request);
+
+      const recordAttempt = async (params: {
+        outcome: 'SUCCEEDED' | 'FAILED' | 'BLOCKED';
+        failureReason?: string;
+        orderId?: string;
+        ticketId?: string;
+        lockoutApplied?: boolean;
+      }) => {
+        try {
+          return await recordStaffCompReserveAttempt({
+            now,
+            requestedPerformanceId: parsed.data.performanceId,
+            clientIp,
+            customerEmail: normalizedCustomerEmail,
+            promoCodeHash,
+            outcome: params.outcome,
+            failureReason: params.failureReason,
+            orderId: params.orderId,
+            ticketId: params.ticketId,
+            lockoutApplied: params.lockoutApplied
+          });
+        } catch (recordErr) {
+          app.log.error({ err: recordErr }, 'Failed to record staff comp reservation attempt');
+          return { lockoutApplied: false };
+        }
+      };
+
+      const guardFailure = await evaluateStaffCompReserveGuards({
+        now,
+        clientIp,
+        customerEmail: normalizedCustomerEmail,
+        promoCodeHash
+      });
+
+      if (guardFailure) {
+        await recordAttempt({
+          outcome: 'BLOCKED',
+          failureReason: guardFailure.reason,
+          lockoutApplied: guardFailure.lockoutApplied
+        });
+        reply.header('Retry-After', String(guardFailure.retryAfterSeconds));
+        return reply.status(429).send({
+          error: guardFailure.message,
+          retryAfterSeconds: guardFailure.retryAfterSeconds
+        });
+      }
+
       try {
         await validateTeacherCompPromoCode(parsed.data.teacherPromoCode);
-
-        const normalizedCustomerEmail = parsed.data.customerEmail.trim().toLowerCase();
-        const normalizedCustomerName = parsed.data.customerName.trim();
         if (normalizedCustomerEmail.endsWith('@rtmsd.org')) {
           throw new HttpError(400, 'Use a personal email for ticket delivery (not @rtmsd.org)');
         }
@@ -152,6 +241,12 @@ export const staffCompRoutes: FastifyPluginAsync = async (app) => {
           }
         });
 
+        await recordAttempt({
+          outcome: 'SUCCEEDED',
+          orderId: order.id,
+          ticketId: ticket.id
+        });
+
         return reply.status(201).send({
           orderId: order.id,
           orderAccessToken: order.accessToken,
@@ -166,6 +261,10 @@ export const staffCompRoutes: FastifyPluginAsync = async (app) => {
           }
         });
       } catch (err) {
+        await recordAttempt({
+          outcome: 'FAILED',
+          failureReason: classifyReserveFailureReason(err)
+        });
         handleRouteError(reply, err, 'Failed to reserve staff comp ticket');
       }
     }

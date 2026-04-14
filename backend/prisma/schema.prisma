@@ -114,6 +114,18 @@ enum CheckInScanAttemptAction {
   SCAN_ALREADY_CHECKED_IN
 }
 
+enum StaffCompReserveAttemptOutcome {
+  SUCCEEDED
+  FAILED
+  BLOCKED
+}
+
+enum StaffCompReserveLockoutKeyType {
+  IP
+  EMAIL
+  PROMO_CODE
+}
+
 enum StudentCreditTransactionType {
   REDEEM
   ADJUSTMENT_ADD
@@ -139,6 +151,13 @@ enum TripPaymentStatus {
   SUCCEEDED
   FAILED
   EXPIRED
+}
+
+enum TicketEmailOutboxStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
 }
 
 enum ManagedDeviceUpdateState {
@@ -527,6 +546,7 @@ model Order {
   terminalDispatchFinalizations TerminalPaymentDispatch[] @relation("TerminalDispatchFinalOrder")
   checkoutQueueItems CheckoutQueueItem[]
   registrationSubmission EventRegistrationSubmission?
+  ticketEmailOutbox TicketEmailOutbox?
 
   @@index([performanceId])
   @@index([userId])
@@ -536,6 +556,24 @@ model Order {
   @@index([source, inPersonPaymentMethod, createdAt])
   @@index([studentTicketCreditId])
   @@index([accessToken])
+}
+
+model TicketEmailOutbox {
+  id                String                 @id @default(cuid())
+  orderId           String                 @unique
+  order             Order                  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  payloadJson       Json
+  status            TicketEmailOutboxStatus @default(PENDING)
+  attemptCount      Int                    @default(0)
+  processingStartedAt DateTime?
+  nextAttemptAt     DateTime?
+  sentAt            DateTime?
+  lastError         String?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@index([status, nextAttemptAt, createdAt])
+  @@index([processingStartedAt])
 }
 
 model EventRegistrationForm {
@@ -881,6 +919,40 @@ model StaffCompRedemption {
   @@unique([performanceId, userId])
   @@index([performanceId, redeemedAt])
   @@index([userId, redeemedAt])
+}
+
+model StaffCompReserveAttempt {
+  id                   String                        @id @default(cuid())
+  requestedPerformanceId String?
+  clientIp             String
+  customerEmail        String
+  promoCodeHash        String
+  outcome              StaffCompReserveAttemptOutcome
+  failureReason        String?
+  lockoutApplied       Boolean                       @default(false)
+  orderId              String?
+  ticketId             String?
+  createdAt            DateTime                      @default(now())
+
+  @@index([createdAt])
+  @@index([requestedPerformanceId, createdAt])
+  @@index([clientIp, createdAt])
+  @@index([customerEmail, createdAt])
+  @@index([promoCodeHash, createdAt])
+  @@index([outcome, createdAt])
+}
+
+model StaffCompReserveLockout {
+  id         String                       @id @default(cuid())
+  keyType    StaffCompReserveLockoutKeyType
+  keyValue   String
+  lockedUntil DateTime
+  reason     String?
+  createdAt  DateTime                     @default(now())
+  updatedAt  DateTime                     @updatedAt
+
+  @@unique([keyType, keyValue])
+  @@index([lockedUntil])
 }
 
 model StudentTicketCredit {

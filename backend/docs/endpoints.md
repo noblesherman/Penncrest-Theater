@@ -16,14 +16,20 @@ Response:
 }
 ```
 
+### `GET /health/live`
+Alias for `/health` liveness.
+
 ### `GET /api/health/ready`
 Lightweight readiness probe (database ping + dependency configuration summary).
 
-### `GET /api/health` (Diagnostics)
-Heavy diagnostics snapshot. Expensive sections are cached for `HEALTH_DIAGNOSTICS_CACHE_TTL_SECONDS` (default 10s).
+### `GET /api/health`
+Public liveness alias.
 
-### `GET /api/health/diagnostics`
-Alias for diagnostics (`/api/health`).
+### `GET /health/diag` (Diagnostics, Admin)
+Heavy diagnostics snapshot. Protected by admin auth. Expensive sections are cached for `HEALTH_DIAGNOSTICS_CACHE_TTL_SECONDS` (default 10s).
+
+### `GET /api/health/diagnostics` (Diagnostics alias, Admin)
+Protected alias for diagnostics (`/health/diag`).
 
 Response:
 ```json
@@ -538,11 +544,14 @@ Response:
 ```
 
 ### `POST /tickets/staff-comp/reserve`
-Requires verified staff JWT. Rate limited. No Stripe checkout used.
+No staff JWT required. Requires teacher promo code + customer identity fields. Layered throttles are enforced per IP, per email, and per promo code with temporary lockouts after repeated failures. No Stripe checkout used.
 Request:
 ```json
 {
   "performanceId": "perf_123",
+  "teacherPromoCode": "ABCD-EFGH",
+  "customerName": "Alex Teacher",
+  "customerEmail": "alex@example.com",
   "seatId": "seat_1",
   "attendeeName": "Alex Teacher"
 }

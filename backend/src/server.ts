@@ -55,6 +55,7 @@ import { adminDeviceRoutes } from './routes/admin-devices.js';
 import { adminPaymentLineRoutes } from './routes/admin-payment-line.js';
 import { startCheckoutQueueWorker } from './services/checkout-queue-worker.js';
 import { startPaymentLineWorker } from './services/payment-line-worker.js';
+import { startTicketEmailOutboxWorker } from './services/ticket-email-outbox-worker.js';
 import { startHoldCleanupScheduler } from './services/hold-cleanup-scheduler.js';
 import { startHealthAlertMonitor } from './services/health-alert-monitor.js';
 
@@ -168,6 +169,21 @@ export async function createServer() {
         sweepIntervalSeconds: env.PAYMENT_LINE_WORKER_SWEEP_INTERVAL_SECONDS
       },
       'in-process payment line worker enabled'
+    );
+  }
+
+  if (env.ENABLE_IN_PROCESS_TICKET_EMAIL_OUTBOX_WORKER) {
+    const ticketEmailOutboxWorker = startTicketEmailOutboxWorker(app.log);
+    backgroundControllers.push({
+      stop: () => ticketEmailOutboxWorker.stop()
+    });
+    app.log.info(
+      {
+        sweepIntervalSeconds: env.TICKET_EMAIL_OUTBOX_WORKER_SWEEP_INTERVAL_SECONDS,
+        maxAttempts: env.TICKET_EMAIL_OUTBOX_MAX_ATTEMPTS,
+        batchSize: env.TICKET_EMAIL_OUTBOX_BATCH_SIZE
+      },
+      'in-process ticket email outbox worker enabled'
     );
   }
 
