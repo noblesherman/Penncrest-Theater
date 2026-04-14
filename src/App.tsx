@@ -49,12 +49,14 @@ const AdminStudentCreditsPage = lazy(() => import('./pages/admin/StudentCredits'
 const AdminUsersPage = lazy(() => import('./pages/admin/Users'));
 const AdminAboutControlPage = lazy(() => import('./pages/admin/AboutControl'));
 const AdminFundraisePage = lazy(() => import('./pages/admin/Fundraise'));
+const AdminFundraiseCheckInPage = lazy(() => import('./pages/admin/FundraiseCheckIn'));
 const AdminTripsPage = lazy(() => import('./pages/admin/Trips'));
 const AdminDrivePage = lazy(() => import('./pages/admin/Drive'));
 const AdminDevicesPage = lazy(() => import('./pages/admin/Devices'));
 const PaymentLineSellerStatusPage = lazy(() => import('./pages/admin/PaymentLineSellerStatus'));
 const PaymentLineWallboardPage = lazy(() => import('./pages/admin/PaymentLineWallboard'));
 const TripPaymentsPage = lazy(() => import('./pages/TripPayments'));
+const FundraisingQuestionnairePage = lazy(() => import('./pages/FundraisingQuestionnaire'));
 
 function PublicLayout() {
   return (
@@ -108,6 +110,7 @@ export default function App() {
                   <Route path="users" element={<AdminUsersPage />} />
                   <Route path="about" element={<AdminAboutControlPage />} />
                   <Route path="fundraise" element={<AdminFundraisePage />} />
+                  <Route path="fundraise/check-in" element={<AdminFundraiseCheckInPage />} />
                   <Route path="trips" element={<AdminTripsPage />} />
                   <Route path="drive" element={<AdminDrivePage />} />
                   <Route path="devices" element={<AdminDevicesPage />} />
@@ -135,6 +138,7 @@ export default function App() {
                   <Route path="interest-meeting" element={<InterestMeeting />} />
                   <Route path="fundraising" element={<Fundraising />} />
                   <Route path="fundraising/events/:slug" element={<FundraisingEventDetail />} />
+                  <Route path="fundraising/questionnaire" element={<FundraisingQuestionnairePage />} />
                   <Route path="trip-payments" element={<TripPaymentsPage />} />
                   <Route path="forms/senior-sendoff/:slug" element={<SeniorSendoffFormPage />} />
                   <Route path="forms/:slug" element={<ProgramBioFormPage />} />

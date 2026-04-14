@@ -23,6 +23,7 @@ type Props = {
   ticketQuantity: number;
   storageKey: string;
   checkoutCustomerName?: string;
+  submitButtonLabel?: string;
   disabled?: boolean;
   onSubmit?: () => void;
   onValidityChange: (params: {
@@ -249,6 +250,7 @@ export default function EventRegistrationCheckoutForm({
   ticketQuantity,
   storageKey,
   checkoutCustomerName,
+  submitButtonLabel = 'Continue to Checkout',
   disabled = false,
   onSubmit,
   onValidityChange
@@ -917,7 +919,7 @@ export default function EventRegistrationCheckoutForm({
               }}
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-stone-900 px-8 py-4 text-[15px] font-bold tracking-wide text-white transition-all hover:bg-[#C10008] focus:outline-none focus:ring-4 focus:ring-[#C10008]/20 shadow-md hover:shadow-lg"
             >
-              Continue to Checkout
+              {submitButtonLabel}
               <ChevronRight size={18} className="translate-y-[0.5px]" />
             </button>
           </div>

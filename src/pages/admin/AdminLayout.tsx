@@ -52,6 +52,7 @@ const navSections: NavSection[] = [
       { to: '/admin/finance', label: 'Finance', icon: CircleDollarSign, minRole: 'ADMIN' },
       { to: '/admin/scanner', label: 'Scanner', icon: ScanLine, minRole: 'BOX_OFFICE' },
       { to: '/admin/orders', label: 'Orders', icon: ReceiptText, minRole: 'BOX_OFFICE' },
+      { to: '/admin/fundraise/check-in', label: 'Fundraiser Check-In', icon: HandCoins, minRole: 'BOX_OFFICE' },
       { to: '/admin/devices', label: 'Devices', icon: Smartphone, minRole: 'ADMIN' }
     ]
   },
@@ -86,6 +87,7 @@ const navSections: NavSection[] = [
 ];
 
 const routeAccessRules: Array<{ prefix: string; minRole: AdminRole }> = [
+  { prefix: '/admin/fundraise/check-in', minRole: 'BOX_OFFICE' },
   { prefix: '/admin/users', minRole: 'SUPER_ADMIN' },
   { prefix: '/admin/finance', minRole: 'ADMIN' },
   { prefix: '/admin/performances', minRole: 'ADMIN' },

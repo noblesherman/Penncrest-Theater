@@ -203,6 +203,7 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
         orderBy: { createdAt: 'desc' },
         select: {
           id: true,
+          accessToken: true,
           status: true,
           source: true,
           email: true,
@@ -227,6 +228,19 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
               }
             }
           },
+          tickets: {
+            orderBy: { createdAt: 'asc' },
+            select: {
+              id: true,
+              seatId: true,
+              publicId: true,
+              checkedInAt: true,
+              checkedInBy: true,
+              checkInGate: true,
+              admissionDecision: true,
+              admissionReason: true
+            }
+          },
           registrationSubmission: {
             select: {
               id: true,
@@ -249,8 +263,18 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
         }
       });
 
-      const rows = orders.map((order) => ({
+      const rows = orders.map((order) => {
+        const ticketBySeatId = new Map(
+          order.tickets
+            .filter((ticket) => Boolean(ticket.seatId))
+            .map((ticket) => [ticket.seatId, ticket])
+        );
+        const gaTickets = order.tickets.filter((ticket) => !ticket.seatId);
+        let gaTicketCursor = 0;
+
+        return {
         id: order.id,
+        accessToken: order.accessToken,
         status: order.status,
         source: order.source,
         email: order.email,
@@ -258,18 +282,30 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
         amountTotal: order.amountTotal,
         currency: order.currency,
         createdAt: order.createdAt.toISOString(),
-        orderSeats: order.orderSeats.map((seat, index) => ({
-          seatId: seat.seatId,
-          attendeeName: seat.attendeeName,
-          ticketType: seat.ticketType,
-          isComplimentary: seat.isComplimentary,
-          price: seat.price,
-          seatLabel: performance.seatSelectionEnabled
-            ? seat.seat
-              ? `${seat.seat.sectionName} · Row ${seat.seat.row} · Seat ${seat.seat.number}`
-              : `Unassigned Seat ${index + 1}`
-            : `General Admission Ticket ${index + 1}`
-        })),
+        orderSeats: order.orderSeats.map((seat, index) => {
+          const matchedTicket =
+            (seat.seatId ? ticketBySeatId.get(seat.seatId) : null) || gaTickets[gaTicketCursor++];
+
+          return {
+            seatId: seat.seatId,
+            attendeeName: seat.attendeeName,
+            ticketType: seat.ticketType,
+            isComplimentary: seat.isComplimentary,
+            price: seat.price,
+            seatLabel: performance.seatSelectionEnabled
+              ? seat.seat
+                ? `${seat.seat.sectionName} · Row ${seat.seat.row} · Seat ${seat.seat.number}`
+                : `Unassigned Seat ${index + 1}`
+              : `General Admission Ticket ${index + 1}`,
+            ticketId: matchedTicket?.id || null,
+            ticketPublicId: matchedTicket?.publicId || null,
+            checkedInAt: matchedTicket?.checkedInAt?.toISOString() || null,
+            checkedInBy: matchedTicket?.checkedInBy || null,
+            checkInGate: matchedTicket?.checkInGate || null,
+            admissionDecision: matchedTicket?.admissionDecision || null,
+            admissionReason: matchedTicket?.admissionReason || null
+          };
+        }),
         registrationSubmission: order.registrationSubmission
           ? {
               id: order.registrationSubmission.id,
@@ -279,7 +315,8 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
               formVersion: order.registrationSubmission.formVersion
             }
           : null
-      }));
+      };
+      });
 
       const ticketCount = rows.reduce((sum, row) => sum + row.orderSeats.length, 0);
       const responseCount = rows.filter((row) => Boolean(row.registrationSubmission)).length;

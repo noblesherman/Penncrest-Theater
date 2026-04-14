@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
 import { loadStripe, type StripeElementsOptions } from '@stripe/stripe-js';
@@ -87,6 +87,11 @@ type InPersonSaleRecap = {
   paymentMethod: 'STRIPE' | 'CASH';
   seats: InPersonFinalizeSeatSummary[];
   expiresAtMs: number;
+};
+type CashierDeepLinkPrefill = {
+  customerName?: string;
+  customerEmail?: string;
+  sourceOrderId?: string;
 };
 type TerminalDevice = {
   deviceId: string;
@@ -327,6 +332,8 @@ function ManualDispatchChargeForm(props: {
 // ── main ─────────────────────────────────────────────────────────────────────
 
 export default function AdminOrdersPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [rows,         setRows]         = useState<Order[]>([]);
   const [query,        setQuery]        = useState('');
   const [status,       setStatus]       = useState('');
@@ -374,6 +381,7 @@ export default function AdminOrdersPage() {
   const terminalDispatchRefreshInFlightRef = useRef(false);
   const terminalDispatchRefreshLastAtRef = useRef(0);
   const terminalDispatchRefreshLastIdRef = useRef<string | null>(null);
+  const cashierDeepLinkConsumedRef = useRef<string | null>(null);
 
   const manualStripePromise = useMemo(() => {
     if (!manualCheckout?.publishableKey) return null;
@@ -890,7 +898,7 @@ export default function AdminOrdersPage() {
     setTicketSelectionBySeatId({}); resetInPersonFlow();
   }
 
-  function startCashierLoop(performanceId: string) {
+  function startCashierLoop(performanceId: string, prefill?: CashierDeepLinkPrefill) {
     if (!performanceId) {
       setError('No active performances available for cashier checkout.');
       return;
@@ -901,8 +909,8 @@ export default function AdminOrdersPage() {
     setAssignForm((prev) => ({
       ...prev,
       performanceId,
-      customerName: '',
-      customerEmail: '',
+      customerName: prefill?.customerName || '',
+      customerEmail: prefill?.customerEmail || '',
       seatIdsInput: '',
       gaQuantityInput: '1',
       ticketType: '',
@@ -915,8 +923,11 @@ export default function AdminOrdersPage() {
     setSeatPickerOpen(false);
     setShowWizard(true);
     setDir(1);
-    setStep(0);
+    setStep(prefill ? 1 : 0);
     setError(null);
+    if (prefill?.sourceOrderId) {
+      setNotice(`Loaded cashier prefill from fundraiser order ${prefill.sourceOrderId.slice(0, 10)}.`);
+    }
     void loadSeatsForPerformance(performanceId, { showLoading: false, syncSelection: false });
   }
 
@@ -954,6 +965,37 @@ export default function AdminOrdersPage() {
 
     startCashierLoop(chosenPerformanceId);
   };
+
+  useEffect(() => {
+    if (performances.length === 0) return;
+    if (!location.search) return;
+    if (cashierDeepLinkConsumedRef.current === location.search) return;
+
+    const params = new URLSearchParams(location.search);
+    if (params.get('cashier') !== '1') return;
+
+    const requestedPerformanceId = params.get('performanceId') || '';
+    const chosenPerformanceId = performances.some((item) => item.id === requestedPerformanceId)
+      ? requestedPerformanceId
+      : performances.some((item) => item.id === readCashierDefaultPerformanceId())
+        ? readCashierDefaultPerformanceId()
+        : performances[0]?.id || '';
+
+    if (!chosenPerformanceId) return;
+
+    const customerName = (params.get('customerName') || '').trim();
+    const customerEmail = (params.get('customerEmail') || '').trim().toLowerCase();
+    const sourceOrderId = (params.get('sourceOrderId') || '').trim();
+
+    cashierDeepLinkConsumedRef.current = location.search;
+    startCashierLoop(chosenPerformanceId, {
+      customerName: customerName || undefined,
+      customerEmail: customerEmail || undefined,
+      sourceOrderId: sourceOrderId || undefined
+    });
+
+    navigate('/admin/orders', { replace: true });
+  }, [location.search, navigate, performances]);
 
   useEffect(() => {
     if (!saleRecap) {

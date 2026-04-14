@@ -28,6 +28,7 @@ import {
   Upload,
   X
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { adminFetch } from '../../lib/adminAuth';
 import { apiFetch } from '../../lib/api';
 import { uploadAdminImage } from '../../lib/adminUploads';
@@ -1395,32 +1396,41 @@ export default function AdminFundraisePage() {
             Create fundraising events with the same guided workflow as performances.
           </p>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.97 }}
-          type="button"
-          onClick={() => {
-            if (tab === 'events') {
-              startNewEvent();
-              return;
-            }
-            if (tab === 'sponsors') {
-              startNewSponsor();
-              return;
-            }
-            if (tab === 'attendees') {
-              if (selectedEventId) {
-                void loadAttendees(selectedEventId);
+        <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+          <Link
+            to="/admin/fundraise/check-in"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-stone-300 bg-white px-5 py-2.5 text-sm font-semibold text-stone-700 transition hover:bg-stone-100 sm:w-auto"
+          >
+            <CreditCard className="h-4 w-4" />
+            Open Check-In
+          </Link>
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            type="button"
+            onClick={() => {
+              if (tab === 'events') {
+                startNewEvent();
+                return;
               }
-              return;
-            }
-            void loadDonations();
-          }}
-          className="flex w-full items-center justify-center gap-2 rounded-full bg-red-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-red-100 transition hover:bg-red-800 sm:w-auto"
-        >
-          {tab === 'events' || tab === 'sponsors' ? <Plus className="h-4 w-4" /> : <RefreshCcw className="h-4 w-4" />}
-          {primaryActionLabel}
-        </motion.button>
+              if (tab === 'sponsors') {
+                startNewSponsor();
+                return;
+              }
+              if (tab === 'attendees') {
+                if (selectedEventId) {
+                  void loadAttendees(selectedEventId);
+                }
+                return;
+              }
+              void loadDonations();
+            }}
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-red-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-red-100 transition hover:bg-red-800 sm:w-auto"
+          >
+            {tab === 'events' || tab === 'sponsors' ? <Plus className="h-4 w-4" /> : <RefreshCcw className="h-4 w-4" />}
+            {primaryActionLabel}
+          </motion.button>
+        </div>
       </div>
 
       {notice ? (
@@ -1809,9 +1819,86 @@ export default function AdminFundraisePage() {
                                 <p className="mt-1 text-xs text-stone-500">
                                   Submitted {new Date(row.registrationSubmission.submittedAt).toLocaleString()}
                                 </p>
-                                <pre className="mt-2 max-h-[360px] overflow-auto rounded-xl border border-stone-200 bg-stone-50 p-3 text-xs leading-relaxed text-stone-700">
-                                  {JSON.stringify(row.registrationSubmission.responseJson, null, 2)}
-                                </pre>
+                                <div className="mt-4 space-y-4">
+                                  {/* Sections */}
+                                  {row.registrationSubmission.responseJson?.sections && Object.entries(row.registrationSubmission.responseJson.sections).map(([sectionId, sectionData]) => (
+                                    <div key={sectionId} className="rounded-xl border border-stone-200 bg-stone-50/50 p-4">
+                                      <h4 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-stone-600">{sectionId.replace(/[-_]/g, ' ')}</h4>
+                                      {Array.isArray(sectionData) ? (
+                                        <div className="space-y-3">
+                                          {sectionData.map((childRow: any, idx) => (
+                                            <div key={idx} className="rounded-lg bg-white p-4 shadow-sm border border-stone-100">
+                                              <div className="mb-3 text-[10px] font-bold uppercase tracking-wider text-stone-400">Entry #{idx + 1}</div>
+                                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                                {Object.entries(childRow).map(([fieldId, value]) => (
+                                                  <div key={fieldId}>
+                                                    <div className="text-[10px] font-semibold uppercase text-stone-500 mb-0.5">{fieldId.replace(/[-_]/g, ' ')}</div>
+                                                    <div className="text-sm text-stone-900 font-medium">
+                                                      {Array.isArray(value) ? value.join(', ') : String(value === true ? 'Yes' : value === false ? 'No' : value || '-')}
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 bg-white p-4 rounded-lg shadow-sm border border-stone-100">
+                                          {Object.entries(sectionData as Record<string, any>).map(([fieldId, value]) => (
+                                            <div key={fieldId}>
+                                              <div className="text-[10px] font-semibold uppercase text-stone-500 mb-0.5">{fieldId.replace(/[-_]/g, ' ')}</div>
+                                              <div className="text-sm text-stone-900 font-medium">
+                                                {Array.isArray(value) ? value.join(', ') : String(value === true ? 'Yes' : value === false ? 'No' : value || '-')}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+
+                                  {/* Policies */}
+                                  {row.registrationSubmission.responseJson?.policies && Object.keys(row.registrationSubmission.responseJson.policies).length > 0 && (
+                                    <div className="rounded-xl border border-stone-200 bg-stone-50/50 p-4">
+                                      <h4 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-stone-600">Policies</h4>
+                                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 bg-white p-4 rounded-lg shadow-sm border border-stone-100">
+                                        {Object.entries(row.registrationSubmission.responseJson.policies).map(([policyId, value]) => (
+                                          <div key={policyId}>
+                                            <div className="text-[10px] font-semibold uppercase text-stone-500 mb-0.5">{policyId.replace(/[-_]/g, ' ')}</div>
+                                            <div className="text-sm text-stone-900 font-medium">
+                                              {String(value === true ? 'Yes' : value === false ? 'No' : value || '-')}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Verification */}
+                                  {(row.registrationSubmission.responseJson?.signature || row.registrationSubmission.responseJson?.acknowledgments) && (
+                                    <div className="rounded-xl border border-stone-200 bg-stone-50/50 p-4">
+                                      <h4 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-stone-600">Verification</h4>
+                                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 bg-white p-4 rounded-lg shadow-sm border border-stone-100">
+                                        {row.registrationSubmission.responseJson.signature && Object.entries(row.registrationSubmission.responseJson.signature).map(([key, value]) => (
+                                          <div key={key}>
+                                            <div className="text-[10px] font-semibold uppercase text-stone-500 mb-0.5">{key.replace(/([A-Z])/g, ' $1').trim()}</div>
+                                            <div className={`text-sm text-stone-900 ${key === 'typedName' ? 'font-["Dancing_Script",cursive,serif] italic text-lg' : 'font-medium'}`}>
+                                              {String(value || '-')}
+                                            </div>
+                                          </div>
+                                        ))}
+                                        {row.registrationSubmission.responseJson.acknowledgments && Object.entries(row.registrationSubmission.responseJson.acknowledgments).map(([key, value]) => (
+                                          <div key={key}>
+                                            <div className="text-[10px] font-semibold uppercase text-stone-500 mb-0.5">{key.replace(/([A-Z])/g, ' $1').trim()}</div>
+                                            <div className="text-sm text-stone-900 font-medium">
+                                              {String(value === true ? 'Yes' : value === false ? 'No' : value || '-')}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
                               </>
                             ) : (
                               <p className="mt-2 text-sm text-stone-500">No questionnaire submission attached to this order.</p>
