@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Plus, ArrowUp, ArrowDown, Copy, Eye, Save, Archive, Upload, ChevronDown, ChevronRight, Grip } from 'lucide-react';
 import { adminFetch } from '../../../lib/adminAuth';
 import {
@@ -451,7 +452,7 @@ export default function EventRegistrationFormBuilderModal({ open, performance, p
     { id: 'settings', label: 'Settings' }
   ];
 
-  return (
+  const modal = (
     <div className="fixed inset-0 z-[140] flex items-end sm:items-center justify-center bg-black/30 backdrop-blur-sm p-0 sm:p-4" onClick={onClose}>
       <div
         className="w-full max-w-3xl max-h-[97vh] sm:max-h-[92vh] flex flex-col rounded-t-2xl sm:rounded-2xl bg-white border border-stone-200 shadow-2xl"
@@ -744,4 +745,10 @@ export default function EventRegistrationFormBuilderModal({ open, performance, p
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  return createPortal(modal, document.body);
 }
