@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { createPortal } from 'react-dom';
 import { adminFetch } from '../../lib/adminAuth';
 import { uploadAdminImage } from '../../lib/adminUploads';
-import EventRegistrationFormBuilderModal from './forms/EventRegistrationFormBuilderModal';
 import {
   Plus, Trash2, Upload, X, Edit2, Archive,
   Calendar, Users, MapPin, ChevronRight, ChevronLeft,
@@ -30,7 +29,6 @@ type Performance = {
   onlineSalesStartsAt: string | null;
   salesCutoffAt: string | null;
   isPublished: boolean;
-  isFundraiser?: boolean;
   staffCompsEnabled: boolean; staffCompLimitPerUser: number; staffTicketLimit: number;
   studentCompTicketsEnabled: boolean;
   seatSelectionEnabled: boolean;
@@ -240,14 +238,8 @@ export default function AdminPerformancesPage() {
   const [step,              setStep]              = useState(0);
   const [dir,               setDir]               = useState<1 | -1>(1);
   const [showWizard,        setShowWizard]        = useState(false);
-  const [showFormBuilder,   setShowFormBuilder]   = useState(false);
-  const [builderPerformanceId, setBuilderPerformanceId] = useState<string | null>(null);
 
   const tiers = useMemo(() => parseTiers(form.tiersText), [form.tiersText]);
-  const builderPerformance = useMemo(
-    () => items.find((item) => item.id === builderPerformanceId) ?? null,
-    [builderPerformanceId, items]
-  );
 
   const load = () =>
     adminFetch<Performance[]>('/api/admin/performances')
@@ -951,15 +943,6 @@ export default function AdminPerformancesPage() {
                         <button onClick={() => startEditing(item)} className="flex items-center gap-1 text-xs font-semibold text-stone-500 hover:text-stone-900 border border-stone-200 rounded-lg px-2.5 py-1 hover:bg-stone-50 transition">
                           <Edit2 className="w-3 h-3" /> Edit
                         </button>
-                        <button
-                          onClick={() => {
-                            setBuilderPerformanceId(item.id);
-                            setShowFormBuilder(true);
-                          }}
-                          className="flex items-center gap-1 text-xs font-semibold text-stone-500 hover:text-stone-900 border border-stone-200 rounded-lg px-2.5 py-1 hover:bg-stone-50 transition"
-                        >
-                          <Settings className="w-3 h-3" /> Form Builder
-                        </button>
                         <button onClick={() => { void archivePerformance(item); }} className="flex items-center gap-1 text-xs font-semibold text-amber-600 border border-amber-200 rounded-lg px-2.5 py-1 hover:bg-amber-50 transition">
                           <Archive className="w-3 h-3" /> Archive
                         </button>
@@ -1006,15 +989,6 @@ export default function AdminPerformancesPage() {
             })}
       </div>
 
-      <EventRegistrationFormBuilderModal
-        open={showFormBuilder}
-        performance={builderPerformance ? { id: builderPerformance.id, title: builderPerformance.title, isFundraiser: Boolean(builderPerformance.isFundraiser) } : null}
-        performanceOptions={items.map((item) => ({ id: item.id, title: item.title, isFundraiser: Boolean(item.isFundraiser) }))}
-        onClose={() => {
-          setShowFormBuilder(false);
-          setBuilderPerformanceId(null);
-        }}
-      />
     </div>
   );
 }

@@ -31,6 +31,7 @@ import {
 import { adminFetch } from '../../lib/adminAuth';
 import { apiFetch } from '../../lib/api';
 import { uploadAdminImage } from '../../lib/adminUploads';
+import EventRegistrationFormBuilderModal from './forms/EventRegistrationFormBuilderModal';
 
 type AdminFundraiseTab = 'events' | 'sponsors' | 'donations';
 
@@ -299,6 +300,8 @@ export default function AdminFundraisePage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
+  const [showFormBuilder, setShowFormBuilder] = useState(false);
+  const [builderEventId, setBuilderEventId] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [dir, setDir] = useState<1 | -1>(1);
   const [isPosterUploading, setIsPosterUploading] = useState(false);
@@ -330,6 +333,7 @@ export default function AdminFundraisePage() {
 
   const tiers = useMemo(() => parseTiers(form.tiersText), [form.tiersText]);
   const selectedEvent = useMemo(() => events.find((event) => event.id === selectedEventId) ?? null, [events, selectedEventId]);
+  const builderEvent = useMemo(() => events.find((event) => event.id === builderEventId) ?? null, [builderEventId, events]);
   const donationStripePromise = useMemo(() => {
     if (!activeDonationIntent?.publishableKey) return null;
     return loadStripe(activeDonationIntent.publishableKey);
@@ -352,6 +356,10 @@ export default function AdminFundraisePage() {
       setEvents(items);
       if (items.length > 0 && !items.some((item) => item.id === selectedEventId)) {
         setSelectedEventId(items[0].id);
+      }
+      if (builderEventId && !items.some((item) => item.id === builderEventId)) {
+        setBuilderEventId(null);
+        setShowFormBuilder(false);
       }
       if (items.length === 0) {
         setSelectedEventId('');
@@ -1300,6 +1308,17 @@ export default function AdminFundraisePage() {
                         </button>
                         <button
                           type="button"
+                          onClick={() => {
+                            setSelectedEventId(event.id);
+                            setBuilderEventId(event.id);
+                            setShowFormBuilder(true);
+                          }}
+                          className="rounded-lg border border-stone-200 px-2.5 py-1 text-xs font-semibold text-stone-500 transition hover:bg-stone-50 hover:text-stone-900"
+                        >
+                          Form Builder
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => void archiveEvent(event)}
                           className="rounded-lg border border-amber-200 px-2.5 py-1 text-xs font-semibold text-amber-700 transition hover:bg-amber-50"
                         >
@@ -1647,6 +1666,16 @@ export default function AdminFundraisePage() {
           </aside>
         </div>
       )}
+
+      <EventRegistrationFormBuilderModal
+        open={showFormBuilder}
+        performance={builderEvent ? { id: builderEvent.id, title: builderEvent.title, isFundraiser: true } : null}
+        performanceOptions={events.map((eventItem) => ({ id: eventItem.id, title: eventItem.title, isFundraiser: true }))}
+        onClose={() => {
+          setShowFormBuilder(false);
+          setBuilderEventId(null);
+        }}
+      />
 
       {typeof document !== 'undefined'
         ? createPortal(

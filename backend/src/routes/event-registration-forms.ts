@@ -32,6 +32,12 @@ function adminActor(request: { user?: { username?: string } }): string {
   return request.user?.username || 'admin';
 }
 
+function assertFundraiserPerformance(performance: { isFundraiser: boolean }, action: string): void {
+  if (!performance.isFundraiser) {
+    throw new HttpError(400, `Registration forms are only available for fundraising events (${action}).`);
+  }
+}
+
 function toJsonInput(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
@@ -115,6 +121,7 @@ export const eventRegistrationFormRoutes: FastifyPluginAsync = async (app) => {
       if (!performance) {
         throw new HttpError(404, 'Performance not found');
       }
+      assertFundraiserPerformance(performance, 'view');
 
       const defaultDraft = buildDefaultEventRegistrationDraft();
       const defaults = {
@@ -163,6 +170,7 @@ export const eventRegistrationFormRoutes: FastifyPluginAsync = async (app) => {
           where: { id: parsedParams.data.performanceId },
           select: {
             id: true,
+            isFundraiser: true,
             registrationForm: {
               select: {
                 id: true,
@@ -176,6 +184,7 @@ export const eventRegistrationFormRoutes: FastifyPluginAsync = async (app) => {
         if (!performance) {
           throw new HttpError(404, 'Performance not found');
         }
+        assertFundraiserPerformance(performance, 'draft save');
 
         const nextStatus = performance.registrationForm?.status === 'PUBLISHED' ? 'PUBLISHED' : 'DRAFT';
 
@@ -241,11 +250,12 @@ export const eventRegistrationFormRoutes: FastifyPluginAsync = async (app) => {
       const publishedForm = await prisma.$transaction(async (tx) => {
         const performance = await tx.performance.findUnique({
           where: { id: parsed.data.performanceId },
-          select: { id: true }
+          select: { id: true, isFundraiser: true }
         });
         if (!performance) {
           throw new HttpError(404, 'Performance not found');
         }
+        assertFundraiserPerformance(performance, 'publish');
 
         let form = await tx.eventRegistrationForm.findUnique({
           where: { performanceId: performance.id },
@@ -368,6 +378,15 @@ export const eventRegistrationFormRoutes: FastifyPluginAsync = async (app) => {
 
     try {
       const updated = await prisma.$transaction(async (tx) => {
+        const performance = await tx.performance.findUnique({
+          where: { id: parsed.data.performanceId },
+          select: { id: true, isFundraiser: true }
+        });
+        if (!performance) {
+          throw new HttpError(404, 'Performance not found');
+        }
+        assertFundraiserPerformance(performance, 'archive');
+
         const existing = await tx.eventRegistrationForm.findUnique({
           where: { performanceId: parsed.data.performanceId }
         });
@@ -435,10 +454,20 @@ export const eventRegistrationFormRoutes: FastifyPluginAsync = async (app) => {
 
     try {
       const duplicated = await prisma.$transaction(async (tx) => {
+        const targetPerformance = await tx.performance.findUnique({
+          where: { id: parsedParams.data.performanceId },
+          select: { id: true, isFundraiser: true }
+        });
+        if (!targetPerformance) {
+          throw new HttpError(404, 'Performance not found');
+        }
+        assertFundraiserPerformance(targetPerformance, 'duplicate target');
+
         const sourcePerformance = await tx.performance.findUnique({
           where: { id: parsedBody.data.sourcePerformanceId },
           select: {
             id: true,
+            isFundraiser: true,
             registrationForm: {
               include: {
                 publishedVersion: true
@@ -449,6 +478,7 @@ export const eventRegistrationFormRoutes: FastifyPluginAsync = async (app) => {
         if (!sourcePerformance?.registrationForm) {
           throw new HttpError(404, 'Source event has no registration form to duplicate.');
         }
+        assertFundraiserPerformance(sourcePerformance, 'duplicate source');
 
         const sourceForm = sourcePerformance.registrationForm;
         const sourceSettings = normalizeEventRegistrationSettings(sourceForm.settingsJson as any);
