@@ -583,19 +583,37 @@ export default function EventRegistrationCheckoutForm({
                     {section.description ? <p className="mt-2 text-[15px] leading-relaxed font-medium text-stone-500">{section.description}</p> : null}
                   </div>
                 )}
-                <div className="grid gap-x-8 gap-y-8 md:grid-cols-2">
-                  {section.fields
+                {(() => {
+                  const visibleFields = section.fields
                     .filter((field) => !field.hidden)
-                    .filter((field) => isFieldVisible(field, values))
-                    .map((field) =>
-                      renderField(
-                        field,
-                        values[field.id] ?? fieldDefaultValue(field.type),
-                        (next) => setSingleValue(section.id, field.id, next),
-                        `${section.id}.${field.id}`
-                      )
-                    )}
-                </div>
+                    .filter((field) => isFieldVisible(field, values));
+                  return (
+                    <div className="flex flex-col md:flex-row gap-x-8 gap-y-8 items-start">
+                      <div className="flex-1 flex flex-col gap-y-8 w-full">
+                        {visibleFields.filter((_, index) => index % 2 === 0).map((field) =>
+                          renderField(
+                            field,
+                            values[field.id] ?? fieldDefaultValue(field.type),
+                            (next) => setSingleValue(section.id, field.id, next),
+                            `${section.id}.${field.id}`
+                          )
+                        )}
+                      </div>
+                      {visibleFields.length > 1 && (
+                        <div className="flex-1 flex flex-col gap-y-8 w-full">
+                          {visibleFields.filter((_, index) => index % 2 !== 0).map((field) =>
+                            renderField(
+                              field,
+                              values[field.id] ?? fieldDefaultValue(field.type),
+                              (next) => setSingleValue(section.id, field.id, next),
+                              `${section.id}.${field.id}`
+                            )
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </section>
             );
           }
@@ -620,10 +638,18 @@ export default function EventRegistrationCheckoutForm({
                       const isActive = activeChildIndex === index;
                       const errorCount = childErrorCounts[index] || 0;
                       
-                      const row = rows[index] || {};
-                      const nameField = section.fields.find(f => f.label.toLowerCase().includes('first name') || f.label.toLowerCase().includes('camper name') || f.label.toLowerCase().includes('name'));
-                      const kidName = nameField && row[nameField.id] ? String(row[nameField.id]).trim().split(' ')[0] : `Kid #${index + 1}`;
-                      const displayName = kidName || `Kid #${index + 1}`;
+                      let displayName = `Kid #${index + 1}`;
+                      for (const s of form.definition.sections) {
+                        if (s.hidden || s.type === 'single') continue;
+                        const nameF = s.fields.find(f => f.label.toLowerCase().includes('first name') || f.label.toLowerCase().includes('camper name') || f.label.toLowerCase().includes('name'));
+                        if (nameF) {
+                          const r = asRecordArray(sections[s.id])[index] || {};
+                          if (r[nameF.id] && String(r[nameF.id]).trim()) {
+                            displayName = String(r[nameF.id]).trim().split(' ')[0];
+                            break;
+                          }
+                        }
+                      }
 
                       return (
                         <button
@@ -653,18 +679,38 @@ export default function EventRegistrationCheckoutForm({
                 ) : null
               ) : null}
               {selectedRow ? (
-                <div className="pt-2 grid gap-x-8 gap-y-8 md:grid-cols-2">
-                  {section.fields
-                    .filter((field) => !field.hidden)
-                    .filter((field) => isFieldVisible(field, selectedRow))
-                    .map((field) =>
-                      renderField(
-                        field,
-                        selectedRow[field.id] ?? fieldDefaultValue(field.type),
-                        (next) => setRepeatingValue(section.id, selectedRowIndex, field.id, next),
-                        `${section.id}[${selectedRowIndex}].${field.id}`
-                      )
-                    )}
+                <div className="pt-2">
+                  {(() => {
+                    const visibleFields = section.fields
+                      .filter((field) => !field.hidden)
+                      .filter((field) => isFieldVisible(field, selectedRow));
+                    return (
+                      <div className="flex flex-col md:flex-row gap-x-8 gap-y-8 items-start">
+                        <div className="flex-1 flex flex-col gap-y-8 w-full">
+                          {visibleFields.filter((_, index) => index % 2 === 0).map((field) =>
+                            renderField(
+                              field,
+                              selectedRow[field.id] ?? fieldDefaultValue(field.type),
+                              (next) => setRepeatingValue(section.id, selectedRowIndex, field.id, next),
+                              `${section.id}[${selectedRowIndex}].${field.id}`
+                            )
+                          )}
+                        </div>
+                        {visibleFields.length > 1 && (
+                          <div className="flex-1 flex flex-col gap-y-8 w-full">
+                            {visibleFields.filter((_, index) => index % 2 !== 0).map((field) =>
+                              renderField(
+                                field,
+                                selectedRow[field.id] ?? fieldDefaultValue(field.type),
+                                (next) => setRepeatingValue(section.id, selectedRowIndex, field.id, next),
+                                `${section.id}[${selectedRowIndex}].${field.id}`
+                              )
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-stone-300 bg-stone-50 py-12">
