@@ -198,7 +198,7 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
       const orders = await prisma.order.findMany({
         where: {
           performanceId: parsedParams.data.performanceId,
-          status: { not: 'CANCELLED' }
+          status: { not: 'CANCELED' }
         },
         orderBy: { createdAt: 'desc' },
         select: {
