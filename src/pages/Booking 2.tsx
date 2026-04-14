@@ -49,6 +49,7 @@ type PricingTier = {
 type PerformanceDetails = {
   id: string;
   title: string;
+  isFundraiser?: boolean;
   pricingTiers: PricingTier[];
   studentCompTicketsEnabled?: boolean;
 };
@@ -212,6 +213,7 @@ export default function Booking() {
 
   const [performanceTitle, setPerformanceTitle] = useState('Ticket Checkout');
   const [pricingTiers, setPricingTiers] = useState<PricingTier[]>([]);
+  const [isFundraiser, setIsFundraiser] = useState(false);
   const [studentCompTicketsEnabled, setStudentCompTicketsEnabled] = useState(false);
   const [ticketOptionBySeatId, setTicketOptionBySeatId] = useState<Record<string, string>>({});
 
@@ -252,10 +254,12 @@ export default function Booking() {
     try {
       const details = await apiFetch<PerformanceDetails>(`/api/performances/${performanceId}`);
       setPerformanceTitle(details.title || 'Ticket Checkout');
+      setIsFundraiser(Boolean(details.isFundraiser));
       setPricingTiers(details.pricingTiers || []);
       setStudentCompTicketsEnabled(Boolean(details.studentCompTicketsEnabled));
     } catch (err) {
       console.error('Failed to fetch performance details', err);
+      setIsFundraiser(false);
       setPricingTiers([]);
       setStudentCompTicketsEnabled(false);
     }
@@ -342,15 +346,17 @@ export default function Booking() {
 
   const ticketOptions = useMemo<TicketOption[]>(() => {
     if (pricingTiers.length === 0) return [];
-    const tierOptions = pricingTiers.map((tier) => ({
-      id: tier.id,
-      label: tier.name,
-      priceCents: tier.priceCents,
-      tierId: tier.id
-    }));
+    const tierOptions = pricingTiers
+      .filter((tier) => !isFundraiser || !(tier.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketLabel(tier.name)))
+      .map((tier) => ({
+        id: tier.id,
+        label: tier.name,
+        priceCents: tier.priceCents,
+        tierId: tier.id
+      }));
 
     const hasTeacherOption = tierOptions.some((option) => option.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketLabel(option.label));
-    if (!hasTeacherOption) {
+    if (!isFundraiser && !hasTeacherOption) {
       tierOptions.push({
         id: TEACHER_TICKET_OPTION_ID,
         label: 'RTMSD STAFF',
@@ -368,7 +374,7 @@ export default function Booking() {
     }
 
     return tierOptions;
-  }, [pricingTiers, studentCompTicketsEnabled]);
+  }, [isFundraiser, pricingTiers, studentCompTicketsEnabled]);
 
   useEffect(() => {
     if (selectedSeatIds.length === 0) {

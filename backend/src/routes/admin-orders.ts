@@ -455,9 +455,10 @@ async function buildInPersonSaleQuote(params: {
       id: tier.id,
       name: tier.name,
       priceCents: tier.priceCents
-    }));
+    }))
+    .filter((tier) => !performance.isFundraiser || !(tier.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketName(tier.name)));
 
-  if (performance.staffCompsEnabled && !hasTeacherOption) {
+  if (!performance.isFundraiser && performance.staffCompsEnabled && !hasTeacherOption) {
     ticketOptions.push({
       id: TEACHER_TICKET_OPTION_ID,
       name: 'RTMSD STAFF',
@@ -506,6 +507,10 @@ async function buildInPersonSaleQuote(params: {
     }
 
     if (ticketTierId === TEACHER_TICKET_OPTION_ID && !tierById.has(ticketTierId)) {
+      if (performance.isFundraiser) {
+        throw new HttpError(400, 'Teacher complimentary tickets are not available for fundraiser events');
+      }
+
       if (!performance.staffCompsEnabled) {
         throw new HttpError(400, 'Teacher complimentary tickets are not enabled for this performance');
       }
@@ -562,6 +567,10 @@ async function buildInPersonSaleQuote(params: {
   }
 
   if (hasTeacherCompSelection) {
+    if (performance.isFundraiser) {
+      throw new HttpError(400, 'Teacher complimentary tickets are not available for fundraiser events');
+    }
+
     if (!performance.staffCompsEnabled) {
       throw new HttpError(400, 'Teacher complimentary tickets are not enabled for this performance');
     }

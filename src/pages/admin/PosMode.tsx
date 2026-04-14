@@ -311,14 +311,16 @@ export default function AdminPosModePage() {
   const selectedTicketOptions = useMemo<PosTicketOption[]>(() => {
     if (!selectedPerformance?.pricingTiers?.length) return [];
 
-    const options: PosTicketOption[] = selectedPerformance.pricingTiers.map((tier) => ({
-      id: tier.id,
-      name: tier.name,
-      priceCents: tier.priceCents,
-    }));
+    const options: PosTicketOption[] = selectedPerformance.pricingTiers
+      .filter((tier) => !selectedPerformance.isFundraiser || !(tier.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketName(tier.name)))
+      .map((tier) => ({
+        id: tier.id,
+        name: tier.name,
+        priceCents: tier.priceCents,
+      }));
 
     const hasTeacher = options.some((o) => o.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketName(o.name));
-    if (selectedPerformance.staffCompsEnabled && !hasTeacher) {
+    if (!selectedPerformance.isFundraiser && selectedPerformance.staffCompsEnabled && !hasTeacher) {
       options.push({ id: TEACHER_TICKET_OPTION_ID, name: 'RTMSD STAFF', priceCents: 0, isSynthetic: true });
     }
 

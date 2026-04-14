@@ -52,13 +52,14 @@ type PricingTier = {
 type PerformanceDetails = {
   id: string;
   title: string;
+  isFundraiser?: boolean;
   pricingTiers: PricingTier[];
   studentCompTicketsEnabled?: boolean;
   seatSelectionEnabled?: boolean;
   registrationFormRequired?: boolean;
 };
 
-type CheckoutStep = 1 | 2 | 3;
+type CheckoutStep = 1 | 2 | 3 | 4;
 
 type TicketOption = {
   id: string;
@@ -140,7 +141,8 @@ type PendingStripePayment = {
 const CHECKOUT_STEPS: Array<{ id: CheckoutStep; label: string }> = [
   { id: 1, label: 'Pick Seats' },
   { id: 2, label: 'Ticket Types' },
-  { id: 3, label: 'Checkout' }
+  { id: 3, label: 'Contact Info' },
+  { id: 4, label: 'Questionnaire' }
 ];
 
 const TEACHER_TICKET_OPTION_ID = 'teacher-comp';
@@ -287,6 +289,7 @@ export default function Booking() {
 
   const [performanceTitle, setPerformanceTitle] = useState('Ticket Checkout');
   const [pricingTiers, setPricingTiers] = useState<PricingTier[]>([]);
+  const [isFundraiser, setIsFundraiser] = useState(false);
   const [studentCompTicketsEnabled, setStudentCompTicketsEnabled] = useState(false);
   const [seatSelectionEnabled, setSeatSelectionEnabled] = useState(true);
   const [ticketOptionBySeatId, setTicketOptionBySeatId] = useState<Record<string, string>>({});
@@ -334,11 +337,13 @@ export default function Booking() {
     try {
       const details = await apiFetch<PerformanceDetails>(`/api/performances/${performanceId}`);
       setPerformanceTitle(details.title || 'Ticket Checkout');
+      setIsFundraiser(Boolean(details.isFundraiser));
       setPricingTiers(details.pricingTiers || []);
       setStudentCompTicketsEnabled(Boolean(details.studentCompTicketsEnabled));
       setSeatSelectionEnabled(details.seatSelectionEnabled !== false);
     } catch (err) {
       console.error('Failed to fetch performance details', err);
+      setIsFundraiser(false);
       setPricingTiers([]);
       setStudentCompTicketsEnabled(false);
       setSeatSelectionEnabled(true);
@@ -459,15 +464,17 @@ export default function Booking() {
 
   const ticketOptions = useMemo<TicketOption[]>(() => {
     if (pricingTiers.length === 0) return [];
-    const tierOptions: TicketOption[] = pricingTiers.map((tier) => ({
-      id: tier.id,
-      label: tier.name,
-      priceCents: tier.priceCents,
-      tierId: tier.id
-    }));
+    const tierOptions: TicketOption[] = pricingTiers
+      .filter((tier) => !isFundraiser || !(tier.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketLabel(tier.name)))
+      .map((tier) => ({
+        id: tier.id,
+        label: tier.name,
+        priceCents: tier.priceCents,
+        tierId: tier.id
+      }));
 
     const hasTeacherOption = tierOptions.some((option) => option.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketLabel(option.label));
-    if (!hasTeacherOption) {
+    if (!isFundraiser && !hasTeacherOption) {
       tierOptions.push({
         id: TEACHER_TICKET_OPTION_ID,
         label: 'RTMSD STAFF',
@@ -485,7 +492,7 @@ export default function Booking() {
     }
 
     return tierOptions;
-  }, [pricingTiers, studentCompTicketsEnabled]);
+  }, [isFundraiser, pricingTiers, studentCompTicketsEnabled]);
 
   useEffect(() => {
     if (selectedSeatIds.length === 0) {
@@ -521,13 +528,13 @@ export default function Booking() {
   }, [currentStep, selectedSeatIds.length]);
 
   useEffect(() => {
-    if (currentStep === 3) return;
+    if (currentStep === 4) return;
     if (!pendingStripePayment) return;
     setPendingStripePayment(null);
   }, [currentStep, pendingStripePayment]);
 
   useEffect(() => {
-    if (currentStep === 3) return;
+    if (currentStep === 4) return;
     if (!checkoutQueue) return;
     setCheckoutQueue(null);
   }, [checkoutQueue, currentStep]);
@@ -739,7 +746,7 @@ export default function Booking() {
 
     if (registrationRequired && (!registrationValid || !registrationPayload)) {
       setStepError('Complete the registration form before checkout.');
-      setCurrentStep(3);
+      setCurrentStep(4);
       return;
     }
 
@@ -1164,14 +1171,70 @@ export default function Booking() {
     setCurrentStep(3);
   };
 
+  const validateContactStep = () => {
+    const effectiveCustomerName = customerName.trim();
+    const effectiveCustomerEmail = customerEmail.trim().toLowerCase();
+    const effectiveCustomerPhone = customerPhone.trim();
+
+    if (!effectiveCustomerName || !effectiveCustomerEmail) {
+      setStepError(
+        isTeacherCheckout || isStudentInShowCheckout
+          ? 'Enter your name and personal email before checkout.'
+          : 'Enter your name and email before checkout.'
+      );
+      setCurrentStep(3);
+      return false;
+    }
+
+    if (!effectiveCustomerPhone) {
+      setStepError('Enter a phone number before checkout.');
+      setCurrentStep(3);
+      return false;
+    }
+
+    if (isTeacherCheckout) {
+      if (effectiveCustomerEmail.endsWith('@rtmsd.org')) {
+        setStepError('Use a personal email for ticket delivery (not @rtmsd.org).');
+        setCurrentStep(3);
+        return false;
+      }
+      if (!teacherPromoCode.trim()) {
+        setStepError('Enter the teacher promo code before checkout.');
+        setCurrentStep(3);
+        return false;
+      }
+    }
+
+    if (isStudentInShowCheckout) {
+      const normalizedStudentCode = studentCode.trim().toLowerCase().replace(/\s+/g, '');
+      if (!normalizedStudentCode) {
+        setStepError('Enter your student code for verification before checkout.');
+        setCurrentStep(3);
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const goToStepFour = () => {
+    if (!validateContactStep()) return;
+    setStepError(null);
+    resetPendingPayment();
+    setCheckoutQueue(null);
+    setCurrentStep(4);
+  };
+
   const checkoutSteps = useMemo(
     () =>
       CHECKOUT_STEPS.map((step) =>
         step.id === 1
           ? { ...step, label: seatSelectionEnabled ? 'Pick Seats' : 'Ticket Quantity' }
-          : step
+          : step.id === 4
+            ? { ...step, label: registrationRequired ? 'Questionnaire' : 'Checkout' }
+            : step
       ),
-    [seatSelectionEnabled]
+    [registrationRequired, seatSelectionEnabled]
   );
   const progressPercent = ((currentStep - 1) / (checkoutSteps.length - 1)) * 100;
 
@@ -1733,7 +1796,7 @@ export default function Booking() {
 
           {currentStep === 3 && (
             <motion.section
-              key="checkout-step"
+              key="contact-step"
               initial={{ opacity: 0, x: 30 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -30 }}
@@ -1742,39 +1805,7 @@ export default function Booking() {
             >
               <div className="max-w-6xl mx-auto pt-6 md:pt-8 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6">
                 <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
-                  {checkoutQueue ? (
-                    <>
-                      <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-800">
-                        <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-500" />
-                        Checkout Queue
-                      </div>
-                      <h2 className="mt-4 text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
-                        You're in line
-                      </h2>
-                      <p className="text-sm md:text-base text-stone-600 mt-2">
-                        Keep this page open while we prepare your payment session.
-                      </p>
-
-                      <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                        <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Position</p>
-                          <p className="mt-1 text-3xl font-black text-stone-900">{checkoutQueue.position}</p>
-                        </div>
-                        <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Est. Wait</p>
-                          <p className="mt-1 text-2xl font-black text-stone-900">{formatWaitEstimate(checkoutQueue.estimatedWaitSeconds)}</p>
-                        </div>
-                        <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Refresh</p>
-                          <p className="mt-1 text-2xl font-black text-stone-900">{Math.ceil(checkoutQueue.refreshAfterMs / 1000)}s</p>
-                        </div>
-                      </div>
-
-                      <p className="mt-5 text-sm text-stone-600">
-                        If your hold expires or checkout cannot be prepared, you’ll be returned to seat selection automatically.
-                      </p>
-                    </>
-                  ) : isTeacherCheckout ? (
+                  {isTeacherCheckout ? (
                     <>
                       <h2 className="text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>Teacher Verification</h2>
                       <p className="text-sm md:text-base text-stone-600 mt-2">
@@ -1847,19 +1878,6 @@ export default function Booking() {
                         </label>
                       </div>
 
-                      {registrationForm ? (
-                        <EventRegistrationCheckoutForm
-                          form={registrationForm}
-                          ticketQuantity={selectedSeatIds.length}
-                          storageKey={`event-registration:${performanceId || 'event'}:${registrationForm.versionId}`}
-                          disabled={Boolean(pendingStripePayment) || processing}
-                          onValidityChange={({ valid, payload }) => {
-                            setRegistrationValid(valid);
-                            setRegistrationPayload(payload);
-                          }}
-                        />
-                      ) : null}
-
                       <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                         <button
                           onClick={() => {
@@ -1872,37 +1890,14 @@ export default function Booking() {
                         >
                           <ArrowLeft className="w-4 h-4" /> Back
                         </button>
-                        {!pendingStripePayment && (
-                          <button
-                            onClick={handleCheckout}
-                            disabled={processing || !canSubmitCheckout}
-                            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-red-800 transition-colors sm:w-auto"
-                          >
-                            <CreditCard className="w-4 h-4" />
-                            {processing ? 'Processing...' : 'Checkout'}
-                          </button>
-                        )}
+                        <button
+                          onClick={goToStepFour}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-stone-900 px-5 py-3 font-semibold text-white hover:bg-stone-800 transition-colors sm:w-auto"
+                        >
+                          {registrationRequired ? 'Continue to Questionnaire' : 'Continue to Checkout'}
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
                       </div>
-
-                      {pendingStripePayment && stripePromise && stripeElementsOptions && (
-                        <div className="mt-5 rounded-2xl border border-red-100 bg-red-50 p-4">
-                          <p className="text-sm font-semibold text-red-900">
-                            Payment form ready. Complete payment below to finish checkout.
-                          </p>
-                          <Elements stripe={stripePromise} options={stripeElementsOptions}>
-                            <InlineStripePaymentForm
-                              disabled={processing}
-                              onError={(message) => setStepError(message || null)}
-                              onSuccess={finalizeEmbeddedPayment}
-                            />
-                          </Elements>
-                        </div>
-                      )}
-                      {pendingStripePayment && (!stripePromise || !stripeElementsOptions) && (
-                        <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                          Unable to initialize Stripe payment form. Please check Stripe configuration and try again.
-                        </div>
-                      )}
                     </>
                   ) : (
                     <>
@@ -1992,6 +1987,121 @@ export default function Booking() {
                         )}
                       </div>
 
+                      <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <button
+                          onClick={() => {
+                            setStepError(null);
+                            resetPendingPayment();
+                            setCheckoutQueue(null);
+                            setCurrentStep(2);
+                          }}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 sm:w-auto"
+                        >
+                          <ArrowLeft className="w-4 h-4" /> Back
+                        </button>
+                        <button
+                          onClick={goToStepFour}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-stone-900 px-5 py-3 font-semibold text-white hover:bg-stone-800 transition-colors sm:w-auto"
+                        >
+                          {registrationRequired ? 'Continue to Questionnaire' : 'Continue to Checkout'}
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="inline-flex items-center gap-2 text-stone-900 font-bold" style={{ fontFamily: 'Georgia, serif' }}>
+                      <Ticket className="w-4 h-4" /> Order Summary
+                    </div>
+                    <div className="text-sm text-stone-500 font-semibold">
+                      {selectedSeats.length} {seatSelectionEnabled ? 'seats' : 'tickets'}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                    {selectedSeatsWithPricing.map((item, index) => (
+                      <div key={item.seat.id} className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="font-bold text-stone-900">
+                              {seatSelectionEnabled
+                                ? `${item.seat.sectionName} Row ${item.seat.row} Seat ${item.seat.number}`
+                                : `General Admission Ticket ${index + 1}`}
+                            </div>
+                            <div className="text-xs text-stone-500">{item.optionLabel}</div>
+                          </div>
+                          <div className="font-bold text-stone-900">${(item.unitPrice / 100).toFixed(2)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-5 border-t border-stone-200 pt-4 flex items-end justify-between">
+                    <div className="text-sm text-stone-500">Total</div>
+                    <div className="text-3xl font-bold text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
+                  </div>
+                </div>
+              </div>
+            </motion.section>
+          )}
+
+          {currentStep === 4 && (
+            <motion.section
+              key="checkout-step"
+              initial={{ opacity: 0, x: 30 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -30 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="h-full overflow-y-auto px-4 md:px-6 pb-10"
+            >
+              <div className="max-w-6xl mx-auto pt-6 md:pt-8 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6">
+                <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
+                  {checkoutQueue ? (
+                    <>
+                      <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-800">
+                        <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+                        Checkout Queue
+                      </div>
+                      <h2 className="mt-4 text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
+                        You're in line
+                      </h2>
+                      <p className="text-sm md:text-base text-stone-600 mt-2">
+                        Keep this page open while we prepare your payment session.
+                      </p>
+
+                      <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Position</p>
+                          <p className="mt-1 text-3xl font-black text-stone-900">{checkoutQueue.position}</p>
+                        </div>
+                        <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Est. Wait</p>
+                          <p className="mt-1 text-2xl font-black text-stone-900">{formatWaitEstimate(checkoutQueue.estimatedWaitSeconds)}</p>
+                        </div>
+                        <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Refresh</p>
+                          <p className="mt-1 text-2xl font-black text-stone-900">{Math.ceil(checkoutQueue.refreshAfterMs / 1000)}s</p>
+                        </div>
+                      </div>
+
+                      <p className="mt-5 text-sm text-stone-600">
+                        If your hold expires or checkout cannot be prepared, you’ll be returned to seat selection automatically.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <h2 className="text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
+                        {registrationRequired ? 'Event Questionnaire' : 'Checkout'}
+                      </h2>
+                      <p className="text-sm md:text-base text-stone-600 mt-2">
+                        {registrationRequired
+                          ? 'Complete this form to continue checkout.'
+                          : 'Everything looks good. Continue to payment to finish checkout.'}
+                      </p>
+
                       {registrationForm ? (
                         <EventRegistrationCheckoutForm
                           form={registrationForm}
@@ -2011,7 +2121,7 @@ export default function Booking() {
                             setStepError(null);
                             resetPendingPayment();
                             setCheckoutQueue(null);
-                            setCurrentStep(2);
+                            setCurrentStep(3);
                           }}
                           className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 sm:w-auto"
                         >

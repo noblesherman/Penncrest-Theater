@@ -1292,14 +1292,16 @@ export default function AdminOrdersPage() {
   const selectedTicketOptions = useMemo<CashierTicketOption[]>(() => {
     if (!selectedPerformance) return [];
     if (selectedPerformance.pricingTiers.length === 0) return [];
-    const options: CashierTicketOption[] = selectedPerformance.pricingTiers.map((tier) => ({
-      id: tier.id,
-      name: tier.name,
-      priceCents: tier.priceCents,
-    }));
+    const options: CashierTicketOption[] = selectedPerformance.pricingTiers
+      .filter((tier) => !selectedPerformance.isFundraiser || !(tier.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketName(tier.name)))
+      .map((tier) => ({
+        id: tier.id,
+        name: tier.name,
+        priceCents: tier.priceCents,
+      }));
 
     const hasTeacherOption = options.some((option) => option.id === TEACHER_TICKET_OPTION_ID || isTeacherTicketName(option.name));
-    if (selectedPerformance.staffCompsEnabled && !hasTeacherOption) {
+    if (!selectedPerformance.isFundraiser && selectedPerformance.staffCompsEnabled && !hasTeacherOption) {
       options.push({
         id: TEACHER_TICKET_OPTION_ID,
         name: 'RTMSD STAFF',

@@ -283,6 +283,7 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
       const payload = {
         id: performance.id,
         title: performance.title || performance.show.title,
+        isFundraiser: performance.isFundraiser,
         startsAt: performance.startsAt.toISOString(),
         onlineSalesStartsAt: performance.onlineSalesStartsAt?.toISOString() || null,
         salesCutoffAt: performance.salesCutoffAt?.toISOString() || null,

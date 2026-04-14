@@ -266,6 +266,10 @@ export async function executeCheckoutRequest(payload: CheckoutRequestPayload): P
     }
 
     if (isTeacherCompCheckout) {
+      if (performance.isFundraiser) {
+        throw new HttpError(400, 'Teacher complimentary tickets are not available for fundraiser events');
+      }
+
       if (!performance.staffCompsEnabled) {
         throw new HttpError(400, 'Teacher complimentary tickets are not enabled for this performance');
       }
@@ -304,6 +308,10 @@ export async function executeCheckoutRequest(payload: CheckoutRequestPayload): P
     const tiersById = new Map(performance.pricingTiers.map((tier) => [tier.id, tier]));
     const resolveTicketSelection = (selectionId: string): ResolvedTicketSelection => {
       if (selectionId === TEACHER_TICKET_OPTION_ID) {
+        if (performance.isFundraiser) {
+          throw new HttpError(400, 'Teacher complimentary tickets are not available for fundraiser events');
+        }
+
         return {
           name: 'RTMSD STAFF',
           priceCents: null,
@@ -324,6 +332,10 @@ export async function executeCheckoutRequest(payload: CheckoutRequestPayload): P
       const tier = tiersById.get(selectionId);
       if (!tier) {
         throw new HttpError(400, `Invalid ticket tier: ${selectionId}`);
+      }
+
+      if (performance.isFundraiser && isTeacherTicketName(tier.name)) {
+        throw new HttpError(400, 'Teacher complimentary tickets are not available for fundraiser events');
       }
 
       return {
