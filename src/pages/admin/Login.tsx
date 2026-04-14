@@ -97,6 +97,12 @@ const inp = [
 
 export default function AdminLoginPage() {
   const navigate = useNavigate();
+  const getPostLoginRoute = () => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      return '/admin/mobile-hub';
+    }
+    return '/admin/dashboard';
+  };
   const [curtainDone, setCurtainDone] = useState(false);
   const [username,    setUsername]    = useState('');
   const [password,    setPassword]    = useState('');
@@ -157,7 +163,7 @@ export default function AdminLoginPage() {
           queueAdminPostLoginGreeting(result.admin.name);
         }
         setAdminToken(result.token);
-        navigate('/admin/dashboard', { replace: true });
+        navigate(getPostLoginRoute(), { replace: true });
         return;
       }
       if ('twoFactorRequired' in result) { setPhase('2fa'); setError('Enter the 6-digit code from your authenticator app.'); return; }
@@ -183,7 +189,7 @@ export default function AdminLoginPage() {
         queueAdminPostLoginGreeting(result.admin.name);
       }
       setAdminToken(result.token);
-      navigate('/admin/dashboard', { replace: true });
+      navigate(getPostLoginRoute(), { replace: true });
     } catch (err) { setError(err instanceof Error ? err.message : 'Failed to finish two-factor setup'); }
     finally { setLoading(false); }
   };

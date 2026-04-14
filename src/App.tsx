@@ -53,6 +53,7 @@ const AdminFundraiseCheckInPage = lazy(() => import('./pages/admin/FundraiseChec
 const AdminTripsPage = lazy(() => import('./pages/admin/Trips'));
 const AdminDrivePage = lazy(() => import('./pages/admin/Drive'));
 const AdminDevicesPage = lazy(() => import('./pages/admin/Devices'));
+const AdminMobileHubPage = lazy(() => import('./pages/admin/MobileHub'));
 const PaymentLineSellerStatusPage = lazy(() => import('./pages/admin/PaymentLineSellerStatus'));
 const PaymentLineWallboardPage = lazy(() => import('./pages/admin/PaymentLineWallboard'));
 const TripPaymentsPage = lazy(() => import('./pages/TripPayments'));
@@ -114,6 +115,7 @@ export default function App() {
                   <Route path="trips" element={<AdminTripsPage />} />
                   <Route path="drive" element={<AdminDrivePage />} />
                   <Route path="devices" element={<AdminDevicesPage />} />
+                  <Route path="mobile-hub" element={<AdminMobileHubPage />} />
                 </Route>
               </Route>
 

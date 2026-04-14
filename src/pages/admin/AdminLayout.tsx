@@ -103,6 +103,7 @@ const routeAccessRules: Array<{ prefix: string; minRole: AdminRole }> = [
   { prefix: '/admin/payment-line', minRole: 'BOX_OFFICE' },
   { prefix: '/admin/orders', minRole: 'BOX_OFFICE' },
   { prefix: '/admin/scanner', minRole: 'BOX_OFFICE' },
+  { prefix: '/admin/mobile-hub', minRole: 'BOX_OFFICE' },
   { prefix: '/admin/dashboard', minRole: 'BOX_OFFICE' }
 ];
 

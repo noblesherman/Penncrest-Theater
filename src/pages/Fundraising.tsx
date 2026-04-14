@@ -478,7 +478,7 @@ export default function Fundraising() {
                         className={INPUT_FIELD_CLASS}
                       />
                     </div>
-                    <p className="mt-2 text-xs text-stone-400">We'll send your thank-you note and Stripe receipt here.</p>
+                    <p className="mt-2 text-xs text-stone-400">We'll send your thank-you note and receipt here.</p>
 
                     <div className="my-5 h-px bg-stone-200" />
 
