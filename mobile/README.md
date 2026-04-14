@@ -2,7 +2,7 @@
 
 React Native (Expo + TypeScript) companion app for box office staff.
 
-## Features
+## Features 
 
 - Admin login (reuses backend `/api/admin/login` JWT)
 - Home screen with:
