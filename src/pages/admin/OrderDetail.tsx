@@ -25,7 +25,7 @@ type OrderDetail = {
     attendeeName?: string | null;
     ticketType?: string | null;
     isComplimentary?: boolean;
-    seat: { sectionName: string; row: string; number: number };
+    seat: { sectionName: string; row: string; number: number } | null;
     price: number;
   }>;
   tickets: Array<{ publicId: string; seatId: string }>;
@@ -677,17 +677,23 @@ export default function AdminOrderDetailPage() {
         <SectionLabel>Seats</SectionLabel>
         <Card>
           <div className="divide-y divide-stone-100">
-            {data.orderSeats.map((seat) => {
+            {data.orderSeats.map((seat, index) => {
               const ticket = data.tickets.find((t) => t.seatId === seat.seatId);
               return (
                 <div key={seat.seatId} className="flex items-center justify-between gap-4 px-5 py-4">
                   <div className="space-y-0.5">
                     <p className="text-sm font-semibold text-stone-800">
-                      {seat.seat.sectionName}
-                      <span className="mx-1.5 text-stone-300">·</span>
-                      Row {seat.seat.row}
-                      <span className="mx-1.5 text-stone-300">·</span>
-                      Seat {seat.seat.number}
+                      {seat.seat ? (
+                        <>
+                          {seat.seat.sectionName}
+                          <span className="mx-1.5 text-stone-300">·</span>
+                          Row {seat.seat.row}
+                          <span className="mx-1.5 text-stone-300">·</span>
+                          Seat {seat.seat.number}
+                        </>
+                      ) : (
+                        `General Admission Ticket ${index + 1}`
+                      )}
                     </p>
                     <p className="text-xs text-stone-400">
                       {[

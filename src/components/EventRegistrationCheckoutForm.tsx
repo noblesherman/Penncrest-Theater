@@ -909,8 +909,7 @@ export default function EventRegistrationCheckoutForm({
                       const idToFind = `field-${firstErrorKey.replace(/[[\]\.]/g, '-')}`;
                       const el = document.getElementById(idToFind);
                       if (el) {
-                        const y = el.getBoundingClientRect().top + window.scrollY - 100;
-                        window.scrollTo({ top: y, behavior: 'smooth' });
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                       }
                     }, 50);
                   }
