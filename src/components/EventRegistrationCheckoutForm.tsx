@@ -290,6 +290,7 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
   const [acknowledgments, setAcknowledgments] = useState<AcknowledgmentState>(defaultAcknowledgments);
   const [signature, setSignature] = useState<SignatureState>(defaultSignature);
   const [showErrors, setShowErrors] = useState(false);
+  const [activeChildIndex, setActiveChildIndex] = useState(0);
 
   const childCount = useMemo(
     () =>
@@ -299,6 +300,11 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
         ticketQuantity
       }),
     [form.settings, sections, ticketQuantity]
+  );
+
+  const hasRepeatingSections = useMemo(
+    () => form.definition.sections.some((section) => !section.hidden && section.type === 'repeating_child'),
+    [form.definition.sections]
   );
 
   useEffect(() => {
@@ -340,6 +346,13 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
   }, [childCount, form.definition]);
 
   useEffect(() => {
+    setActiveChildIndex((current) => {
+      if (childCount <= 1) return 0;
+      return Math.min(current, childCount - 1);
+    });
+  }, [childCount]);
+
+  useEffect(() => {
     const draft: DraftState = {
       sections,
       policies,
@@ -379,6 +392,20 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
         : null,
     [acknowledgments, form, policies, sections, signature, validation.valid]
   );
+
+  const childErrorCounts = useMemo(() => {
+    if (childCount <= 0) return [];
+    const counts = Array.from({ length: childCount }, () => 0);
+    for (const key of Object.keys(validation.errors)) {
+      const match = key.match(/\[(\d+)\]\./);
+      if (!match) continue;
+      const index = Number(match[1]);
+      if (Number.isInteger(index) && index >= 0 && index < counts.length) {
+        counts[index] += 1;
+      }
+    }
+    return counts;
+  }, [childCount, validation.errors]);
 
   useEffect(() => {
     onValidityChange({
@@ -574,6 +601,46 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
       ) : null}
 
       <div className="mt-5 space-y-6">
+        {hasRepeatingSections && childCount > 0 ? (
+          <section className="rounded-xl border border-stone-200 bg-white p-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-stone-700">Child Questionnaire</h4>
+              <p className="text-xs text-stone-500">
+                {childCount} {childCount === 1 ? 'child' : 'children'} in this registration
+              </p>
+            </div>
+            {childCount > 1 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {Array.from({ length: childCount }, (_, index) => {
+                  const isActive = activeChildIndex === index;
+                  const errorCount = childErrorCounts[index] || 0;
+                  return (
+                    <button
+                      key={`child-tab-${index}`}
+                      type="button"
+                      onClick={() => setActiveChildIndex(index)}
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                        isActive
+                          ? 'border-stone-900 bg-stone-900 text-white'
+                          : 'border-stone-300 bg-white text-stone-700 hover:border-stone-500'
+                      }`}
+                    >
+                      <span>Child {index + 1}</span>
+                      {showErrors && errorCount > 0 ? (
+                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-700'}`}>
+                          {errorCount}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm font-semibold text-stone-700">Child 1</p>
+            )}
+          </section>
+        ) : null}
+
         {form.definition.sections
           .filter((section) => !section.hidden)
           .map((section) => {
@@ -602,31 +669,36 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
             }
 
             const rows = asRecordArray(sections[section.id]);
+            const selectedRowIndex = rows.length > 0 ? Math.min(activeChildIndex, rows.length - 1) : 0;
+            const selectedRow = rows[selectedRowIndex];
             return (
               <section key={section.id} className="rounded-xl border border-stone-200 bg-white p-4">
                 <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-stone-700">{section.title}</h4>
                 {section.description ? <p className="mt-1 text-sm text-stone-600">{section.description}</p> : null}
-                <div className="mt-3 space-y-4">
-                  {rows.map((row, rowIndex) => (
-                    <div key={`${section.id}-${rowIndex}`} className="rounded-xl border border-stone-200 bg-stone-50 p-3">
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-red-700">Child {rowIndex + 1}</p>
-                      <div className="mt-2 grid gap-3 md:grid-cols-2">
-                        {section.fields
-                          .filter((field) => !field.hidden)
-                          .filter((field) => isFieldVisible(field, row))
-                          .map((field) =>
-                            renderField(
-                              field,
-                              section.id,
-                              row[field.id] ?? fieldDefaultValue(field.type),
-                              (next) => setRepeatingValue(section.id, rowIndex, field.id, next),
-                              `${section.id}[${rowIndex}].${field.id}`
-                            )
-                          )}
-                      </div>
+                {selectedRow ? (
+                  <div className="mt-3 rounded-xl border border-stone-200 bg-stone-50 p-3 sm:p-4">
+                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-red-700">
+                      Child {selectedRowIndex + 1}
+                      {childCount > 1 ? ` of ${childCount}` : ''}
+                    </p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      {section.fields
+                        .filter((field) => !field.hidden)
+                        .filter((field) => isFieldVisible(field, selectedRow))
+                        .map((field) =>
+                          renderField(
+                            field,
+                            section.id,
+                            selectedRow[field.id] ?? fieldDefaultValue(field.type),
+                            (next) => setRepeatingValue(section.id, selectedRowIndex, field.id, next),
+                            `${section.id}[${selectedRowIndex}].${field.id}`
+                          )
+                        )}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm text-stone-600">No child entries available for this section.</p>
+                )}
               </section>
             );
           })}

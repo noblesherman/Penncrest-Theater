@@ -1236,6 +1236,7 @@ export default function Booking() {
       ),
     [registrationRequired, seatSelectionEnabled]
   );
+  const showStepFourOrderSummary = !registrationRequired;
   const progressPercent = ((currentStep - 1) / (checkoutSteps.length - 1)) * 100;
 
   return (
@@ -2057,7 +2058,13 @@ export default function Booking() {
               transition={{ duration: 0.25, ease: 'easeOut' }}
               className="h-full overflow-y-auto px-4 md:px-6 pb-10"
             >
-              <div className="max-w-6xl mx-auto pt-6 md:pt-8 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6">
+              <div
+                className={
+                  showStepFourOrderSummary
+                    ? 'max-w-6xl mx-auto pt-6 md:pt-8 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6'
+                    : 'w-full pt-6 md:pt-8'
+                }
+              >
                 <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
                   {checkoutQueue ? (
                     <>
@@ -2162,39 +2169,41 @@ export default function Booking() {
                   )}
                 </div>
 
-                <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="inline-flex items-center gap-2 text-stone-900 font-bold" style={{ fontFamily: 'Georgia, serif' }}>
-                      <Ticket className="w-4 h-4" /> Order Summary
-                    </div>
-                    <div className="text-sm text-stone-500 font-semibold">
-                      {selectedSeats.length} {seatSelectionEnabled ? 'seats' : 'tickets'}
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
-                    {selectedSeatsWithPricing.map((item, index) => (
-                      <div key={item.seat.id} className="rounded-xl border border-stone-200 bg-stone-50 p-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <div className="font-bold text-stone-900">
-                              {seatSelectionEnabled
-                                ? `${item.seat.sectionName} Row ${item.seat.row} Seat ${item.seat.number}`
-                                : `General Admission Ticket ${index + 1}`}
-                            </div>
-                            <div className="text-xs text-stone-500">{item.optionLabel}</div>
-                          </div>
-                          <div className="font-bold text-stone-900">${(item.unitPrice / 100).toFixed(2)}</div>
-                        </div>
+                {showStepFourOrderSummary ? (
+                  <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="inline-flex items-center gap-2 text-stone-900 font-bold" style={{ fontFamily: 'Georgia, serif' }}>
+                        <Ticket className="w-4 h-4" /> Order Summary
                       </div>
-                    ))}
-                  </div>
+                      <div className="text-sm text-stone-500 font-semibold">
+                        {selectedSeats.length} {seatSelectionEnabled ? 'seats' : 'tickets'}
+                      </div>
+                    </div>
 
-                  <div className="mt-5 border-t border-stone-200 pt-4 flex items-end justify-between">
-                    <div className="text-sm text-stone-500">Total</div>
-                    <div className="text-3xl font-bold text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
+                    <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                      {selectedSeatsWithPricing.map((item, index) => (
+                        <div key={item.seat.id} className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="font-bold text-stone-900">
+                                {seatSelectionEnabled
+                                  ? `${item.seat.sectionName} Row ${item.seat.row} Seat ${item.seat.number}`
+                                  : `General Admission Ticket ${index + 1}`}
+                              </div>
+                              <div className="text-xs text-stone-500">{item.optionLabel}</div>
+                            </div>
+                            <div className="font-bold text-stone-900">${(item.unitPrice / 100).toFixed(2)}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-5 border-t border-stone-200 pt-4 flex items-end justify-between">
+                      <div className="text-sm text-stone-500">Total</div>
+                      <div className="text-3xl font-bold text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
+                    </div>
                   </div>
-                </div>
+                ) : null}
               </div>
             </motion.section>
           )}
