@@ -1,5 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
+import { loadStripe, type StripeElementsOptions } from '@stripe/stripe-js';
 import { AlertCircle, CheckCircle2, CreditCard, ExternalLink, QrCode, RefreshCw, Search } from 'lucide-react';
 import { adminFetch } from '../../lib/adminAuth';
 import { toQrCodeDataUrl } from '../../lib/qrCode';
@@ -114,6 +116,29 @@ type TerminalDispatch = {
   seats: InPersonFinalizeSeatSummary[];
 };
 
+type ManualInPersonPaymentIntent = {
+  paymentIntentId: string;
+  clientSecret: string;
+  publishableKey?: string;
+  expectedAmountCents: number;
+  currency: string;
+};
+
+type ManualCheckoutSession = {
+  performanceId: string;
+  seatIds: string[];
+  ticketSelectionBySeatId: Record<string, string>;
+  attendeeNamesBySeatId: Record<string, string>;
+  sendReceipt: boolean;
+  customerName: string;
+  receiptEmail: string;
+  paymentIntentId: string;
+  clientSecret: string;
+  publishableKey: string;
+  expectedAmountCents: number;
+  currency: string;
+};
+
 function mapEntryToTerminalDispatch(entry: PaymentLineEntry): TerminalDispatch {
   return {
     dispatchId: entry.entryId,
@@ -146,12 +171,86 @@ function isTerminalDispatchFinalStatus(status: TerminalDispatch['status']): bool
 
 const inputClass =
   'w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm text-stone-900 outline-none focus:border-stone-500 focus:ring-2 focus:ring-stone-200';
+const FALLBACK_STRIPE_PUBLISHABLE_KEY = (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '').trim();
 
 function formatMoney(cents: number, currency: string): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: currency.toUpperCase()
   }).format(cents / 100);
+}
+
+function ManualDispatchChargeForm(props: {
+  amountCents: number;
+  customerName: string;
+  receiptEmail: string;
+  disabled?: boolean;
+  onError: (message: string | null) => void;
+  onPaymentConfirmed: (paymentIntentId: string) => Promise<void>;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    props.onError(null);
+
+    if (!stripe || !elements) {
+      props.onError('Card form is still loading. Please try again.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const result = await stripe.confirmPayment({
+        elements,
+        confirmParams: {
+          payment_method_data: {
+            billing_details: {
+              name: props.customerName || undefined,
+              email: props.receiptEmail || undefined
+            }
+          }
+        },
+        redirect: 'if_required'
+      });
+
+      if (result.error) {
+        throw new Error(result.error.message || 'Card charge failed.');
+      }
+
+      const confirmedIntent = result.paymentIntent;
+      if (!confirmedIntent?.id) {
+        throw new Error('Stripe did not return a payment intent id.');
+      }
+      if (confirmedIntent.status !== 'succeeded') {
+        throw new Error(`Payment is ${confirmedIntent.status}. Charge must be succeeded before finalizing checkout.`);
+      }
+
+      await props.onPaymentConfirmed(confirmedIntent.id);
+    } catch (err) {
+      props.onError(err instanceof Error ? err.message : 'Card charge failed.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <div className="rounded-xl border border-stone-200 bg-white p-3 sm:p-4">
+        <PaymentElement />
+      </div>
+      <button
+        type="submit"
+        disabled={props.disabled || submitting || !stripe || !elements}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-stone-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {submitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+        Charge {formatMoney(props.amountCents, 'usd')}
+      </button>
+    </form>
+  );
 }
 
 export default function AdminFundraiseCheckInPage() {
@@ -185,12 +284,18 @@ export default function AdminFundraiseCheckInPage() {
   const [saleSendReceipt, setSaleSendReceipt] = useState(false);
   const [saleAttendeeNames, setSaleAttendeeNames] = useState<string[]>(['']);
   const [salePaymentMethod, setSalePaymentMethod] = useState<'CASH' | 'STRIPE'>('STRIPE');
+  const [saleStripeChargePath, setSaleStripeChargePath] = useState<'TERMINAL' | 'MANUAL'>('TERMINAL');
   const [saleTerminalDevices, setSaleTerminalDevices] = useState<TerminalDevice[]>([]);
   const [saleTerminalLoading, setSaleTerminalLoading] = useState(false);
   const [saleTerminalDeviceId, setSaleTerminalDeviceId] = useState('');
   const [saleSubmitting, setSaleSubmitting] = useState(false);
   const [saleError, setSaleError] = useState<string | null>(null);
   const [saleDispatch, setSaleDispatch] = useState<TerminalDispatch | null>(null);
+  const [saleManualCheckout, setSaleManualCheckout] = useState<ManualCheckoutSession | null>(null);
+  const [saleManualCheckoutError, setSaleManualCheckoutError] = useState<string | null>(null);
+  const [saleManualCheckoutLoading, setSaleManualCheckoutLoading] = useState(false);
+  const [saleManualCheckoutCompleting, setSaleManualCheckoutCompleting] = useState(false);
+  const [saleManualCapturedPaymentIntentId, setSaleManualCapturedPaymentIntentId] = useState<string | null>(null);
   const [saleResultOrderId, setSaleResultOrderId] = useState<string | null>(null);
   const [saleResultAmountCents, setSaleResultAmountCents] = useState(0);
   const [saleResultCurrency, setSaleResultCurrency] = useState('usd');
@@ -207,6 +312,17 @@ export default function AdminFundraiseCheckInPage() {
     () => (selectedEvent?.pricingTiers || []).filter((tier) => tier.priceCents >= 0),
     [selectedEvent]
   );
+  const saleManualStripePromise = useMemo(() => {
+    if (!saleManualCheckout?.publishableKey) return null;
+    return loadStripe(saleManualCheckout.publishableKey);
+  }, [saleManualCheckout?.publishableKey]);
+  const saleManualStripeOptions = useMemo<StripeElementsOptions | null>(() => {
+    if (!saleManualCheckout?.clientSecret) return null;
+    return {
+      clientSecret: saleManualCheckout.clientSecret,
+      appearance: { theme: 'stripe' }
+    };
+  }, [saleManualCheckout?.clientSecret]);
 
   async function loadEvents() {
     const items = await adminFetch<FundraiseEvent[]>('/api/admin/performances?scope=active&kind=fundraise');
@@ -354,9 +470,15 @@ export default function AdminFundraiseCheckInPage() {
     setSaleSendReceipt(Boolean(prefill?.customerEmail));
     setSaleAttendeeNames(['']);
     setSalePaymentMethod('STRIPE');
+    setSaleStripeChargePath('TERMINAL');
     setSaleError(null);
     setSaleSubmitting(false);
     setSaleDispatch(null);
+    setSaleManualCheckout(null);
+    setSaleManualCheckoutError(null);
+    setSaleManualCheckoutLoading(false);
+    setSaleManualCheckoutCompleting(false);
+    setSaleManualCapturedPaymentIntentId(null);
     setSaleResultOrderId(null);
     setSaleResultAmountCents(0);
     setSaleResultCurrency('usd');
@@ -371,6 +493,11 @@ export default function AdminFundraiseCheckInPage() {
     setSaleStep(0);
     setSaleError(null);
     setSaleDispatch(null);
+    setSaleManualCheckout(null);
+    setSaleManualCheckoutError(null);
+    setSaleManualCheckoutLoading(false);
+    setSaleManualCheckoutCompleting(false);
+    setSaleManualCapturedPaymentIntentId(null);
     setSaleSubmitting(false);
     setSaleResultOrderId(null);
     setSaleResultQrLink('');
@@ -556,7 +683,7 @@ export default function AdminFundraiseCheckInPage() {
     }
 
     if (step === 2) {
-      if (salePaymentMethod === 'STRIPE' && !saleTerminalDeviceId) {
+      if (salePaymentMethod === 'STRIPE' && saleStripeChargePath === 'TERMINAL' && !saleTerminalDeviceId) {
         return 'Choose a payment terminal device.';
       }
       return null;
@@ -577,7 +704,113 @@ export default function AdminFundraiseCheckInPage() {
 
   function prevWalkUpStep() {
     setSaleError(null);
+    setSaleManualCheckoutError(null);
+    if (saleStep <= 2) {
+      setSaleDispatch(null);
+      setSaleManualCheckout(null);
+      setSaleManualCapturedPaymentIntentId(null);
+    }
     setSaleStep((current) => Math.max(0, current - 1));
+  }
+
+  async function startManualWalkUpCheckout(params: {
+    performanceId: string;
+    seatIds: string[];
+    ticketSelectionBySeatId: Record<string, string>;
+    attendeeNamesBySeatId: Record<string, string>;
+    customerName: string;
+    receiptEmail: string;
+    sendReceipt: boolean;
+  }) {
+    setSaleManualCheckoutLoading(true);
+    setSaleManualCheckoutError(null);
+    setSaleManualCapturedPaymentIntentId(null);
+    try {
+      const intent = await adminFetch<ManualInPersonPaymentIntent>('/api/admin/orders/in-person/manual-intent', {
+        method: 'POST',
+        body: JSON.stringify({
+          performanceId: params.performanceId,
+          seatIds: params.seatIds,
+          ticketSelectionBySeatId: params.ticketSelectionBySeatId,
+          attendeeNames: params.attendeeNamesBySeatId,
+          customerName: params.customerName,
+          receiptEmail: params.receiptEmail || undefined,
+          sendReceipt: params.sendReceipt
+        })
+      });
+
+      const publishableKey = (intent.publishableKey || FALLBACK_STRIPE_PUBLISHABLE_KEY || '').trim();
+      if (!publishableKey) {
+        throw new Error('Stripe publishable key is not configured for manual checkout.');
+      }
+
+      setSaleManualCheckout({
+        performanceId: params.performanceId,
+        seatIds: [...params.seatIds],
+        ticketSelectionBySeatId: { ...params.ticketSelectionBySeatId },
+        attendeeNamesBySeatId: { ...params.attendeeNamesBySeatId },
+        sendReceipt: params.sendReceipt,
+        customerName: params.customerName,
+        receiptEmail: params.receiptEmail,
+        paymentIntentId: intent.paymentIntentId,
+        clientSecret: intent.clientSecret,
+        publishableKey,
+        expectedAmountCents: intent.expectedAmountCents,
+        currency: intent.currency
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to start manual card checkout';
+      setSaleManualCheckoutError(message);
+      setSaleError(message);
+    } finally {
+      setSaleManualCheckoutLoading(false);
+    }
+  }
+
+  async function finalizeManualWalkUpCheckout(paymentIntentId: string) {
+    if (!saleManualCheckout) {
+      throw new Error('Manual checkout session is missing.');
+    }
+
+    setSaleManualCheckoutCompleting(true);
+    setSaleManualCheckoutError(null);
+    setSaleError(null);
+    setSaleManualCapturedPaymentIntentId(paymentIntentId);
+    try {
+      const result = await adminFetch<{
+        success: boolean;
+        id: string;
+        expectedAmountCents: number;
+        paymentMethod: 'STRIPE' | 'CASH';
+      }>('/api/admin/orders/in-person/manual-complete', {
+        method: 'POST',
+        body: JSON.stringify({
+          performanceId: saleManualCheckout.performanceId,
+          seatIds: saleManualCheckout.seatIds,
+          ticketSelectionBySeatId: saleManualCheckout.ticketSelectionBySeatId,
+          attendeeNames: saleManualCheckout.attendeeNamesBySeatId,
+          customerName: saleManualCheckout.customerName,
+          receiptEmail: saleManualCheckout.receiptEmail || undefined,
+          sendReceipt: saleManualCheckout.sendReceipt,
+          paymentIntentId
+        })
+      });
+
+      setSaleManualCheckout(null);
+      setSaleManualCapturedPaymentIntentId(null);
+      await completeWalkUpSale({
+        orderId: result.id,
+        amountCents: result.expectedAmountCents,
+        currency: 'usd'
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to finalize manual card checkout';
+      setSaleManualCheckoutError(message);
+      setSaleError(message);
+      throw err;
+    } finally {
+      setSaleManualCheckoutCompleting(false);
+    }
   }
 
   async function submitWalkUpPayment() {
@@ -595,6 +828,7 @@ export default function AdminFundraiseCheckInPage() {
 
     setSaleSubmitting(true);
     setSaleError(null);
+    setSaleManualCheckoutError(null);
     try {
       if (salePaymentMethod === 'CASH') {
         const result = await adminFetch<{
@@ -618,6 +852,19 @@ export default function AdminFundraiseCheckInPage() {
           orderId: result.id,
           amountCents: result.expectedAmountCents,
           currency: 'usd'
+        });
+        return;
+      }
+
+      if (saleStripeChargePath === 'MANUAL') {
+        await startManualWalkUpCheckout({
+          performanceId,
+          seatIds,
+          ticketSelectionBySeatId,
+          attendeeNamesBySeatId: attendeeNames,
+          customerName: saleCustomerName.trim(),
+          receiptEmail: normalizedReceiptEmail,
+          sendReceipt: Boolean(saleSendReceipt && normalizedReceiptEmail)
         });
         return;
       }
@@ -1138,12 +1385,17 @@ export default function AdminFundraiseCheckInPage() {
                     <p className="mt-1 text-2xl font-black text-stone-900">{formatMoney(saleEstimatedTotalCents, 'usd')}</p>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <button
                       type="button"
-                      onClick={() => setSalePaymentMethod('STRIPE')}
+                      onClick={() => {
+                        setSalePaymentMethod('STRIPE');
+                        setSaleStripeChargePath('TERMINAL');
+                        setSaleManualCheckout(null);
+                        setSaleManualCheckoutError(null);
+                      }}
                       className={`rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${
-                        salePaymentMethod === 'STRIPE'
+                        salePaymentMethod === 'STRIPE' && saleStripeChargePath === 'TERMINAL'
                           ? 'border-stone-900 bg-stone-900 text-white'
                           : 'border-stone-300 bg-white text-stone-700 hover:bg-stone-100'
                       }`}
@@ -1152,7 +1404,28 @@ export default function AdminFundraiseCheckInPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSalePaymentMethod('CASH')}
+                      onClick={() => {
+                        setSalePaymentMethod('STRIPE');
+                        setSaleStripeChargePath('MANUAL');
+                        setSaleDispatch(null);
+                        setSaleError(null);
+                      }}
+                      className={`rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${
+                        salePaymentMethod === 'STRIPE' && saleStripeChargePath === 'MANUAL'
+                          ? 'border-stone-900 bg-stone-900 text-white'
+                          : 'border-stone-300 bg-white text-stone-700 hover:bg-stone-100'
+                      }`}
+                    >
+                      Manual Card Entry
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSalePaymentMethod('CASH');
+                        setSaleDispatch(null);
+                        setSaleManualCheckout(null);
+                        setSaleManualCheckoutError(null);
+                      }}
                       className={`rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${
                         salePaymentMethod === 'CASH'
                           ? 'border-stone-900 bg-stone-900 text-white'
@@ -1163,7 +1436,7 @@ export default function AdminFundraiseCheckInPage() {
                     </button>
                   </div>
 
-                  {salePaymentMethod === 'STRIPE' ? (
+                  {salePaymentMethod === 'STRIPE' && saleStripeChargePath === 'TERMINAL' ? (
                     <div className="rounded-xl border border-stone-200 p-4">
                       <div className="mb-2 flex items-center justify-between">
                         <p className="text-xs font-bold uppercase tracking-wide text-stone-500">Payment Device</p>
@@ -1187,6 +1460,45 @@ export default function AdminFundraiseCheckInPage() {
                           </option>
                         ))}
                       </select>
+                    </div>
+                  ) : null}
+
+                  {salePaymentMethod === 'STRIPE' && saleStripeChargePath === 'MANUAL' ? (
+                    <div className="space-y-3 rounded-xl border border-stone-200 p-4">
+                      <p className="text-xs font-bold uppercase tracking-wide text-stone-500">Manual Card Form</p>
+                      <p className="text-sm text-stone-600">
+                        Load the card form, then enter card details to capture payment.
+                      </p>
+
+                      {saleManualCheckoutError ? (
+                        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                          {saleManualCheckoutError}
+                        </div>
+                      ) : null}
+
+                      {saleManualCapturedPaymentIntentId ? (
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                          Confirming charge {saleManualCapturedPaymentIntentId.slice(0, 14)}...
+                        </div>
+                      ) : null}
+
+                      {saleManualCheckout && saleManualStripePromise && saleManualStripeOptions ? (
+                        <Elements stripe={saleManualStripePromise} options={saleManualStripeOptions}>
+                          <ManualDispatchChargeForm
+                            amountCents={saleManualCheckout.expectedAmountCents}
+                            customerName={saleManualCheckout.customerName}
+                            receiptEmail={saleManualCheckout.receiptEmail}
+                            disabled={saleManualCheckoutCompleting || saleSubmitting}
+                            onError={(message) => {
+                              setSaleManualCheckoutError(message);
+                              setSaleError(message);
+                            }}
+                            onPaymentConfirmed={async (paymentIntentId) => {
+                              await finalizeManualWalkUpCheckout(paymentIntentId);
+                            }}
+                          />
+                        </Elements>
+                      ) : null}
                     </div>
                   ) : null}
 
@@ -1271,7 +1583,8 @@ export default function AdminFundraiseCheckInPage() {
                     disabled={
                       selectedEvent?.seatSelectionEnabled !== false ||
                       saleSubmitting ||
-                      (saleDispatch !== null && !isTerminalDispatchFinalStatus(saleDispatch.status))
+                      (salePaymentMethod === 'STRIPE' && saleStripeChargePath === 'TERMINAL' && saleDispatch !== null && !isTerminalDispatchFinalStatus(saleDispatch.status)) ||
+                      (salePaymentMethod === 'STRIPE' && saleStripeChargePath === 'MANUAL' && Boolean(saleManualCheckout))
                     }
                     className="rounded-xl bg-stone-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:opacity-60"
                   >
@@ -1279,9 +1592,15 @@ export default function AdminFundraiseCheckInPage() {
                       ? 'Processing...'
                       : salePaymentMethod === 'CASH'
                         ? 'Take Cash + Complete'
-                        : saleDispatch && !isTerminalDispatchFinalStatus(saleDispatch.status)
-                          ? 'Waiting For Terminal'
-                          : 'Start Card Payment'}
+                        : saleStripeChargePath === 'MANUAL'
+                          ? saleManualCheckout
+                            ? 'Card Form Loaded'
+                            : saleManualCheckoutLoading
+                              ? 'Loading Card Form...'
+                              : 'Load Card Form'
+                          : saleDispatch && !isTerminalDispatchFinalStatus(saleDispatch.status)
+                            ? 'Waiting For Terminal'
+                            : 'Start Card Payment'}
                   </button>
                 ) : null}
 
