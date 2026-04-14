@@ -181,6 +181,10 @@ function formatWaitEstimate(seconds: number): string {
   return `${minutes}m ${remainder}s`;
 }
 
+function isFirstCamperLabel(label: string): boolean {
+  return /\b1st\s*camper\b/i.test(label.trim());
+}
+
 function InlineStripePaymentForm({
   disabled,
   onError,
@@ -494,6 +498,15 @@ export default function Booking() {
     return tierOptions;
   }, [isFundraiser, pricingTiers, studentCompTicketsEnabled]);
 
+  const firstCamperOptionId = useMemo(
+    () => ticketOptions.find((option) => isFirstCamperLabel(option.label))?.id || null,
+    [ticketOptions]
+  );
+  const fallbackNonFirstCamperOptionId = useMemo(
+    () => ticketOptions.find((option) => !isFirstCamperLabel(option.label))?.id || null,
+    [ticketOptions]
+  );
+
   useEffect(() => {
     if (selectedSeatIds.length === 0) {
       setTicketOptionBySeatId({});
@@ -507,19 +520,34 @@ export default function Booking() {
 
     setTicketOptionBySeatId((prev) => {
       const next: Record<string, string> = {};
+      let firstCamperUsed = false;
       selectedSeatIds.forEach((seatId) => {
         const prevOptionId = prev[seatId];
         if (prevOptionId && validOptionIds.has(prevOptionId)) {
+          if (firstCamperOptionId && prevOptionId === firstCamperOptionId) {
+            if (firstCamperUsed) {
+              next[seatId] = fallbackNonFirstCamperOptionId || defaultOptionId || prevOptionId;
+              return;
+            }
+            firstCamperUsed = true;
+          }
           next[seatId] = prevOptionId;
           return;
         }
         if (defaultOptionId) {
+          if (firstCamperOptionId && defaultOptionId === firstCamperOptionId && firstCamperUsed) {
+            next[seatId] = fallbackNonFirstCamperOptionId || defaultOptionId;
+            return;
+          }
           next[seatId] = defaultOptionId;
+          if (firstCamperOptionId && defaultOptionId === firstCamperOptionId) {
+            firstCamperUsed = true;
+          }
         }
       });
       return next;
     });
-  }, [selectedSeatIds, ticketOptions]);
+  }, [fallbackNonFirstCamperOptionId, firstCamperOptionId, selectedSeatIds, ticketOptions]);
 
   useEffect(() => {
     if (selectedSeatIds.length > 0) return;
@@ -587,10 +615,23 @@ export default function Booking() {
       setCheckoutQueue(null);
     }
 
-    setTicketOptionBySeatId((prev) => ({
-      ...prev,
-      [seatId]: optionId
-    }));
+    setTicketOptionBySeatId((prev) => {
+      if (!firstCamperOptionId || optionId !== firstCamperOptionId) {
+        return {
+          ...prev,
+          [seatId]: optionId
+        };
+      }
+
+      const anotherSeatAlreadyHasFirstCamper = selectedSeatIds.some(
+        (selectedSeatId) => selectedSeatId !== seatId && prev[selectedSeatId] === firstCamperOptionId
+      );
+
+      return {
+        ...prev,
+        [seatId]: anotherSeatAlreadyHasFirstCamper ? fallbackNonFirstCamperOptionId || optionId : optionId
+      };
+    });
   };
 
   const resetPendingPayment = useCallback(() => {
@@ -2114,6 +2155,7 @@ export default function Booking() {
                           form={registrationForm}
                           ticketQuantity={selectedSeatIds.length}
                           storageKey={`event-registration:${performanceId || 'event'}:${registrationForm.versionId}`}
+                          checkoutCustomerName={customerName}
                           disabled={Boolean(pendingStripePayment) || processing}
                           onValidityChange={({ valid, payload }) => {
                             setRegistrationValid(valid);

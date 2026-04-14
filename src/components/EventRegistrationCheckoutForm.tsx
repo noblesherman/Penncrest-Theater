@@ -21,6 +21,7 @@ type Props = {
   form: EnabledRegistrationForm;
   ticketQuantity: number;
   storageKey: string;
+  checkoutCustomerName?: string;
   disabled?: boolean;
   onValidityChange: (params: {
     valid: boolean;
@@ -64,16 +65,6 @@ function defaultSignature(): SignatureState {
   };
 }
 
-function sectionDefaults(section: EventRegistrationSectionDefinition, childCount: number): Record<string, unknown> | Array<Record<string, unknown>> {
-  if (section.type === 'single') {
-    return Object.fromEntries(section.fields.map((field) => [field.id, fieldDefaultValue(field.type)]));
-  }
-
-  return Array.from({ length: childCount }, () =>
-    Object.fromEntries(section.fields.map((field) => [field.id, fieldDefaultValue(field.type)]))
-  );
-}
-
 function ensureSectionShape(params: {
   definition: EventRegistrationDefinition;
   current: Record<string, Record<string, unknown> | Array<Record<string, unknown>>>;
@@ -88,78 +79,53 @@ function ensureSectionShape(params: {
     if (section.type === 'single') {
       const base = asRecord(existing);
       const row: Record<string, unknown> = {};
-      for (const field of section.fields) {
-        row[field.id] = base[field.id] ?? fieldDefaultValue(field.type);
-      }
+      for (const field of section.fields) row[field.id] = base[field.id] ?? fieldDefaultValue(field.type);
       next[section.id] = row;
       continue;
     }
 
     const rows = asRecordArray(existing);
-    const normalizedRows: Array<Record<string, unknown>> = [];
-    for (let index = 0; index < params.childCount; index += 1) {
+    next[section.id] = Array.from({ length: params.childCount }, (_, index) => {
       const rowBase = rows[index] || {};
       const row: Record<string, unknown> = {};
-      for (const field of section.fields) {
-        row[field.id] = rowBase[field.id] ?? fieldDefaultValue(field.type);
-      }
-      normalizedRows.push(row);
-    }
-    next[section.id] = normalizedRows;
+      for (const field of section.fields) row[field.id] = rowBase[field.id] ?? fieldDefaultValue(field.type);
+      return row;
+    });
   }
 
   return next;
 }
 
 function normalizePolicyValue(type: string, value: unknown): unknown {
-  if (type === 'required_checkbox') {
-    return value === true;
-  }
-  if (type === 'yes_no') {
-    return normalizeYesNo(value);
-  }
+  if (type === 'required_checkbox') return value === true;
+  if (type === 'yes_no') return normalizeYesNo(value);
   return String(value ?? '').trim();
 }
 
 function validateFieldValue(field: EventRegistrationFieldDefinition, value: unknown): string | null {
-  if (field.type === 'checkbox') {
-    if (field.required && value !== true) return 'This checkbox is required.';
-    return null;
-  }
+  if (field.type === 'checkbox') return field.required && value !== true ? 'This checkbox is required.' : null;
 
   if (field.type === 'multi_select') {
     const arrayValue = Array.isArray(value) ? value : [];
     if (field.required && arrayValue.length === 0) return 'Select at least one option.';
-    if (field.options && field.options.length > 0) {
+    if (field.options?.length) {
       const options = new Set(field.options);
-      if (arrayValue.some((entry) => !options.has(String(entry)))) {
-        return 'Invalid option selected.';
-      }
+      if (arrayValue.some((entry) => !options.has(String(entry)))) return 'Invalid option selected.';
     }
     return null;
   }
 
   const text = typeof value === 'string' ? value.trim() : value === null || value === undefined ? '' : String(value);
-  if (field.required && !text) {
-    return 'This field is required.';
-  }
-  if (!text) {
-    return null;
-  }
+  if (field.required && !text) return 'This field is required.';
+  if (!text) return null;
 
   if (field.type === 'email') {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(text)) return 'Enter a valid email address.';
   }
-  if (field.type === 'number' && Number.isNaN(Number(text))) {
-    return 'Enter a valid number.';
-  }
-  if (field.type === 'dropdown' && field.options && field.options.length > 0 && !field.options.includes(text)) {
-    return 'Select a valid option.';
-  }
-  if (field.type === 'radio_yes_no' && text !== 'yes' && text !== 'no') {
-    return 'Choose Yes or No.';
-  }
+  if (field.type === 'number' && Number.isNaN(Number(text))) return 'Enter a valid number.';
+  if (field.type === 'dropdown' && field.options?.length && !field.options.includes(text)) return 'Select a valid option.';
+  if (field.type === 'radio_yes_no' && text !== 'yes' && text !== 'no') return 'Choose Yes or No.';
 
   return null;
 }
@@ -205,17 +171,12 @@ function validateSubmission(params: {
     if (section.type === 'single') {
       const values = asRecord(params.sections[section.id]);
       const normalizedValues: Record<string, unknown> = {};
-      for (const field of section.fields) {
-        normalizedValues[field.id] = values[field.id] ?? fieldDefaultValue(field.type);
-      }
+      for (const field of section.fields) normalizedValues[field.id] = values[field.id] ?? fieldDefaultValue(field.type);
 
       for (const field of section.fields) {
-        if (field.hidden) continue;
-        if (!isFieldVisible(field, normalizedValues)) continue;
+        if (field.hidden || !isFieldVisible(field, normalizedValues)) continue;
         const error = validateFieldValue(field, normalizedValues[field.id]);
-        if (error) {
-          errors[`${section.id}.${field.id}`] = error;
-        }
+        if (error) errors[`${section.id}.${field.id}`] = error;
       }
       continue;
     }
@@ -229,17 +190,12 @@ function validateSubmission(params: {
     for (let index = 0; index < values.length; index += 1) {
       const row = values[index];
       const normalizedValues: Record<string, unknown> = {};
-      for (const field of section.fields) {
-        normalizedValues[field.id] = row[field.id] ?? fieldDefaultValue(field.type);
-      }
+      for (const field of section.fields) normalizedValues[field.id] = row[field.id] ?? fieldDefaultValue(field.type);
 
       for (const field of section.fields) {
-        if (field.hidden) continue;
-        if (!isFieldVisible(field, normalizedValues)) continue;
+        if (field.hidden || !isFieldVisible(field, normalizedValues)) continue;
         const error = validateFieldValue(field, normalizedValues[field.id]);
-        if (error) {
-          errors[`${section.id}[${index}].${field.id}`] = error;
-        }
+        if (error) errors[`${section.id}[${index}].${field.id}`] = error;
       }
     }
   }
@@ -274,17 +230,26 @@ function validateSubmission(params: {
     }
   }
 
-  return {
-    valid: Object.keys(errors).length === 0,
-    errors
-  };
+  return { valid: Object.keys(errors).length === 0, errors };
 }
 
 function renderFieldLabel(field: EventRegistrationFieldDefinition): string {
   return field.required ? `${field.label} *` : field.label;
 }
 
-export default function EventRegistrationCheckoutForm({ form, ticketQuantity, storageKey, disabled = false, onValidityChange }: Props) {
+function isParentGuardianNameField(field: EventRegistrationFieldDefinition): boolean {
+  const label = field.label.trim().toLowerCase();
+  return label.includes('name') && !label.includes('child') && !label.includes('camper') && (label.includes('parent') || label.includes('guardian'));
+}
+
+export default function EventRegistrationCheckoutForm({
+  form,
+  ticketQuantity,
+  storageKey,
+  checkoutCustomerName,
+  disabled = false,
+  onValidityChange
+}: Props) {
   const [sections, setSections] = useState<Record<string, Record<string, unknown> | Array<Record<string, unknown>>>>({});
   const [policies, setPolicies] = useState<Record<string, unknown>>({});
   const [acknowledgments, setAcknowledgments] = useState<AcknowledgmentState>(defaultAcknowledgments);
@@ -311,19 +276,19 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
     const initial = (() => {
       try {
         const raw = localStorage.getItem(storageKey);
-        if (!raw) return null;
-        return JSON.parse(raw) as Partial<DraftState>;
+        return raw ? (JSON.parse(raw) as Partial<DraftState>) : null;
       } catch {
         return null;
       }
     })();
 
-    const initialSections = ensureSectionShape({
-      definition: form.definition,
-      current: initial?.sections || {},
-      childCount: Math.max(0, ticketQuantity)
-    });
-    setSections(initialSections);
+    setSections(
+      ensureSectionShape({
+        definition: form.definition,
+        current: initial?.sections || {},
+        childCount: Math.max(0, ticketQuantity)
+      })
+    );
 
     const initialPolicies: Record<string, unknown> = {};
     for (const policy of form.definition.policies) {
@@ -346,24 +311,46 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
   }, [childCount, form.definition]);
 
   useEffect(() => {
-    setActiveChildIndex((current) => {
-      if (childCount <= 1) return 0;
-      return Math.min(current, childCount - 1);
+    const normalizedName = checkoutCustomerName?.trim();
+    if (!normalizedName) return;
+
+    setSections((current) => {
+      let changed = false;
+      const next = { ...current };
+
+      for (const section of form.definition.sections) {
+        if (section.hidden || section.type !== 'single') continue;
+        const row = asRecord(next[section.id]);
+        const nextRow: Record<string, unknown> = { ...row };
+        let rowChanged = false;
+
+        for (const field of section.fields) {
+          if (field.hidden || !isParentGuardianNameField(field)) continue;
+          if (!String(nextRow[field.id] ?? '').trim()) {
+            nextRow[field.id] = normalizedName;
+            rowChanged = true;
+          }
+        }
+
+        if (rowChanged) {
+          next[section.id] = nextRow;
+          changed = true;
+        }
+      }
+
+      return changed ? next : current;
     });
+  }, [checkoutCustomerName, form.definition.sections]);
+
+  useEffect(() => {
+    setActiveChildIndex((current) => (childCount <= 1 ? 0 : Math.min(current, childCount - 1)));
   }, [childCount]);
 
   useEffect(() => {
-    const draft: DraftState = {
-      sections,
-      policies,
-      acknowledgments,
-      signature
-    };
+    const draft: DraftState = { sections, policies, acknowledgments, signature };
     try {
       localStorage.setItem(storageKey, JSON.stringify(draft));
-    } catch {
-      // Ignore localStorage failures.
-    }
+    } catch {}
   }, [acknowledgments, policies, sections, signature, storageKey]);
 
   const validation = useMemo(
@@ -400,9 +387,7 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
       const match = key.match(/\[(\d+)\]\./);
       if (!match) continue;
       const index = Number(match[1]);
-      if (Number.isInteger(index) && index >= 0 && index < counts.length) {
-        counts[index] += 1;
-      }
+      if (Number.isInteger(index) && index >= 0 && index < counts.length) counts[index] += 1;
     }
     return counts;
   }, [childCount, validation.errors]);
@@ -418,45 +403,29 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
   const setSingleValue = (sectionId: string, fieldId: string, value: unknown) => {
     setSections((current) => {
       const section = asRecord(current[sectionId]);
-      return {
-        ...current,
-        [sectionId]: {
-          ...section,
-          [fieldId]: value
-        }
-      };
+      return { ...current, [sectionId]: { ...section, [fieldId]: value } };
     });
   };
 
   const setRepeatingValue = (sectionId: string, rowIndex: number, fieldId: string, value: unknown) => {
     setSections((current) => {
       const rows = asRecordArray(current[sectionId]);
-      const nextRows = rows.map((row, index) =>
-        index === rowIndex
-          ? {
-              ...row,
-              [fieldId]: value
-            }
-          : row
-      );
-      return {
-        ...current,
-        [sectionId]: nextRows
-      };
+      const nextRows = rows.map((row, index) => (index === rowIndex ? { ...row, [fieldId]: value } : row));
+      return { ...current, [sectionId]: nextRows };
     });
   };
 
   const renderField = (
     field: EventRegistrationFieldDefinition,
-    sectionId: string,
     value: unknown,
     onValueChange: (next: unknown) => void,
     errorKey: string
   ) => {
     const error = showErrors ? validation.errors[errorKey] : null;
-
-    const commonInputClass = `mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ${
-      error ? 'border-red-300 bg-red-50' : 'border-stone-300 bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100'
+    const controlClass = `mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none transition ${
+      error
+        ? 'border-red-300 bg-red-50'
+        : 'border-stone-300 bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100'
     }`;
 
     let input: React.ReactNode = null;
@@ -469,7 +438,7 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
           onChange={(event) => onValueChange(event.target.value)}
           placeholder={field.placeholder || ''}
           disabled={disabled}
-          className={commonInputClass}
+          className={controlClass}
         />
       );
     } else if (field.type === 'dropdown') {
@@ -478,7 +447,7 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
           value={typeof value === 'string' ? value : ''}
           onChange={(event) => onValueChange(event.target.value)}
           disabled={disabled}
-          className={commonInputClass}
+          className={controlClass}
         >
           <option value="">Select...</option>
           {(field.options || []).map((option) => (
@@ -561,14 +530,14 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
           onChange={(event) => onValueChange(event.target.value)}
           placeholder={field.placeholder || ''}
           disabled={disabled}
-          className={commonInputClass}
+          className={controlClass}
         />
       );
     }
 
     return (
       <label key={errorKey} className="block">
-        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-red-700">{renderFieldLabel(field)}</span>
+        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-600">{renderFieldLabel(field)}</span>
         {input}
         {field.helpText ? <p className="mt-1 text-xs text-stone-500">{field.helpText}</p> : null}
         {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
@@ -577,32 +546,30 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
   };
 
   return (
-    <div className="mt-6 rounded-2xl border border-stone-200 bg-stone-50 p-4 sm:p-5">
+    <div className="mt-6 rounded-3xl border border-stone-200 bg-white p-5 shadow-sm sm:p-6">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-lg font-bold text-stone-900">{form.formName}</h3>
-          <p className="mt-1 text-sm text-stone-600">
-            Complete this registration form before finishing checkout.
-          </p>
+          <h3 className="text-xl font-bold text-stone-900">{form.formName}</h3>
+          <p className="mt-1 text-sm text-stone-600">Complete this registration form before finishing checkout.</p>
         </div>
         <button
           type="button"
           onClick={() => setShowErrors(true)}
-          className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 hover:bg-stone-100"
+          className="rounded-lg border border-stone-300 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-700 hover:bg-stone-100"
         >
           Check Form
         </button>
       </div>
 
       {validation.errors.childCount ? (
-        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {validation.errors.childCount}
         </div>
       ) : null}
 
-      <div className="mt-5 space-y-6">
+      <div className="mt-6 space-y-6">
         {hasRepeatingSections && childCount > 0 ? (
-          <section className="rounded-xl border border-stone-200 bg-white p-4">
+          <section className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-stone-700">Child Questionnaire</h4>
               <p className="text-xs text-stone-500">
@@ -619,7 +586,7 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
                       key={`child-tab-${index}`}
                       type="button"
                       onClick={() => setActiveChildIndex(index)}
-                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                         isActive
                           ? 'border-stone-900 bg-stone-900 text-white'
                           : 'border-stone-300 bg-white text-stone-700 hover:border-stone-500'
@@ -641,81 +608,78 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
           </section>
         ) : null}
 
-        {form.definition.sections
-          .filter((section) => !section.hidden)
-          .map((section) => {
-            if (section.type === 'single') {
-              const values = asRecord(sections[section.id]);
-              return (
-                <section key={section.id} className="rounded-xl border border-stone-200 bg-white p-4">
-                  <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-stone-700">{section.title}</h4>
-                  {section.description ? <p className="mt-1 text-sm text-stone-600">{section.description}</p> : null}
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+        {form.definition.sections.filter((section) => !section.hidden).map((section) => {
+          if (section.type === 'single') {
+            const values = asRecord(sections[section.id]);
+            return (
+              <section key={section.id} className="rounded-2xl border border-stone-200 bg-white p-4">
+                <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-stone-700">{section.title}</h4>
+                {section.description ? <p className="mt-1 text-sm text-stone-600">{section.description}</p> : null}
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  {section.fields
+                    .filter((field) => !field.hidden)
+                    .filter((field) => isFieldVisible(field, values))
+                    .map((field) =>
+                      renderField(
+                        field,
+                        values[field.id] ?? fieldDefaultValue(field.type),
+                        (next) => setSingleValue(section.id, field.id, next),
+                        `${section.id}.${field.id}`
+                      )
+                    )}
+                </div>
+              </section>
+            );
+          }
+
+          const rows = asRecordArray(sections[section.id]);
+          const selectedRowIndex = rows.length > 0 ? Math.min(activeChildIndex, rows.length - 1) : 0;
+          const selectedRow = rows[selectedRowIndex];
+
+          return (
+            <section key={section.id} className="rounded-2xl border border-stone-200 bg-white p-4">
+              <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-stone-700">{section.title}</h4>
+              {section.description ? <p className="mt-1 text-sm text-stone-600">{section.description}</p> : null}
+              {selectedRow ? (
+                <div className="mt-4 rounded-2xl border border-stone-200 bg-stone-50 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.12em] text-red-700">
+                    Child {selectedRowIndex + 1}
+                    {childCount > 1 ? ` of ${childCount}` : ''}
+                  </p>
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
                     {section.fields
                       .filter((field) => !field.hidden)
-                      .filter((field) => isFieldVisible(field, values))
+                      .filter((field) => isFieldVisible(field, selectedRow))
                       .map((field) =>
                         renderField(
                           field,
-                          section.id,
-                          values[field.id] ?? fieldDefaultValue(field.type),
-                          (next) => setSingleValue(section.id, field.id, next),
-                          `${section.id}.${field.id}`
+                          selectedRow[field.id] ?? fieldDefaultValue(field.type),
+                          (next) => setRepeatingValue(section.id, selectedRowIndex, field.id, next),
+                          `${section.id}[${selectedRowIndex}].${field.id}`
                         )
                       )}
                   </div>
-                </section>
-              );
-            }
-
-            const rows = asRecordArray(sections[section.id]);
-            const selectedRowIndex = rows.length > 0 ? Math.min(activeChildIndex, rows.length - 1) : 0;
-            const selectedRow = rows[selectedRowIndex];
-            return (
-              <section key={section.id} className="rounded-xl border border-stone-200 bg-white p-4">
-                <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-stone-700">{section.title}</h4>
-                {section.description ? <p className="mt-1 text-sm text-stone-600">{section.description}</p> : null}
-                {selectedRow ? (
-                  <div className="mt-3 rounded-xl border border-stone-200 bg-stone-50 p-3 sm:p-4">
-                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-red-700">
-                      Child {selectedRowIndex + 1}
-                      {childCount > 1 ? ` of ${childCount}` : ''}
-                    </p>
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      {section.fields
-                        .filter((field) => !field.hidden)
-                        .filter((field) => isFieldVisible(field, selectedRow))
-                        .map((field) =>
-                          renderField(
-                            field,
-                            section.id,
-                            selectedRow[field.id] ?? fieldDefaultValue(field.type),
-                            (next) => setRepeatingValue(section.id, selectedRowIndex, field.id, next),
-                            `${section.id}[${selectedRowIndex}].${field.id}`
-                          )
-                        )}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="mt-3 text-sm text-stone-600">No child entries available for this section.</p>
-                )}
-              </section>
-            );
-          })}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-stone-600">No child entries available for this section.</p>
+              )}
+            </section>
+          );
+        })}
 
         {form.definition.policies.length > 0 ? (
-          <section className="rounded-xl border border-stone-200 bg-white p-4">
+          <section className="rounded-2xl border border-stone-200 bg-white p-4">
             <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-stone-700">Camp Policies and Acknowledgments</h4>
-            <div className="mt-3 space-y-4">
+            <div className="mt-4 space-y-4">
               {form.definition.policies.map((policy) => {
                 const value = policies[policy.id] ?? (policy.type === 'required_checkbox' ? false : '');
                 const errorKey = `policy.${policy.id}`;
                 const error = showErrors ? validation.errors[errorKey] : null;
 
                 return (
-                  <div key={policy.id} className="rounded-lg border border-stone-200 bg-stone-50 p-3">
+                  <div key={policy.id} className="rounded-xl border border-stone-200 bg-stone-50 p-3">
                     <p className="text-sm font-semibold text-stone-900">{policy.title}</p>
-                    {policy.body ? <p className="mt-1 text-sm text-stone-600 whitespace-pre-wrap">{policy.body}</p> : null}
+                    {policy.body ? <p className="mt-1 whitespace-pre-wrap text-sm text-stone-600">{policy.body}</p> : null}
 
                     {policy.type === 'required_checkbox' ? (
                       <label className="mt-2 flex items-start gap-2 text-sm text-stone-700">
@@ -754,15 +718,15 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
           </section>
         ) : null}
 
-        <section className="rounded-xl border border-stone-200 bg-white p-4">
+        <section className="rounded-2xl border border-stone-200 bg-white p-4">
           <h4 className="text-sm font-bold uppercase tracking-[0.12em] text-stone-700">Parent Certification and Signature</h4>
-          <p className="mt-2 text-sm text-stone-600 whitespace-pre-wrap">
+          <p className="mt-2 whitespace-pre-wrap text-sm text-stone-600">
             {form.definition.signature?.legalText ||
               'I confirm that the information submitted is accurate and that I am the parent or legal guardian for the listed child or children.'}
           </p>
 
           {form.settings.requireAcknowledgments ? (
-            <div className="mt-3 space-y-2">
+            <div className="mt-4 space-y-2">
               {[
                 { key: 'infoAccurate', label: 'I confirm the information provided is accurate and complete.' },
                 { key: 'policiesRead', label: 'I confirm I have read and agree to the policies listed above.' },
@@ -771,6 +735,7 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
               ].map((item) => {
                 const key = item.key as keyof AcknowledgmentState;
                 const error = showErrors ? validation.errors[`ack.${item.key}`] : null;
+
                 return (
                   <label key={item.key} className="block text-sm text-stone-700">
                     <span className="inline-flex items-start gap-2">
@@ -795,15 +760,15 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
             </div>
           ) : null}
 
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
             <label className="block">
-              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-red-700">Printed Parent or Guardian Name *</span>
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-600">Printed Parent or Guardian Name *</span>
               <input
                 type="text"
                 value={signature.printedName}
                 onChange={(event) => setSignature((current) => ({ ...current, printedName: event.target.value }))}
                 disabled={disabled}
-                className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ${
+                className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none transition ${
                   showErrors && validation.errors['signature.printedName']
                     ? 'border-red-300 bg-red-50'
                     : 'border-stone-300 bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100'
@@ -815,13 +780,13 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
             </label>
 
             <label className="block">
-              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-red-700">Typed Signature *</span>
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-600">Typed Signature *</span>
               <input
                 type="text"
                 value={signature.typedName}
                 onChange={(event) => setSignature((current) => ({ ...current, typedName: event.target.value }))}
                 disabled={disabled}
-                className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none ${
+                className={`mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none transition ${
                   showErrors && validation.errors['signature.typedName']
                     ? 'border-red-300 bg-red-50'
                     : 'border-stone-300 bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100'
@@ -833,9 +798,7 @@ export default function EventRegistrationCheckoutForm({ form, ticketQuantity, st
             </label>
           </div>
 
-          <p className="mt-3 text-xs text-stone-500">
-            Date signed is recorded automatically when you submit checkout.
-          </p>
+          <p className="mt-3 text-xs text-stone-500">Date signed is recorded automatically when you submit checkout.</p>
         </section>
       </div>
     </div>
