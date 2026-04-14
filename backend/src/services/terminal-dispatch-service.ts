@@ -29,6 +29,7 @@ const terminalDispatchSnapshotSchema = z.object({
     })
   ),
   ticketSelectionBySeatId: z.record(z.string().min(1), z.string().min(1)),
+  attendeeNamesBySeatId: z.record(z.string().min(1), z.string().max(80)).optional(),
   ticketTypeBySeatId: z.record(z.string().min(1), z.string().min(1)),
   priceBySeatId: z.record(z.string().min(1), z.number().int().min(0)),
   customerName: z.string().min(1),

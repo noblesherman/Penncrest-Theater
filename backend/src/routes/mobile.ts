@@ -660,6 +660,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
         seatIds: snapshot.seatIds,
         customerName: snapshot.customerName,
         customerEmail,
+        attendeeNames: snapshot.attendeeNamesBySeatId,
         ticketTypeBySeatId: snapshot.ticketTypeBySeatId,
         priceBySeatId: snapshot.priceBySeatId,
         source: 'DOOR',

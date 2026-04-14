@@ -58,6 +58,7 @@ const inPersonFinalizeSchema = z.object({
   performanceId: z.string().min(1),
   seatIds: z.array(z.string().min(1)).min(1).max(50),
   ticketSelectionBySeatId: z.record(z.string().min(1), z.string().min(1)),
+  attendeeNames: z.record(z.string().min(1), z.string().max(80)).optional(),
   customerName: z.string().max(120).optional(),
   paymentMethod: z.enum(['STRIPE', 'CASH']).default('STRIPE'),
   receiptEmail: z.string().email().optional(),
@@ -69,6 +70,7 @@ const inPersonManualIntentSchema = z.object({
   performanceId: z.string().min(1),
   seatIds: z.array(z.string().min(1)).min(1).max(50),
   ticketSelectionBySeatId: z.record(z.string().min(1), z.string().min(1)),
+  attendeeNames: z.record(z.string().min(1), z.string().max(80)).optional(),
   customerName: z.string().max(120).optional(),
   receiptEmail: z.string().email().optional(),
   sendReceipt: z.boolean().optional(),
@@ -83,6 +85,7 @@ const inPersonTerminalSendSchema = z.object({
   performanceId: z.string().min(1),
   seatIds: z.array(z.string().min(1)).min(1).max(50),
   ticketSelectionBySeatId: z.record(z.string().min(1), z.string().min(1)),
+  attendeeNames: z.record(z.string().min(1), z.string().max(80)).optional(),
   customerName: z.string().max(120).optional(),
   receiptEmail: z.string().email().optional(),
   sendReceipt: z.boolean().optional(),
@@ -682,6 +685,7 @@ async function buildInPersonSaleQuote(params: {
 function buildTerminalDispatchSnapshot(params: {
   quote: Awaited<ReturnType<typeof buildInPersonSaleQuote>>;
   ticketSelectionBySeatId: Record<string, string>;
+  attendeeNamesBySeatId?: Record<string, string>;
   customerName: string;
   receiptEmail: string | null;
   sendReceipt: boolean;
@@ -704,6 +708,7 @@ function buildTerminalDispatchSnapshot(params: {
       ])
     ),
     ticketSelectionBySeatId: params.ticketSelectionBySeatId,
+    attendeeNamesBySeatId: params.attendeeNamesBySeatId,
     ticketTypeBySeatId: Object.fromEntries(params.quote.seats.map((seat) => [seat.id, seat.ticketType])),
     priceBySeatId: Object.fromEntries(params.quote.seats.map((seat) => [seat.id, seat.priceCents])),
     customerName: params.customerName,
@@ -1427,6 +1432,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
           seatIds: normalizedSeatIds,
           customerName: normalizedCustomerName,
           customerEmail,
+          attendeeNames: parsed.data.attendeeNames,
           ticketTypeBySeatId,
           priceBySeatId,
           source: 'DOOR',
@@ -1674,6 +1680,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
       const snapshot = buildTerminalDispatchSnapshot({
         quote,
         ticketSelectionBySeatId: parsed.data.ticketSelectionBySeatId,
+        attendeeNamesBySeatId: parsed.data.attendeeNames,
         customerName: normalizedCustomerName,
         receiptEmail: normalizedReceiptEmail,
         sendReceipt
@@ -2044,6 +2051,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
         seatIds: normalizedSeatIds,
         customerName: normalizedCustomerName,
         customerEmail,
+        attendeeNames: parsed.data.attendeeNames,
         ticketTypeBySeatId,
         priceBySeatId,
         source: 'DOOR',
