@@ -24,6 +24,7 @@ type Props = {
   storageKey: string;
   checkoutCustomerName?: string;
   disabled?: boolean;
+  onSubmit?: () => void;
   onValidityChange: (params: {
     valid: boolean;
     payload: EventRegistrationSubmissionPayload | null;
@@ -249,6 +250,7 @@ export default function EventRegistrationCheckoutForm({
   storageKey,
   checkoutCustomerName,
   disabled = false,
+  onSubmit,
   onValidityChange
 }: Props) {
   const [sections, setSections] = useState<Record<string, Record<string, unknown> | Array<Record<string, unknown>>>>({});
@@ -541,7 +543,7 @@ export default function EventRegistrationCheckoutForm({
     }
 
     return (
-      <label key={errorKey} className="block relative group">
+      <label key={errorKey} id={`field-${errorKey.replace(/[[\]\.]/g, '-')}`} className="block relative group">
         <span className="mb-2 block text-xs font-black uppercase tracking-wider text-[#C10008]">
           {renderFieldLabel(field)}
         </span>
@@ -733,7 +735,7 @@ export default function EventRegistrationCheckoutForm({
                 const error = showErrors ? validation.errors[errorKey] : null;
 
                 return (
-                  <div key={policy.id} className="rounded-2xl border border-stone-200 bg-stone-50 p-6">
+                  <div key={policy.id} id={`field-policy-${policy.id}`} className="rounded-2xl border border-stone-200 bg-stone-50 p-6">
                     <p className="text-lg font-black text-stone-900">{policy.title}</p>
                     {policy.body ? <p className="mt-3 whitespace-pre-wrap text-[15px] font-medium leading-relaxed text-stone-600">{policy.body}</p> : null}
 
@@ -808,7 +810,7 @@ export default function EventRegistrationCheckoutForm({
                 const error = showErrors ? validation.errors[`ack.${item.key}`] : null;
 
                 return (
-                  <label key={item.key} className="flex items-start gap-4 text-[15px] font-bold text-stone-800 cursor-pointer group">
+                  <label key={item.key} id={`field-ack-${item.key}`} className="flex items-start gap-4 text-[15px] font-bold text-stone-800 cursor-pointer group">
                     <div className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border transition-all ${checked ? 'bg-[#C10008] border-[#C10008]' : 'bg-white border-stone-300 group-hover:border-[#C10008]'}`}>
                       {checked && <Check size={16} className="text-white" strokeWidth={3} />}
                     </div>
@@ -840,7 +842,7 @@ export default function EventRegistrationCheckoutForm({
           ) : null}
 
           <div className="mt-10 grid gap-x-8 gap-y-8 md:grid-cols-2">
-            <label className="block relative">
+            <label id="field-signature-printedName" className="block relative">
               <span className="mb-2 block text-xs font-black uppercase tracking-wider text-[#C10008]">Printed Parent or Guardian Name *</span>
               <input
                 type="text"
@@ -862,7 +864,7 @@ export default function EventRegistrationCheckoutForm({
               ) : null}
             </label>
 
-            <label className="block relative">
+            <label id="field-signature-typedName" className="block relative">
               <span className="mb-2 block text-xs font-black uppercase tracking-wider text-[#C10008]">Typed Signature *</span>
               <input
                 type="text"
@@ -892,10 +894,32 @@ export default function EventRegistrationCheckoutForm({
           <div className="mt-8 border-t border-stone-100 pt-8 flex sm:justify-end">
             <button
               type="button"
-              onClick={() => setShowErrors(true)}
+              onClick={() => {
+                setShowErrors(true);
+                if (validation.valid) {
+                  if (onSubmit) onSubmit();
+                } else {
+                  const firstErrorKey = Object.keys(validation.errors)[0];
+                  if (firstErrorKey) {
+                    const match = firstErrorKey.match(/\[(\d+)\]\./);
+                    if (match) {
+                      setActiveChildIndex(Number(match[1]));
+                    }
+                    setTimeout(() => {
+                      const idToFind = `field-${firstErrorKey.replace(/[[\]\.]/g, '-')}`;
+                      const el = document.getElementById(idToFind);
+                      if (el) {
+                        const y = el.getBoundingClientRect().top + window.scrollY - 100;
+                        window.scrollTo({ top: y, behavior: 'smooth' });
+                      }
+                    }, 50);
+                  }
+                }
+              }}
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-stone-900 px-8 py-4 text-[15px] font-bold tracking-wide text-white transition-all hover:bg-[#C10008] focus:outline-none focus:ring-4 focus:ring-[#C10008]/20 shadow-md hover:shadow-lg"
             >
-              Check Form
+              Continue to Checkout
+              <ChevronRight size={18} className="translate-y-[0.5px]" />
             </button>
           </div>
         </section>
