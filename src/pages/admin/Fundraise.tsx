@@ -33,7 +33,7 @@ import { apiFetch } from '../../lib/api';
 import { uploadAdminImage } from '../../lib/adminUploads';
 import EventRegistrationFormBuilderModal from './forms/EventRegistrationFormBuilderModal';
 
-type AdminFundraiseTab = 'events' | 'sponsors' | 'donations';
+type AdminFundraiseTab = 'events' | 'sponsors' | 'attendees' | 'donations';
 
 type FundraiseEvent = {
   id: string;
@@ -118,6 +118,48 @@ type AdminFundraisingDonationSummary = {
 type AdminFundraisingDonationFeed = {
   donations: AdminFundraisingDonation[];
   summary?: AdminFundraisingDonationSummary;
+};
+
+type AdminFundraisingAttendeeOrderSeat = {
+  seatId: string | null;
+  attendeeName: string | null;
+  ticketType: string | null;
+  isComplimentary: boolean;
+  price: number;
+  seatLabel: string;
+};
+
+type AdminFundraisingAttendeeOrder = {
+  id: string;
+  status: string;
+  source: string;
+  email: string;
+  customerName: string;
+  amountTotal: number;
+  currency: string;
+  createdAt: string;
+  orderSeats: AdminFundraisingAttendeeOrderSeat[];
+  registrationSubmission: {
+    id: string;
+    submittedAt: string;
+    responseJson: unknown;
+    form?: { id: string; formName: string } | null;
+    formVersion?: { id: string; versionNumber: number } | null;
+  } | null;
+};
+
+type AdminFundraisingAttendeeFeed = {
+  performance: {
+    id: string;
+    title: string;
+    seatSelectionEnabled: boolean;
+  };
+  summary: {
+    orderCount: number;
+    ticketCount: number;
+    responseCount: number;
+  };
+  rows: AdminFundraisingAttendeeOrder[];
 };
 
 const inputClass =
@@ -321,6 +363,11 @@ export default function AdminFundraisePage() {
   const [donationSummary, setDonationSummary] = useState<AdminFundraisingDonationSummary | null>(null);
   const [donationsLoading, setDonationsLoading] = useState(true);
   const [donationsError, setDonationsError] = useState<string | null>(null);
+  const [attendeeRows, setAttendeeRows] = useState<AdminFundraisingAttendeeOrder[]>([]);
+  const [attendeeSummary, setAttendeeSummary] = useState<{ orderCount: number; ticketCount: number; responseCount: number } | null>(null);
+  const [attendeesLoading, setAttendeesLoading] = useState(false);
+  const [attendeesError, setAttendeesError] = useState<string | null>(null);
+  const [expandedAttendeeOrderId, setExpandedAttendeeOrderId] = useState<string | null>(null);
   const [selectedDonationAmountCents, setSelectedDonationAmountCents] = useState<number | null>(DONATION_PRESET_AMOUNTS_CENTS[0]);
   const [customDonationAmount, setCustomDonationAmount] = useState('');
   const [donorName, setDonorName] = useState('');
@@ -398,11 +445,45 @@ export default function AdminFundraisePage() {
     }
   }
 
+  async function loadAttendees(performanceId: string) {
+    if (!performanceId) {
+      setAttendeeRows([]);
+      setAttendeeSummary(null);
+      return;
+    }
+
+    setAttendeesLoading(true);
+    setAttendeesError(null);
+    try {
+      const data = await adminFetch<AdminFundraisingAttendeeFeed>(
+        `/api/admin/fundraising/events/${encodeURIComponent(performanceId)}/attendees`
+      );
+      setAttendeeRows(Array.isArray(data.rows) ? data.rows : []);
+      setAttendeeSummary(data.summary || null);
+    } catch (err) {
+      setAttendeesError(err instanceof Error ? err.message : 'Failed to load attendee and response data');
+      setAttendeeRows([]);
+      setAttendeeSummary(null);
+    } finally {
+      setAttendeesLoading(false);
+    }
+  }
+
   useEffect(() => {
     void loadEvents();
     void loadSponsors();
     void loadDonations();
   }, []);
+
+  useEffect(() => {
+    if (tab !== 'attendees') return;
+    if (!selectedEventId) {
+      setAttendeeRows([]);
+      setAttendeeSummary(null);
+      return;
+    }
+    void loadAttendees(selectedEventId);
+  }, [selectedEventId, tab]);
 
   const goTo = (next: number) => {
     setDir(next > step ? 1 : -1);
@@ -803,7 +884,13 @@ export default function AdminFundraisePage() {
   }
 
   const primaryActionLabel =
-    tab === 'events' ? 'New Fundraising Event' : tab === 'sponsors' ? 'New Sponsor' : 'Refresh Donations';
+    tab === 'events'
+      ? 'New Fundraising Event'
+      : tab === 'sponsors'
+        ? 'New Sponsor'
+        : tab === 'attendees'
+          ? 'Refresh Ticket Responses'
+          : 'Refresh Donations';
 
   const stepContent: ReactNode[] = [
     <div key="event" className="space-y-5">
@@ -1207,11 +1294,17 @@ export default function AdminFundraisePage() {
               startNewSponsor();
               return;
             }
+            if (tab === 'attendees') {
+              if (selectedEventId) {
+                void loadAttendees(selectedEventId);
+              }
+              return;
+            }
             void loadDonations();
           }}
           className="flex w-full items-center justify-center gap-2 rounded-full bg-red-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-red-100 transition hover:bg-red-800 sm:w-auto"
         >
-          {tab === 'donations' ? <RefreshCcw className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+          {tab === 'events' || tab === 'sponsors' ? <Plus className="h-4 w-4" /> : <RefreshCcw className="h-4 w-4" />}
           {primaryActionLabel}
         </motion.button>
       </div>
@@ -1227,6 +1320,9 @@ export default function AdminFundraisePage() {
       ) : null}
       {donationsError ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{donationsError}</div>
+      ) : null}
+      {attendeesError ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{attendeesError}</div>
       ) : null}
 
       <div className="inline-flex rounded-xl border border-stone-200 bg-white p-1">
@@ -1247,6 +1343,15 @@ export default function AdminFundraisePage() {
           }`}
         >
           Sponsors
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('attendees')}
+          className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+            tab === 'attendees' ? 'bg-rose-700 text-white' : 'text-stone-600 hover:text-stone-900'
+          }`}
+        >
+          Tickets & Responses
         </button>
         <button
           type="button"
@@ -1441,6 +1546,161 @@ export default function AdminFundraisePage() {
                   </div>
                 </article>
               ))}
+            </div>
+          )}
+        </div>
+      ) : tab === 'attendees' ? (
+        <div className="space-y-4">
+          <section className="rounded-2xl border border-stone-200 bg-white p-5">
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="min-w-[240px] flex-1 space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Fundraising Event</span>
+                <select
+                  value={selectedEventId}
+                  onChange={(event) => setSelectedEventId(event.target.value)}
+                  className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                >
+                  {events.length === 0 ? <option value="">No events available</option> : null}
+                  {events.map((eventItem) => (
+                    <option key={eventItem.id} value={eventItem.id}>
+                      {eventItem.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedEventId) {
+                    void loadAttendees(selectedEventId);
+                  }
+                }}
+                disabled={!selectedEventId || attendeesLoading}
+                className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <RefreshCcw className={`h-4 w-4 ${attendeesLoading ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+            </div>
+          </section>
+
+          <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-stone-200 bg-white px-4 py-3">
+              <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Orders</p>
+              <p className="mt-1 text-xl font-bold text-stone-900">{attendeeSummary?.orderCount ?? attendeeRows.length}</p>
+            </div>
+            <div className="rounded-xl border border-stone-200 bg-white px-4 py-3">
+              <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Tickets</p>
+              <p className="mt-1 text-xl font-bold text-stone-900">
+                {attendeeSummary?.ticketCount ?? attendeeRows.reduce((sum, row) => sum + row.orderSeats.length, 0)}
+              </p>
+            </div>
+            <div className="rounded-xl border border-stone-200 bg-white px-4 py-3">
+              <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Questionnaire Responses</p>
+              <p className="mt-1 text-xl font-bold text-stone-900">
+                {attendeeSummary?.responseCount ?? attendeeRows.filter((row) => Boolean(row.registrationSubmission)).length}
+              </p>
+            </div>
+          </section>
+
+          {attendeesLoading ? (
+            <div className="rounded-2xl border border-stone-200 bg-white py-14 text-center text-sm text-stone-500">
+              Loading tickets, attendees, and responses...
+            </div>
+          ) : attendeeRows.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-stone-200 bg-white py-14 text-center text-sm text-stone-500">
+              No orders found for this fundraising event yet.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {attendeeRows.map((row) => {
+                const attendees = row.orderSeats
+                  .map((seat) => seat.attendeeName?.trim())
+                  .filter((value): value is string => Boolean(value));
+                const isExpanded = expandedAttendeeOrderId === row.id;
+                return (
+                  <article key={row.id} className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedAttendeeOrderId((current) => (current === row.id ? null : row.id))}
+                      className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-stone-900">{row.customerName || row.email}</p>
+                        <p className="mt-1 text-xs text-stone-500">
+                          {new Date(row.createdAt).toLocaleString()} · {row.orderSeats.length} ticket{row.orderSeats.length === 1 ? '' : 's'} · {formatMoney(row.amountTotal, row.currency)}
+                        </p>
+                        <p className="mt-1 truncate text-xs text-stone-500">{row.email}</p>
+                      </div>
+                      <ChevronRight className={`h-4 w-4 shrink-0 text-stone-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                    </button>
+
+                    {isExpanded ? (
+                      <div className="border-t border-stone-100 px-5 py-4">
+                        <div className="space-y-3">
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Who Is Coming</p>
+                            {attendees.length > 0 ? (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {attendees.map((name, index) => (
+                                  <span key={`${row.id}-attendee-${index}`} className="rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs font-medium text-stone-700">
+                                    {name}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="mt-2 text-sm text-stone-500">No attendee names entered on this order.</p>
+                            )}
+                          </div>
+
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Tickets</p>
+                            <div className="mt-2 overflow-hidden rounded-xl border border-stone-200">
+                              {row.orderSeats.map((seat, index) => (
+                                <div key={`${row.id}-seat-${index}`} className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 px-3 py-2 text-sm last:border-b-0">
+                                  <div>
+                                    <p className="font-medium text-stone-800">{seat.seatLabel}</p>
+                                    <p className="text-xs text-stone-500">
+                                      {[seat.attendeeName, seat.ticketType, seat.isComplimentary ? 'Complimentary' : null].filter(Boolean).join(' · ') || 'No attendee metadata'}
+                                    </p>
+                                  </div>
+                                  <span className="font-semibold text-stone-700">{formatUsd(seat.price)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Questionnaire Response</p>
+                              {row.registrationSubmission ? (
+                                <p className="text-xs text-stone-500">
+                                  {row.registrationSubmission.form?.formName || 'Registration Form'}
+                                  {row.registrationSubmission.formVersion?.versionNumber
+                                    ? ` · Version ${row.registrationSubmission.formVersion.versionNumber}`
+                                    : ''}
+                                </p>
+                              ) : null}
+                            </div>
+                            {row.registrationSubmission ? (
+                              <>
+                                <p className="mt-1 text-xs text-stone-500">
+                                  Submitted {new Date(row.registrationSubmission.submittedAt).toLocaleString()}
+                                </p>
+                                <pre className="mt-2 max-h-[360px] overflow-auto rounded-xl border border-stone-200 bg-stone-50 p-3 text-xs leading-relaxed text-stone-700">
+                                  {JSON.stringify(row.registrationSubmission.responseJson, null, 2)}
+                                </pre>
+                              </>
+                            ) : (
+                              <p className="mt-2 text-sm text-stone-500">No questionnaire submission attached to this order.</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              })}
             </div>
           )}
         </div>

@@ -17,6 +17,10 @@ const adminDonationListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50)
 });
 
+const adminFundraisingAttendeesParamsSchema = z.object({
+  performanceId: z.string().trim().min(1)
+});
+
 function isSeatEffectivelyAvailable(seat: {
   status: string;
   holdSession?: {
@@ -162,6 +166,139 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
       }
 
       handleRouteError(reply, err, 'Failed to fetch donation admin data');
+    }
+  });
+
+  app.get('/api/admin/fundraising/events/:performanceId/attendees', { preHandler: app.authenticateAdmin }, async (request, reply) => {
+    const parsedParams = adminFundraisingAttendeesParamsSchema.safeParse(request.params || {});
+    if (!parsedParams.success) {
+      return reply.status(400).send({ error: parsedParams.error.flatten() });
+    }
+
+    try {
+      const performance = await prisma.performance.findUnique({
+        where: { id: parsedParams.data.performanceId },
+        select: {
+          id: true,
+          isFundraiser: true,
+          seatSelectionEnabled: true,
+          title: true,
+          show: { select: { title: true } }
+        }
+      });
+
+      if (!performance) {
+        return reply.status(404).send({ error: 'Fundraising event not found' });
+      }
+
+      if (!performance.isFundraiser) {
+        return reply.status(400).send({ error: 'Selected performance is not a fundraising event' });
+      }
+
+      const orders = await prisma.order.findMany({
+        where: {
+          performanceId: parsedParams.data.performanceId,
+          status: { not: 'CANCELLED' }
+        },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          status: true,
+          source: true,
+          email: true,
+          customerName: true,
+          amountTotal: true,
+          currency: true,
+          createdAt: true,
+          orderSeats: {
+            orderBy: { createdAt: 'asc' },
+            select: {
+              seatId: true,
+              attendeeName: true,
+              ticketType: true,
+              isComplimentary: true,
+              price: true,
+              seat: {
+                select: {
+                  sectionName: true,
+                  row: true,
+                  number: true
+                }
+              }
+            }
+          },
+          registrationSubmission: {
+            select: {
+              id: true,
+              submittedAt: true,
+              responseJson: true,
+              form: {
+                select: {
+                  id: true,
+                  formName: true
+                }
+              },
+              formVersion: {
+                select: {
+                  id: true,
+                  versionNumber: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      const rows = orders.map((order) => ({
+        id: order.id,
+        status: order.status,
+        source: order.source,
+        email: order.email,
+        customerName: order.customerName,
+        amountTotal: order.amountTotal,
+        currency: order.currency,
+        createdAt: order.createdAt.toISOString(),
+        orderSeats: order.orderSeats.map((seat, index) => ({
+          seatId: seat.seatId,
+          attendeeName: seat.attendeeName,
+          ticketType: seat.ticketType,
+          isComplimentary: seat.isComplimentary,
+          price: seat.price,
+          seatLabel: performance.seatSelectionEnabled
+            ? seat.seat
+              ? `${seat.seat.sectionName} · Row ${seat.seat.row} · Seat ${seat.seat.number}`
+              : `Unassigned Seat ${index + 1}`
+            : `General Admission Ticket ${index + 1}`
+        })),
+        registrationSubmission: order.registrationSubmission
+          ? {
+              id: order.registrationSubmission.id,
+              submittedAt: order.registrationSubmission.submittedAt.toISOString(),
+              responseJson: order.registrationSubmission.responseJson,
+              form: order.registrationSubmission.form,
+              formVersion: order.registrationSubmission.formVersion
+            }
+          : null
+      }));
+
+      const ticketCount = rows.reduce((sum, row) => sum + row.orderSeats.length, 0);
+      const responseCount = rows.filter((row) => Boolean(row.registrationSubmission)).length;
+
+      return reply.send({
+        performance: {
+          id: performance.id,
+          title: performance.title || performance.show.title,
+          seatSelectionEnabled: performance.seatSelectionEnabled
+        },
+        summary: {
+          orderCount: rows.length,
+          ticketCount,
+          responseCount
+        },
+        rows
+      });
+    } catch (err) {
+      handleRouteError(reply, err, 'Failed to fetch fundraising attendee responses');
     }
   });
 
