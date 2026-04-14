@@ -17,7 +17,6 @@ import {
   ShieldCheck,
   Plane,
   FolderOpen,
-  Smartphone,
   Ticket,
   UserCheck,
   UsersRound,
@@ -51,9 +50,7 @@ const navSections: NavSection[] = [
       { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, minRole: 'BOX_OFFICE' },
       { to: '/admin/finance', label: 'Finance', icon: CircleDollarSign, minRole: 'ADMIN' },
       { to: '/admin/scanner', label: 'Scanner', icon: ScanLine, minRole: 'BOX_OFFICE' },
-      { to: '/admin/orders', label: 'Orders', icon: ReceiptText, minRole: 'BOX_OFFICE' },
-      { to: '/admin/fundraise/check-in', label: 'Fundraiser Check-In', icon: HandCoins, minRole: 'BOX_OFFICE' },
-      { to: '/admin/devices', label: 'Devices', icon: Smartphone, minRole: 'ADMIN' }
+      { to: '/admin/orders', label: 'Orders', icon: ReceiptText, minRole: 'BOX_OFFICE' }
     ]
   },
   {

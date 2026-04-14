@@ -422,7 +422,7 @@ export default function EventRegistrationCheckoutForm({
     errorKey: string
   ) => {
     const error = showErrors ? validation.errors[errorKey] : null;
-    const baseControlClass = "w-full rounded-xl border px-4 py-3.5 text-[15px] font-medium outline-none transition-all duration-200 placeholder:text-stone-400";
+    const baseControlClass = "w-full rounded-xl border px-3.5 py-3 text-[15px] font-medium outline-none transition-all duration-200 placeholder:text-stone-400 sm:px-4 sm:py-3.5";
     const controlClass = error
       ? `${baseControlClass} border-red-300 bg-red-50 text-stone-900 focus:border-red-500 focus:ring-4 focus:ring-red-500/10`
       : `${baseControlClass} border-stone-300 bg-stone-50 text-stone-900 hover:border-stone-400 hover:bg-white focus:bg-white focus:border-[#C10008] focus:ring-4 focus:ring-[#C10008]/10 shadow-sm`;
@@ -459,7 +459,7 @@ export default function EventRegistrationCheckoutForm({
     } else if (field.type === 'multi_select') {
       const selected = Array.isArray(value) ? value.map(String) : [];
       input = (
-        <div className="space-y-3 rounded-xl border border-stone-200 bg-stone-50 p-4 shadow-sm">
+        <div className="space-y-2.5 rounded-xl border border-stone-200 bg-stone-50 p-3.5 shadow-sm sm:space-y-3 sm:p-4">
           {(field.options || []).map((option) => {
             const checked = selected.includes(option);
             return (
@@ -507,7 +507,7 @@ export default function EventRegistrationCheckoutForm({
       input = (
         <div className="flex flex-wrap gap-4">
           {['yes', 'no'].map((option) => (
-            <label key={option} className={`flex items-center gap-3 rounded-xl border px-5 py-3 text-[15px] font-bold cursor-pointer transition-all shadow-sm ${radioValue === option ? 'border-[#C10008] bg-[#C10008]/5 text-[#C10008]' : 'border-stone-200 bg-stone-50 text-stone-600 hover:border-stone-300 hover:bg-white'}`}>
+            <label key={option} className={`flex items-center gap-3 rounded-xl border px-4 py-2.5 text-[14px] font-bold cursor-pointer transition-all shadow-sm sm:px-5 sm:py-3 sm:text-[15px] ${radioValue === option ? 'border-[#C10008] bg-[#C10008]/5 text-[#C10008]' : 'border-stone-200 bg-stone-50 text-stone-600 hover:border-stone-300 hover:bg-white'}`}>
               <div className={`flex h-5 w-5 items-center justify-center rounded-full border transition-all ${radioValue === option ? 'border-[#C10008]' : 'border-stone-300 bg-white'}`}>
                 {radioValue === option && <div className="h-2.5 w-2.5 rounded-full bg-[#C10008]" />}
               </div>
@@ -564,10 +564,10 @@ export default function EventRegistrationCheckoutForm({
   };
 
   return (
-    <div className="mt-8 flex flex-col gap-6">
+    <div className="mt-5 flex flex-col gap-4 sm:mt-8 sm:gap-6">
       {validation.errors.childCount ? (
-        <div className="flex items-start gap-4 rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
-          <AlertCircle className="mt-0.5 text-red-500 shrink-0" size={24} />
+        <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 shadow-sm sm:gap-4 sm:p-5">
+          <AlertCircle className="mt-0.5 text-red-500 shrink-0" size={20} />
           <div>
             <h4 className="text-base font-bold text-red-900">Issue detected</h4>
             <p className="text-[15px] font-medium text-red-700 mt-1">{validation.errors.childCount}</p>
@@ -575,16 +575,16 @@ export default function EventRegistrationCheckoutForm({
         </div>
       ) : null}
 
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
         {form.definition.sections.filter((section) => !section.hidden).map((section) => {
           if (section.type === 'single') {
             const values = asRecord(sections[section.id]);
             return (
-              <section key={section.id} className="rounded-3xl border border-stone-200 bg-white p-6 sm:p-8 shadow-sm">
+              <section key={section.id} className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-8">
                 {section.title && (
-                  <div className="mb-8 border-b border-stone-100 pb-5">
-                    <h4 className="text-xl font-black text-stone-900">{section.title}</h4>
-                    {section.description ? <p className="mt-2 text-[15px] leading-relaxed font-medium text-stone-500">{section.description}</p> : null}
+                  <div className="mb-5 border-b border-stone-100 pb-4 sm:mb-8 sm:pb-5">
+                    <h4 className="text-lg font-black text-stone-900 sm:text-xl">{section.title}</h4>
+                    {section.description ? <p className="mt-1.5 text-[14px] leading-relaxed font-medium text-stone-500 sm:mt-2 sm:text-[15px]">{section.description}</p> : null}
                   </div>
                 )}
                 {(() => {
@@ -592,8 +592,8 @@ export default function EventRegistrationCheckoutForm({
                     .filter((field) => !field.hidden)
                     .filter((field) => isFieldVisible(field, values));
                   return (
-                    <div className="flex flex-col md:flex-row gap-x-8 gap-y-8 items-start">
-                      <div className="flex-1 flex flex-col gap-y-8 w-full">
+                    <div className="flex flex-col items-start gap-x-8 gap-y-5 md:flex-row sm:gap-y-8">
+                      <div className="flex w-full flex-1 flex-col gap-y-5 sm:gap-y-8">
                         {visibleFields.filter((_, index) => index % 2 === 0).map((field) =>
                           renderField(
                             field,
@@ -604,7 +604,7 @@ export default function EventRegistrationCheckoutForm({
                         )}
                       </div>
                       {visibleFields.length > 1 && (
-                        <div className="flex-1 flex flex-col gap-y-8 w-full">
+                        <div className="flex w-full flex-1 flex-col gap-y-5 sm:gap-y-8">
                           {visibleFields.filter((_, index) => index % 2 !== 0).map((field) =>
                             renderField(
                               field,
@@ -627,17 +627,17 @@ export default function EventRegistrationCheckoutForm({
           const selectedRow = rows[selectedRowIndex];
 
           return (
-            <section key={section.id} className="rounded-3xl border border-stone-200 bg-white p-6 sm:p-8 shadow-sm">
+            <section key={section.id} className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-8">
               {section.title && (
-                <div className="mb-8 border-b border-stone-100 pb-5">
-                  <h4 className="text-xl font-black text-stone-900">{section.title}</h4>
-                  {section.description ? <p className="mt-2 text-[15px] leading-relaxed font-medium text-stone-500">{section.description}</p> : null}
+                <div className="mb-5 border-b border-stone-100 pb-4 sm:mb-8 sm:pb-5">
+                  <h4 className="text-lg font-black text-stone-900 sm:text-xl">{section.title}</h4>
+                  {section.description ? <p className="mt-1.5 text-[14px] leading-relaxed font-medium text-stone-500 sm:mt-2 sm:text-[15px]">{section.description}</p> : null}
                 </div>
               )}
               
               {childCount > 0 ? (
                 childCount > 1 ? (
-                  <div className="mb-8 flex flex-wrap gap-3 rounded-2xl bg-stone-50 p-2 border border-stone-100">
+                  <div className="mb-5 flex flex-wrap gap-2.5 rounded-2xl border border-stone-100 bg-stone-50 p-2 sm:mb-8 sm:gap-3">
                     {Array.from({ length: childCount }, (_, index) => {
                       const isActive = activeChildIndex === index;
                       const errorCount = childErrorCounts[index] || 0;
@@ -660,7 +660,7 @@ export default function EventRegistrationCheckoutForm({
                           key={`${section.id}-child-tab-${index}`}
                           type="button"
                           onClick={() => setActiveChildIndex(index)}
-                          className={`relative flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-[15px] font-bold transition-all focus:outline-none ${
+                          className={`relative inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-[14px] font-bold transition-all focus:outline-none sm:flex-none sm:px-6 sm:py-3 sm:text-[15px] ${
                             isActive
                               ? 'bg-white text-[#C10008] shadow-sm border border-stone-200'
                               : 'bg-transparent text-stone-600 hover:bg-stone-200/50'
@@ -683,14 +683,14 @@ export default function EventRegistrationCheckoutForm({
                 ) : null
               ) : null}
               {selectedRow ? (
-                <div className="pt-2">
+                <div className="pt-1 sm:pt-2">
                   {(() => {
                     const visibleFields = section.fields
                       .filter((field) => !field.hidden)
                       .filter((field) => isFieldVisible(field, selectedRow));
                     return (
-                      <div className="flex flex-col md:flex-row gap-x-8 gap-y-8 items-start">
-                        <div className="flex-1 flex flex-col gap-y-8 w-full">
+                      <div className="flex flex-col items-start gap-x-8 gap-y-5 md:flex-row sm:gap-y-8">
+                        <div className="flex w-full flex-1 flex-col gap-y-5 sm:gap-y-8">
                           {visibleFields.filter((_, index) => index % 2 === 0).map((field) =>
                             renderField(
                               field,
@@ -701,7 +701,7 @@ export default function EventRegistrationCheckoutForm({
                           )}
                         </div>
                         {visibleFields.length > 1 && (
-                          <div className="flex-1 flex flex-col gap-y-8 w-full">
+                          <div className="flex w-full flex-1 flex-col gap-y-5 sm:gap-y-8">
                             {visibleFields.filter((_, index) => index % 2 !== 0).map((field) =>
                               renderField(
                                 field,
@@ -717,8 +717,8 @@ export default function EventRegistrationCheckoutForm({
                   })()}
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-stone-300 bg-stone-50 py-12">
-                  <p className="text-[15px] font-bold text-stone-500">No entries available for this section.</p>
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-stone-300 bg-stone-50 py-8 sm:py-12">
+                  <p className="text-[14px] font-bold text-stone-500 sm:text-[15px]">No entries available for this section.</p>
                 </div>
               )}
             </section>
@@ -726,23 +726,23 @@ export default function EventRegistrationCheckoutForm({
         })}
 
         {form.definition.policies.length > 0 ? (
-          <section className="rounded-3xl border border-stone-200 bg-white p-6 sm:p-8 shadow-sm">
-            <div className="mb-8 border-b border-stone-100 pb-5">
-              <h4 className="text-xl font-black text-stone-900">Camp Policies and Acknowledgments</h4>
+          <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-8">
+            <div className="mb-5 border-b border-stone-100 pb-4 sm:mb-8 sm:pb-5">
+              <h4 className="text-lg font-black text-stone-900 sm:text-xl">Camp Policies and Acknowledgments</h4>
             </div>
-            <div className="space-y-8">
+            <div className="space-y-5 sm:space-y-8">
               {form.definition.policies.map((policy) => {
                 const value = policies[policy.id] ?? (policy.type === 'required_checkbox' ? false : '');
                 const errorKey = `policy.${policy.id}`;
                 const error = showErrors ? validation.errors[errorKey] : null;
 
                 return (
-                  <div key={policy.id} id={`field-policy-${policy.id}`} className="rounded-2xl border border-stone-200 bg-stone-50 p-6">
-                    <p className="text-lg font-black text-stone-900">{policy.title}</p>
-                    {policy.body ? <p className="mt-3 whitespace-pre-wrap text-[15px] font-medium leading-relaxed text-stone-600">{policy.body}</p> : null}
+                  <div key={policy.id} id={`field-policy-${policy.id}`} className="rounded-2xl border border-stone-200 bg-stone-50 p-4 sm:p-6">
+                    <p className="text-base font-black text-stone-900 sm:text-lg">{policy.title}</p>
+                    {policy.body ? <p className="mt-2.5 whitespace-pre-wrap text-[14px] font-medium leading-relaxed text-stone-600 sm:mt-3 sm:text-[15px]">{policy.body}</p> : null}
 
                     {policy.type === 'required_checkbox' ? (
-                      <label className="mt-6 flex items-start gap-4 text-[15px] font-bold text-stone-800 cursor-pointer group">
+                      <label className="mt-5 flex items-start gap-3 text-[14px] font-bold text-stone-800 cursor-pointer group sm:mt-6 sm:gap-4 sm:text-[15px]">
                         <div className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border transition-all ${value === true ? 'bg-[#C10008] border-[#C10008]' : 'bg-white border-stone-300 group-hover:border-[#C10008]'}`}>
                           {value === true && <Check size={16} className="text-white" strokeWidth={3} />}
                         </div>
@@ -756,7 +756,7 @@ export default function EventRegistrationCheckoutForm({
                         <span className="select-none mt-0.5">{policy.label || 'I acknowledge this policy.'}</span>
                       </label>
                     ) : policy.type === 'yes_no' ? (
-                      <div className="mt-6 flex gap-6">
+                      <div className="mt-5 flex gap-5 sm:mt-6 sm:gap-6">
                         {['yes', 'no'].map((option) => (
                           <label key={`${policy.id}-${option}`} className="flex items-center gap-3 cursor-pointer group">
                             <div className={`flex h-6 w-6 items-center justify-center rounded-full border transition-all ${value === option ? 'border-[#C10008]' : 'border-stone-300 bg-white group-hover:border-[#C10008]'}`}>
@@ -771,7 +771,7 @@ export default function EventRegistrationCheckoutForm({
                               disabled={disabled}
                               onChange={(event) => setPolicies((current) => ({ ...current, [policy.id]: event.target.value }))}
                             />
-                            <span className="text-[17px] font-bold capitalize text-stone-800 group-hover:text-[#C10008] transition-colors">{option}</span>
+                            <span className="text-[15px] font-bold capitalize text-stone-800 transition-colors group-hover:text-[#C10008] sm:text-[17px]">{option}</span>
                           </label>
                         ))}
                       </div>
@@ -790,17 +790,17 @@ export default function EventRegistrationCheckoutForm({
           </section>
         ) : null}
 
-        <section className="rounded-3xl border border-stone-200 bg-white p-6 sm:p-8 shadow-sm">
-          <div className="mb-8 border-b border-stone-100 pb-5">
-            <h4 className="text-xl font-black text-stone-900">Parent Certification and Signature</h4>
+        <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-8">
+          <div className="mb-5 border-b border-stone-100 pb-4 sm:mb-8 sm:pb-5">
+            <h4 className="text-lg font-black text-stone-900 sm:text-xl">Parent Certification and Signature</h4>
           </div>
-          <p className="whitespace-pre-wrap rounded-xl bg-stone-50 p-5 text-[15px] font-medium leading-relaxed text-stone-700 border border-stone-200">
+          <p className="whitespace-pre-wrap rounded-xl border border-stone-200 bg-stone-50 p-4 text-[14px] font-medium leading-relaxed text-stone-700 sm:p-5 sm:text-[15px]">
             {form.definition.signature?.legalText ||
               'I confirm that the information submitted is accurate and that I am the parent or legal guardian for the listed child or children.'}
           </p>
 
           {form.settings.requireAcknowledgments ? (
-            <div className="mt-8 space-y-4">
+            <div className="mt-6 space-y-4 sm:mt-8">
               {[
                 { key: 'infoAccurate', label: 'I confirm the information provided is accurate and complete.' },
                 { key: 'policiesRead', label: 'I confirm I have read and agree to the policies listed above.' },
@@ -812,7 +812,7 @@ export default function EventRegistrationCheckoutForm({
                 const error = showErrors ? validation.errors[`ack.${item.key}`] : null;
 
                 return (
-                  <label key={item.key} id={`field-ack-${item.key}`} className="flex items-start gap-4 text-[15px] font-bold text-stone-800 cursor-pointer group">
+                  <label key={item.key} id={`field-ack-${item.key}`} className="flex items-start gap-3 text-[14px] font-bold text-stone-800 cursor-pointer group sm:gap-4 sm:text-[15px]">
                     <div className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border transition-all ${checked ? 'bg-[#C10008] border-[#C10008]' : 'bg-white border-stone-300 group-hover:border-[#C10008]'}`}>
                       {checked && <Check size={16} className="text-white" strokeWidth={3} />}
                     </div>
@@ -843,7 +843,7 @@ export default function EventRegistrationCheckoutForm({
             </div>
           ) : null}
 
-          <div className="mt-10 grid gap-x-8 gap-y-8 md:grid-cols-2">
+          <div className="mt-6 grid gap-x-6 gap-y-5 md:grid-cols-2 sm:mt-10 sm:gap-x-8 sm:gap-y-8">
             <label id="field-signature-printedName" className="block relative">
               <span className="mb-2 block text-xs font-black uppercase tracking-wider text-[#C10008]">Printed Parent or Guardian Name *</span>
               <input
@@ -893,7 +893,7 @@ export default function EventRegistrationCheckoutForm({
             Date signed is recorded automatically when you submit checkout.
           </p>
           
-          <div className="mt-8 border-t border-stone-100 pt-8 flex sm:justify-end">
+          <div className="mt-6 flex border-t border-stone-100 pt-6 sm:mt-8 sm:justify-end sm:pt-8">
             <button
               type="button"
               onClick={() => {
@@ -917,7 +917,7 @@ export default function EventRegistrationCheckoutForm({
                   }
                 }
               }}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-stone-900 px-8 py-4 text-[15px] font-bold tracking-wide text-white transition-all hover:bg-[#C10008] focus:outline-none focus:ring-4 focus:ring-[#C10008]/20 shadow-md hover:shadow-lg"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-stone-900 px-6 py-3.5 text-[14px] font-bold tracking-wide text-white transition-all hover:bg-[#C10008] focus:outline-none focus:ring-4 focus:ring-[#C10008]/20 shadow-md hover:shadow-lg sm:w-auto sm:px-8 sm:py-4 sm:text-[15px]"
             >
               {submitButtonLabel}
               <ChevronRight size={18} className="translate-y-[0.5px]" />

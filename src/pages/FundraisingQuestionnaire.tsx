@@ -180,16 +180,16 @@ export default function FundraisingQuestionnairePage() {
   }
 
   if (loading) {
-    return <div className="min-h-screen bg-stone-50 p-6 text-center text-stone-600">Loading questionnaire...</div>;
+    return <div className="min-h-screen bg-stone-50 p-4 text-center text-stone-600 sm:p-6">Loading questionnaire...</div>;
   }
 
   return (
-    <div className="min-h-screen bg-stone-50 px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto w-full max-w-5xl rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
+    <div className="min-h-screen bg-stone-50 px-3 py-5 sm:px-6 sm:py-8 lg:px-8">
+      <div className="mx-auto w-full max-w-5xl rounded-2xl border border-stone-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-8">
         <p className="text-xs font-bold uppercase tracking-widest text-stone-500">Fundraiser Questionnaire</p>
-        <h1 className="mt-2 text-3xl font-black text-stone-900">Parent and Family Registration</h1>
+        <h1 className="mt-2 text-2xl font-black leading-tight text-stone-900 sm:text-3xl">Parent and Family Registration</h1>
         {context ? (
-          <p className="mt-2 text-sm text-stone-600">
+          <p className="mt-2 text-[15px] leading-relaxed text-stone-600 sm:text-sm">
             Order {context.orderId.slice(0, 10)} for {context.customerName}. Ticket count: {context.ticketQuantity}.
           </p>
         ) : null}
@@ -220,7 +220,7 @@ export default function FundraisingQuestionnairePage() {
             }}
           />
         ) : (
-          <div className="mt-6 rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-8 text-center text-sm text-stone-500">
+          <div className="mt-6 rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-5 text-center text-sm text-stone-500 sm:p-8">
             If you expected a questionnaire, contact staff at the check-in desk.
           </div>
         )}
