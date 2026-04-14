@@ -418,10 +418,10 @@ export default function EventRegistrationCheckoutForm({
     errorKey: string
   ) => {
     const error = showErrors ? validation.errors[errorKey] : null;
-    const baseControlClass = "w-full rounded-lg border px-3.5 py-3 text-[15px] outline-none transition-all duration-200 placeholder:text-slate-400";
+    const baseControlClass = "w-full rounded-xl border px-4 py-3.5 text-[15px] font-medium outline-none transition-all duration-200 placeholder:text-stone-400";
     const controlClass = error
-      ? `${baseControlClass} border-red-300 bg-red-50/40 text-slate-900 focus:border-red-500 focus:ring-2 focus:ring-red-500/20`
-      : `${baseControlClass} border-slate-300 bg-white text-slate-900 hover:border-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20`;
+      ? `${baseControlClass} border-red-300 bg-red-50 text-stone-900 focus:border-red-500 focus:ring-4 focus:ring-red-500/10`
+      : `${baseControlClass} border-stone-300 bg-stone-50 text-stone-900 hover:border-stone-400 hover:bg-white focus:bg-white focus:border-[#C10008] focus:ring-4 focus:ring-[#C10008]/10 shadow-sm`;
 
     let input: React.ReactNode = null;
 
@@ -455,11 +455,14 @@ export default function EventRegistrationCheckoutForm({
     } else if (field.type === 'multi_select') {
       const selected = Array.isArray(value) ? value.map(String) : [];
       input = (
-        <div className="space-y-2.5 rounded-lg border border-slate-200 bg-slate-50/50 p-4">
+        <div className="space-y-3 rounded-xl border border-stone-200 bg-stone-50 p-4 shadow-sm">
           {(field.options || []).map((option) => {
             const checked = selected.includes(option);
             return (
-              <label key={option} className="flex items-start gap-3 text-[15px] text-slate-700 cursor-pointer">
+              <label key={option} className="flex items-start gap-3 text-[15px] font-medium text-stone-700 cursor-pointer hover:text-[#C10008] transition-colors">
+                <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-all ${checked ? 'bg-[#C10008] border-[#C10008]' : 'bg-white border-stone-300'}`}>
+                  {checked && <Check size={14} className="text-white" strokeWidth={3} />}
+                </div>
                 <input
                   type="checkbox"
                   checked={checked}
@@ -471,7 +474,7 @@ export default function EventRegistrationCheckoutForm({
                     }
                     onValueChange(selected.filter((item) => item !== option));
                   }}
-                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600 focus:ring-offset-0 disabled:opacity-50"
+                  className="sr-only"
                 />
                 <span>{option}</span>
               </label>
@@ -481,13 +484,16 @@ export default function EventRegistrationCheckoutForm({
       );
     } else if (field.type === 'checkbox') {
       input = (
-        <label className="flex items-start gap-3 text-[15px] text-slate-700 cursor-pointer">
+        <label className="flex items-start gap-3 text-[15px] font-medium text-stone-700 cursor-pointer hover:text-[#C10008] transition-colors">
+          <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-all ${value === true ? 'bg-[#C10008] border-[#C10008]' : 'bg-white border-stone-300'}`}>
+            {value === true && <Check size={14} className="text-white" strokeWidth={3} />}
+          </div>
           <input
             type="checkbox"
             checked={value === true}
             onChange={(event) => onValueChange(event.target.checked)}
             disabled={disabled}
-            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600 focus:ring-offset-0 disabled:opacity-50"
+            className="sr-only"
           />
           <span>{field.helpText || field.label}</span>
         </label>
@@ -495,16 +501,19 @@ export default function EventRegistrationCheckoutForm({
     } else if (field.type === 'radio_yes_no') {
       const radioValue = normalizeYesNo(value);
       input = (
-        <div className="flex gap-6">
+        <div className="flex flex-wrap gap-4">
           {['yes', 'no'].map((option) => (
-            <label key={option} className="flex items-center gap-2 text-[15px] text-slate-900 cursor-pointer select-none">
+            <label key={option} className={`flex items-center gap-3 rounded-xl border px-5 py-3 text-[15px] font-bold cursor-pointer transition-all shadow-sm ${radioValue === option ? 'border-[#C10008] bg-[#C10008]/5 text-[#C10008]' : 'border-stone-200 bg-stone-50 text-stone-600 hover:border-stone-300 hover:bg-white'}`}>
+              <div className={`flex h-5 w-5 items-center justify-center rounded-full border transition-all ${radioValue === option ? 'border-[#C10008]' : 'border-stone-300 bg-white'}`}>
+                {radioValue === option && <div className="h-2.5 w-2.5 rounded-full bg-[#C10008]" />}
+              </div>
               <input
                 type="radio"
                 value={option}
                 checked={radioValue === option}
                 onChange={(event) => onValueChange(event.target.value)}
                 disabled={disabled}
-                className="h-4 w-4 border-slate-300 text-blue-600 focus:ring-blue-600 focus:ring-offset-0 disabled:opacity-50"
+                className="sr-only"
               />
               <span className="capitalize">{option}</span>
             </label>
@@ -532,45 +541,49 @@ export default function EventRegistrationCheckoutForm({
     }
 
     return (
-      <label key={errorKey} className="block relative">
-        <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-blue-600">
+      <label key={errorKey} className="block relative group">
+        <span className="mb-2 block text-xs font-black uppercase tracking-wider text-[#C10008]">
           {renderFieldLabel(field)}
         </span>
         {input}
         {field.helpText && field.type !== 'checkbox' ? (
-          <p className="mt-2 text-sm text-slate-500">{field.helpText}</p>
+          <p className="mt-2.5 text-sm text-stone-500 font-medium">{field.helpText}</p>
         ) : null}
         {error ? (
-          <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-red-600">
+          <div className="mt-2.5 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-600 animate-in slide-in-from-top-1 fade-in">
             <AlertCircle size={16} className="shrink-0" />
             <span>{error}</span>
-          </p>
+          </div>
         ) : null}
       </label>
     );
   };
 
   return (
-    <div className="mt-8 rounded-xl border border-slate-200 bg-white sm:p-10 p-6 flex flex-col gap-10">
+    <div className="mt-8 flex flex-col gap-6">
       {validation.errors.childCount ? (
-        <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
-          <AlertCircle className="mt-0.5 text-red-500 shrink-0" size={20} />
+        <div className="flex items-start gap-4 rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm">
+          <AlertCircle className="mt-0.5 text-red-500 shrink-0" size={24} />
           <div>
-            <h4 className="text-sm font-bold text-red-900">Issue detected</h4>
-            <p className="text-sm text-red-700 mt-1">{validation.errors.childCount}</p>
+            <h4 className="text-base font-bold text-red-900">Issue detected</h4>
+            <p className="text-[15px] font-medium text-red-700 mt-1">{validation.errors.childCount}</p>
           </div>
         </div>
       ) : null}
 
-      <div className="space-y-12">
+      <div className="space-y-6">
         {form.definition.sections.filter((section) => !section.hidden).map((section) => {
           if (section.type === 'single') {
             const values = asRecord(sections[section.id]);
             return (
-              <section key={section.id}>
-                {section.title && <h4 className="text-lg font-bold text-slate-900 mb-6">{section.title}</h4>}
-                {section.description ? <p className="mb-6 text-sm leading-relaxed text-slate-500">{section.description}</p> : null}
-                <div className="grid gap-x-8 gap-y-6 md:grid-cols-2">
+              <section key={section.id} className="rounded-3xl border border-stone-200 bg-white p-6 sm:p-8 shadow-sm">
+                {section.title && (
+                  <div className="mb-8 border-b border-stone-100 pb-5">
+                    <h4 className="text-xl font-black text-stone-900">{section.title}</h4>
+                    {section.description ? <p className="mt-2 text-[15px] leading-relaxed font-medium text-stone-500">{section.description}</p> : null}
+                  </div>
+                )}
+                <div className="grid gap-x-8 gap-y-8 md:grid-cols-2">
                   {section.fields
                     .filter((field) => !field.hidden)
                     .filter((field) => isFieldVisible(field, values))
@@ -592,13 +605,17 @@ export default function EventRegistrationCheckoutForm({
           const selectedRow = rows[selectedRowIndex];
 
           return (
-            <section key={section.id}>
-              {section.title && <h4 className="text-lg font-bold text-slate-900 mb-6">{section.title}</h4>}
-              {section.description ? <p className="mb-6 text-sm leading-relaxed text-slate-500">{section.description}</p> : null}
+            <section key={section.id} className="rounded-3xl border border-stone-200 bg-white p-6 sm:p-8 shadow-sm">
+              {section.title && (
+                <div className="mb-8 border-b border-stone-100 pb-5">
+                  <h4 className="text-xl font-black text-stone-900">{section.title}</h4>
+                  {section.description ? <p className="mt-2 text-[15px] leading-relaxed font-medium text-stone-500">{section.description}</p> : null}
+                </div>
+              )}
               
               {childCount > 0 ? (
                 childCount > 1 ? (
-                  <div className="mb-8 flex flex-wrap gap-3">
+                  <div className="mb-8 flex flex-wrap gap-3 rounded-2xl bg-stone-50 p-2 border border-stone-100">
                     {Array.from({ length: childCount }, (_, index) => {
                       const isActive = activeChildIndex === index;
                       const errorCount = childErrorCounts[index] || 0;
@@ -613,17 +630,17 @@ export default function EventRegistrationCheckoutForm({
                           key={`${section.id}-child-tab-${index}`}
                           type="button"
                           onClick={() => setActiveChildIndex(index)}
-                          className={`relative inline-flex items-center justify-center gap-2 rounded-full px-5 py-2 text-sm font-bold transition-all focus:outline-none focus:ring-2 focus:ring-blue-600/50 ${
+                          className={`relative flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-[15px] font-bold transition-all focus:outline-none ${
                             isActive
-                              ? 'bg-blue-600 text-white shadow-sm'
-                              : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                              ? 'bg-white text-[#C10008] shadow-sm border border-stone-200'
+                              : 'bg-transparent text-stone-600 hover:bg-stone-200/50'
                           }`}
                         >
                           {displayName}
                           {showErrors && errorCount > 0 ? (
                             <span
                               className={`inline-flex items-center justify-center rounded-full h-5 w-5 text-[10px] font-black ${
-                                isActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600'
+                                isActive ? 'bg-red-100 text-red-600' : 'bg-red-50 text-red-500 border border-red-100'
                               }`}
                             >
                               {errorCount}
@@ -636,7 +653,7 @@ export default function EventRegistrationCheckoutForm({
                 ) : null
               ) : null}
               {selectedRow ? (
-                <div className="pt-2 grid gap-x-8 gap-y-6 md:grid-cols-2">
+                <div className="pt-2 grid gap-x-8 gap-y-8 md:grid-cols-2">
                   {section.fields
                     .filter((field) => !field.hidden)
                     .filter((field) => isFieldVisible(field, selectedRow))
@@ -650,8 +667,8 @@ export default function EventRegistrationCheckoutForm({
                     )}
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-10 opacity-60">
-                  <p className="text-[15px] font-medium text-slate-500">No entries available for this section.</p>
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-stone-300 bg-stone-50 py-12">
+                  <p className="text-[15px] font-bold text-stone-500">No entries available for this section.</p>
                 </div>
               )}
             </section>
@@ -659,54 +676,62 @@ export default function EventRegistrationCheckoutForm({
         })}
 
         {form.definition.policies.length > 0 ? (
-          <section className="pt-8 border-t border-slate-200">
-            <h4 className="text-lg font-bold text-slate-900 mb-6">Camp Policies and Acknowledgments</h4>
-            <div className="space-y-6">
+          <section className="rounded-3xl border border-stone-200 bg-white p-6 sm:p-8 shadow-sm">
+            <div className="mb-8 border-b border-stone-100 pb-5">
+              <h4 className="text-xl font-black text-stone-900">Camp Policies and Acknowledgments</h4>
+            </div>
+            <div className="space-y-8">
               {form.definition.policies.map((policy) => {
                 const value = policies[policy.id] ?? (policy.type === 'required_checkbox' ? false : '');
                 const errorKey = `policy.${policy.id}`;
                 const error = showErrors ? validation.errors[errorKey] : null;
 
                 return (
-                  <div key={policy.id} className="pt-2">
-                    <p className="text-[15px] font-bold text-slate-900">{policy.title}</p>
-                    {policy.body ? <p className="mt-2 whitespace-pre-wrap text-[14px] text-slate-600">{policy.body}</p> : null}
+                  <div key={policy.id} className="rounded-2xl border border-stone-200 bg-stone-50 p-6">
+                    <p className="text-lg font-black text-stone-900">{policy.title}</p>
+                    {policy.body ? <p className="mt-3 whitespace-pre-wrap text-[15px] font-medium leading-relaxed text-stone-600">{policy.body}</p> : null}
 
                     {policy.type === 'required_checkbox' ? (
-                      <label className="mt-4 flex items-start gap-3 text-[15px] text-slate-700 cursor-pointer">
+                      <label className="mt-6 flex items-start gap-4 text-[15px] font-bold text-stone-800 cursor-pointer group">
+                        <div className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border transition-all ${value === true ? 'bg-[#C10008] border-[#C10008]' : 'bg-white border-stone-300 group-hover:border-[#C10008]'}`}>
+                          {value === true && <Check size={16} className="text-white" strokeWidth={3} />}
+                        </div>
                         <input
                           type="checkbox"
+                          className="sr-only"
                           checked={value === true}
                           disabled={disabled}
                           onChange={(event) => setPolicies((current) => ({ ...current, [policy.id]: event.target.checked }))}
-                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600 focus:ring-offset-0 disabled:opacity-50"
                         />
-                        <span className="font-semibold select-none">{policy.label || 'I acknowledge this policy.'}</span>
+                        <span className="select-none mt-0.5">{policy.label || 'I acknowledge this policy.'}</span>
                       </label>
                     ) : policy.type === 'yes_no' ? (
-                      <div className="mt-4 flex gap-6">
+                      <div className="mt-6 flex gap-6">
                         {['yes', 'no'].map((option) => (
-                          <label key={`${policy.id}-${option}`} className="flex items-center gap-2 text-[15px] font-medium text-slate-900 cursor-pointer select-none">
+                          <label key={`${policy.id}-${option}`} className="flex items-center gap-3 cursor-pointer group">
+                            <div className={`flex h-6 w-6 items-center justify-center rounded-full border transition-all ${value === option ? 'border-[#C10008]' : 'border-stone-300 bg-white group-hover:border-[#C10008]'}`}>
+                              {value === option && <div className="h-3 w-3 rounded-full bg-[#C10008]" />}
+                            </div>
                             <input
                               type="radio"
+                              className="sr-only"
                               name={`policy-${policy.id}`}
                               value={option}
                               checked={value === option}
                               disabled={disabled}
-                              className="h-4 w-4 border-slate-300 text-blue-600 focus:ring-blue-600 focus:ring-offset-0 disabled:opacity-50"
                               onChange={(event) => setPolicies((current) => ({ ...current, [policy.id]: event.target.value }))}
                             />
-                            <span className="capitalize">{option}</span>
+                            <span className="text-[17px] font-bold capitalize text-stone-800 group-hover:text-[#C10008] transition-colors">{option}</span>
                           </label>
                         ))}
                       </div>
                     ) : null}
 
                     {error ? (
-                      <p className="mt-2 flex items-center gap-1.5 text-[13px] font-bold text-red-600">
-                        <AlertCircle size={14} className="shrink-0" />
+                      <div className="mt-4 flex w-max items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[14px] font-bold text-red-600">
+                        <AlertCircle size={16} className="shrink-0" />
                         <span>{error}</span>
-                      </p>
+                      </div>
                     ) : null}
                   </div>
                 );
@@ -715,15 +740,17 @@ export default function EventRegistrationCheckoutForm({
           </section>
         ) : null}
 
-        <section className="pt-8 border-t border-slate-200">
-          <h4 className="text-lg font-bold text-slate-900 mb-6">Parent Certification and Signature</h4>
-          <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-slate-600 outline-none">
+        <section className="rounded-3xl border border-stone-200 bg-white p-6 sm:p-8 shadow-sm">
+          <div className="mb-8 border-b border-stone-100 pb-5">
+            <h4 className="text-xl font-black text-stone-900">Parent Certification and Signature</h4>
+          </div>
+          <p className="whitespace-pre-wrap rounded-xl bg-stone-50 p-5 text-[15px] font-medium leading-relaxed text-stone-700 border border-stone-200">
             {form.definition.signature?.legalText ||
               'I confirm that the information submitted is accurate and that I am the parent or legal guardian for the listed child or children.'}
           </p>
 
           {form.settings.requireAcknowledgments ? (
-            <div className="mt-6 space-y-3">
+            <div className="mt-8 space-y-4">
               {[
                 { key: 'infoAccurate', label: 'I confirm the information provided is accurate and complete.' },
                 { key: 'policiesRead', label: 'I confirm I have read and agree to the policies listed above.' },
@@ -735,9 +762,13 @@ export default function EventRegistrationCheckoutForm({
                 const error = showErrors ? validation.errors[`ack.${item.key}`] : null;
 
                 return (
-                  <label key={item.key} className="flex items-start gap-3 text-[15px] text-slate-700 cursor-pointer">
+                  <label key={item.key} className="flex items-start gap-4 text-[15px] font-bold text-stone-800 cursor-pointer group">
+                    <div className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border transition-all ${checked ? 'bg-[#C10008] border-[#C10008]' : 'bg-white border-stone-300 group-hover:border-[#C10008]'}`}>
+                      {checked && <Check size={16} className="text-white" strokeWidth={3} />}
+                    </div>
                     <input
                       type="checkbox"
+                      className="sr-only"
                       checked={checked}
                       disabled={disabled}
                       onChange={(event) =>
@@ -746,15 +777,14 @@ export default function EventRegistrationCheckoutForm({
                           [key]: event.target.checked
                         }))
                       }
-                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600 focus:ring-offset-0 disabled:opacity-50"
                     />
-                    <div className="flex flex-col">
-                      <span className="select-none tracking-wide text-slate-800">{item.label}</span>
+                    <div className="flex flex-col mt-0.5">
+                      <span className="select-none tracking-wide">{item.label}</span>
                       {error ? (
-                        <span className="mt-1 flex items-center gap-1.5 text-[12px] font-bold text-red-600">
-                          <AlertCircle size={12} className="shrink-0" />
+                        <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[12px] font-bold text-red-600 w-max">
+                          <AlertCircle size={14} className="shrink-0" />
                           {error}
-                        </span>
+                        </div>
                       ) : null}
                     </div>
                   </label>
@@ -763,63 +793,65 @@ export default function EventRegistrationCheckoutForm({
             </div>
           ) : null}
 
-          <div className="mt-8 grid gap-x-8 gap-y-6 md:grid-cols-2">
+          <div className="mt-10 grid gap-x-8 gap-y-8 md:grid-cols-2">
             <label className="block relative">
-              <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-blue-600">Printed Parent or Guardian Name *</span>
+              <span className="mb-2 block text-xs font-black uppercase tracking-wider text-[#C10008]">Printed Parent or Guardian Name *</span>
               <input
                 type="text"
                 value={signature.printedName}
                 onChange={(event) => setSignature((current) => ({ ...current, printedName: event.target.value }))}
                 disabled={disabled}
                 placeholder="Jane Doe"
-                className={`w-full rounded-lg border px-3.5 py-3 text-[15px] outline-none transition-all duration-200 placeholder:text-slate-400 ${
+                className={`w-full rounded-xl border px-4 py-3.5 text-[15px] font-medium outline-none transition-all duration-200 placeholder:text-stone-400 shadow-sm ${
                   showErrors && validation.errors['signature.printedName']
-                    ? 'border-red-300 bg-red-50/40 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 text-slate-900'
-                    : 'border-slate-300 bg-white hover:border-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 text-slate-900'
+                    ? 'border-red-300 bg-red-50 focus:border-red-500 focus:ring-4 focus:ring-red-500/10 text-stone-900'
+                    : 'border-stone-300 bg-stone-50 hover:border-stone-400 hover:bg-white focus:bg-white focus:border-[#C10008] focus:ring-4 focus:ring-[#C10008]/10 text-stone-900'
                 }`}
               />
               {showErrors && validation.errors['signature.printedName'] ? (
-                <p className="mt-2 flex items-center gap-1.5 text-[13px] font-medium text-red-600">
-                  <AlertCircle size={14} className="shrink-0" />
+                <div className="mt-2.5 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-600">
+                  <AlertCircle size={16} className="shrink-0" />
                   <span>{validation.errors['signature.printedName']}</span>
-                </p>
+                </div>
               ) : null}
             </label>
 
             <label className="block relative">
-              <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-blue-600">Typed Signature *</span>
+              <span className="mb-2 block text-xs font-black uppercase tracking-wider text-[#C10008]">Typed Signature *</span>
               <input
                 type="text"
                 value={signature.typedName}
                 onChange={(event) => setSignature((current) => ({ ...current, typedName: event.target.value }))}
                 disabled={disabled}
                 placeholder="Jane Doe"
-                className={`w-full rounded-lg border px-3.5 py-3 text-[15px] outline-none transition-all duration-200 placeholder:text-slate-400 ${
+                className={`w-full rounded-xl border px-4 py-3.5 text-lg font-["Dancing_Script",cursive,serif] italic outline-none transition-all duration-200 placeholder:text-stone-400 shadow-sm placeholder:font-sans placeholder:not-italic ${
                   showErrors && validation.errors['signature.typedName']
-                    ? 'border-red-300 bg-red-50/40 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 text-slate-900'
-                    : 'border-slate-300 bg-white hover:border-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 text-slate-900 font-["Dancing_Script",cursive,serif] italic text-lg'
+                    ? 'border-red-300 bg-red-50 focus:border-red-500 focus:ring-4 focus:ring-red-500/10 text-stone-900'
+                    : 'border-stone-300 bg-stone-50 hover:border-stone-400 hover:bg-white focus:bg-white focus:border-[#C10008] focus:ring-4 focus:ring-[#C10008]/10 text-stone-900'
                 }`}
               />
               {showErrors && validation.errors['signature.typedName'] ? (
-                <p className="mt-2 flex items-center gap-1.5 text-[13px] font-medium text-red-600">
-                  <AlertCircle size={14} className="shrink-0" />
+                <div className="mt-2.5 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-600">
+                  <AlertCircle size={16} className="shrink-0" />
                   <span>{validation.errors['signature.typedName']}</span>
-                </p>
+                </div>
               ) : null}
             </label>
           </div>
 
-          <p className="mt-6 text-[12px] text-slate-500">
+          <p className="mt-6 text-[13px] font-bold text-stone-400 uppercase tracking-wide">
             Date signed is recorded automatically when you submit checkout.
           </p>
           
-          <button
-            type="button"
-            onClick={() => setShowErrors(true)}
-            className="mt-6 w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-6 py-3.5 text-[14px] font-bold tracking-wide text-white transition-all hover:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-slate-900/20"
-          >
-            Check Form
-          </button>
+          <div className="mt-8 border-t border-stone-100 pt-8 flex sm:justify-end">
+            <button
+              type="button"
+              onClick={() => setShowErrors(true)}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-stone-900 px-8 py-4 text-[15px] font-bold tracking-wide text-white transition-all hover:bg-[#C10008] focus:outline-none focus:ring-4 focus:ring-[#C10008]/20 shadow-md hover:shadow-lg"
+            >
+              Check Form
+            </button>
+          </div>
         </section>
       </div>
     </div>
