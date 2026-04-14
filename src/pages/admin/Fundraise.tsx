@@ -259,6 +259,25 @@ function formatDonationStatus(status: string): string {
   }
 }
 
+function csvEscape(value: unknown): string {
+  const text = value === null || value === undefined ? '' : String(value);
+  if (/[",\n]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function buildCsv(rows: Array<Array<unknown>>): string {
+  return rows.map((row) => row.map(csvEscape).join(',')).join('\n');
+}
+
+function slugifyForFilename(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'event';
+}
+
 function AdminDonationPaymentForm({
   amountCents,
   donorName,
@@ -467,6 +486,101 @@ export default function AdminFundraisePage() {
     } finally {
       setAttendeesLoading(false);
     }
+  }
+
+  function exportAttendeesCsv() {
+    if (attendeeRows.length === 0) {
+      setNotice('No attendee rows available to export yet.');
+      return;
+    }
+
+    const table: Array<Array<unknown>> = [
+      [
+        'order_id',
+        'order_created_at',
+        'order_status',
+        'order_source',
+        'customer_name',
+        'customer_email',
+        'order_total',
+        'seat_label',
+        'attendee_name',
+        'ticket_type',
+        'is_complimentary',
+        'ticket_price',
+        'questionnaire_submitted_at',
+        'questionnaire_form_name',
+        'questionnaire_form_version',
+        'questionnaire_response_json'
+      ]
+    ];
+
+    attendeeRows.forEach((row) => {
+      const submission = row.registrationSubmission;
+      const submissionAt = submission?.submittedAt || '';
+      const formName = submission?.form?.formName || '';
+      const formVersion = submission?.formVersion?.versionNumber || '';
+      const responseJson = submission ? JSON.stringify(submission.responseJson) : '';
+
+      if (row.orderSeats.length === 0) {
+        table.push([
+          row.id,
+          row.createdAt,
+          row.status,
+          row.source,
+          row.customerName,
+          row.email,
+          formatMoney(row.amountTotal, row.currency),
+          '',
+          '',
+          '',
+          '',
+          '',
+          submissionAt,
+          formName,
+          formVersion,
+          responseJson
+        ]);
+        return;
+      }
+
+      row.orderSeats.forEach((seat) => {
+        table.push([
+          row.id,
+          row.createdAt,
+          row.status,
+          row.source,
+          row.customerName,
+          row.email,
+          formatMoney(row.amountTotal, row.currency),
+          seat.seatLabel,
+          seat.attendeeName || '',
+          seat.ticketType || '',
+          seat.isComplimentary ? 'yes' : 'no',
+          formatUsd(seat.price),
+          submissionAt,
+          formName,
+          formVersion,
+          responseJson
+        ]);
+      });
+    });
+
+    const csv = buildCsv(table);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const eventName = selectedEvent?.title || 'fundraising-event';
+    const stamp = new Date().toISOString().slice(0, 10);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${slugifyForFilename(eventName)}-tickets-responses-${stamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setNotice('Attendee CSV export downloaded.');
   }
 
   useEffect(() => {
@@ -1580,6 +1694,14 @@ export default function AdminFundraisePage() {
               >
                 <RefreshCcw className={`h-4 w-4 ${attendeesLoading ? 'animate-spin' : ''}`} />
                 Refresh
+              </button>
+              <button
+                type="button"
+                onClick={exportAttendeesCsv}
+                disabled={attendeesLoading || attendeeRows.length === 0}
+                className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Download CSV
               </button>
             </div>
           </section>
