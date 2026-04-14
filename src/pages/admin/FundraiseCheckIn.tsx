@@ -185,6 +185,11 @@ function isFirstCamperTier(tier: PricingTier): boolean {
   return normalized.includes('1st camper') || normalized.includes('first camper');
 }
 
+function isAdditionalCamperTier(tier: PricingTier): boolean {
+  const normalized = tier.name.trim().toLowerCase();
+  return normalized.includes('additional camper');
+}
+
 function ManualDispatchChargeForm(props: {
   amountCents: number;
   customerName: string;
@@ -283,6 +288,7 @@ export default function AdminFundraiseCheckInPage() {
   const [saleOpen, setSaleOpen] = useState(false);
   const [saleStep, setSaleStep] = useState(0);
   const [saleQuantity, setSaleQuantity] = useState(1);
+  const [saleQuantityDraft, setSaleQuantityDraft] = useState('1');
   const [saleTicketTypeIds, setSaleTicketTypeIds] = useState<string[]>(['']);
   const [saleCustomerName, setSaleCustomerName] = useState('');
   const [saleCustomerEmail, setSaleCustomerEmail] = useState('');
@@ -323,6 +329,14 @@ export default function AdminFundraiseCheckInPage() {
   );
   const firstCamperTierIds = useMemo(
     () => new Set(fundraiserTicketOptions.filter(isFirstCamperTier).map((tier) => tier.id)),
+    [fundraiserTicketOptions]
+  );
+  const firstCamperTierId = useMemo(
+    () => fundraiserTicketOptions.find(isFirstCamperTier)?.id || '',
+    [fundraiserTicketOptions]
+  );
+  const additionalCamperTierId = useMemo(
+    () => fundraiserTicketOptions.find(isAdditionalCamperTier)?.id || '',
     [fundraiserTicketOptions]
   );
   const saleManualStripePromise = useMemo(() => {
@@ -441,16 +455,21 @@ export default function AdminFundraiseCheckInPage() {
   useEffect(() => {
     setSaleTicketTypeIds((current) => {
       const fallbackId = fundraiserTicketOptions[0]?.id || '';
+      const nonFirstFallbackId = fundraiserTicketOptions.find((tier) => tier.id !== firstCamperTierId)?.id || fallbackId;
       const targetLength = Math.max(1, Math.min(50, saleQuantity));
       return Array.from({ length: targetLength }, (_, index) => {
         const existingId = current[index];
         if (existingId && fundraiserTicketOptions.some((tier) => tier.id === existingId)) {
           return existingId;
         }
-        return fallbackId;
+
+        if (index === 0) {
+          return firstCamperTierId || fallbackId;
+        }
+        return additionalCamperTierId || nonFirstFallbackId || fallbackId;
       });
     });
-  }, [fundraiserTicketOptions, saleQuantity]);
+  }, [additionalCamperTierId, firstCamperTierId, fundraiserTicketOptions, saleQuantity]);
 
   useEffect(() => {
     setSaleAttendeeNames((current) => {
@@ -480,6 +499,7 @@ export default function AdminFundraiseCheckInPage() {
     setSaleOpen(true);
     setSaleStep(0);
     setSaleQuantity(1);
+    setSaleQuantityDraft('1');
     setSaleTicketTypeIds([(fundraiserTicketOptions[0]?.id || '')]);
     setSaleCustomerName(prefill?.customerName || '');
     setSaleCustomerEmail(prefill?.customerEmail || '');
@@ -685,6 +705,9 @@ export default function AdminFundraiseCheckInPage() {
     }
 
     if (step === 0) {
+      if (!saleQuantityDraft.trim()) {
+        return 'Enter a ticket quantity.';
+      }
       if (saleQuantity < 1 || saleQuantity > 50) {
         return 'Choose between 1 and 50 tickets.';
       }
@@ -1337,13 +1360,35 @@ export default function AdminFundraiseCheckInPage() {
                     <label className="block">
                       <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-stone-500">Ticket Quantity</span>
                       <input
-                        type="number"
-                        min={1}
-                        max={50}
-                        value={saleQuantity}
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={saleQuantityDraft}
                         onChange={(event) => {
-                          const next = Number(event.target.value || 1);
-                          setSaleQuantity(Math.max(1, Math.min(50, Number.isFinite(next) ? next : 1)));
+                          const raw = event.target.value;
+                          if (!/^\d*$/.test(raw)) return;
+                          setSaleQuantityDraft(raw);
+                          if (!raw.trim()) return;
+
+                          const next = Number(raw);
+                          if (!Number.isFinite(next)) return;
+                          setSaleQuantity(Math.max(1, Math.min(50, Math.trunc(next))));
+                        }}
+                        onBlur={() => {
+                          if (!saleQuantityDraft.trim()) {
+                            setSaleQuantityDraft(String(saleQuantity));
+                            return;
+                          }
+
+                          const next = Number(saleQuantityDraft);
+                          if (!Number.isFinite(next)) {
+                            setSaleQuantityDraft(String(saleQuantity));
+                            return;
+                          }
+
+                          const clamped = Math.max(1, Math.min(50, Math.trunc(next)));
+                          setSaleQuantity(clamped);
+                          setSaleQuantityDraft(String(clamped));
                         }}
                         className={inputClass}
                       />

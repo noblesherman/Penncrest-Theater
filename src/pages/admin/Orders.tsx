@@ -434,8 +434,8 @@ export default function AdminOrdersPage() {
         staffCompsEnabled?: boolean;
         studentCompTicketsEnabled?: boolean;
         seatSelectionEnabled?: boolean;
-      }>>('/api/admin/performances?scope=active&kind=all');
-      const mapped = items.filter(i => !i.isArchived)
+      }>>('/api/admin/performances?scope=active&kind=standard');
+      const mapped = items.filter(i => !i.isArchived && !i.isFundraiser)
         .map(i => ({
           id: i.id,
           title: i.title,

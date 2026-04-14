@@ -572,10 +572,10 @@ export default function AdminPosModePage() {
     setLoadingSetup(true);
     setError(null);
     try {
-      const items = await adminFetch<Array<any>>('/api/admin/performances?scope=active&kind=all');
+      const items = await adminFetch<Array<any>>('/api/admin/performances?scope=active&kind=standard');
 
       const mapped = items
-        .filter((item) => !item.isArchived)
+        .filter((item) => !item.isArchived && !item.isFundraiser)
         .map((item) => ({
           id: item.id,
           title: item.title,
