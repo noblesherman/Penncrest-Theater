@@ -180,6 +180,11 @@ function formatMoney(cents: number, currency: string): string {
   }).format(cents / 100);
 }
 
+function isFirstCamperTier(tier: PricingTier): boolean {
+  const normalized = tier.name.trim().toLowerCase();
+  return normalized.includes('1st camper') || normalized.includes('first camper');
+}
+
 function ManualDispatchChargeForm(props: {
   amountCents: number;
   customerName: string;
@@ -278,7 +283,7 @@ export default function AdminFundraiseCheckInPage() {
   const [saleOpen, setSaleOpen] = useState(false);
   const [saleStep, setSaleStep] = useState(0);
   const [saleQuantity, setSaleQuantity] = useState(1);
-  const [saleTicketTypeId, setSaleTicketTypeId] = useState('');
+  const [saleTicketTypeIds, setSaleTicketTypeIds] = useState<string[]>(['']);
   const [saleCustomerName, setSaleCustomerName] = useState('');
   const [saleCustomerEmail, setSaleCustomerEmail] = useState('');
   const [saleSendReceipt, setSaleSendReceipt] = useState(false);
@@ -311,6 +316,14 @@ export default function AdminFundraiseCheckInPage() {
   const fundraiserTicketOptions = useMemo(
     () => (selectedEvent?.pricingTiers || []).filter((tier) => tier.priceCents >= 0),
     [selectedEvent]
+  );
+  const fundraiserTicketOptionsById = useMemo(
+    () => new Map(fundraiserTicketOptions.map((tier) => [tier.id, tier])),
+    [fundraiserTicketOptions]
+  );
+  const firstCamperTierIds = useMemo(
+    () => new Set(fundraiserTicketOptions.filter(isFirstCamperTier).map((tier) => tier.id)),
+    [fundraiserTicketOptions]
   );
   const saleManualStripePromise = useMemo(() => {
     if (!saleManualCheckout?.publishableKey) return null;
@@ -426,16 +439,18 @@ export default function AdminFundraiseCheckInPage() {
   );
 
   useEffect(() => {
-    if (!fundraiserTicketOptions.length) {
-      setSaleTicketTypeId('');
-      return;
-    }
-
-    setSaleTicketTypeId((current) => {
-      if (fundraiserTicketOptions.some((tier) => tier.id === current)) return current;
-      return fundraiserTicketOptions[0].id;
+    setSaleTicketTypeIds((current) => {
+      const fallbackId = fundraiserTicketOptions[0]?.id || '';
+      const targetLength = Math.max(1, Math.min(50, saleQuantity));
+      return Array.from({ length: targetLength }, (_, index) => {
+        const existingId = current[index];
+        if (existingId && fundraiserTicketOptions.some((tier) => tier.id === existingId)) {
+          return existingId;
+        }
+        return fallbackId;
+      });
     });
-  }, [fundraiserTicketOptions]);
+  }, [fundraiserTicketOptions, saleQuantity]);
 
   useEffect(() => {
     setSaleAttendeeNames((current) => {
@@ -465,6 +480,7 @@ export default function AdminFundraiseCheckInPage() {
     setSaleOpen(true);
     setSaleStep(0);
     setSaleQuantity(1);
+    setSaleTicketTypeIds([(fundraiserTicketOptions[0]?.id || '')]);
     setSaleCustomerName(prefill?.customerName || '');
     setSaleCustomerEmail(prefill?.customerEmail || '');
     setSaleSendReceipt(Boolean(prefill?.customerEmail));
@@ -557,7 +573,9 @@ export default function AdminFundraiseCheckInPage() {
   }
 
   function buildWalkUpTicketSelection(seatIds: string[]) {
-    return Object.fromEntries(seatIds.map((seatId) => [seatId, saleTicketTypeId]));
+    return Object.fromEntries(
+      seatIds.map((seatId, index) => [seatId, saleTicketTypeIds[index] || fundraiserTicketOptions[0]?.id || ''])
+    );
   }
 
   function buildWalkUpAttendeeNames(seatIds: string[]) {
@@ -650,6 +668,14 @@ export default function AdminFundraiseCheckInPage() {
     });
   }
 
+  function updateSaleTicketType(index: number, value: string) {
+    setSaleTicketTypeIds((current) => {
+      const next = [...current];
+      next[index] = value;
+      return next;
+    });
+  }
+
   function validateWalkUpStep(step: number): string | null {
     if (!selectedEvent) {
       return 'Select a fundraiser event first.';
@@ -662,8 +688,15 @@ export default function AdminFundraiseCheckInPage() {
       if (saleQuantity < 1 || saleQuantity > 50) {
         return 'Choose between 1 and 50 tickets.';
       }
-      if (!saleTicketTypeId) {
-        return 'Choose a ticket type.';
+      if (saleTicketTypeIds.some((ticketTypeId) => !ticketTypeId)) {
+        return 'Choose a ticket type for every ticket.';
+      }
+      if (saleTicketTypeIds.some((ticketTypeId) => !fundraiserTicketOptionsById.has(ticketTypeId))) {
+        return 'One or more ticket selections are invalid. Re-select ticket types.';
+      }
+      const firstCamperCount = saleTicketTypeIds.filter((ticketTypeId) => firstCamperTierIds.has(ticketTypeId)).length;
+      if (firstCamperCount > 1) {
+        return '1st Camper can only be selected once per order.';
       }
       return null;
     }
@@ -966,11 +999,28 @@ export default function AdminFundraiseCheckInPage() {
     }
   }, [scannerSession?.staffName, sessionDraft.staffName]);
 
-  const selectedSaleTier = useMemo(
-    () => fundraiserTicketOptions.find((tier) => tier.id === saleTicketTypeId) || null,
-    [fundraiserTicketOptions, saleTicketTypeId]
+  const saleTicketTypeSummary = useMemo(() => {
+    const counts = new Map<string, number>();
+    saleTicketTypeIds.forEach((ticketTypeId) => {
+      if (!ticketTypeId) return;
+      counts.set(ticketTypeId, (counts.get(ticketTypeId) || 0) + 1);
+    });
+
+    return Array.from(counts.entries()).map(([ticketTypeId, count]) => {
+      const tier = fundraiserTicketOptionsById.get(ticketTypeId);
+      return {
+        ticketTypeId,
+        count,
+        name: tier?.name || 'Ticket',
+        priceCents: tier?.priceCents || 0
+      };
+    });
+  }, [fundraiserTicketOptionsById, saleTicketTypeIds]);
+
+  const saleEstimatedTotalCents = useMemo(
+    () => saleTicketTypeIds.reduce((sum, ticketTypeId) => sum + (fundraiserTicketOptionsById.get(ticketTypeId)?.priceCents || 0), 0),
+    [fundraiserTicketOptionsById, saleTicketTypeIds]
   );
-  const saleEstimatedTotalCents = (selectedSaleTier?.priceCents || 0) * Math.max(1, Math.min(50, saleQuantity));
 
   return (
     <div className="min-h-screen bg-stone-50 px-4 py-6 sm:px-6 lg:px-8">
@@ -1299,28 +1349,53 @@ export default function AdminFundraiseCheckInPage() {
                       />
                     </label>
 
-                    <label className="block">
-                      <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-stone-500">Ticket Type</span>
-                      <select
-                        value={saleTicketTypeId}
-                        onChange={(event) => setSaleTicketTypeId(event.target.value)}
-                        className={inputClass}
-                      >
-                        {fundraiserTicketOptions.map((tier) => (
-                          <option key={tier.id} value={tier.id}>
-                            {tier.name} · {formatMoney(tier.priceCents, 'usd')}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+                      <p className="text-xs font-bold uppercase tracking-wide text-stone-500">Ticket Types</p>
+                      <p className="mt-1 text-xs text-stone-600">Select a type for each ticket. 1st Camper can only be used once.</p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {saleTicketTypeIds.map((ticketTypeId, index) => (
+                        <label key={`ticket-type-${index}`} className="block">
+                          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-stone-500">
+                            Ticket #{index + 1}
+                          </span>
+                          <select
+                            value={ticketTypeId}
+                            onChange={(event) => updateSaleTicketType(index, event.target.value)}
+                            className={inputClass}
+                          >
+                            {fundraiserTicketOptions.map((tier) => {
+                              const firstCamperTakenElsewhere =
+                                firstCamperTierIds.has(tier.id) &&
+                                saleTicketTypeIds.some(
+                                  (selectedId, selectedIndex) => selectedIndex !== index && selectedId === tier.id
+                                );
+
+                              return (
+                                <option key={tier.id} value={tier.id} disabled={firstCamperTakenElsewhere}>
+                                  {tier.name} · {formatMoney(tier.priceCents, 'usd')}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </label>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
                     <p className="text-xs font-bold uppercase tracking-wide text-stone-500">Estimated Total</p>
                     <p className="mt-1 text-2xl font-black text-stone-900">{formatMoney(saleEstimatedTotalCents, 'usd')}</p>
-                    <p className="mt-1 text-sm text-stone-500">
-                      {saleQuantity} ticket{saleQuantity === 1 ? '' : 's'} at {selectedSaleTier ? formatMoney(selectedSaleTier.priceCents, 'usd') : formatMoney(0, 'usd')} each.
-                    </p>
+                    <div className="mt-2 space-y-1 text-sm text-stone-600">
+                      {saleTicketTypeSummary.map((item) => (
+                        <p key={item.ticketTypeId}>
+                          {item.count} x {item.name} ({formatMoney(item.priceCents, 'usd')} each)
+                        </p>
+                      ))}
+                    </div>
                   </div>
                 </div>
               ) : null}
