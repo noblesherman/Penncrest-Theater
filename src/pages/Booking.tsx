@@ -59,7 +59,7 @@ type PerformanceDetails = {
   registrationFormRequired?: boolean;
 };
 
-type CheckoutStep = 1 | 2 | 3 | 4;
+type CheckoutStep = 1 | 2 | 3 | 4 | 5;
 
 type TicketOption = {
   id: string;
@@ -142,7 +142,8 @@ const CHECKOUT_STEPS: Array<{ id: CheckoutStep; label: string }> = [
   { id: 1, label: 'Pick Seats' },
   { id: 2, label: 'Ticket Types' },
   { id: 3, label: 'Contact Info' },
-  { id: 4, label: 'Questionnaire' }
+  { id: 4, label: 'Questionnaire' },
+  { id: 5, label: 'Checkout' }
 ];
 
 const TEACHER_TICKET_OPTION_ID = 'teacher-comp';
@@ -158,6 +159,24 @@ const SEAT_POLL_JITTER_MS = 5_000;
 
 function getSeatPollDelayMs(): number {
   return SEAT_POLL_BASE_INTERVAL_MS + Math.floor(Math.random() * SEAT_POLL_JITTER_MS);
+}
+
+
+function getChildName(registrationForm: any, registrationPayload: any, index: number): string | null {
+  if (!registrationForm || !registrationPayload || !registrationPayload.sections) return null;
+  const sectionsData = registrationPayload.sections;
+  for (const s of registrationForm.definition.sections) {
+    if (s.hidden || s.type === 'single') continue;
+    const nameF = s.fields.find((f: any) => f.label.toLowerCase().includes('first name') || f.label.toLowerCase().includes('camper name') || f.label.toLowerCase().includes('name'));
+    if (nameF) {
+      const records = (sectionsData[s.id] as any[]) || [];
+      const r = records[index] || {};
+      if (r[nameF.id] && String(r[nameF.id]).trim()) {
+        return String(r[nameF.id]).trim().split(' ')[0];
+      }
+    }
+  }
+  return null;
 }
 
 function stringArrayEqual(a: string[], b: string[]): boolean {
@@ -556,13 +575,13 @@ export default function Booking() {
   }, [currentStep, selectedSeatIds.length]);
 
   useEffect(() => {
-    if (currentStep === 4) return;
+    if (currentStep === 5) return;
     if (!pendingStripePayment) return;
     setPendingStripePayment(null);
   }, [currentStep, pendingStripePayment]);
 
   useEffect(() => {
-    if (currentStep === 4) return;
+    if (currentStep === 5) return;
     if (!checkoutQueue) return;
     setCheckoutQueue(null);
   }, [checkoutQueue, currentStep]);
@@ -1258,27 +1277,25 @@ export default function Booking() {
     return true;
   };
 
-  const goToStepFour = () => {
+  const submitContactStep = () => {
     if (!validateContactStep()) return;
     setStepError(null);
     resetPendingPayment();
     setCheckoutQueue(null);
-    setCurrentStep(4);
+    setCurrentStep(registrationRequired ? 4 : 5);
   };
 
-  const checkoutSteps = useMemo(
-    () =>
-      CHECKOUT_STEPS.map((step) =>
-        step.id === 1
-          ? { ...step, label: seatSelectionEnabled ? 'Pick Seats' : 'Ticket Quantity' }
-          : step.id === 4
-            ? { ...step, label: registrationRequired ? 'Questionnaire' : 'Checkout' }
-            : step
-      ),
-    [registrationRequired, seatSelectionEnabled]
-  );
-  const showStepFourOrderSummary = !registrationRequired;
-  const progressPercent = ((currentStep - 1) / (checkoutSteps.length - 1)) * 100;
+  const checkoutSteps = useMemo(() => {
+    let steps = CHECKOUT_STEPS;
+    if (!registrationRequired) {
+      steps = steps.filter(s => s.id !== 4);
+    }
+    return steps.map((step) =>
+      step.id === 1 ? { ...step, label: seatSelectionEnabled ? 'Pick Seats' : 'Ticket Quantity' } : step
+    );
+  }, [registrationRequired, seatSelectionEnabled]);
+
+  const progressPercent = ((checkoutSteps.findIndex(s => s.id === currentStep)) / (checkoutSteps.length - 1)) * 100;
 
   return (
     <div className="h-[100dvh] min-h-[100dvh] bg-stone-50 overflow-hidden flex flex-col" style={{ fontFamily: 'system-ui, sans-serif' }}>
@@ -1933,7 +1950,7 @@ export default function Booking() {
                           <ArrowLeft className="w-4 h-4" /> Back
                         </button>
                         <button
-                          onClick={goToStepFour}
+                          onClick={submitContactStep}
                           className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-stone-900 px-5 py-3 font-semibold text-white hover:bg-stone-800 transition-colors sm:w-auto"
                         >
                           {registrationRequired ? 'Continue to Questionnaire' : 'Continue to Checkout'}
@@ -2042,7 +2059,7 @@ export default function Booking() {
                           <ArrowLeft className="w-4 h-4" /> Back
                         </button>
                         <button
-                          onClick={goToStepFour}
+                          onClick={submitContactStep}
                           className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-stone-900 px-5 py-3 font-semibold text-white hover:bg-stone-800 transition-colors sm:w-auto"
                         >
                           {registrationRequired ? 'Continue to Questionnaire' : 'Continue to Checkout'}
@@ -2090,8 +2107,58 @@ export default function Booking() {
             </motion.section>
           )}
 
-          {currentStep === 4 && (
+          {currentStep === 4 && registrationRequired && (
             <motion.section
+              key="questionnaire-step"
+              initial={{ opacity: 0, x: 30 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -30 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="h-full overflow-y-auto px-4 md:px-6 pb-10"
+            >
+              <div className="w-full pt-6 md:pt-8">
+                <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
+                  <h2 className="text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
+                    Event Questionnaire
+                  </h2>
+                  <p className="text-sm md:text-base text-stone-600 mt-2">
+                    Complete this form to continue checkout.
+                  </p>
+
+                  {registrationForm ? (
+                    <EventRegistrationCheckoutForm
+                      form={registrationForm}
+                      ticketQuantity={selectedSeatIds.length}
+                      storageKey={`event-registration:${performanceId || 'event'}:${registrationForm.versionId}`}
+                      checkoutCustomerName={customerName}
+                      disabled={processing}
+                      onValidityChange={({ valid, payload }) => {
+                        setRegistrationValid(valid);
+                        setRegistrationPayload(payload);
+                      }}
+                      onSubmit={() => setCurrentStep(5)}
+                    />
+                  ) : null}
+
+                  <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center justify-between border-t border-stone-100 pt-6">
+                    <button
+                      onClick={() => {
+                        setStepError(null);
+                        setCurrentStep(3);
+                      }}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 sm:w-auto"
+                    >
+                      <ArrowLeft className="w-4 h-4" /> Back
+                    </button>
+                    {/* EventRegistrationCheckoutForm has its own submit button */}
+                  </div>
+                </div>
+              </div>
+            </motion.section>
+          )}
+
+          {currentStep === 5 && (
+             <motion.section
               key="checkout-step"
               initial={{ opacity: 0, x: 30 }}
               animate={{ opacity: 1, x: 0 }}
@@ -2099,13 +2166,7 @@ export default function Booking() {
               transition={{ duration: 0.25, ease: 'easeOut' }}
               className="h-full overflow-y-auto px-4 md:px-6 pb-10"
             >
-              <div
-                className={
-                  showStepFourOrderSummary
-                    ? 'max-w-6xl mx-auto pt-6 md:pt-8 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6'
-                    : 'w-full pt-6 md:pt-8'
-                }
-              >
+              <div className="max-w-6xl mx-auto pt-6 md:pt-8 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6">
                 <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
                   {checkoutQueue ? (
                     <>
@@ -2142,27 +2203,11 @@ export default function Booking() {
                   ) : (
                     <>
                       <h2 className="text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
-                        {registrationRequired ? 'Event Questionnaire' : 'Checkout'}
+                        Checkout
                       </h2>
                       <p className="text-sm md:text-base text-stone-600 mt-2">
-                        {registrationRequired
-                          ? 'Complete this form to continue checkout.'
-                          : 'Everything looks good. Continue to payment to finish checkout.'}
+                        Everything looks good. Continue to payment to finish checkout.
                       </p>
-
-                      {registrationForm ? (
-                        <EventRegistrationCheckoutForm
-                          form={registrationForm}
-                          ticketQuantity={selectedSeatIds.length}
-                          storageKey={`event-registration:${performanceId || 'event'}:${registrationForm.versionId}`}
-                          checkoutCustomerName={customerName}
-                          disabled={Boolean(pendingStripePayment) || processing}
-                          onValidityChange={({ valid, payload }) => {
-                            setRegistrationValid(valid);
-                            setRegistrationPayload(payload);
-                          }}
-                        />
-                      ) : null}
 
                       <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center">
                         <button
@@ -2170,7 +2215,7 @@ export default function Booking() {
                             setStepError(null);
                             resetPendingPayment();
                             setCheckoutQueue(null);
-                            setCurrentStep(3);
+                            setCurrentStep(registrationRequired ? 4 : 3);
                           }}
                           className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 sm:w-auto"
                         >
@@ -2211,45 +2256,50 @@ export default function Booking() {
                   )}
                 </div>
 
-                {showStepFourOrderSummary ? (
-                  <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="inline-flex items-center gap-2 text-stone-900 font-bold" style={{ fontFamily: 'Georgia, serif' }}>
-                        <Ticket className="w-4 h-4" /> Order Summary
-                      </div>
-                      <div className="text-sm text-stone-500 font-semibold">
-                        {selectedSeats.length} {seatSelectionEnabled ? 'seats' : 'tickets'}
-                      </div>
+                <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="inline-flex items-center gap-2 text-stone-900 font-bold" style={{ fontFamily: 'Georgia, serif' }}>
+                      <Ticket className="w-4 h-4" /> Order Summary
                     </div>
-
-                    <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
-                      {selectedSeatsWithPricing.map((item, index) => (
-                        <div key={item.seat.id} className="rounded-xl border border-stone-200 bg-stone-50 p-3">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <div className="font-bold text-stone-900">
-                                {seatSelectionEnabled
-                                  ? `${item.seat.sectionName} Row ${item.seat.row} Seat ${item.seat.number}`
-                                  : `General Admission Ticket ${index + 1}`}
-                              </div>
-                              <div className="text-xs text-stone-500">{item.optionLabel}</div>
-                            </div>
-                            <div className="font-bold text-stone-900">${(item.unitPrice / 100).toFixed(2)}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="mt-5 border-t border-stone-200 pt-4 flex items-end justify-between">
-                      <div className="text-sm text-stone-500">Total</div>
-                      <div className="text-3xl font-bold text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
+                    <div className="text-sm text-stone-500 font-semibold">
+                      {selectedSeats.length} {seatSelectionEnabled ? 'seats' : 'tickets'}
                     </div>
                   </div>
-                ) : null}
+
+                  <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                    {selectedSeatsWithPricing.map((item, index) => (
+                      <div key={item.seat.id} className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="font-bold text-stone-900">
+                              {seatSelectionEnabled
+                                ? `${item.seat.sectionName} Row ${item.seat.row} Seat ${item.seat.number}`
+                                : `General Admission Ticket ${index + 1}`}
+                            </div>
+                            <div className="text-xs text-stone-500">{item.optionLabel}</div>
+                            
+                            {getChildName(registrationForm, registrationPayload, index) ? (
+                              <div className="text-xs font-semibold text-blue-700 mt-0.5">
+                                • {getChildName(registrationForm, registrationPayload, index)}
+                              </div>
+                            ) : null}
+                          </div>
+                          <div className="font-bold text-stone-900">${(item.unitPrice / 100).toFixed(2)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-5 border-t border-stone-200 pt-4 flex items-end justify-between">
+                    <div className="text-sm text-stone-500">Total</div>
+                    <div className="text-3xl font-bold text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
+                  </div>
+                </div>
               </div>
             </motion.section>
           )}
-        </AnimatePresence>
+
+          </AnimatePresence>
       </div>
     </div>
   );
