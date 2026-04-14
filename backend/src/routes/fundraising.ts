@@ -5,7 +5,9 @@ import { prisma } from '../lib/prisma.js';
 import { env } from '../lib/env.js';
 import { handleRouteError } from '../lib/route-error.js';
 import { stripe } from '../lib/stripe.js';
+import { logAudit } from '../lib/audit-log.js';
 import { reconcileDonationThankYouEmail } from '../services/donation-thank-you-service.js';
+import { releasePendingStudentCreditForOrderTx } from '../services/student-ticket-credit-service.js';
 
 const donationIntentSchema = z.object({
   amountCents: z.coerce.number().int().min(100).max(100000),
@@ -18,6 +20,10 @@ const adminDonationListQuerySchema = z.object({
 });
 
 const adminFundraisingAttendeesParamsSchema = z.object({
+  performanceId: z.string().trim().min(1)
+});
+
+const adminFundraisingDeleteOrdersParamsSchema = z.object({
   performanceId: z.string().trim().min(1)
 });
 
@@ -40,6 +46,8 @@ function isSeatEffectivelyAvailable(seat: {
 }
 
 export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
+  const adminActor = (request: { user: { username?: string } }) => request.user.username || 'admin';
+
   app.post(
     '/api/fundraising/donations/intent',
     {
@@ -338,6 +346,150 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
       handleRouteError(reply, err, 'Failed to fetch fundraising attendee responses');
     }
   });
+
+  app.delete(
+    '/api/admin/fundraising/events/:performanceId/orders',
+    { preHandler: app.requireAdminRole('ADMIN') },
+    async (request, reply) => {
+      const parsedParams = adminFundraisingDeleteOrdersParamsSchema.safeParse(request.params || {});
+      if (!parsedParams.success) {
+        return reply.status(400).send({ error: parsedParams.error.flatten() });
+      }
+
+      try {
+        const performance = await prisma.performance.findUnique({
+          where: { id: parsedParams.data.performanceId },
+          select: {
+            id: true,
+            title: true,
+            isFundraiser: true,
+            show: { select: { title: true } }
+          }
+        });
+
+        if (!performance) {
+          return reply.status(404).send({ error: 'Fundraising event not found' });
+        }
+
+        if (!performance.isFundraiser) {
+          return reply.status(400).send({ error: 'Selected performance is not a fundraising event' });
+        }
+
+        const result = await prisma.$transaction(async (tx) => {
+          const [orderCount, ticketCount, orderSeatCount, responseCount] = await Promise.all([
+            tx.order.count({ where: { performanceId: performance.id } }),
+            tx.ticket.count({ where: { performanceId: performance.id } }),
+            tx.orderSeat.count({ where: { order: { performanceId: performance.id } } }),
+            tx.eventRegistrationSubmission.count({ where: { performanceId: performance.id } })
+          ]);
+
+          if (orderCount === 0) {
+            return {
+              performance,
+              ordersDeleted: 0,
+              ticketsDeleted: 0,
+              orderSeatsDeleted: 0,
+              submissionsDeleted: 0,
+              seatsResetToAvailable: 0,
+              pendingStudentCreditsReleased: 0
+            };
+          }
+
+          const [orders, seatRows] = await Promise.all([
+            tx.order.findMany({
+              where: { performanceId: performance.id },
+              select: {
+                id: true
+              }
+            }),
+            tx.orderSeat.findMany({
+              where: {
+                order: {
+                  performanceId: performance.id
+                },
+                seatId: { not: null }
+              },
+              select: {
+                seatId: true
+              }
+            })
+          ]);
+
+          let pendingStudentCreditsReleased = 0;
+          for (const order of orders) {
+            pendingStudentCreditsReleased += await releasePendingStudentCreditForOrderTx(tx, order.id);
+          }
+
+          const seatIds = [...new Set(seatRows.map((row) => row.seatId).filter((seatId): seatId is string => Boolean(seatId)))];
+          let seatsResetToAvailable = 0;
+          if (seatIds.length > 0) {
+            const updatedSeats = await tx.seat.updateMany({
+              where: {
+                id: { in: seatIds },
+                performanceId: performance.id,
+                status: 'SOLD'
+              },
+              data: {
+                status: 'AVAILABLE',
+                holdSessionId: null
+              }
+            });
+            seatsResetToAvailable = updatedSeats.count;
+          }
+
+          await tx.order.deleteMany({
+            where: {
+              performanceId: performance.id
+            }
+          });
+
+          return {
+            performance,
+            ordersDeleted: orderCount,
+            ticketsDeleted: ticketCount,
+            orderSeatsDeleted: orderSeatCount,
+            submissionsDeleted: responseCount,
+            seatsResetToAvailable,
+            pendingStudentCreditsReleased
+          };
+        });
+
+        await logAudit({
+          actor: adminActor(request),
+          action: 'FUNDRAISER_EVENT_ORDERS_PURGED',
+          entityType: 'Performance',
+          entityId: result.performance.id,
+          metadata: {
+            performanceTitle: result.performance.title || result.performance.show.title,
+            ordersDeleted: result.ordersDeleted,
+            ticketsDeleted: result.ticketsDeleted,
+            orderSeatsDeleted: result.orderSeatsDeleted,
+            submissionsDeleted: result.submissionsDeleted,
+            seatsResetToAvailable: result.seatsResetToAvailable,
+            pendingStudentCreditsReleased: result.pendingStudentCreditsReleased
+          }
+        });
+
+        return reply.send({
+          success: true,
+          performance: {
+            id: result.performance.id,
+            title: result.performance.title || result.performance.show.title
+          },
+          summary: {
+            ordersDeleted: result.ordersDeleted,
+            ticketsDeleted: result.ticketsDeleted,
+            orderSeatsDeleted: result.orderSeatsDeleted,
+            submissionsDeleted: result.submissionsDeleted,
+            seatsResetToAvailable: result.seatsResetToAvailable,
+            pendingStudentCreditsReleased: result.pendingStudentCreditsReleased
+          }
+        });
+      } catch (err) {
+        handleRouteError(reply, err, 'Failed to delete fundraising event orders');
+      }
+    }
+  );
 
   app.get('/api/fundraising/events', async (_request, reply) => {
     try {

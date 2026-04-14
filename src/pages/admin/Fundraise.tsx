@@ -387,6 +387,7 @@ export default function AdminFundraisePage() {
   const [attendeeSummary, setAttendeeSummary] = useState<{ orderCount: number; ticketCount: number; responseCount: number } | null>(null);
   const [attendeesLoading, setAttendeesLoading] = useState(false);
   const [attendeesError, setAttendeesError] = useState<string | null>(null);
+  const [purgingOrders, setPurgingOrders] = useState(false);
   const [expandedAttendeeOrderId, setExpandedAttendeeOrderId] = useState<string | null>(null);
   const [selectedDonationAmountCents, setSelectedDonationAmountCents] = useState<number | null>(DONATION_PRESET_AMOUNTS_CENTS[0]);
   const [customDonationAmount, setCustomDonationAmount] = useState('');
@@ -582,6 +583,51 @@ export default function AdminFundraisePage() {
     URL.revokeObjectURL(url);
 
     setNotice('Attendee CSV export downloaded.');
+  }
+
+  async function purgeFundraisingEventOrders() {
+    if (!selectedEventId || purgingOrders) {
+      return;
+    }
+
+    const eventName = selectedEvent?.title || 'this fundraising event';
+    const confirmation = window.prompt(
+      `Type DELETE to permanently remove all orders for "${eventName}". This cannot be undone.`
+    );
+    if (confirmation !== 'DELETE') {
+      return;
+    }
+
+    setPurgingOrders(true);
+    setAttendeesError(null);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const response = await adminFetch<{
+        success: boolean;
+        summary: {
+          ordersDeleted: number;
+          ticketsDeleted: number;
+          orderSeatsDeleted: number;
+          submissionsDeleted: number;
+          seatsResetToAvailable: number;
+          pendingStudentCreditsReleased: number;
+        };
+      }>(`/api/admin/fundraising/events/${encodeURIComponent(selectedEventId)}/orders`, {
+        method: 'DELETE'
+      });
+
+      setExpandedAttendeeOrderId(null);
+      await Promise.all([loadAttendees(selectedEventId), loadEvents()]);
+      setNotice(
+        `Deleted ${response.summary.ordersDeleted} order(s), ${response.summary.ticketsDeleted} ticket(s), and ${response.summary.submissionsDeleted} questionnaire response(s).`
+      );
+    } catch (err) {
+      setAttendeesError(err instanceof Error ? err.message : 'Failed to delete orders for this fundraising event');
+    } finally {
+      setPurgingOrders(false);
+    }
   }
 
   useEffect(() => {
@@ -1712,6 +1758,15 @@ export default function AdminFundraisePage() {
                 className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Download CSV
+              </button>
+              <button
+                type="button"
+                onClick={() => void purgeFundraisingEventOrders()}
+                disabled={!selectedEventId || attendeeRows.length === 0 || attendeesLoading || purgingOrders}
+                className="inline-flex items-center gap-2 rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Trash2 className="h-4 w-4" />
+                {purgingOrders ? 'Deleting Orders…' : 'Delete All Orders'}
               </button>
             </div>
           </section>
