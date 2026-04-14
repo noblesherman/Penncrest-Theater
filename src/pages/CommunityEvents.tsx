@@ -161,18 +161,17 @@ export default function CommunityEvents() {
                   alt={featuredEvent.title}
                   className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/88 via-black/35 to-transparent" />
                 <div className="absolute bottom-0 p-7 sm:p-8 max-sm:p-5">
-                  <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur-sm">
+                  <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur-sm max-sm:hidden">
                     <CalendarDays className="h-3 w-3 text-amber-300" />
                     <span className="text-xs font-semibold text-amber-200">
                       {featuredEvent.dateLabel} · {featuredEvent.timeLabel}
                     </span>
                   </div>
                   <h2 className="serif text-3xl font-bold text-white sm:text-4xl max-sm:text-2xl">{featuredEvent.title}</h2>
-                  <p className="mt-2 max-w-lg text-sm text-stone-300">{featuredEvent.summary}</p>
-                  {featuredEvent.location && <p className="mt-1 text-xs text-stone-400">{featuredEvent.location}</p>}
-                  <div className="mt-5 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-stone-900 transition group-hover:bg-stone-100">
+                  {featuredEvent.location && <p className="mt-1 text-xs text-stone-400 max-sm:hidden">{featuredEvent.location}</p>}
+                  <div className="mt-5 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-stone-900 transition group-hover:bg-stone-100 max-sm:hidden">
                     {featuredEvent.ctaLabel}
                     <ArrowRight className="h-3.5 w-3.5" />
                   </div>
@@ -193,9 +192,9 @@ export default function CommunityEvents() {
                       <img src={event.imageUrl} alt={event.title} className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
                       <div className="absolute bottom-0 p-5">
-                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-300">{event.dateLabel}</p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-300 max-sm:hidden">{event.dateLabel}</p>
                         <h3 className="serif mt-1 text-xl font-bold text-white">{event.title}</h3>
-                        {event.seatModeLabel && <p className="mt-0.5 text-xs text-stone-400">{event.seatModeLabel}</p>}
+                        {event.seatModeLabel && <p className="mt-0.5 text-xs text-stone-400 max-sm:hidden">{event.seatModeLabel}</p>}
                       </div>
                     </Link>
                   </motion.div>

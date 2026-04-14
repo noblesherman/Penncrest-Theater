@@ -367,14 +367,6 @@ export default function AdminLayout() {
 
         {/* Top bar */}
         <header className="h-14 bg-[#f5f4f2] border-b border-black/[0.06] flex items-center px-6 gap-4 sticky top-0 z-10">
-          {/* Mobile logo */}
-          <div className="flex md:hidden items-center gap-2">
-            <div className="h-6 w-6 rounded-md bg-rose-600 flex items-center justify-center">
-              <Ticket className="h-3 w-3 text-white" />
-            </div>
-            <span className="text-sm font-semibold" style={{ fontFamily: "var(--font-sans)" }}>Penncrest Theater</span>
-          </div>
-
           {/* Page title */}
           <div className="hidden md:flex items-center gap-2 text-sm text-zinc-400">
             <button
@@ -390,7 +382,7 @@ export default function AdminLayout() {
           </div>
 
           {/* Mobile nav pills */}
-          <div className="no-scrollbar flex md:hidden gap-1.5 overflow-x-auto flex-1 px-1">
+          <div className="no-scrollbar flex md:hidden flex-1 gap-1.5 overflow-x-auto">
             {visibleNavSections.flatMap((s) => s.items).map((item) => {
               const Icon = item.icon;
               const active = isLinkActive(pathname, item.to);

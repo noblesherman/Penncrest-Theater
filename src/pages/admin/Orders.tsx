@@ -2390,14 +2390,14 @@ export default function AdminOrdersPage() {
         {showWizard && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm sm:items-center sm:p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2 backdrop-blur-sm sm:p-4"
           >
             <motion.div
               initial={{ y: 24, opacity: 0, scale: 0.97 }}
               animate={{ y: 0,  opacity: 1, scale: 1    }}
               exit={{    y: 24, opacity: 0, scale: 0.97 }}
               transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-              className="flex h-[100dvh] w-full flex-col bg-white shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:max-w-xl sm:rounded-3xl sm:overflow-hidden"
+              className="flex w-full max-h-[96dvh] flex-col overflow-hidden bg-white shadow-2xl sm:max-w-xl sm:rounded-3xl"
             >
               {/* Wizard header */}
               <div className="flex-shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">

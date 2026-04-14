@@ -395,7 +395,7 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
             };
           }
 
-          const [orders, seatRows] = await Promise.all([
+          const [orders, seatRows, tickets] = await Promise.all([
             tx.order.findMany({
               where: { performanceId: performance.id },
               select: {
@@ -412,6 +412,15 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
               select: {
                 seatId: true
               }
+            }),
+            tx.ticket.findMany({
+              where: {
+                performanceId: performance.id,
+                seatId: { not: null }
+              },
+              select: {
+                seatId: true
+              }
             })
           ]);
 
@@ -420,7 +429,11 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
             pendingStudentCreditsReleased += await releasePendingStudentCreditForOrderTx(tx, order.id);
           }
 
-          const seatIds = [...new Set(seatRows.map((row) => row.seatId).filter((seatId): seatId is string => Boolean(seatId)))];
+          const seatIdsRaw = [
+            ...seatRows.map((row) => row.seatId),
+            ...tickets.map((row) => row.seatId)
+          ];
+          const seatIds = [...new Set(seatIdsRaw.filter((seatId): seatId is string => Boolean(seatId)))];
           let seatsResetToAvailable = 0;
           if (seatIds.length > 0) {
             const updatedSeats = await tx.seat.updateMany({
