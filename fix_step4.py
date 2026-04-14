@@ -1,112 +1,99 @@
+import re
+
 with open('src/pages/Booking.tsx', 'r') as f:
-    content = f.read()
+    text = f.read()
 
-bad = """{currentStep === 4 && registrationRequired && (
-              <motion.section
-                key="questionnaire-step"
-                initial={{ opacity: 0, x: 30 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -30 }}
-                transition={{ duration: 0.25, ease: 'easeOut' }}
-                className="h-full overflow-y-auto px-4 md:px-6 pb-10"
-              >
-                <div className="w-full pt-6 md:pt-8">
-                  <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
-                    <h2 className="text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
-                      Event Questionnaire
-                    </h2>
-                    <p className="text-sm md:text-base text-stone-600 mt-2">
-                      Complete this form to continue checkout.
-                    </p>
+start_str = """              className="h-full"
+            >
+              <div className="h-full min-h-0 flex flex-col xl:flex-row overflow-hidden">"""
 
-                    {registrationForm ? (
-                      <EventRegistrationCheckoutForm
-                        form={registrationForm}
-                        ticketQuantity={selectedSeatIds.length}
-                        storageKey={`event-registration:${performanceId || 'event'}:${registrationForm.versionId}`}
-                        checkoutCustomerName={customerName}
-                        disabled={processing}
-                        onValidityChange={({ valid, payload }) => {
-                          setRegistrationValid(valid);
-                          setRegistrationPayload(payload);
-                        }}
-                        onSubmit={() => setCurrentStep(5)}
-                      />
-                    ) : null}
+replacement_start = """              className="h-full"
+            >
+              {seatSelectionEnabled ? (
+                <div className="h-full min-h-0 flex flex-col xl:flex-row overflow-hidden">"""
 
-                    <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center justify-between border-t border-stone-100 pt-6">
-                      <button
-                        onClick={() => {
-                          setStepError(null);
-                          setCurrentStep(3);
-                        }}
-                        className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 sm:w-auto"
-                      >
-                        <ArrowLeft className="w-4 h-4" /> Back
-                      </button>
-                      {/* EventRegistrationCheckoutForm has its own submit button */}
+end_pattern = """                  </div>
+                </div>
+              </div>
+            </motion.section>"""
+
+# Find exact sections
+pos = text.find(start_str)
+pos_end = text.find(end_pattern, pos)
+
+replacement_end = """                  </div>
+                </div>
+              </div>
+              ) : (
+                <div className="h-full flex items-center justify-center bg-stone-50 overflow-y-auto px-4 py-8 relative">
+                  <div className="w-full max-w-lg bg-white rounded-3xl shadow-xl border border-stone-100 p-8 flex flex-col text-center">
+                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-700 shadow-sm border border-red-100 mb-6">
+                      <svg className="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"></path><path d="M13 5v2"></path><path d="M13 17v2"></path><path d="M13 11v2"></path></svg>
                     </div>
-                  </div>
-                </div>
-              </motion.section>
-            )}"""
+                    
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-red-700 mb-2">General Admission</p>
+                    <h2 className="text-3xl font-black text-stone-900 mb-3" style={{ fontFamily: 'Georgia, serif' }}>Choose Your Tickets</h2>
+                    <p className="text-stone-500 mb-8 text-sm">Select the number of tickets you'd like to reserve. Seating is assigned upon entry.</p>
+                    
+                    <div className="bg-stone-50 rounded-2xl p-6 border border-stone-200 mb-8 flex flex-col items-center">
+                      <div className="text-xs font-bold uppercase tracking-[0.14em] text-stone-500 mb-4">Tickets Needed</div>
+                      
+                      <div className="flex items-center justify-center gap-6">
+                        <button
+                          type="button"
+                          onClick={() => setAutoSeatCount((count) => Math.max(0, count - 1))}
+                          className="h-14 w-14 rounded-full border-2 border-stone-200 bg-white flex items-center justify-center text-3xl font-light text-stone-500 hover:border-stone-300 hover:bg-stone-50 transition-all active:scale-95"
+                        >
+                          -
+                        </button>
+                        
+                        <div className="w-24 text-center">
+                          <input
+                            type="number"
+                            min="0"
+                            max={autoAssignableSeatIds.length}
+                            value={autoSeatCount || ''}
+                            onChange={(event) => {
+                              const next = Math.max(0, Number(event.target.value) || 0);
+                              setAutoSeatCount(Math.min(next, autoAssignableSeatIds.length));
+                            }}
+                            onBlur={(event) => {
+                              if (!event.target.value) setAutoSeatCount(0);
+                            }}
+                            className="w-full text-5xl font-black text-stone-900 text-center bg-transparent outline-none focus:ring-0 p-0"
+                          />
+                        </div>
+                        
+                        <button
+                          type="button"
+                          onClick={() => setAutoSeatCount((count) => Math.min(autoAssignableSeatIds.length, count + 1))}
+                          disabled={autoSeatCount >= autoAssignableSeatIds.length}
+                          className="h-14 w-14 rounded-full border-2 border-stone-200 bg-white flex items-center justify-center text-3xl font-light text-stone-500 hover:border-stone-300 hover:bg-stone-50 disabled:opacity-30 disabled:hover:border-stone-200 disabled:hover:bg-white disabled:hover:text-stone-500 transition-all active:scale-95"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <div className="mt-5 text-xs font-semibold text-stone-400 bg-white px-3 py-1.5 rounded-full border border-stone-200 shadow-sm">
+                        {autoAssignableSeatIds.length - autoSeatCount} tickets remaining
+                      </div>
+                    </div>
 
-good = """{currentStep === 4 && registrationRequired && (
-              <motion.section
-                key="questionnaire-step"
-                initial={{ opacity: 0, x: 30 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -30 }}
-                transition={{ duration: 0.25, ease: 'easeOut' }}
-                className="h-full flex flex-col px-4 md:px-6 pb-6 pt-6"
-              >
-                <div className="flex-1 w-full min-h-0 flex flex-col rounded-2xl border border-stone-100 bg-white overflow-hidden shadow-sm">
-                  <div className="shrink-0 p-5 md:p-6 border-b border-stone-100 bg-white">
-                    <h2 className="text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
-                      Event Questionnaire
-                    </h2>
-                    <p className="text-sm md:text-base text-stone-600 mt-2">
-                      Complete this form to continue checkout.
-                    </p>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto px-5 md:px-6 relative min-h-0 container relative" id="registration-form-scroll-container">
-                    {registrationForm ? (
-                      <EventRegistrationCheckoutForm
-                        form={registrationForm}
-                        ticketQuantity={selectedSeatIds.length}
-                        storageKey={`event-registration:${performanceId || 'event'}:${registrationForm.versionId}`}
-                        checkoutCustomerName={customerName}
-                        disabled={processing}
-                        onValidityChange={({ valid, payload }) => {
-                          setRegistrationValid(valid);
-                          setRegistrationPayload(payload);
-                        }}
-                        onSubmit={() => setCurrentStep(5)}
-                      />
-                    ) : null}
-                  </div>
-
-                  <div className="shrink-0 p-5 md:p-6 border-t border-stone-100 bg-stone-50 flex flex-col gap-2 sm:flex-row sm:items-center justify-between">
                     <button
-                      onClick={() => {
-                        setStepError(null);
-                        setCurrentStep(3);
-                      }}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-white bg-transparent sm:w-auto transition-colors"
+                      onClick={goToStepTwo}
+                      disabled={!canContinueToTypes}
+                      className="w-full bg-red-700 text-white rounded-xl py-4 text-base font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-800 transition-colors active:scale-[0.98] flex items-center justify-center gap-2"
                     >
-                      <ArrowLeft className="w-4 h-4" /> Back
+                      Continue Checkout <ArrowRight className="w-4 h-4" />
                     </button>
-                    {/* EventRegistrationCheckoutForm has its own submit button which we might need to detach or we can leave it inside for now, but the outer is locked */}
                   </div>
                 </div>
-              </motion.section>
-            )}"""
+              )}
+            </motion.section>"""
 
-if bad in content:
-    content = content.replace(bad, good)
-    with open('src/pages/Booking.tsx', 'w') as f:
-        f.write(content)
-    print("Replaced!")
-else:
-    print("Not found")
+new_text = text[:pos] + replacement_start + text[pos+len(start_str):]
+pos_end = new_text.find(end_pattern, pos)
+new_text = new_text[:pos_end] + replacement_end + new_text[pos_end+len(end_pattern):]
+
+with open('src/pages/Booking.tsx', 'w') as f:
+    f.write(new_text)
+

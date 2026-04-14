@@ -1,220 +1,111 @@
 import re
 
 with open('src/pages/Booking.tsx', 'r') as f:
-    content = f.read()
+    lines = f.readlines()
 
-# Find the start of {currentStep === 4 && (
-start_idx = content.find('{currentStep === 4 && (')
-if start_idx == -1:
-    print("Could not find currentStep === 4")
-    exit(1)
+new_lines = []
+in_step_1 = False
+found_start = False
+found_end = False
 
-# Find the end of it safely by looking for the AnimatePresence closure
-end_idx = content.find('</AnimatePresence>', start_idx)
-if end_idx == -1:
-    print("Could not find AnimatePresence")
-    exit(1)
+new_code = """              {seatSelectionEnabled ? (
+                <div className="h-full min-h-0 flex flex-col xl:flex-row overflow-hidden">"""
 
-# The content to inject
-new_content = """{currentStep === 4 && registrationRequired && (
-            <motion.section
-              key="questionnaire-step"
-              initial={{ opacity: 0, x: 30 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -30 }}
-              transition={{ duration: 0.25, ease: 'easeOut' }}
-              className="h-full overflow-y-auto px-4 md:px-6 pb-10"
-            >
-              <div className="w-full pt-6 md:pt-8">
-                <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
-                  <h2 className="text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
-                    Event Questionnaire
-                  </h2>
-                  <p className="text-sm md:text-base text-stone-600 mt-2">
-                    Complete this form to continue checkout.
-                  </p>
-
-                  {registrationForm ? (
-                    <EventRegistrationCheckoutForm
-                      form={registrationForm}
-                      ticketQuantity={selectedSeatIds.length}
-                      storageKey={`event-registration:${performanceId || 'event'}:${registrationForm.versionId}`}
-                      checkoutCustomerName={customerName}
-                      disabled={processing}
-                      onValidityChange={({ valid, payload }) => {
-                        setRegistrationValid(valid);
-                        setRegistrationPayload(payload);
-                      }}
-                      onSubmit={() => setCurrentStep(5)}
-                    />
-                  ) : null}
-
-                  <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center justify-between border-t border-stone-100 pt-6">
-                    <button
-                      onClick={() => {
-                        setStepError(null);
-                        setCurrentStep(3);
-                      }}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 sm:w-auto"
-                    >
-                      <ArrowLeft className="w-4 h-4" /> Back
-                    </button>
-                    {/* EventRegistrationCheckoutForm has its own submit button */}
-                  </div>
-                </div>
-              </div>
-            </motion.section>
-          )}
-
-          {currentStep === 5 && (
-             <motion.section
-              key="checkout-step"
-              initial={{ opacity: 0, x: 30 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -30 }}
-              transition={{ duration: 0.25, ease: 'easeOut' }}
-              className="h-full overflow-y-auto px-4 md:px-6 pb-10"
-            >
-              <div className="max-w-6xl mx-auto pt-6 md:pt-8 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6">
-                <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
-                  {checkoutQueue ? (
-                    <>
-                      <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-800">
-                        <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-500" />
-                        Checkout Queue
-                      </div>
-                      <h2 className="mt-4 text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
-                        You're in line
-                      </h2>
-                      <p className="text-sm md:text-base text-stone-600 mt-2">
-                        Keep this page open while we prepare your payment session.
-                      </p>
-
-                      <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                        <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Position</p>
-                          <p className="mt-1 text-3xl font-black text-stone-900">{checkoutQueue.position}</p>
-                        </div>
-                        <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Est. Wait</p>
-                          <p className="mt-1 text-2xl font-black text-stone-900">{formatWaitEstimate(checkoutQueue.estimatedWaitSeconds)}</p>
-                        </div>
-                        <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Refresh</p>
-                          <p className="mt-1 text-2xl font-black text-stone-900">{Math.ceil(checkoutQueue.refreshAfterMs / 1000)}s</p>
-                        </div>
-                      </div>
-
-                      <p className="mt-5 text-sm text-stone-600">
-                        If your hold expires or checkout cannot be prepared, you’ll be returned to seat selection automatically.
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <h2 className="text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
-                        Checkout
-                      </h2>
-                      <p className="text-sm md:text-base text-stone-600 mt-2">
-                        Everything looks good. Continue to payment to finish checkout.
-                      </p>
-
-                      <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center">
+end_code = """                </div>
+              ) : (
+                <div className="h-full flex items-center justify-center bg-stone-50 overflow-y-auto px-4 py-8">
+                  <div className="w-full max-w-lg bg-white rounded-3xl shadow-xl border border-stone-100 p-8 flex flex-col text-center">
+                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-50 text-red-700 mb-6">
+                      <Ticket className="h-8 w-8" />
+                    </div>
+                    
+                    <h2 className="text-3xl font-black text-stone-900 mb-2">General Admission</h2>
+                    <p className="text-stone-500 mb-10">Select the number of tickets you'd like to reserve. Seating is on a first-come, first-served basis at the event.</p>
+                    
+                    <div className="bg-stone-50 rounded-2xl p-6 border border-stone-200 mb-8 flex flex-col items-center">
+                      <div className="text-sm font-bold uppercase tracking-wider text-stone-500 mb-4">Tickets Needed</div>
+                      
+                      <div className="flex items-center justify-center gap-6">
                         <button
-                          onClick={() => {
-                            setStepError(null);
-                            resetPendingPayment();
-                            setCheckoutQueue(null);
-                            setCurrentStep(registrationRequired ? 4 : 3);
-                          }}
-                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 sm:w-auto"
+                          type="button"
+                          onClick={() => setAutoSeatCount((count) => Math.max(0, count - 1))}
+                          className="h-16 w-16 rounded-full border-2 border-stone-200 flex items-center justify-center text-3xl font-light text-stone-500 hover:border-red-600 hover:text-red-700 hover:bg-red-50 transition-all active:scale-95"
                         >
-                          <ArrowLeft className="w-4 h-4" /> Back
+                          -
                         </button>
-                        {!pendingStripePayment && (
-                          <button
-                            onClick={handleCheckout}
-                            disabled={processing || !canSubmitCheckout}
-                            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-red-800 transition-colors sm:w-auto"
-                          >
-                            <CreditCard className="w-4 h-4" />
-                            {processing ? 'Processing...' : 'Checkout'}
-                          </button>
-                        )}
+                        
+                        <div className="w-24 text-center">
+                          <input
+                            type="number"
+                            min="0"
+                            max={autoAssignableSeatIds.length}
+                            value={autoSeatCount || ''}
+                            onChange={(event) => {
+                              const next = Math.max(0, Number(event.target.value) || 0);
+                              setAutoSeatCount(Math.min(next, autoAssignableSeatIds.length));
+                            }}
+                            onBlur={(event) => {
+                              if (!event.target.value) setAutoSeatCount(0);
+                            }}
+                            className="w-full text-5xl font-black text-stone-900 text-center bg-transparent outline-none focus:ring-0 p-0"
+                          />
+                        </div>
+                        
+                        <button
+                          type="button"
+                          onClick={() => setAutoSeatCount((count) => Math.min(autoAssignableSeatIds.length, count + 1))}
+                          disabled={autoSeatCount >= autoAssignableSeatIds.length}
+                          className="h-16 w-16 rounded-full border-2 border-stone-200 flex items-center justify-center text-3xl font-light text-stone-500 hover:border-red-600 hover:text-red-700 hover:bg-red-50 disabled:opacity-30 disabled:hover:border-stone-200 disabled:hover:bg-transparent disabled:hover:text-stone-500 transition-all active:scale-95"
+                        >
+                          +
+                        </button>
                       </div>
-
-                      {pendingStripePayment && stripePromise && stripeElementsOptions && (
-                        <div className="mt-5 rounded-2xl border border-red-100 bg-red-50 p-4">
-                          <p className="text-sm font-semibold text-red-900">
-                            Payment form ready. Complete payment below to finish checkout.
-                          </p>
-                          <Elements stripe={stripePromise} options={stripeElementsOptions}>
-                            <InlineStripePaymentForm
-                              disabled={processing}
-                              onError={(message) => setStepError(message || null)}
-                              onSuccess={finalizeEmbeddedPayment}
-                            />
-                          </Elements>
-                        </div>
-                      )}
-                      {pendingStripePayment && (!stripePromise || !stripeElementsOptions) && (
-                        <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                          Unable to initialize Stripe payment form. Please check Stripe configuration and try again.
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="inline-flex items-center gap-2 text-stone-900 font-bold" style={{ fontFamily: 'Georgia, serif' }}>
-                      <Ticket className="w-4 h-4" /> Order Summary
-                    </div>
-                    <div className="text-sm text-stone-500 font-semibold">
-                      {selectedSeats.length} {seatSelectionEnabled ? 'seats' : 'tickets'}
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
-                    {selectedSeatsWithPricing.map((item, index) => (
-                      <div key={item.seat.id} className="rounded-xl border border-stone-200 bg-stone-50 p-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <div className="font-bold text-stone-900">
-                              {seatSelectionEnabled
-                                ? `${item.seat.sectionName} Row ${item.seat.row} Seat ${item.seat.number}`
-                                : `General Admission Ticket ${index + 1}`}
-                            </div>
-                            <div className="text-xs text-stone-500">{item.optionLabel}</div>
-                            
-                            {/* IF registration tracking exists for this item, display the child's name! */}
-                            {registrationPayload && registrationPayload.entries && registrationPayload.entries[index] && registrationPayload.entries[index].sections ? (
-                               <div className="text-xs font-semibold text-stone-700 mt-0.5">
-                                  {Object.values(registrationPayload.entries[index].sections).flatMap(s => s.fields || []).find(f => f.key.toLowerCase().includes('name'))?.value || ''}
-                               </div>
-                            ) : null}
-                          </div>
-                          <div className="font-bold text-stone-900">${(item.unitPrice / 100).toFixed(2)}</div>
-                        </div>
+                      <div className="mt-4 text-xs font-semibold text-stone-400">
+                        {autoAssignableSeatIds.length - autoSeatCount} tickets remaining
                       </div>
-                    ))}
-                  </div>
+                    </div>
 
-                  <div className="mt-5 border-t border-stone-200 pt-4 flex items-end justify-between">
-                    <div className="text-sm text-stone-500">Total</div>
-                    <div className="text-3xl font-bold text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
+                    <button
+                      onClick={goToStepTwo}
+                      disabled={!canContinueToTypes}
+                      className="w-full bg-red-700 text-white rounded-2xl py-4 text-lg font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-red-800 transition-colors shadow-lg shadow-red-700/20 active:scale-[0.98] flex items-center justify-center gap-2"
+                    >
+                      Continue Checkout <ArrowRight className="w-5 h-5" />
+                    </button>
                   </div>
                 </div>
-              </div>
-            </motion.section>
-          )}
+              )}"""
 
-          """
-
-# Combine
-final_content = content[:start_idx] + new_content + content[end_idx:]
+for i in range(len(lines)):
+    line = lines[i]
+    if line.strip() == '<motion.section' and lines[i+1].strip() == 'key="seat-map-step"':
+        in_step_1 = True
+    
+    if in_step_1 and not found_start and line.strip() == '<div className="h-full min-h-0 flex flex-col xl:flex-row overflow-hidden">':
+        new_lines.append(new_code + '\n')
+        found_start = True
+        continue
+        
+    if in_step_1 and found_start and not found_end and line.strip() == '</motion.section>':
+        # the previous line is "</div>" and the one before also. So we find the </div> that closes the h-full flex row map.
+        # it was at lines[i-1], lines[i-2], lines[i-3] approx.
+        # we will walk backwards from `</motion.section>` to find the right `</div>` block to replace.
+        # actually, I will pop the last 2 lines that were appended (the two `</div>`) and insert `end_code`.
+        back_pop = 0
+        while new_lines[-1].strip() == '</div>':
+            new_lines.pop()
+            back_pop += 1
+            if back_pop == 2:
+                break
+        new_lines.append(end_code + '\n')
+        new_lines.append(line)
+        in_step_1 = False
+        found_end = True
+        continue
+        
+    new_lines.append(line)
 
 with open('src/pages/Booking.tsx', 'w') as f:
-    f.write(final_content)
+    f.writelines(new_lines)
+print('Done writing')
 
-print("Done")
