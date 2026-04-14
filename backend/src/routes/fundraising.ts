@@ -505,6 +505,16 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
         include: {
           show: true,
           pricingTiers: true,
+          orders: {
+            select: {
+              status: true,
+              _count: {
+                select: {
+                  orderSeats: true
+                }
+              }
+            }
+          },
           seats: {
             select: {
               price: true,
@@ -525,7 +535,24 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
         const seatPrices = event.seats.map((seat) => seat.price);
         const minPrice = pricingValues.length > 0 ? Math.min(...pricingValues) : seatPrices.length > 0 ? Math.min(...seatPrices) : 0;
         const maxPrice = pricingValues.length > 0 ? Math.max(...pricingValues) : seatPrices.length > 0 ? Math.max(...seatPrices) : 0;
-        const availableTickets = event.seats.filter((seat) => isSeatEffectivelyAvailable(seat)).length;
+        const effectivelyAvailableCount = event.seats.filter((seat) => isSeatEffectivelyAvailable(seat)).length;
+
+        let availableTickets = effectivelyAvailableCount;
+
+        if (!event.seatSelectionEnabled) {
+          // Legacy GA orders may leave SOLD seats behind without active order links after deletion/refund.
+          const soldSeatCount = event.seats.filter((seat) => seat.status === 'SOLD').length;
+          const activeMappedSeatCount = event.orders
+            .filter((order) => order.status !== 'CANCELED' && order.status !== 'REFUNDED')
+            .reduce((total, order) => total + order._count.orderSeats, 0);
+
+          if (soldSeatCount > activeMappedSeatCount) {
+            availableTickets = Math.min(
+              event.seats.length,
+              effectivelyAvailableCount + (soldSeatCount - activeMappedSeatCount)
+            );
+          }
+        }
 
         return {
           id: event.id,

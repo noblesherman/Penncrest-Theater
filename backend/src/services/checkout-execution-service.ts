@@ -537,7 +537,7 @@ export async function executeCheckoutRequest(payload: CheckoutRequestPayload): P
       await tx.orderSeat.createMany({
         data: seatAssignments.map((assignment) => ({
           orderId: createdOrder.id,
-          seatId: isGeneralAdmissionNoSeatLinks ? null : assignment.seat.id,
+          seatId: assignment.seat.id,
           price: assignment.finalPrice,
           ticketType: assignment.ticketType,
           attendeeName: attendeeNames?.[assignment.seat.id],

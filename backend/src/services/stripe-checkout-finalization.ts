@@ -157,7 +157,7 @@ async function createMissingTickets(
           orderId: order.id,
           performanceId: order.performanceId,
           userId: order.userId,
-          seatId: null,
+          seatId: orderSeat.seatId,
           type: ticketType,
           priceCents: orderSeat.price,
           status: 'ISSUED',

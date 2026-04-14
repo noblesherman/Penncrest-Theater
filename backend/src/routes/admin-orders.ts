@@ -2253,6 +2253,11 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
             inPersonPaymentMethod: true,
             stripeSessionId: true,
             stripePaymentIntentId: true,
+            performance: {
+              select: {
+                seatSelectionEnabled: true
+              }
+            },
             orderSeats: {
               select: {
                 seatId: true
@@ -2304,6 +2309,35 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
               holdSessionId: null
             }
           });
+        } else if (!order.performance.seatSelectionEnabled && order._count.orderSeats > 0) {
+          // Legacy GA orders may have null seat links; release by count because GA seats are fungible.
+          const fallbackSeatIds = (
+            await tx.seat.findMany({
+              where: {
+                performanceId: order.performanceId,
+                status: 'SOLD'
+              },
+              orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+              take: order._count.orderSeats,
+              select: {
+                id: true
+              }
+            })
+          ).map((seat) => seat.id);
+
+          if (fallbackSeatIds.length > 0) {
+            await tx.seat.updateMany({
+              where: {
+                id: { in: fallbackSeatIds },
+                performanceId: order.performanceId,
+                status: 'SOLD'
+              },
+              data: {
+                status: 'AVAILABLE',
+                holdSessionId: null
+              }
+            });
+          }
         }
 
         await tx.order.delete({

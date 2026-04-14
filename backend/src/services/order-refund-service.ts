@@ -59,6 +59,11 @@ export async function applySuccessfulRefundToOrder(params: {
     const order = await tx.order.findUnique({
       where: { id: params.orderId },
       include: {
+        performance: {
+          select: {
+            seatSelectionEnabled: true
+          }
+        },
         orderSeats: {
           select: {
             seatId: true
@@ -106,20 +111,54 @@ export async function applySuccessfulRefundToOrder(params: {
       notes: 'Stripe refund confirmed'
     });
 
-    await tx.seat.updateMany({
-      where: {
-        id: {
-          in: order.orderSeats
-            .map((seat) => seat.seatId)
-            .filter((seatId): seatId is string => Boolean(seatId))
+    const seatIds = order.orderSeats
+      .map((seat) => seat.seatId)
+      .filter((seatId): seatId is string => Boolean(seatId));
+
+    if (seatIds.length > 0) {
+      await tx.seat.updateMany({
+        where: {
+          id: {
+            in: seatIds
+          },
+          status: 'SOLD'
         },
-        status: 'SOLD'
-      },
-      data: {
-        status: 'AVAILABLE',
-        holdSessionId: null
+        data: {
+          status: 'AVAILABLE',
+          holdSessionId: null
+        }
+      });
+    } else if (!order.performance.seatSelectionEnabled && order.orderSeats.length > 0) {
+      // Legacy GA orders may have null seat links; release by count because GA seats are fungible.
+      const fallbackSeatIds = (
+        await tx.seat.findMany({
+          where: {
+            performanceId: order.performanceId,
+            status: 'SOLD'
+          },
+          orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+          take: order.orderSeats.length,
+          select: {
+            id: true
+          }
+        })
+      ).map((seat) => seat.id);
+
+      if (fallbackSeatIds.length > 0) {
+        await tx.seat.updateMany({
+          where: {
+            id: {
+              in: fallbackSeatIds
+            },
+            status: 'SOLD'
+          },
+          data: {
+            status: 'AVAILABLE',
+            holdSessionId: null
+          }
+        });
       }
-    });
+    }
   });
 }
 

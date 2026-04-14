@@ -266,7 +266,8 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
     await tx.orderSeat.createMany({
       data: seatAssignments.map((assignment) => ({
         orderId: createdOrder.id,
-        seatId: isGeneralAdmissionNoSeatLinks ? null : assignment.seat.id,
+        // Keep seat links for GA so delete/refund flows can reliably restore inventory.
+        seatId: assignment.seat.id,
         price: assignment.price,
         ticketType: assignment.ticketType,
         attendeeName: assignment.attendeeName,
@@ -290,7 +291,7 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
         orderId: createdOrder.id,
         performanceId: params.performanceId,
         userId: params.userId || null,
-        seatId: isGeneralAdmissionNoSeatLinks ? null : assignment.seat.id,
+        seatId: assignment.seat.id,
         type: issuedTicketType,
         priceCents: assignment.price,
         status: 'ISSUED' as const,

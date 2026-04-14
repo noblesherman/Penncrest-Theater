@@ -111,6 +111,33 @@ export default function FundraisingEventDetail() {
   );
 
   const event = useMemo<DetailEvent | null>(() => {
+    if (liveEvent) {
+      const { dateLabel, timeLabel } = formatEventDate(liveEvent.startsAt);
+      const priceLabel = formatPriceLabel(liveEvent.minPrice, liveEvent.maxPrice);
+      const salesCutoffLine = liveEvent.salesCutoffAt
+        ? `Online sales close: ${formatEventDate(liveEvent.salesCutoffAt).dateLabel} at ${formatEventDate(liveEvent.salesCutoffAt).timeLabel}`
+        : null;
+      return {
+        id: liveEvent.id,
+        title: liveEvent.title,
+        dateLabel,
+        timeLabel,
+        location: liveEvent.venue,
+        heroImageUrl: liveEvent.posterUrl || 'https://picsum.photos/id/1043/1600/900',
+        summary: liveEvent.notes || liveEvent.description || 'This fundraiser supports Penncrest Theater students and production programs.',
+        longDescription: liveEvent.notes || liveEvent.description || 'Join this fundraising event to support student performers, technicians, and theater programs all season long.',
+        priceLabel,
+        details: [
+          `Ticketing: ${liveEvent.seatSelectionEnabled ? 'Reserved Seating' : 'General Admission'}`,
+          `Available tickets: ${liveEvent.availableTickets}`,
+          salesCutoffLine,
+        ].filter((line): line is string => Boolean(line)),
+        bookingHref: `/booking/${liveEvent.id}`,
+        salesOpen: liveEvent.salesOpen,
+        linkHref: `/fundraising/events/${liveEvent.id}`,
+        source: 'live',
+      };
+    }
     if (staticEvent) {
       return {
         id: staticEvent.id,
@@ -125,33 +152,6 @@ export default function FundraisingEventDetail() {
         details: staticEvent.details,
         linkHref: `/fundraising/events/${staticEvent.slug}`,
         source: 'static',
-      };
-    }
-    if (liveEvent) {
-      const { dateLabel, timeLabel } = formatEventDate(liveEvent.startsAt);
-      const priceLabel = formatPriceLabel(liveEvent.minPrice, liveEvent.maxPrice);
-      const salesCutoffLine = liveEvent.salesCutoffAt
-        ? `Online sales close: ${formatEventDate(liveEvent.salesCutoffAt).dateLabel} at ${formatEventDate(liveEvent.salesCutoffAt).timeLabel}`
-        : null;
-      return {
-        id: liveEvent.id,
-        title: liveEvent.title,
-        dateLabel,
-        timeLabel,
-        location: liveEvent.venue,
-        heroImageUrl: liveEvent.posterUrl || 'https://picsum.photos/id/1043/1600/900',
-        summary: liveEvent.description || liveEvent.notes || 'This fundraiser supports Penncrest Theater students and production programs.',
-        longDescription: liveEvent.notes || liveEvent.description || 'Join this fundraising event to support student performers, technicians, and theater programs all season long.',
-        priceLabel,
-        details: [
-          `Ticketing: ${liveEvent.seatSelectionEnabled ? 'Reserved Seating' : 'General Admission'}`,
-          `Available tickets: ${liveEvent.availableTickets}`,
-          salesCutoffLine,
-        ].filter((line): line is string => Boolean(line)),
-        bookingHref: `/booking/${liveEvent.id}`,
-        salesOpen: liveEvent.salesOpen,
-        linkHref: `/fundraising/events/${liveEvent.id}`,
-        source: 'live',
       };
     }
     return null;
@@ -243,9 +243,6 @@ export default function FundraisingEventDetail() {
             <h1 className="max-w-3xl font-serif text-4xl font-bold text-white sm:text-5xl lg:text-6xl">
               {event.title}
             </h1>
-            <p className="mt-3 max-w-xl text-sm leading-relaxed text-stone-300 sm:text-base">
-              {event.longDescription}
-            </p>
           </motion.div>
         </div>
       </section>
