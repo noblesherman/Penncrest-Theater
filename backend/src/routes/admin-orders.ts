@@ -2250,6 +2250,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
             performanceId: true,
             amountTotal: true,
             source: true,
+            inPersonPaymentMethod: true,
             stripeSessionId: true,
             stripePaymentIntentId: true,
             orderSeats: {
@@ -2270,8 +2271,19 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
           throw new HttpError(404, 'Order not found');
         }
 
-        if (order.status !== 'CANCELED') {
-          throw new HttpError(400, 'Only canceled orders can be permanently deleted');
+        const canDeleteZeroValueWalkIn =
+          order.status === 'PAID' &&
+          order.source === 'DOOR' &&
+          order.inPersonPaymentMethod === 'CASH' &&
+          order.amountTotal === 0 &&
+          !order.stripeSessionId &&
+          !order.stripePaymentIntentId;
+
+        if (order.status !== 'CANCELED' && !canDeleteZeroValueWalkIn) {
+          throw new HttpError(
+            400,
+            'Only canceled orders or zero-dollar walk-in cash orders can be permanently deleted'
+          );
         }
 
         await releasePendingStudentCreditForOrderTx(tx, order.id);
