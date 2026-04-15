@@ -156,6 +156,7 @@ const MAX_ADJACENT_X_GAP = SEAT_X_STEP * 1.5;
 const FALLBACK_STRIPE_PUBLISHABLE_KEY = (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '').trim();
 const SEAT_POLL_BASE_INTERVAL_MS = 45_000;
 const SEAT_POLL_JITTER_MS = 5_000;
+const CHECKOUT_QUEUE_VISIBILITY_THRESHOLD = 5;
 
 function getSeatPollDelayMs(): number {
   return SEAT_POLL_BASE_INTERVAL_MS + Math.floor(Math.random() * SEAT_POLL_JITTER_MS);
@@ -1206,6 +1207,10 @@ export default function Booking() {
   const canContinueToTypes = selectedSeats.length > 0;
   const canContinueToCheckout = selectedSeats.length > 0 && missingTicketTypeCount === 0;
   const canSubmitCheckout = selectedSeats.length > 0 && (!registrationRequired || registrationValid);
+  const showCheckoutQueuePanel = Boolean(
+    checkoutQueue && checkoutQueue.position >= CHECKOUT_QUEUE_VISIBILITY_THRESHOLD
+  );
+  const showPreparingCheckoutPanel = Boolean(checkoutQueue) && !showCheckoutQueuePanel;
 
   const goToStepTwo = () => {
     if (!canContinueToTypes) {
@@ -2234,92 +2239,127 @@ export default function Booking() {
             >
               <div className="max-w-6xl mx-auto pt-6 md:pt-8 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6">
                 <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
-                  {checkoutQueue ? (
-                    <>
-                      <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-800">
-                        <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-500" />
-                        Checkout Queue
-                      </div>
-                      <h2 className="mt-4 text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
-                        You're in line
-                      </h2>
-                      <p className="text-sm md:text-base text-stone-600 mt-2">
-                        Keep this page open while we prepare your payment session.
-                      </p>
-
-                      <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                        <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Position</p>
-                          <p className="mt-1 text-3xl font-black text-stone-900">{checkoutQueue.position}</p>
+                  <AnimatePresence mode="wait" initial={false}>
+                    {showCheckoutQueuePanel ? (
+                      <motion.div
+                        key="queue"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.28, ease: 'easeOut' }}
+                      >
+                        <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-800">
+                          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+                          Checkout Queue
                         </div>
-                        <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Est. Wait</p>
-                          <p className="mt-1 text-2xl font-black text-stone-900">{formatWaitEstimate(checkoutQueue.estimatedWaitSeconds)}</p>
-                        </div>
-                        <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Refresh</p>
-                          <p className="mt-1 text-2xl font-black text-stone-900">{Math.ceil(checkoutQueue.refreshAfterMs / 1000)}s</p>
-                        </div>
-                      </div>
+                        <h2 className="mt-4 text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
+                          You're in line
+                        </h2>
+                        <p className="text-sm md:text-base text-stone-600 mt-2">
+                          Keep this page open while we prepare your payment session.
+                        </p>
 
-                      <p className="mt-5 text-sm text-stone-600">
-                        If your hold expires or checkout cannot be prepared, you’ll be returned to seat selection automatically.
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <h2 className="text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
-                        Checkout
-                      </h2>
-                      <p className="text-sm md:text-base text-stone-600 mt-2">
-                        Everything looks good. Continue to payment to finish checkout.
-                      </p>
+                        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                          <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+                            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Position</p>
+                            <p className="mt-1 text-3xl font-black text-stone-900">{checkoutQueue?.position}</p>
+                          </div>
+                          <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+                            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Est. Wait</p>
+                            <p className="mt-1 text-2xl font-black text-stone-900">{formatWaitEstimate(checkoutQueue?.estimatedWaitSeconds || 0)}</p>
+                          </div>
+                          <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+                            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Refresh</p>
+                            <p className="mt-1 text-2xl font-black text-stone-900">{Math.ceil((checkoutQueue?.refreshAfterMs || 0) / 1000)}s</p>
+                          </div>
+                        </div>
 
-                      <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <button
-                          onClick={() => {
-                            setStepError(null);
-                            resetPendingPayment();
-                            setCheckoutQueue(null);
-                            setCurrentStep(registrationRequired ? 4 : 3);
-                          }}
-                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 sm:w-auto"
-                        >
-                          <ArrowLeft className="w-4 h-4" /> Back
-                        </button>
-                        {!pendingStripePayment && (
+                        <p className="mt-5 text-sm text-stone-600">
+                          If your hold expires or checkout cannot be prepared, you’ll be returned to seat selection automatically.
+                        </p>
+                      </motion.div>
+                    ) : showPreparingCheckoutPanel ? (
+                      <motion.div
+                        key="preparing"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.28, ease: 'easeOut' }}
+                      >
+                        <h2 className="text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
+                          Preparing checkout
+                        </h2>
+                        <p className="text-sm md:text-base text-stone-600 mt-2">
+                          Finalizing your payment session. This usually takes just a moment.
+                        </p>
+                        <div className="mt-6 rounded-xl border border-stone-200 bg-stone-50 p-4">
+                          <div className="flex items-center gap-3 text-stone-700">
+                            <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-red-600" />
+                            <span className="text-sm font-semibold">Almost there...</span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="checkout"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.28, ease: 'easeOut' }}
+                      >
+                        <h2 className="text-2xl md:text-3xl font-bold text-stone-900" style={{ fontFamily: 'Georgia, serif' }}>
+                          Checkout
+                        </h2>
+                        <p className="text-sm md:text-base text-stone-600 mt-2">
+                          Everything looks good. Continue to payment to finish checkout.
+                        </p>
+
+                        <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center">
                           <button
-                            onClick={handleCheckout}
-                            disabled={processing || !canSubmitCheckout}
-                            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-red-800 transition-colors sm:w-auto"
+                            onClick={() => {
+                              setStepError(null);
+                              resetPendingPayment();
+                              setCheckoutQueue(null);
+                              setCurrentStep(registrationRequired ? 4 : 3);
+                            }}
+                            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 px-4 py-3 font-bold text-stone-700 hover:bg-stone-100 sm:w-auto"
                           >
-                            <CreditCard className="w-4 h-4" />
-                            {processing ? 'Processing...' : 'Checkout'}
+                            <ArrowLeft className="w-4 h-4" /> Back
                           </button>
-                        )}
-                      </div>
+                          {!pendingStripePayment && (
+                            <button
+                              onClick={handleCheckout}
+                              disabled={processing || !canSubmitCheckout}
+                              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-red-800 transition-colors sm:w-auto"
+                            >
+                              <CreditCard className="w-4 h-4" />
+                              {processing ? 'Processing...' : 'Checkout'}
+                            </button>
+                          )}
+                        </div>
 
-                      {pendingStripePayment && stripePromise && stripeElementsOptions && (
-                        <div className="mt-5 rounded-2xl border border-red-100 bg-red-50 p-4">
-                          <p className="text-sm font-semibold text-red-900">
-                            Payment form ready. Complete payment below to finish checkout.
-                          </p>
-                          <Elements stripe={stripePromise} options={stripeElementsOptions}>
-                            <InlineStripePaymentForm
-                              disabled={processing}
-                              onError={(message) => setStepError(message || null)}
-                              onSuccess={finalizeEmbeddedPayment}
-                            />
-                          </Elements>
-                        </div>
-                      )}
-                      {pendingStripePayment && (!stripePromise || !stripeElementsOptions) && (
-                        <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                          Unable to initialize Stripe payment form. Please check Stripe configuration and try again.
-                        </div>
-                      )}
-                    </>
-                  )}
+                        {pendingStripePayment && stripePromise && stripeElementsOptions && (
+                          <div className="mt-5 rounded-2xl border border-red-100 bg-red-50 p-4">
+                            <p className="text-sm font-semibold text-red-900">
+                              Payment form ready. Complete payment below to finish checkout.
+                            </p>
+                            <Elements stripe={stripePromise} options={stripeElementsOptions}>
+                              <InlineStripePaymentForm
+                                disabled={processing}
+                                onError={(message) => setStepError(message || null)}
+                                onSuccess={finalizeEmbeddedPayment}
+                              />
+                            </Elements>
+                          </div>
+                        )}
+                        {pendingStripePayment && (!stripePromise || !stripeElementsOptions) && (
+                          <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                            Unable to initialize Stripe payment form. Please check Stripe configuration and try again.
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 <div className="rounded-2xl border border-stone-100 bg-white p-5 md:p-6 h-fit">
