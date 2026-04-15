@@ -21,6 +21,7 @@ const FundraisingEventDetail = lazy(() => import('./pages/FundraisingEventDetail
 const DynamicAboutPage = lazy(() => import('./pages/DynamicAboutPage'));
 const ProgramBioFormPage = lazy(() => import('./pages/ProgramBioForm'));
 const SeniorSendoffFormPage = lazy(() => import('./pages/SeniorSendoffForm'));
+const CustomFormPage = lazy(() => import('./pages/CustomForm'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
 const TermsOfService = lazy(() => import('./pages/TermsOfService'));
 const RefundPolicy = lazy(() => import('./pages/RefundPolicy'));
@@ -143,6 +144,7 @@ export default function App() {
                   <Route path="fundraising/questionnaire" element={<FundraisingQuestionnairePage />} />
                   <Route path="trip-payments" element={<TripPaymentsPage />} />
                   <Route path="forms/senior-sendoff/:slug" element={<SeniorSendoffFormPage />} />
+                  <Route path="forms/custom/:slug" element={<CustomFormPage />} />
                   <Route path="forms/:slug" element={<ProgramBioFormPage />} />
                   <Route path="privacy-policy" element={<PrivacyPolicy />} />
                   <Route path="terms-of-service" element={<TermsOfService />} />

@@ -30,6 +30,7 @@ import { showRoutes } from './routes/shows.js';
 import { programBioFormRoutes } from './routes/program-bio-forms.js';
 import { seniorSendoffFormRoutes } from './routes/senior-sendoff-forms.js';
 import { eventRegistrationFormRoutes } from './routes/event-registration-forms.js';
+import { customFormRoutes } from './routes/custom-forms.js';
 import { fundraisingRoutes } from './routes/fundraising.js';
 import { fundraisingSponsorRoutes } from './routes/fundraising-sponsors.js';
 import { calendarRoutes } from './routes/calendar.js';
@@ -120,6 +121,7 @@ export async function createServer() {
   await app.register(programBioFormRoutes);
   await app.register(seniorSendoffFormRoutes);
   await app.register(eventRegistrationFormRoutes);
+  await app.register(customFormRoutes);
   await app.register(tripAuthRoutes);
   await app.register(tripPortalRoutes);
 

@@ -388,6 +388,39 @@ model SeniorSendoffSubmission {
   @@index([formId, parentEmail, studentKey])
 }
 
+model CustomForm {
+  id                  String                 @id @default(cuid())
+  publicSlug          String                 @unique
+  formName            String
+  internalDescription String?
+  status              String                 @default("DRAFT")
+  schemaVersion       String                 @default("CUSTOM_FORM_V1")
+  definitionJson      Json
+  createdByAdminId    String?
+  updatedByAdminId    String?
+  archivedAt          DateTime?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  submissions         CustomFormSubmission[]
+
+  @@index([status, updatedAt])
+  @@index([createdAt])
+}
+
+model CustomFormSubmission {
+  id            String     @id @default(cuid())
+  formId        String
+  form          CustomForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  responseJson  Json
+  submitterName String?
+  submitterEmail String?
+  submittedAt   DateTime   @default(now())
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([formId, submittedAt])
+}
+
 model Performance {
   id           String        @id @default(cuid())
   showId        String

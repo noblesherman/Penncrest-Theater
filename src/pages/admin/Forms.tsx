@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import ProgramBioFormsPanel from './forms/ProgramBioFormsPanel';
 import SeniorSendoffFormsPanel from './forms/SeniorSendoffFormsPanel';
+import CustomFormsPanel from './forms/CustomFormsPanel';
 
-type FormSection = 'program_bio' | 'senior_sendoff';
+type FormSection = 'program_bio' | 'senior_sendoff' | 'custom_forms';
 
 export default function AdminFormsPage() {
   const [activeSection, setActiveSection] = useState<FormSection>('program_bio');
@@ -13,7 +14,8 @@ export default function AdminFormsPage() {
         <div className="mx-auto flex w-full max-w-6xl gap-6 px-6 py-3">
           {[
             { key: 'program_bio', label: 'Program Bios' },
-            { key: 'senior_sendoff', label: 'Senior Send-Offs' }
+            { key: 'senior_sendoff', label: 'Senior Send-Offs' },
+            { key: 'custom_forms', label: 'Custom Forms' }
           ].map((section) => (
             <button
               key={section.key}
@@ -31,7 +33,9 @@ export default function AdminFormsPage() {
         </div>
       </div>
 
-      {activeSection === 'program_bio' ? <ProgramBioFormsPanel /> : <SeniorSendoffFormsPanel />}
+      {activeSection === 'program_bio' && <ProgramBioFormsPanel />}
+      {activeSection === 'senior_sendoff' && <SeniorSendoffFormsPanel />}
+      {activeSection === 'custom_forms' && <CustomFormsPanel />}
     </div>
   );
 }
