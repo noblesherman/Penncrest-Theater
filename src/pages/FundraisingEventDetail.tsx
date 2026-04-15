@@ -82,6 +82,47 @@ function sponsorTierBadgeClass(tier: LiveFundraisingSponsor['tier']): string {
   return 'bg-orange-100 text-orange-900';
 }
 
+function sanitizeFundraiserNotes(notes: string): string {
+  const normalized = notes.replace(/\r\n?/g, '\n').trim();
+  if (!normalized) return '';
+
+  const lines = normalized
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const labeledLinePattern = /^(date|time|location|where|when|start|starts|ends|drop-?off|pick-?up)\s*:/i;
+  const labelOnlyPattern = /^(date|time|location|where|when|start|starts|ends|drop-?off|pick-?up)$/i;
+  const dateLikePattern = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2}(st|nd|rd|th)?(,\s*\d{4})?/i;
+  const timeLikePattern = /^\d{1,2}(:\d{2})?\s*(am|pm)\b/i;
+  const locationValuePattern = /auditorium|theater|theatre|school|campus|hall|center|centre|gym/i;
+
+  const filteredLines: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (labeledLinePattern.test(line)) {
+      continue;
+    }
+
+    if (labelOnlyPattern.test(line)) {
+      const nextLine = lines[index + 1]?.trim() || '';
+      if (nextLine && (dateLikePattern.test(nextLine) || timeLikePattern.test(nextLine) || locationValuePattern.test(nextLine))) {
+        index += 1;
+      }
+      continue;
+    }
+
+    filteredLines.push(line);
+  }
+
+  const withoutScheduleLines = filteredLines.join(' ').replace(/\s{2,}/g, ' ').trim();
+  if (!withoutScheduleLines) return '';
+
+  return withoutScheduleLines
+    .split(/\b(?:date|time|location|where|when|start|starts|ends|drop-?off|pick-?up)\s*:/i)[0]
+    .trim();
+}
+
 export default function FundraisingEventDetail() {
   const { slug } = useParams<{ slug: string }>();
   const staticEvent = slug ? getFundraisingEventBySlug(slug) : undefined;
@@ -114,6 +155,8 @@ export default function FundraisingEventDetail() {
     if (liveEvent) {
       const { dateLabel, timeLabel } = formatEventDate(liveEvent.startsAt);
       const priceLabel = formatPriceLabel(liveEvent.minPrice, liveEvent.maxPrice);
+      const cleanedNotes = sanitizeFundraiserNotes(liveEvent.notes || '');
+      const summaryText = cleanedNotes || liveEvent.description || 'This fundraiser supports Penncrest Theater students and production programs.';
       const salesCutoffLine = liveEvent.salesCutoffAt
         ? `Online sales close: ${formatEventDate(liveEvent.salesCutoffAt).dateLabel} at ${formatEventDate(liveEvent.salesCutoffAt).timeLabel}`
         : null;
@@ -124,8 +167,8 @@ export default function FundraisingEventDetail() {
         timeLabel,
         location: liveEvent.venue,
         heroImageUrl: liveEvent.posterUrl || 'https://picsum.photos/id/1043/1600/900',
-        summary: liveEvent.notes || liveEvent.description || 'This fundraiser supports Penncrest Theater students and production programs.',
-        longDescription: liveEvent.notes || liveEvent.description || 'Join this fundraising event to support student performers, technicians, and theater programs all season long.',
+        summary: summaryText,
+        longDescription: summaryText,
         priceLabel,
         details: [
           `Ticketing: ${liveEvent.seatSelectionEnabled ? 'Reserved Seating' : 'General Admission'}`,
