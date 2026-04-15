@@ -95,6 +95,25 @@ const GENERAL_ADMISSION_GRID_COLUMNS = 25;
 const GENERAL_ADMISSION_GRID_STEP = 24;
 const GENERAL_ADMISSION_GRID_OFFSET = 32;
 
+function resolveInventorySoldCount(params: {
+  isFundraiser: boolean;
+  seatSelectionEnabled: boolean;
+  seats: Array<{ status: string }>;
+  orders: Array<{ status: string; _count?: { orderSeats: number } }>;
+}): number {
+  const soldSeatCount = params.seats.filter((seat) => seat.status === 'SOLD').length;
+
+  if (!params.isFundraiser || params.seatSelectionEnabled !== false) {
+    return soldSeatCount;
+  }
+
+  const activeMappedSeatCount = params.orders
+    .filter((order) => order.status !== 'CANCELED' && order.status !== 'REFUNDED')
+    .reduce((total, order) => total + (order._count?.orderSeats || 0), 0);
+
+  return Math.min(params.seats.length, Math.max(0, activeMappedSeatCount));
+}
+
 function buildDefaultSeats(performanceId: string): Array<{
   performanceId: string;
   row: string;
@@ -547,7 +566,12 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
           orders: {
             select: {
               status: true,
-              amountTotal: true
+              amountTotal: true,
+              _count: {
+                select: {
+                  orderSeats: true
+                }
+              }
             }
           }
         }
@@ -556,48 +580,57 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
       await backfillLegacyShowAndCastImagesToR2(performances.map((performance) => performance.show));
 
       reply.send(
-        performances.map((performance) => ({
-          id: performance.id,
-          title: performance.title || performance.show.title,
-          showId: performance.show.id,
-          showTitle: performance.show.title,
-          showDescription: performance.show.description,
-          showPosterUrl: performance.show.posterUrl,
-          showType: performance.show.type,
-          showYear: performance.show.year,
-          showAccentColor: performance.show.accentColor,
-          startsAt: performance.startsAt,
-          onlineSalesStartsAt: performance.onlineSalesStartsAt,
-          salesCutoffAt: performance.salesCutoffAt,
-          isPublished: performance.isPublished,
-          isArchived: performance.isArchived,
-          isFundraiser: performance.isFundraiser,
-          archivedAt: performance.archivedAt,
-          staffCompsEnabled: performance.staffCompsEnabled,
-          staffCompLimitPerUser: performance.staffCompLimitPerUser,
-          staffTicketLimit: performance.staffTicketLimit,
-          studentCompTicketsEnabled: performance.familyFreeTicketEnabled,
-          seatSelectionEnabled: performance.seatSelectionEnabled,
-          venue: performance.venue,
-          notes: performance.notes,
-          seatsTotal: performance.seats.length,
-          seatsSold: performance.seats.filter((seat) => seat.status === 'SOLD').length,
-          totalOrders: performance.orders.length,
-          paidOrders: performance.orders.filter((order) => order.status === 'PAID').length,
-          paidRevenueCents: performance.orders
-            .filter((order) => order.status === 'PAID')
-            .reduce((sum, order) => sum + order.amountTotal, 0),
-          pricingTiers: performance.pricingTiers,
-          castMembers: performance.show.castMembers.map((castMember) => ({
-            id: castMember.id,
-            name: castMember.name,
-            role: castMember.role,
-            photoUrl: castMember.photoUrl,
-            schoolEmail: castMember.schoolEmail,
-            gradeLevel: castMember.gradeLevel,
-            bio: castMember.bio
-          }))
-        }))
+        performances.map((performance) => {
+          const seatsSold = resolveInventorySoldCount({
+            isFundraiser: performance.isFundraiser,
+            seatSelectionEnabled: performance.seatSelectionEnabled,
+            seats: performance.seats,
+            orders: performance.orders
+          });
+
+          return {
+            id: performance.id,
+            title: performance.title || performance.show.title,
+            showId: performance.show.id,
+            showTitle: performance.show.title,
+            showDescription: performance.show.description,
+            showPosterUrl: performance.show.posterUrl,
+            showType: performance.show.type,
+            showYear: performance.show.year,
+            showAccentColor: performance.show.accentColor,
+            startsAt: performance.startsAt,
+            onlineSalesStartsAt: performance.onlineSalesStartsAt,
+            salesCutoffAt: performance.salesCutoffAt,
+            isPublished: performance.isPublished,
+            isArchived: performance.isArchived,
+            isFundraiser: performance.isFundraiser,
+            archivedAt: performance.archivedAt,
+            staffCompsEnabled: performance.staffCompsEnabled,
+            staffCompLimitPerUser: performance.staffCompLimitPerUser,
+            staffTicketLimit: performance.staffTicketLimit,
+            studentCompTicketsEnabled: performance.familyFreeTicketEnabled,
+            seatSelectionEnabled: performance.seatSelectionEnabled,
+            venue: performance.venue,
+            notes: performance.notes,
+            seatsTotal: performance.seats.length,
+            seatsSold,
+            totalOrders: performance.orders.length,
+            paidOrders: performance.orders.filter((order) => order.status === 'PAID').length,
+            paidRevenueCents: performance.orders
+              .filter((order) => order.status === 'PAID')
+              .reduce((sum, order) => sum + order.amountTotal, 0),
+            pricingTiers: performance.pricingTiers,
+            castMembers: performance.show.castMembers.map((castMember) => ({
+              id: castMember.id,
+              name: castMember.name,
+              role: castMember.role,
+              photoUrl: castMember.photoUrl,
+              schoolEmail: castMember.schoolEmail,
+              gradeLevel: castMember.gradeLevel,
+              bio: castMember.bio
+            }))
+          };
+        })
       );
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2022') {
