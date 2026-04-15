@@ -215,7 +215,7 @@ export const adminDriveRoutes: FastifyPluginAsync = async (app) => {
         }
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to load drive');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load drive');
     }
   });
 
@@ -261,7 +261,7 @@ export const adminDriveRoutes: FastifyPluginAsync = async (app) => {
       if (isUniqueConstraintError(err)) {
         return reply.status(409).send({ error: 'A folder with this name already exists here.' });
       }
-      handleRouteError(reply, err, 'Failed to create folder');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to create folder');
     }
   });
 
@@ -304,7 +304,7 @@ export const adminDriveRoutes: FastifyPluginAsync = async (app) => {
       if (isUniqueConstraintError(err)) {
         return reply.status(409).send({ error: 'A folder with this name already exists here.' });
       }
-      handleRouteError(reply, err, 'Failed to rename folder');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to rename folder');
     }
   });
 
@@ -344,7 +344,7 @@ export const adminDriveRoutes: FastifyPluginAsync = async (app) => {
 
       reply.status(204).send();
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to delete folder');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to delete folder');
     }
   });
 
@@ -406,7 +406,7 @@ export const adminDriveRoutes: FastifyPluginAsync = async (app) => {
           // Best effort cleanup for partially-failed uploads.
         });
       }
-      handleRouteError(reply, err, 'Failed to upload file');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to upload file');
     }
   });
 
@@ -467,7 +467,7 @@ export const adminDriveRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send({ file });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to update file');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to update file');
     }
   });
 
@@ -507,7 +507,7 @@ export const adminDriveRoutes: FastifyPluginAsync = async (app) => {
 
       reply.status(204).send();
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to delete file');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to delete file');
     }
   });
 };

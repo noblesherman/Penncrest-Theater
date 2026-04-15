@@ -326,7 +326,7 @@ export async function enqueuePaidCheckout(payload: CheckoutRequestPayload): Prom
   }
 
   if (!queueItem) {
-    throw new HttpError(500, 'Unable to create checkout queue item');
+    throw new HttpError(500, 'We could not create checkout queue item');
   }
 
   const position = queueItem.status === 'READY' || queueItem.status === 'PROCESSING' ? 1 : await queuePositionFor(queueItem);

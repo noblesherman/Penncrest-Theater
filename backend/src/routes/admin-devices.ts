@@ -153,7 +153,7 @@ export const adminDeviceRoutes: FastifyPluginAsync = async (app) => {
         }))
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to list managed devices');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to list managed devices');
     }
   });
 
@@ -210,7 +210,7 @@ export const adminDeviceRoutes: FastifyPluginAsync = async (app) => {
         }
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch managed device');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch managed device');
     }
   });
 
@@ -257,7 +257,7 @@ export const adminDeviceRoutes: FastifyPluginAsync = async (app) => {
         }
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to queue device command');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to queue device command');
     }
   });
 
@@ -289,7 +289,7 @@ export const adminDeviceRoutes: FastifyPluginAsync = async (app) => {
 
       return reply.send({ ok: true });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to set managed device PIN');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to set managed device PIN');
     }
   });
 
@@ -329,7 +329,7 @@ export const adminDeviceRoutes: FastifyPluginAsync = async (app) => {
         }
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to update managed device name');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to update managed device name');
     }
   });
 
@@ -397,7 +397,7 @@ export const adminDeviceRoutes: FastifyPluginAsync = async (app) => {
         }
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to update mobile release metadata');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to update mobile release metadata');
     }
   });
 
@@ -423,7 +423,7 @@ export const adminDeviceRoutes: FastifyPluginAsync = async (app) => {
 
       return reply.send({ ok: true });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to delete managed device');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to delete managed device');
     }
   });
 };

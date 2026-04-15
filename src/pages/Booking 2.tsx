@@ -242,7 +242,7 @@ export default function Booking() {
       const seatList = Array.isArray(data) ? data : data.seats;
       setSeats(seatList);
     } catch (err) {
-      console.error('Failed to fetch seats', err);
+      console.error('We hit a small backstage snag while trying to fetch seats', err);
     } finally {
       setLoading(false);
     }
@@ -258,7 +258,7 @@ export default function Booking() {
       setPricingTiers(details.pricingTiers || []);
       setStudentCompTicketsEnabled(Boolean(details.studentCompTicketsEnabled));
     } catch (err) {
-      console.error('Failed to fetch performance details', err);
+      console.error('We hit a small backstage snag while trying to fetch performance details', err);
       setIsFundraiser(false);
       setPricingTiers([]);
       setStudentCompTicketsEnabled(false);
@@ -289,7 +289,7 @@ export default function Booking() {
 
         return result;
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to update seat hold';
+        const message = err instanceof Error ? err.message : 'We hit a small backstage snag while trying to update seat hold';
         setHoldError(message);
         await fetchSeats();
         return null;
@@ -523,7 +523,7 @@ export default function Booking() {
     try {
       const holdResult = await syncHolds(selectedSeatIds);
       if (!holdResult || holdResult.heldSeatIds.length !== selectedSeatIds.length) {
-        throw new Error('Unable to lock selected seats. Please try again.');
+        throw new Error('We could not lock selected seats. Please try again.');
       }
 
       let checkout: CheckoutResponse;
@@ -1396,7 +1396,7 @@ export default function Booking() {
                       )}
                       {pendingStripePayment && (!stripePromise || !stripeElementsOptions) && (
                         <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                          Unable to initialize Stripe payment form. Please check Stripe configuration and try again.
+                          We could not initialize Stripe payment form. Please check Stripe configuration and try again.
                         </div>
                       )}
                     </>
@@ -1512,7 +1512,7 @@ export default function Booking() {
                       )}
                       {pendingStripePayment && (!stripePromise || !stripeElementsOptions) && (
                         <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                          Unable to initialize Stripe payment form. Please check Stripe configuration and try again.
+                          We could not initialize Stripe payment form. Please check Stripe configuration and try again.
                         </div>
                       )}
                     </>

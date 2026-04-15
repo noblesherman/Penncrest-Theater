@@ -489,7 +489,7 @@ export default function AdminFinancePage() {
         const rows = await adminFetch<PerformanceItem[]>('/api/admin/performances?scope=all');
         setPerformances(rows);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load performances');
+        setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load performances');
       } finally {
         setLoadingPerformances(false);
       }
@@ -506,7 +506,7 @@ export default function AdminFinancePage() {
       const result = await adminFetch<FinanceSummary>(`/api/admin/finance/summary?${query.toString()}`);
       setSummary(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load finance summary');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load finance summary');
     } finally {
       setLoadingSummary(false);
     }
@@ -526,7 +526,7 @@ export default function AdminFinancePage() {
       const nextDefaultAmount = (result.balance.availableCents / 100).toFixed(2);
       setPayoutAmountDollars(nextDefaultAmount);
     } catch (err) {
-      setPayoutError(err instanceof Error ? err.message : 'Failed to load payout overview');
+      setPayoutError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load payout overview');
       setPayoutOverview(null);
     } finally {
       setLoadingPayoutOverview(false);
@@ -586,7 +586,7 @@ export default function AdminFinancePage() {
       );
       await refreshPayoutOverview();
     } catch (err) {
-      setPayoutError(err instanceof Error ? err.message : 'Failed to create payout');
+      setPayoutError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to create payout');
     } finally {
       setProcessingPayout(false);
     }
@@ -625,7 +625,7 @@ export default function AdminFinancePage() {
         setSelectedInvoiceId(result.rows[0].id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load invoices');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load invoices');
     } finally {
       setLoadingInvoices(false);
     }
@@ -637,7 +637,7 @@ export default function AdminFinancePage() {
       const detail = await adminFetch<FinanceInvoiceDetailResponse>(`/api/admin/finance/invoices/${encodeURIComponent(invoiceId)}`);
       setSelectedInvoiceDetail(detail);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load invoice details');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load invoice details');
     } finally {
       setLoadingInvoiceDetail(false);
     }
@@ -664,7 +664,7 @@ export default function AdminFinancePage() {
       setNotice(nextArchived ? 'Invoice archived.' : 'Invoice restored.');
       void refreshInvoices();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update invoice archive state');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to update invoice archive state');
     } finally {
       setProcessingInvoiceArchive(false);
     }
@@ -729,7 +729,7 @@ export default function AdminFinancePage() {
       setNotice(`Downloaded ${filename}`);
     } catch (err) {
       setStripeCsvStatus('Stripe CSV failed. Check error above.');
-      setError(err instanceof Error ? err.message : 'Failed to download Stripe CSV');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to download Stripe CSV');
     } finally {
       setDownloadingStripeCsv(false);
     }
@@ -768,7 +768,7 @@ export default function AdminFinancePage() {
       URL.revokeObjectURL(url);
       setNotice(`Downloaded ${filename}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to download local CSV');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to download local CSV');
     } finally {
       setDownloadingLocalCsv(false);
     }
@@ -806,7 +806,7 @@ export default function AdminFinancePage() {
       URL.revokeObjectURL(url);
       setNotice(`Downloaded ${filename}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to download PDF');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to download PDF');
     } finally {
       setDownloadingPdf(false);
     }
@@ -928,7 +928,7 @@ export default function AdminFinancePage() {
       setActiveFinanceTab('invoices');
       void refreshInvoices();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send invoice');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to send invoice');
     } finally {
       setSendingInvoice(false);
     }

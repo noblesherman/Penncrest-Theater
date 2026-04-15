@@ -335,7 +335,7 @@ export default function AdminScannerPage() {
     detectQrCameraSupport().then(ok => { if (!cancelled) setCameraSupported(ok); });
     adminFetch<PerformanceRow[]>('/api/admin/performances?scope=active&kind=all')
       .then(rows => { const a = rows.filter(r => !r.isArchived); setPerformances(a); if (a.length) setPerformanceId(a[0].id); })
-      .catch(err => setCameraError(err instanceof Error ? err.message : 'Failed to load'));
+      .catch(err => setCameraError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load'));
     const onOnline = () => syncOfflineQueue();
     window.addEventListener('online', onOnline);
     return () => { cancelled = true; stopCamera(); scannerRef.current?.destroy(); scannerRef.current = null; window.removeEventListener('online', onOnline); };

@@ -305,7 +305,7 @@ export default function TripPaymentsPage() {
       setAuthStage('verify');
       setNotice('Code sent. Check your email and enter it below.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to request code');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to request code');
     } finally {
       setLoading(false);
     }
@@ -325,7 +325,7 @@ export default function TripPaymentsPage() {
       setVerificationCode('');
       await loadAuthenticatedState();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to verify code');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to verify code');
     } finally {
       setLoading(false);
     }
@@ -340,7 +340,7 @@ export default function TripPaymentsPage() {
       await loadAuthenticatedState();
       setNotice('Student claimed successfully.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to claim student');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to claim student');
     } finally {
       setLoading(false);
     }
@@ -366,7 +366,7 @@ export default function TripPaymentsPage() {
       setActiveEnrollmentId(enrollment.enrollmentId);
       setActiveCheckout({ paymentId: sessionResponse.paymentId, enrollmentId: enrollment.enrollmentId, clientSecret: sessionResponse.clientSecret, publishableKey });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start payment session');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to start payment session');
     }
   }
 

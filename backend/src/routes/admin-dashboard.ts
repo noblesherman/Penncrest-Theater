@@ -568,7 +568,7 @@ export const adminDashboardRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(response);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch dashboard metrics');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch dashboard metrics');
     }
   });
 };

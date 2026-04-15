@@ -56,7 +56,7 @@ export default function ShowDetails() {
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok) {
-          throw new Error(data?.error || 'Failed to fetch show');
+          throw new Error(data?.error || 'We hit a small backstage snag while trying to fetch show');
         }
 
         const safeDescription = typeof data.description === 'string' ? data.description : '';
@@ -70,7 +70,7 @@ export default function ShowDetails() {
         });
       })
       .catch((err) => {
-        console.error('Failed to fetch show', err);
+        console.error('We hit a small backstage snag while trying to fetch show', err);
         setShow(null);
       });
   }, [id]);

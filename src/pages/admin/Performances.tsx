@@ -480,7 +480,7 @@ export default function AdminPerformancesPage() {
         `Imported ${castMembers.length} cast member${castMembers.length === 1 ? '' : 's'}${notes.length > 0 ? ` (${notes.join(', ')})` : ''}.`
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to import cast CSV');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to import cast CSV');
     }
   };
 

@@ -1,10 +1,13 @@
 import { FastifyReply } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { HttpError } from './http-error.js';
+import { toTheaterFriendlyErrorMessage } from './theater-error-tone.js';
 
 export function handleRouteError(reply: FastifyReply, err: unknown, fallbackMessage: string): void {
+  const friendlyFallback = toTheaterFriendlyErrorMessage(fallbackMessage);
+
   if (err instanceof HttpError) {
-    reply.status(err.statusCode).send({ error: err.message });
+    reply.status(err.statusCode).send({ error: toTheaterFriendlyErrorMessage(err.message, friendlyFallback) });
     return;
   }
 
@@ -31,7 +34,10 @@ export function handleRouteError(reply: FastifyReply, err: unknown, fallbackMess
         ? ` Missing column: ${column}.`
         : '';
     reply.status(503).send({
-      error: `Database schema is out of date.${details} Run backend migrations (prisma migrate deploy).`
+      error: toTheaterFriendlyErrorMessage(
+        `Database schema is out of date.${details} Run backend migrations (prisma migrate deploy).`,
+        friendlyFallback
+      )
     });
     return;
   }
@@ -41,7 +47,10 @@ export function handleRouteError(reply: FastifyReply, err: unknown, fallbackMess
     /Unknown arg `(?:questionConfig|extraResponses|secondSubmissionPriceCents|studentKey|entryNumber)`|Unknown argument `(?:questionConfig|extraResponses|secondSubmissionPriceCents|studentKey|entryNumber)`/i.test(err.message)
   ) {
     reply.status(503).send({
-      error: 'Backend Prisma client is out of date. Run prisma generate and redeploy backend.'
+      error: toTheaterFriendlyErrorMessage(
+        'Backend Prisma client is out of date. Run prisma generate and redeploy backend.',
+        friendlyFallback
+      )
     });
     return;
   }
@@ -49,9 +58,9 @@ export function handleRouteError(reply: FastifyReply, err: unknown, fallbackMess
   reply.log.error({ err }, fallbackMessage);
 
   if (err instanceof Error) {
-    reply.status(500).send({ error: fallbackMessage });
+    reply.status(500).send({ error: toTheaterFriendlyErrorMessage(fallbackMessage, friendlyFallback) });
     return;
   }
 
-  reply.status(500).send({ error: fallbackMessage });
+  reply.status(500).send({ error: friendlyFallback });
 }

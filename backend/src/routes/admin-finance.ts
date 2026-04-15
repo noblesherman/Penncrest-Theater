@@ -915,7 +915,7 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
       const { orders: _orders, ...summary } = data;
       reply.send(summary);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch finance summary');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch finance summary');
     }
   });
 
@@ -941,7 +941,7 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
       reply.header('Content-Disposition', `attachment; filename="${filename}"`);
       reply.send(pdf);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to generate finance PDF');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to generate finance PDF');
     }
   });
 
@@ -1008,7 +1008,7 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
       reply.header('Content-Disposition', `attachment; filename="${filename}"`);
       reply.send(csv);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to export local finance CSV');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to export local finance CSV');
     }
   });
 
@@ -1085,7 +1085,7 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         const statusCode = err.type === 'StripeInvalidRequestError' ? 400 : 502;
         return reply.status(statusCode).send({ error: err.message || 'Stripe reporting error' });
       }
-      handleRouteError(reply, err, 'Failed to generate Stripe finance report');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to generate Stripe finance report');
     }
   });
 
@@ -1184,7 +1184,7 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         const statusCode = err.type === 'StripeInvalidRequestError' ? 400 : 502;
         return reply.status(statusCode).send({ error: err.message || 'Stripe payouts lookup failed' });
       }
-      handleRouteError(reply, err, 'Failed to fetch Stripe payout overview');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch Stripe payout overview');
     }
   });
 
@@ -1254,7 +1254,7 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         const statusCode = err.type === 'StripeInvalidRequestError' ? 400 : 502;
         return reply.status(statusCode).send({ error: err.message || 'Stripe payout failed' });
       }
-      handleRouteError(reply, err, 'Failed to create payout');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to create payout');
     }
   });
 
@@ -1301,7 +1301,7 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         const statusCode = err.type === 'StripeInvalidRequestError' ? 400 : 502;
         return reply.status(statusCode).send({ error: err.message || 'Stripe invoice lookup failed' });
       }
-      handleRouteError(reply, err, 'Failed to fetch invoices');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch invoices');
     }
   });
 
@@ -1335,7 +1335,7 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         const statusCode = err.type === 'StripeInvalidRequestError' ? 404 : 502;
         return reply.status(statusCode).send({ error: err.message || 'Stripe invoice detail lookup failed' });
       }
-      handleRouteError(reply, err, 'Failed to fetch invoice detail');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch invoice detail');
     }
   });
 
@@ -1374,7 +1374,7 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         const statusCode = err.type === 'StripeInvalidRequestError' ? 404 : 502;
         return reply.status(statusCode).send({ error: err.message || 'Stripe invoice archive failed' });
       }
-      handleRouteError(reply, err, 'Failed to archive invoice');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to archive invoice');
     }
   });
 
@@ -1411,7 +1411,7 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         const statusCode = err.type === 'StripeInvalidRequestError' ? 404 : 502;
         return reply.status(statusCode).send({ error: err.message || 'Stripe invoice unarchive failed' });
       }
-      handleRouteError(reply, err, 'Failed to unarchive invoice');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to unarchive invoice');
     }
   });
 
@@ -1517,7 +1517,7 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         const statusCode = err.type === 'StripeInvalidRequestError' ? 400 : 502;
         return reply.status(statusCode).send({ error: err.message || 'Stripe invoice send failed' });
       }
-      handleRouteError(reply, err, 'Failed to send invoice');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to send invoice');
     }
   });
 };

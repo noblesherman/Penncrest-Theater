@@ -143,7 +143,7 @@ export function usePaymentLineStatusStream(options: Options) {
           ...prev,
           connected: false,
           loading: false,
-          error: err instanceof Error ? err.message : 'Failed to start realtime stream'
+          error: err instanceof Error ? err.message : 'We hit a small backstage snag while trying to start realtime stream'
         }));
       }
     };

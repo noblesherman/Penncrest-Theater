@@ -116,7 +116,7 @@ export const mobilePaymentLineRoutes: FastifyPluginAsync = async (app) => {
       const snapshot = await fetchPaymentLineSnapshot(parsed.data.deviceId);
       reply.send(snapshot);
     } catch (err) {
-      handleRouteError(reply, err, 'Unable to load payment line snapshot');
+      handleRouteError(reply, err, 'We could not load payment line snapshot');
     }
   });
 
@@ -174,7 +174,7 @@ export const mobilePaymentLineRoutes: FastifyPluginAsync = async (app) => {
           : null
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Unable to start payment line');
+      handleRouteError(reply, err, 'We could not start payment line');
     }
   });
 
@@ -217,7 +217,7 @@ export const mobilePaymentLineRoutes: FastifyPluginAsync = async (app) => {
           : null
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Unable to heartbeat payment line');
+      handleRouteError(reply, err, 'We could not heartbeat payment line');
     }
   });
 
@@ -246,7 +246,7 @@ export const mobilePaymentLineRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(entry);
     } catch (err) {
-      handleRouteError(reply, err, 'Unable to start payment line entry');
+      handleRouteError(reply, err, 'We could not start payment line entry');
     }
   });
 
@@ -269,7 +269,7 @@ export const mobilePaymentLineRoutes: FastifyPluginAsync = async (app) => {
       });
       reply.send(result);
     } catch (err) {
-      handleRouteError(reply, err, 'Unable to heartbeat payment line entry');
+      handleRouteError(reply, err, 'We could not heartbeat payment line entry');
     }
   });
 
@@ -310,7 +310,7 @@ export const mobilePaymentLineRoutes: FastifyPluginAsync = async (app) => {
 
       reply.status(forwarded.statusCode).send(body);
     } catch (err) {
-      handleRouteError(reply, err, 'Unable to complete payment line entry');
+      handleRouteError(reply, err, 'We could not complete payment line entry');
     }
   });
 
@@ -355,7 +355,7 @@ export const mobilePaymentLineRoutes: FastifyPluginAsync = async (app) => {
 
       reply.status(forwarded.statusCode).send(entry);
     } catch (err) {
-      handleRouteError(reply, err, 'Unable to fail payment line entry');
+      handleRouteError(reply, err, 'We could not fail payment line entry');
     }
   });
 
@@ -388,7 +388,7 @@ export const mobilePaymentLineRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(updated);
     } catch (err) {
-      handleRouteError(reply, err, 'Unable to move payment line entry to back of line');
+      handleRouteError(reply, err, 'We could not move payment line entry to back of line');
     }
   });
 
@@ -421,7 +421,7 @@ export const mobilePaymentLineRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(updated);
     } catch (err) {
-      handleRouteError(reply, err, 'Unable to cancel payment line entry');
+      handleRouteError(reply, err, 'We could not cancel payment line entry');
     }
   });
 };

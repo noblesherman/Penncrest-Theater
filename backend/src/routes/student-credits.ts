@@ -225,7 +225,7 @@ function parseStudentCreditCsv(csvText: string): Array<{
     const legacyCode = codeIndex >= 0 ? normalizeStudentVerificationCode(columns[codeIndex] || '') : '';
     const baseStudentCode = generatedCode || legacyCode;
     if (!baseStudentCode) {
-      throw new HttpError(400, `Unable to generate a student code from name on row ${i + 1}`);
+      throw new HttpError(400, `We could not generate a student code from name on row ${i + 1}`);
     }
 
     const roleNameRaw = roleIndex >= 0 ? (columns[roleIndex] || '').trim() : '';
@@ -421,7 +421,7 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
         }))
       );
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch student credits');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch student credits');
     }
   });
 
@@ -471,7 +471,7 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
 
       reply.status(201).send({ id: created.id });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to create student credit');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to create student credit');
     }
   });
 
@@ -511,7 +511,7 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
         for (const row of rows) {
           const baseCode = normalizeStudentVerificationCode(row.baseStudentCode);
           if (!baseCode) {
-            throw new HttpError(400, `Unable to generate student code for row ${row.rowNumber}`);
+            throw new HttpError(400, `We could not generate student code for row ${row.rowNumber}`);
           }
 
           let candidateCode = baseCode;
@@ -566,7 +566,7 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
 
       reply.status(201).send(result);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to import student credits');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to import student credits');
     }
   });
 
@@ -664,7 +664,7 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
         isActive: updated.isActive
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to update student credit record');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to update student credit record');
     }
   });
 
@@ -727,7 +727,7 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
         transactions
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch student credit transaction history');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch student credit transaction history');
     }
   });
 
@@ -763,7 +763,7 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
         remainingTickets: studentCreditRemainingTickets(updated)
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to manually redeem student credits');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to manually redeem student credits');
     }
   });
 
@@ -799,7 +799,7 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
         remainingTickets: studentCreditRemainingTickets(updated)
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to manually restore student credits');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to manually restore student credits');
     }
   });
 
@@ -968,7 +968,7 @@ export const studentCreditRoutes: FastifyPluginAsync = async (app) => {
           finalized: finalizedQuantity > 0
         });
       } catch (err) {
-        handleRouteError(reply, err, 'Failed to finalize student credit redemption');
+        handleRouteError(reply, err, 'We hit a small backstage snag while trying to finalize student credit redemption');
       }
     }
   );

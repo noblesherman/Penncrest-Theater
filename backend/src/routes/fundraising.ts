@@ -99,7 +99,7 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
           return reply.status(statusCode).send({ error: err.message || 'Payment provider error' });
         }
 
-        handleRouteError(reply, err, 'Failed to create donation payment intent');
+        handleRouteError(reply, err, 'We hit a small backstage snag while trying to create donation payment intent');
       }
     }
   );
@@ -173,7 +173,7 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(statusCode).send({ error: err.message || 'Payment provider error' });
       }
 
-      handleRouteError(reply, err, 'Failed to fetch donation admin data');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch donation admin data');
     }
   });
 
@@ -343,7 +343,7 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
         rows
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch fundraising attendee responses');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch fundraising attendee responses');
     }
   });
 
@@ -499,7 +499,7 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
           }
         });
       } catch (err) {
-        handleRouteError(reply, err, 'Failed to delete fundraising event orders');
+        handleRouteError(reply, err, 'We hit a small backstage snag while trying to delete fundraising event orders');
       }
     }
   );
@@ -589,7 +589,7 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(payload);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch fundraising events');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch fundraising events');
     }
   });
 };

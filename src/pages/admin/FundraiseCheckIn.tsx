@@ -385,7 +385,7 @@ export default function AdminFundraiseCheckInPage() {
     try {
       await loadRows(nextPerformanceId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load fundraiser attendee roster');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load fundraiser attendee roster');
       setRows([]);
       setSummary(null);
     } finally {
@@ -403,7 +403,7 @@ export default function AdminFundraiseCheckInPage() {
         await loadEvents();
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load fundraiser events');
+          setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load fundraiser events');
         }
       } finally {
         if (!cancelled) {
@@ -623,7 +623,7 @@ export default function AdminFundraiseCheckInPage() {
       persistScannerSessionForPerformance(nextSession.performanceId, nextSession);
       setNotice({ kind: 'ok', text: 'Check-in session started.' });
     } catch (err) {
-      setNotice({ kind: 'err', text: err instanceof Error ? err.message : 'Failed to start session' });
+      setNotice({ kind: 'err', text: err instanceof Error ? err.message : 'We hit a small backstage snag while trying to start session' });
     } finally {
       setSessionBusy(false);
     }
@@ -642,7 +642,7 @@ export default function AdminFundraiseCheckInPage() {
       setScannerSession(null);
       setNotice({ kind: 'ok', text: 'Check-in session ended.' });
     } catch (err) {
-      setNotice({ kind: 'err', text: err instanceof Error ? err.message : 'Failed to end session' });
+      setNotice({ kind: 'err', text: err instanceof Error ? err.message : 'We hit a small backstage snag while trying to end session' });
     } finally {
       setSessionBusy(false);
     }
@@ -815,7 +815,7 @@ export default function AdminFundraiseCheckInPage() {
         currency: intent.currency
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to start manual card checkout';
+      const message = err instanceof Error ? err.message : 'We could not start manual card checkout';
       setSaleManualCheckoutError(message);
       setSaleError(message);
     } finally {
@@ -860,7 +860,7 @@ export default function AdminFundraiseCheckInPage() {
         currency: 'usd'
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to finalize manual card checkout';
+      const message = err instanceof Error ? err.message : 'We could not finalize manual card checkout';
       setSaleManualCheckoutError(message);
       setSaleError(message);
       throw err;
@@ -949,7 +949,7 @@ export default function AdminFundraiseCheckInPage() {
         });
       }
     } catch (err) {
-      setSaleError(err instanceof Error ? err.message : 'Failed to start fundraiser payment flow');
+      setSaleError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to start fundraiser payment flow');
     } finally {
       setSaleSubmitting(false);
     }

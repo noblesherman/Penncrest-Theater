@@ -114,7 +114,7 @@ export function TapToPayScreen({ navigation, route }: Props) {
 
     const locationsResult = await terminal.getLocations({ limit: 1 });
     if (locationsResult.error) {
-      throw new Error(locationsResult.error.message || 'Unable to fetch Stripe locations');
+      throw new Error(locationsResult.error.message || 'We could not fetch Stripe locations');
     }
 
     const locationId = locationsResult.locations?.[0]?.id;
@@ -204,7 +204,7 @@ export function TapToPayScreen({ navigation, route }: Props) {
       setStatusMessage('Loading payment intent...');
       const retrieved = await terminal.retrievePaymentIntent(sale.clientSecret);
       if (retrieved.error || !retrieved.paymentIntent) {
-        throw new Error(retrieved.error?.message || 'Unable to retrieve payment intent');
+        throw new Error(retrieved.error?.message || 'We could not retrieve payment intent');
       }
 
       setStatusMessage('Indicate to pay: present card or phone now.');

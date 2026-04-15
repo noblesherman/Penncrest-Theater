@@ -607,7 +607,7 @@ export default function AdminPosModePage() {
         writeCashierDefaultPerformanceId(nextId);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load performances');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load performances');
     } finally {
       setLoadingSetup(false);
     }
@@ -657,7 +657,7 @@ export default function AdminPosModePage() {
         }
       }
     } catch (err) {
-      setSeatPickerError(err instanceof Error ? err.message : 'Failed to load seats');
+      setSeatPickerError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load seats');
     } finally {
       if (showLoading) setLoadingSeats(false);
     }
@@ -780,7 +780,7 @@ export default function AdminPosModePage() {
       });
       return true;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unable to start manual card checkout';
+      const msg = err instanceof Error ? err.message : 'We could not start manual card checkout';
       setManualCheckoutError(msg);
       setInPersonFlowError(msg);
       return false;
@@ -832,7 +832,7 @@ export default function AdminPosModePage() {
       setNotice(`Stripe sale completed — ${result.seats.length} ${seatSelectionEnabled ? 'seat' : 'ticket'}${result.seats.length === 1 ? '' : 's'} · $${(result.expectedAmountCents / 100).toFixed(2)}`);
       void loadSeatsForPerformance(manualCheckout.performanceId, { showLoading: false, syncSelection: false });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unable to finalize successful manual charge.';
+      const msg = err instanceof Error ? err.message : 'We could not finalize successful manual charge.';
       setManualCheckoutError(msg);
       setInPersonFlowError(msg);
       throw err;
@@ -886,7 +886,7 @@ export default function AdminPosModePage() {
       startNewSale();
       void loadSeatsForPerformance(assignForm.performanceId, { showLoading: false, syncSelection: false });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to assign seats');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to assign seats');
     } finally {
       setInPersonSubmitting(false);
     }
@@ -942,7 +942,7 @@ export default function AdminPosModePage() {
             studentCode: hasStudentInShowCompSelection ? normalizedStudentCode : undefined,
           });
         } catch (err) {
-          setInPersonFlowError(err instanceof Error ? err.message : 'Failed to start manual checkout');
+          setInPersonFlowError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to start manual checkout');
         } finally {
           setInPersonSubmitting(false);
         }
@@ -971,7 +971,7 @@ export default function AdminPosModePage() {
         });
         setTerminalDispatch(dispatch);
       } catch (err) {
-        setInPersonFlowError(err instanceof Error ? err.message : 'Failed to send sale to payment line');
+        setInPersonFlowError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to send sale to payment line');
       } finally {
         setInPersonSubmitting(false);
       }
@@ -1010,7 +1010,7 @@ export default function AdminPosModePage() {
       startNewSale();
       void loadSeatsForPerformance(assignForm.performanceId, { showLoading: false, syncSelection: false });
     } catch (err) {
-      setInPersonFlowError(err instanceof Error ? err.message : 'Failed to finalize in-person sale');
+      setInPersonFlowError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to finalize in-person sale');
     } finally {
       setInPersonSubmitting(false);
     }

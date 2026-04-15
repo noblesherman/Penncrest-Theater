@@ -748,12 +748,12 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
           );
           return;
         } catch (legacyErr) {
-          handleRouteError(reply, legacyErr, 'Failed to fetch performances');
+          handleRouteError(reply, legacyErr, 'We hit a small backstage snag while trying to fetch performances');
           return;
         }
       }
 
-      handleRouteError(reply, err, 'Failed to fetch performances');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch performances');
     }
   });
 
@@ -903,7 +903,7 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
         studentCompSync: created.studentCompSync
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to create performance');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to create performance');
     }
   });
 
@@ -1112,7 +1112,7 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send({ success: true, studentCompSync });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to update performance');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to update performance');
     }
   });
 
@@ -1150,7 +1150,7 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(updated);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to archive performance');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to archive performance');
     }
   });
 
@@ -1188,7 +1188,7 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(updated);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to restore performance');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to restore performance');
     }
   });
 
@@ -1250,7 +1250,7 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send({ success: true });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to delete performance');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to delete performance');
     }
   });
 };

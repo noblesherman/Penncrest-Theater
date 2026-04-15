@@ -158,7 +158,7 @@ export default function AdminTripsPage() {
       const nextId = keepId && payload.trips.some((trip) => trip.id === keepId) ? keepId : payload.trips[0].id;
       setSelectedTripId(nextId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load trips');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load trips');
     } finally {
       setLoading(false);
     }
@@ -196,7 +196,7 @@ export default function AdminTripsPage() {
         Object.fromEntries(rosterRes.roster.map((row) => [row.id, toDatetimeLocal(row.dueAtOverride || row.dueAt)]))
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load trip details');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load trip details');
     } finally {
       setLoading(false);
     }
@@ -252,7 +252,7 @@ export default function AdminTripsPage() {
       });
       setNotice('Trip created.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create trip');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to create trip');
     }
   }
 
@@ -288,7 +288,7 @@ export default function AdminTripsPage() {
       await loadTripData(selectedTripId);
       setNotice('Trip updated.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update trip');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to update trip');
     }
   }
 
@@ -304,7 +304,7 @@ export default function AdminTripsPage() {
       await loadTripData(selectedTripId);
       setNotice(action === 'publish' ? 'Trip published.' : 'Trip archived.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : `Failed to ${action} trip`);
+      setError(err instanceof Error ? err.message : `We hit a small backstage snag while trying to ${action} trip`);
     }
   }
 
@@ -338,7 +338,7 @@ export default function AdminTripsPage() {
         `Trip deleted. Removed ${result.deletedEnrollments} enrollments, ${result.deletedPayments} payments, and ${result.deletedDocuments} documents.`
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete trip');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to delete trip');
     }
   }
 
@@ -370,7 +370,7 @@ export default function AdminTripsPage() {
       await loadTripData(selectedTripId);
       setNotice('Document uploaded.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to upload document');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to upload document');
     }
   }
 
@@ -385,7 +385,7 @@ export default function AdminTripsPage() {
       await loadTripData(selectedTripId);
       setNotice('Document deleted.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete document');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to delete document');
     }
   }
 
@@ -420,7 +420,7 @@ export default function AdminTripsPage() {
       await loadTripData(selectedTripId);
       setNotice('Roster updated.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add roster entry');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to add roster entry');
     }
   }
 
@@ -438,7 +438,7 @@ export default function AdminTripsPage() {
       await loadTripData(selectedTripId);
       setNotice('Roster CSV imported.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to import CSV');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to import CSV');
     }
   }
 
@@ -464,7 +464,7 @@ export default function AdminTripsPage() {
       }
       setNotice('Enrollment override saved.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save override');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to save override');
     }
   }
 
@@ -483,7 +483,7 @@ export default function AdminTripsPage() {
         }
       });
       if (!response.ok) {
-        const body = (await response.text()) || `Request failed (${response.status})`;
+        const body = (await response.text()) || `That request missed its cue (${response.status})`;
         throw new Error(body);
       }
       const blob = await response.blob();
@@ -496,7 +496,7 @@ export default function AdminTripsPage() {
       anchor.remove();
       URL.revokeObjectURL(objectUrl);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to export ledger');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to export ledger');
     }
   }
 

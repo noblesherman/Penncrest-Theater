@@ -325,7 +325,7 @@ export function ScanScreen({ navigation }: Props) {
       setNotice({ kind: 'success', text: `Session started for ${session.staffName} (${session.gate}).` });
       setShowSessionPanel(false);
     } catch (err) {
-      setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to start session' });
+      setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'We hit a small backstage snag while trying to start session' });
     }
   }, [performanceId, sessionDraft.deviceLabel, sessionDraft.gate, sessionDraft.staffName, token]);
 
@@ -341,7 +341,7 @@ export function ScanScreen({ navigation }: Props) {
       setNotice({ kind: 'success', text: 'Scanner session ended.' });
       stopCamera();
     } catch (err) {
-      setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to end session' });
+      setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'We hit a small backstage snag while trying to end session' });
     }
   }, [scannerSession, stopCamera, token]);
 
@@ -477,7 +477,7 @@ export function ScanScreen({ navigation }: Props) {
         setScannerSession(sessions[defaultPerformanceId] || null);
       } catch (err) {
         if (!cancelled) {
-          setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Failed to load scanner' });
+          setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load scanner' });
         }
       }
     };

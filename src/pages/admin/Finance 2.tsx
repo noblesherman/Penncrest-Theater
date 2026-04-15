@@ -258,7 +258,7 @@ export default function AdminFinancePage() {
         const rows = await adminFetch<PerformanceItem[]>('/api/admin/performances?scope=all');
         setPerformances(rows);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load performances');
+        setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load performances');
       } finally {
         setLoadingPerformances(false);
       }
@@ -275,7 +275,7 @@ export default function AdminFinancePage() {
       const result = await adminFetch<FinanceSummary>(`/api/admin/finance/summary?${query.toString()}`);
       setSummary(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load finance summary');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load finance summary');
     } finally {
       setLoadingSummary(false);
     }
@@ -326,7 +326,7 @@ export default function AdminFinancePage() {
       setNotice(`Downloaded ${filename}`);
     } catch (err) {
       setStripeCsvStatus('Stripe CSV failed. Check error above.');
-      setError(err instanceof Error ? err.message : 'Failed to download Stripe CSV');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to download Stripe CSV');
     } finally {
       setDownloadingStripeCsv(false);
     }
@@ -365,7 +365,7 @@ export default function AdminFinancePage() {
       URL.revokeObjectURL(url);
       setNotice(`Downloaded ${filename}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to download local CSV');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to download local CSV');
     } finally {
       setDownloadingLocalCsv(false);
     }
@@ -403,7 +403,7 @@ export default function AdminFinancePage() {
       URL.revokeObjectURL(url);
       setNotice(`Downloaded ${filename}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to download PDF');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to download PDF');
     } finally {
       setDownloadingPdf(false);
     }

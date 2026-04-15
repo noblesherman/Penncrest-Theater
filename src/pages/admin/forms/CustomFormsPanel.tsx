@@ -251,7 +251,7 @@ export default function CustomFormsPanel() {
         return (data || [])[0]?.id || null;
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load forms.');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load forms.');
     } finally {
       setLoading(false);
     }
@@ -264,7 +264,7 @@ export default function CustomFormsPanel() {
       setSubmissions(data || []);
       setSelectedSubmissionId(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load responses.');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load responses.');
     } finally {
       setLoadingSubmissions(false);
     }
@@ -328,7 +328,7 @@ export default function CustomFormsPanel() {
       setNewFormDescription('');
       setNotice('Custom form created.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create form.');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to create form.');
     } finally {
       setCreating(false);
     }
@@ -369,7 +369,7 @@ export default function CustomFormsPanel() {
       setDrafts((previous) => ({ ...previous, [updated.id]: cloneDraftFromForm(updated) }));
       setNotice('Form saved.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save form.');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to save form.');
     } finally {
       setSaving(false);
     }
@@ -393,7 +393,7 @@ export default function CustomFormsPanel() {
       setDrafts((previous) => ({ ...previous, [updated.id]: previous[updated.id] || cloneDraftFromForm(updated) }));
       setNotice(status === 'PUBLISHED' ? 'Form published.' : status === 'DRAFT' ? 'Form moved to draft.' : 'Form archived.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update form status.');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to update form status.');
     } finally {
       busySetter(false);
     }
@@ -424,7 +424,7 @@ export default function CustomFormsPanel() {
       setSelectedSubmissionId(null);
       setNotice('Form deleted.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete form.');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to delete form.');
     } finally {
       setDeletingForm(false);
     }
@@ -451,7 +451,7 @@ export default function CustomFormsPanel() {
       );
       setNotice('Response deleted.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete response.');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to delete response.');
     } finally {
       setDeletingSubmissionId(null);
     }

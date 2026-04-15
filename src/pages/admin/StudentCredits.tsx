@@ -175,14 +175,14 @@ export default function AdminStudentCreditsPage() {
   };
 
   useEffect(() => {
-    loadPerformances().catch((err) => setError(err instanceof Error ? err.message : 'Failed to load performances'));
+    loadPerformances().catch((err) => setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load performances'));
   }, [scope]);
 
   useEffect(() => {
     if (!selectedShowId) return;
     setLoading(true);
     loadCredits(selectedShowId)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load student credits'))
+      .catch((err) => setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load student credits'))
       .finally(() => setLoading(false));
   }, [selectedShowId]);
 
@@ -225,7 +225,7 @@ export default function AdminStudentCreditsPage() {
       setCreateForm(initialCreateForm);
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create student credit');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to create student credit');
     }
   };
 
@@ -250,7 +250,7 @@ export default function AdminStudentCreditsPage() {
       setImportSummary(`Imported ${result.createdCount} student credit record${result.createdCount === 1 ? '' : 's'}.`);
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to import CSV');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to import CSV');
     }
   };
 
@@ -270,7 +270,7 @@ export default function AdminStudentCreditsPage() {
       await adminFetch(`/api/admin/student-credits/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update student credit');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to update student credit');
     }
   };
 
@@ -282,7 +282,7 @@ export default function AdminStudentCreditsPage() {
       await adminFetch(`/api/admin/student-credits/${id}/manual-redeem`, { method: 'POST', body: JSON.stringify({ quantity: Math.floor(qty) }) });
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to manually redeem credits');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to manually redeem credits');
     }
   };
 
@@ -294,7 +294,7 @@ export default function AdminStudentCreditsPage() {
       await adminFetch(`/api/admin/student-credits/${id}/manual-restore`, { method: 'POST', body: JSON.stringify({ quantity: Math.floor(qty) }) });
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to restore credits');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to restore credits');
     }
   };
 
@@ -611,7 +611,7 @@ export default function AdminStudentCreditsPage() {
                   <ActionButton onClick={() => void manualRestore(row.id)}>
                     Restore
                   </ActionButton>
-                  <ActionButton onClick={() => loadHistory(row.id).catch((err) => setError(err instanceof Error ? err.message : 'Failed to load history'))}>
+                  <ActionButton onClick={() => loadHistory(row.id).catch((err) => setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load history'))}>
                     History
                   </ActionButton>
                 </div>
@@ -690,7 +690,7 @@ export default function AdminStudentCreditsPage() {
                         <ActionButton onClick={() => void manualRestore(row.id)}>
                           Restore
                         </ActionButton>
-                        <ActionButton onClick={() => loadHistory(row.id).catch((err) => setError(err instanceof Error ? err.message : 'Failed to load history'))}>
+                        <ActionButton onClick={() => loadHistory(row.id).catch((err) => setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load history'))}>
                           History
                         </ActionButton>
                       </div>

@@ -29,7 +29,7 @@ export const adminAuditRoutes: FastifyPluginAsync = async (app) => {
         rows
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch audit logs');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch audit logs');
     }
   });
 };

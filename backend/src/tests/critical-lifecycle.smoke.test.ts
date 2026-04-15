@@ -604,7 +604,7 @@ describe.sequential('critical lifecycle smoke', () => {
     });
 
     expect(recoveredOrder.status).toBe('FINALIZATION_FAILED');
-    expect(recoveredOrder.lastFinalizationError).toContain('Unable to finalize');
+    expect(recoveredOrder.lastFinalizationError).toContain('We could not finalize');
     expect(recoveredOrder.stripeRefundStatus).toBe('pending');
     expect(recoveredOrder.refundRequestedAt).not.toBeNull();
   });

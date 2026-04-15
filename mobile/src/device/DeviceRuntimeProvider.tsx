@@ -377,7 +377,7 @@ export function DeviceRuntimeProvider({ children }: PropsWithChildren) {
 
       return {
         ok: false,
-        error: error instanceof Error ? error.message : 'Unable to verify PIN'
+        error: error instanceof Error ? error.message : 'We could not verify PIN'
       };
     }
   };

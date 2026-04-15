@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '../config';
+import { toTheaterFriendlyErrorMessage } from '../lib/theaterErrorTone';
 
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -48,9 +49,9 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     });
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
-      throw new ApiError(0, 'Request timed out. Check your connection and try again.');
+      throw new ApiError(0, toTheaterFriendlyErrorMessage('Request timed out. Check your connection and try again.'));
     }
-    throw new ApiError(0, 'Network request failed. Check your connection and try again.');
+    throw new ApiError(0, toTheaterFriendlyErrorMessage('Network request failed. Check your connection and try again.'));
   } finally {
     clearTimeout(timeout);
   }
@@ -59,17 +60,18 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const payload = isJson ? ((await response.json().catch(() => null)) as T | ApiErrorPayload | null) : null;
 
   if (!response.ok) {
+    const fallback = toTheaterFriendlyErrorMessage(`That request missed its cue (${response.status})`);
     const message = (() => {
       if (!payload || typeof payload !== 'object') {
-        return `Request failed (${response.status})`;
+        return fallback;
       }
       if ('message' in payload && typeof payload.message === 'string' && payload.message.trim()) {
-        return payload.message;
+        return toTheaterFriendlyErrorMessage(payload.message, fallback);
       }
       if ('error' in payload && typeof payload.error === 'string' && payload.error.trim()) {
-        return payload.error;
+        return toTheaterFriendlyErrorMessage(payload.error, fallback);
       }
-      return `Request failed (${response.status})`;
+      return fallback;
     })();
 
     throw new ApiError(response.status, message);

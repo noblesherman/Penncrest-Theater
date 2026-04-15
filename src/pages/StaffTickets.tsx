@@ -87,7 +87,7 @@ export default function StaffTicketsPage() {
           setPerformanceId((prev) => (prev && eligible.some((item) => item.id === prev) ? prev : eligible[0].id));
         }
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load performances'));
+      .catch((err) => setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load performances'));
   }, []);
 
   useEffect(() => {
@@ -108,7 +108,7 @@ export default function StaffTicketsPage() {
           return rows.find((seat) => seat.status === 'available' && !seat.isCompanion)?.id || '';
         });
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load seats'));
+      .catch((err) => setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load seats'));
   }, [performanceId]);
 
   const reserveCompTicket = async (event: FormEvent) => {
@@ -132,7 +132,7 @@ export default function StaffTicketsPage() {
       rememberOrderAccessToken(result.orderId, result.orderAccessToken);
       navigate(buildConfirmationPath(result.orderId, result.orderAccessToken));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reserve staff comp ticket');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to reserve staff comp ticket');
     } finally {
       setSubmitting(false);
     }

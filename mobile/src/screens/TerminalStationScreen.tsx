@@ -183,7 +183,7 @@ export function TerminalStationScreen(_props: Props) {
     };
 
     loadDeviceSettings().catch((err) => {
-      setError(err instanceof Error ? err.message : 'Failed to load terminal settings');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load terminal settings');
     });
   }, []);
 
@@ -262,7 +262,7 @@ export function TerminalStationScreen(_props: Props) {
 
     const locationsResult = await terminal.getLocations({ limit: 1 });
     if (locationsResult.error) {
-      throw new Error(locationsResult.error.message || 'Unable to load Stripe locations');
+      throw new Error(locationsResult.error.message || 'We could not load Stripe locations');
     }
 
     const locationId = locationsResult.locations?.[0]?.id;
@@ -278,7 +278,7 @@ export function TerminalStationScreen(_props: Props) {
         autoReconnectOnUnexpectedDisconnect: true
       });
       if (easyConnectResult.error) {
-        throw new Error(easyConnectResult.error.message || 'Unable to connect Tap to Pay');
+        throw new Error(easyConnectResult.error.message || 'We could not connect Tap to Pay');
       }
       readerConnectedRef.current = true;
       return;
@@ -304,7 +304,7 @@ export function TerminalStationScreen(_props: Props) {
       autoReconnectOnUnexpectedDisconnect: true
     });
     if (connectResult.error) {
-      throw new Error(connectResult.error.message || 'Unable to connect Tap to Pay');
+      throw new Error(connectResult.error.message || 'We could not connect Tap to Pay');
     }
     readerConnectedRef.current = true;
   }, [ensurePlatformPermissions, ensureTerminalInitialized, terminal]);
@@ -416,7 +416,7 @@ export function TerminalStationScreen(_props: Props) {
         setStatusMessage('Loading payment intent...');
         const retrieved = await terminal.retrievePaymentIntent(entry.paymentIntentClientSecret);
         if (retrieved.error || !retrieved.paymentIntent) {
-          throw new Error(retrieved.error?.message || 'Unable to retrieve payment intent');
+          throw new Error(retrieved.error?.message || 'We could not retrieve payment intent');
         }
 
         throwIfCanceled();
@@ -562,7 +562,7 @@ export function TerminalStationScreen(_props: Props) {
       setStatusMessage('Terminal station registered. Ready to load payment line.');
       await refreshLineSnapshot().catch(() => undefined);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to register terminal station');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to register terminal station');
     } finally {
       setRegistering(false);
     }
@@ -595,7 +595,7 @@ export function TerminalStationScreen(_props: Props) {
         setStatusMessage('No waiting payments in line.');
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to start payment line';
+      const message = err instanceof Error ? err.message : 'We could not start payment line';
       if (mode === 'auto') {
         autoStartBlockedUntilRef.current = Date.now() + AUTO_START_RETRY_DELAY_MS;
       }
@@ -625,7 +625,7 @@ export function TerminalStationScreen(_props: Props) {
       setStatusMessage(`Entry ${lastFailedDispatchId} moved to the back of the line.`);
       await refreshLineSnapshot().catch(() => undefined);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to move entry to back of line';
+      const message = err instanceof Error ? err.message : 'We could not move entry to back of line';
       setError(message);
       setStatusMessage(message);
     } finally {
@@ -659,7 +659,7 @@ export function TerminalStationScreen(_props: Props) {
       setStatusMessage(`Entry ${dispatchId} canceled.`);
       await refreshLineSnapshot().catch(() => undefined);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to cancel entry';
+      const message = err instanceof Error ? err.message : 'We could not cancel entry';
       setError(message);
       setStatusMessage(message);
       canceledDispatchIdRef.current = null;

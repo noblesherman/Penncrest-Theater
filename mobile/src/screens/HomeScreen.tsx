@@ -126,7 +126,7 @@ export function HomeScreen({ navigation }: Props) {
               onPress={() => {
                 void clearPendingSale()
                   .then(() => setPendingSale(null))
-                  .catch(() => Alert.alert('Unable to clear payment', 'Please try again.'));
+                  .catch(() => Alert.alert('We could not clear payment', 'Please try again.'));
               }}
               variant="secondary"
             />

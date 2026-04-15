@@ -265,7 +265,7 @@ async function finalizePaidOrderTx(
   }
 
   if (effectiveRequestedSeatIds.length === 0) {
-    throw new HttpError(400, 'Unable to resolve seats for checkout completion');
+    throw new HttpError(400, 'We could not resolve seats for checkout completion');
   }
 
   const seats = await tx.seat.findMany({
@@ -276,7 +276,7 @@ async function finalizePaidOrderTx(
   });
 
   if (seats.length !== effectiveRequestedSeatIds.length) {
-    throw new HttpError(400, 'Unable to load seats for checkout completion');
+    throw new HttpError(400, 'We could not load seats for checkout completion');
   }
 
   const existingTicketSeatIds = new Set(
@@ -301,7 +301,7 @@ async function finalizePaidOrderTx(
   });
 
   if (conflictingSeat) {
-    throw new HttpError(409, 'Unable to finalize one or more seats');
+    throw new HttpError(409, 'We could not finalize one or more seats');
   }
 
   const seatsToSell = seats.filter((seat) => seat.status !== 'SOLD').map((seat) => seat.id);
@@ -331,7 +331,7 @@ async function finalizePaidOrderTx(
     });
 
     if (seatUpdate.count !== seatsToSell.length) {
-      throw new HttpError(409, 'Unable to finalize one or more seats');
+      throw new HttpError(409, 'We could not finalize one or more seats');
     }
   }
 

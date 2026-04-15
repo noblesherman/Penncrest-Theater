@@ -327,7 +327,7 @@ export async function finalizeStudentCreditForOrderTx(
   const credit = await lockStudentCreditRow(tx, order.studentTicketCreditId);
 
   if (credit.pendingTickets < quantity) {
-    throw new HttpError(409, 'Unable to finalize student credit reservation');
+    throw new HttpError(409, 'We could not finalize student credit reservation');
   }
 
   if (credit.usedTickets + quantity > credit.allocatedTickets) {
@@ -455,7 +455,7 @@ export async function restoreStudentCreditsForRefundTx(
 
   const credit = await lockStudentCreditRow(tx, order.studentTicketCreditId);
   if (credit.usedTickets < outstandingRestore) {
-    throw new HttpError(409, 'Unable to restore student credits: usage state is inconsistent');
+    throw new HttpError(409, 'We could not restore student credits: usage state is inconsistent');
   }
 
   await tx.studentTicketCredit.update({

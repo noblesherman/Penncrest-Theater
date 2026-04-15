@@ -56,7 +56,7 @@ export async function ensureBootstrapSuperAdmin(): Promise<AdminUser> {
       where: { username }
     });
     if (!created) {
-      throw new Error('Failed to bootstrap the initial super admin');
+      throw new Error('We hit a small backstage snag while trying to bootstrap the initial super admin');
     }
     return created;
   }

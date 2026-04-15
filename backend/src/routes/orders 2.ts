@@ -157,7 +157,7 @@ export const orderRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(serializeOrder(order));
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch order');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch order');
     }
     }
   );
@@ -217,7 +217,7 @@ export const orderRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(serializeOrder(order));
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to lookup order');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to lookup order');
     }
     }
   );

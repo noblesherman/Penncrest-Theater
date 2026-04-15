@@ -80,7 +80,7 @@ export const adminUserRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(rows.map((row) => serializeAdminUser(row)));
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to load admin users');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load admin users');
     }
   });
 
@@ -113,7 +113,7 @@ export const adminUserRoutes: FastifyPluginAsync = async (app) => {
 
       reply.status(201).send(serializeAdminUser(created));
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to create admin user');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to create admin user');
     }
   });
 
@@ -148,7 +148,7 @@ export const adminUserRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(serializeAdminUser(updated));
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to update admin user');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to update admin user');
     }
   });
 
@@ -186,7 +186,7 @@ export const adminUserRoutes: FastifyPluginAsync = async (app) => {
 
         reply.send({ success: true });
       } catch (err) {
-        handleRouteError(reply, err, 'Failed to reset password');
+        handleRouteError(reply, err, 'We hit a small backstage snag while trying to reset password');
       }
     }
   );
@@ -219,7 +219,7 @@ export const adminUserRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send({ success: true });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to reset two-factor authentication');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to reset two-factor authentication');
     }
   });
 };

@@ -1,3 +1,5 @@
+import { toTheaterFriendlyErrorMessage } from './theaterErrorTone';
+
 function normalizeApiBaseUrl(url?: string): string {
   const trimmed = url?.trim();
   if (!trimmed) {
@@ -56,20 +58,22 @@ function collectErrorMessages(value: unknown): string[] {
 }
 
 function extractApiErrorMessage(body: unknown, status: number): string {
+  const fallback = toTheaterFriendlyErrorMessage(`That request missed its cue (${status})`);
+
   if (body && typeof body === 'object') {
     const record = body as Record<string, unknown>;
     const messages = collectErrorMessages(record.error ?? record.message ?? record);
     const unique = [...new Set(messages)];
     if (unique.length > 0) {
-      return unique.join(' ');
+      return toTheaterFriendlyErrorMessage(unique.join(' '), fallback);
     }
   }
 
   if (typeof body === 'string' && body.trim()) {
-    return body.trim();
+    return toTheaterFriendlyErrorMessage(body.trim(), fallback);
   }
 
-  return `Request failed (${status})`;
+  return fallback;
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {

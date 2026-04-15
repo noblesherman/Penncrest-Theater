@@ -142,7 +142,7 @@ export const eventRegistrationFormRoutes: FastifyPluginAsync = async (app) => {
         defaults
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to load registration form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load registration form');
     }
   });
 
@@ -236,7 +236,7 @@ export const eventRegistrationFormRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(serializeAdminForm(result as any));
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to save registration form draft');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to save registration form draft');
     }
   });
 
@@ -366,7 +366,7 @@ export const eventRegistrationFormRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(serializeAdminForm(publishedForm as any));
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to publish registration form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to publish registration form');
     }
   });
 
@@ -433,7 +433,7 @@ export const eventRegistrationFormRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(serializeAdminForm(updated as any));
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to archive registration form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to archive registration form');
     }
   });
 
@@ -534,7 +534,7 @@ export const eventRegistrationFormRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(serializeAdminForm(duplicated as any));
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to duplicate registration form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to duplicate registration form');
     }
   });
 
@@ -602,7 +602,7 @@ export const eventRegistrationFormRoutes: FastifyPluginAsync = async (app) => {
         })
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to load registration form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load registration form');
     }
   });
 };

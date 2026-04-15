@@ -108,7 +108,7 @@ export const adminSeatRoutes: FastifyPluginAsync = async (app) => {
         }))
       );
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch seats');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch seats');
     }
   });
 
@@ -164,7 +164,7 @@ export const adminSeatRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send({ success: true });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to block seats');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to block seats');
     }
   });
 
@@ -200,7 +200,7 @@ export const adminSeatRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send({ success: true });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to unblock seats');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to unblock seats');
     }
   });
 
@@ -266,7 +266,7 @@ export const adminSeatRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send({ success: true });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to update seat flags');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to update seat flags');
     }
   });
 };

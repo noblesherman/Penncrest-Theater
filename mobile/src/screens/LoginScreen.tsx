@@ -32,7 +32,7 @@ export function LoginScreen({ navigation }: Props) {
     try {
       await login({ username: username.trim(), password, otpCode: otpCode.trim() || undefined });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to log in';
+      const message = err instanceof Error ? err.message : 'We could not log in';
       setError(message);
     } finally {
       setSubmitting(false);

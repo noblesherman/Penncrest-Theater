@@ -84,7 +84,7 @@ export function MaintenanceScreen({ navigation }: Props) {
         );
       }
     } catch (error) {
-      Alert.alert('Update failed', error instanceof Error ? error.message : 'Unable to run update check');
+      Alert.alert('Update failed', error instanceof Error ? error.message : 'We could not run update check');
     } finally {
       setBusy(false);
     }

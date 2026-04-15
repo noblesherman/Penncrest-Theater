@@ -98,7 +98,7 @@ export default function CustomFormPage() {
           )
         );
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load form.'))
+      .catch((err) => setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load form.'))
       .finally(() => setLoading(false));
   }, [slug]);
 
@@ -196,7 +196,7 @@ export default function CustomFormPage() {
 
       setSubmitted(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to submit form.');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to submit form.');
     } finally {
       setSubmitting(false);
     }

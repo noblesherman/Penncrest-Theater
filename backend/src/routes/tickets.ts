@@ -77,7 +77,7 @@ export const ticketRoutes: FastifyPluginAsync = async (app) => {
         }
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch ticket');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch ticket');
     }
   });
 };

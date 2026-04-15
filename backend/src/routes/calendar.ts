@@ -70,7 +70,7 @@ export const calendarRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(payload);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch calendar events');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch calendar events');
     }
   });
 };

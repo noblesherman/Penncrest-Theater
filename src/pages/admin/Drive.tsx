@@ -80,10 +80,10 @@ function formatDateTime(value: string): string {
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Failed to read file.'));
+    reader.onerror = () => reject(new Error('We hit a small backstage snag while trying to read file.'));
     reader.onload = () => {
       if (typeof reader.result !== 'string') {
-        reject(new Error('Failed to parse file.'));
+        reject(new Error('We hit a small backstage snag while trying to parse file.'));
         return;
       }
       resolve(reader.result);
@@ -158,7 +158,7 @@ export default function AdminDrivePage() {
       const payload = await adminFetch<DriveResponse>(`/api/admin/drive${query}`);
       setState(payload);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load drive');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load drive');
     } finally {
       setLoading(false);
     }
@@ -220,7 +220,7 @@ export default function AdminDrivePage() {
       setNotice('Folder created.');
       await loadDrive();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create folder');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to create folder');
     }
   }
 
@@ -249,7 +249,7 @@ export default function AdminDrivePage() {
       setNotice('Folder renamed.');
       await loadDrive();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to rename folder');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to rename folder');
     }
   }
 
@@ -271,7 +271,7 @@ export default function AdminDrivePage() {
       setCurrentFolderId(parentId);
       setNotice('Folder deleted.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete folder');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to delete folder');
     }
   }
 
@@ -311,7 +311,7 @@ export default function AdminDrivePage() {
       setNotice('File uploaded to CDN.');
       await loadDrive();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to upload file');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to upload file');
     } finally {
       setUploading(false);
     }
@@ -349,7 +349,7 @@ export default function AdminDrivePage() {
       setNotice('File deleted.');
       await loadDrive();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete file');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to delete file');
     }
   }
 
@@ -376,7 +376,7 @@ export default function AdminDrivePage() {
       setNotice('File renamed.');
       await loadDrive();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to rename file');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to rename file');
     }
   }
 
@@ -399,7 +399,7 @@ export default function AdminDrivePage() {
       setNotice('File moved.');
       await loadDrive();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to move file');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to move file');
     }
   }
 
@@ -416,7 +416,7 @@ export default function AdminDrivePage() {
       });
       setQrDataUrl(dataUrl);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate QR code');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to generate QR code');
     } finally {
       setQrLoading(false);
     }

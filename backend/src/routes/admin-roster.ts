@@ -86,7 +86,7 @@ export const adminRosterRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(filtered);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch roster');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch roster');
     }
   });
 };

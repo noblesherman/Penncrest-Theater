@@ -191,7 +191,7 @@ export default function AdminDashboardPage() {
         if (!cancelled) setData(payload);
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load dashboard');
+        if (!cancelled) setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load dashboard');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -251,7 +251,7 @@ export default function AdminDashboardPage() {
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          Unable to load dashboard data. {error}
+          We could not load dashboard data. {error}
         </div>
       )}
 

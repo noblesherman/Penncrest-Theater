@@ -133,15 +133,15 @@ function normalizeCustomQuestions(value: ProgramBioCustomQuestion[] | undefined)
 async function imageFileToDataUrl(file: File, maxWidth: number, maxHeight: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Failed to read image.'));
+    reader.onerror = () => reject(new Error('We hit a small backstage snag while trying to read image.'));
     reader.onload = () => {
       if (typeof reader.result !== 'string') {
-        reject(new Error('Failed to load image.'));
+        reject(new Error('We hit a small backstage snag while trying to load image.'));
         return;
       }
 
       const image = new Image();
-      image.onerror = () => reject(new Error('Failed to parse image.'));
+      image.onerror = () => reject(new Error('We hit a small backstage snag while trying to parse image.'));
       image.onload = () => {
         const ratio = Math.min(maxWidth / image.width, maxHeight / image.height, 1);
         const width = Math.max(1, Math.round(image.width * ratio));
@@ -192,7 +192,7 @@ export default function ProgramBioFormPage() {
     setError(null);
     void apiFetch<PublicProgramBioForm>(`/api/forms/${slug}`)
       .then((data) => setFormMeta(data))
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load form'))
+      .catch((err) => setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load form'))
       .finally(() => setLoading(false));
   }, [slug]);
 
@@ -332,7 +332,7 @@ export default function ProgramBioFormPage() {
       });
       setResult(submission);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to submit form');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to submit form');
     } finally {
       setSubmitting(false);
     }

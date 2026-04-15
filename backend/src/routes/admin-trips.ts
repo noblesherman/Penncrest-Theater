@@ -296,7 +296,7 @@ export const adminTripRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send({ trips });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to load trips');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load trips');
     }
   });
 
@@ -319,7 +319,7 @@ export const adminTripRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send({ trip });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to load trip');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load trip');
     }
   });
 
@@ -360,7 +360,7 @@ export const adminTripRoutes: FastifyPluginAsync = async (app) => {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         return reply.status(409).send({ error: 'Trip slug already exists' });
       }
-      handleRouteError(reply, err, 'Failed to create trip');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to create trip');
     }
   });
 
@@ -404,7 +404,7 @@ export const adminTripRoutes: FastifyPluginAsync = async (app) => {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         return reply.status(409).send({ error: 'Trip slug already exists' });
       }
-      handleRouteError(reply, err, 'Failed to update trip');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to update trip');
     }
   });
 
@@ -422,7 +422,7 @@ export const adminTripRoutes: FastifyPluginAsync = async (app) => {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
         return reply.status(404).send({ error: 'Trip not found' });
       }
-      handleRouteError(reply, err, 'Failed to publish trip');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to publish trip');
     }
   });
 
@@ -440,7 +440,7 @@ export const adminTripRoutes: FastifyPluginAsync = async (app) => {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
         return reply.status(404).send({ error: 'Trip not found' });
       }
-      handleRouteError(reply, err, 'Failed to archive trip');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to archive trip');
     }
   });
 
@@ -565,7 +565,7 @@ export const adminTripRoutes: FastifyPluginAsync = async (app) => {
         failedDocumentObjectDeletes
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to delete trip');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to delete trip');
     }
   });
 
@@ -599,7 +599,7 @@ export const adminTripRoutes: FastifyPluginAsync = async (app) => {
 
       reply.status(201).send({ document: created });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to create trip document');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to create trip document');
     }
   });
 
@@ -637,7 +637,7 @@ export const adminTripRoutes: FastifyPluginAsync = async (app) => {
       });
       reply.send({ document: row });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to update trip document');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to update trip document');
     }
   });
 
@@ -658,7 +658,7 @@ export const adminTripRoutes: FastifyPluginAsync = async (app) => {
 
       reply.status(204).send();
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to delete trip document');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to delete trip document');
     }
   });
 
@@ -742,7 +742,7 @@ export const adminTripRoutes: FastifyPluginAsync = async (app) => {
         })
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to load trip roster');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load trip roster');
     }
   });
 
@@ -783,7 +783,7 @@ export const adminTripRoutes: FastifyPluginAsync = async (app) => {
         touchedEnrollmentIds: result.touchedEnrollmentIds
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to upsert trip roster');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to upsert trip roster');
     }
   });
 
@@ -818,7 +818,7 @@ export const adminTripRoutes: FastifyPluginAsync = async (app) => {
         touchedEnrollmentIds: result.touchedEnrollmentIds
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to import trip roster CSV');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to import trip roster CSV');
     }
   });
 
@@ -879,7 +879,7 @@ export const adminTripRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send({ enrollment: updated });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to update enrollment override');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to update enrollment override');
     }
   });
 
@@ -985,7 +985,7 @@ export const adminTripRoutes: FastifyPluginAsync = async (app) => {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         return reply.status(409).send({ error: 'Student is already assigned to another account' });
       }
-      handleRouteError(reply, err, 'Failed to reassign student');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to reassign student');
     }
   });
 
@@ -1073,7 +1073,7 @@ export const adminTripRoutes: FastifyPluginAsync = async (app) => {
         }))
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to load trip ledger');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load trip ledger');
     }
   });
 
@@ -1160,7 +1160,7 @@ export const adminTripRoutes: FastifyPluginAsync = async (app) => {
         .header('Content-Disposition', `attachment; filename="trip-ledger-${trip.slug}.csv"`)
         .send(csv);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to export trip ledger');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to export trip ledger');
     }
   });
 };

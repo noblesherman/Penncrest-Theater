@@ -11,15 +11,15 @@ type UploadOptions = {
 async function fileToDataUrl(file: File, maxWidth: number, maxHeight: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Failed to read file.'));
+    reader.onerror = () => reject(new Error('We hit a small backstage snag while trying to read file.'));
     reader.onload = () => {
       if (typeof reader.result !== 'string') {
-        reject(new Error('Failed to parse image.'));
+        reject(new Error('We hit a small backstage snag while trying to parse image.'));
         return;
       }
 
       const image = new Image();
-      image.onerror = () => reject(new Error('Failed to load image.'));
+      image.onerror = () => reject(new Error('We hit a small backstage snag while trying to load image.'));
       image.onload = () => {
         const ratio = Math.min(maxWidth / image.width, maxHeight / image.height, 1);
         const width = Math.max(1, Math.round(image.width * ratio));
@@ -57,10 +57,10 @@ type UploadResponse = {
 function fileToRawDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Failed to read file.'));
+    reader.onerror = () => reject(new Error('We hit a small backstage snag while trying to read file.'));
     reader.onload = () => {
       if (typeof reader.result !== 'string') {
-        reject(new Error('Failed to parse file.'));
+        reject(new Error('We hit a small backstage snag while trying to parse file.'));
         return;
       }
       resolve(reader.result);

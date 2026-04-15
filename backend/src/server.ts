@@ -59,6 +59,7 @@ import { startPaymentLineWorker } from './services/payment-line-worker.js';
 import { startTicketEmailOutboxWorker } from './services/ticket-email-outbox-worker.js';
 import { startHoldCleanupScheduler } from './services/hold-cleanup-scheduler.js';
 import { startHealthAlertMonitor } from './services/health-alert-monitor.js';
+import { theaterizeErrorPayload, toTheaterFriendlyErrorMessage } from './lib/theater-error-tone.js';
 
 export async function createServer() {
   const uploadBodyLimitBytes = Math.max(16 * 1024 * 1024, Math.ceil(env.R2_MAX_UPLOAD_BYTES * 1.5));
@@ -213,6 +214,11 @@ export async function createServer() {
     });
   }
 
+  app.addHook('preSerialization', async (_request, reply, payload) => {
+    if (reply.statusCode < 400) return payload;
+    return theaterizeErrorPayload(payload);
+  });
+
   app.setErrorHandler((error, _request, reply) => {
     app.log.error(error);
     const statusCode =
@@ -221,12 +227,12 @@ export async function createServer() {
         : 500;
 
     if (statusCode >= 500) {
-      reply.status(statusCode).send({ error: 'Internal server error' });
+      reply.status(statusCode).send({ error: toTheaterFriendlyErrorMessage('Internal server error') });
       return;
     }
 
-    const errorMessage = error instanceof Error ? error.message : 'Request failed';
-    reply.status(statusCode).send({ error: errorMessage || 'Request failed' });
+    const errorMessage = error instanceof Error ? error.message : 'That request missed its cue';
+    reply.status(statusCode).send({ error: toTheaterFriendlyErrorMessage(errorMessage || 'That request missed its cue') });
   });
 
   return app;

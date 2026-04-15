@@ -89,7 +89,7 @@ export default function AdminUsersPage() {
         )
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load admin users');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load admin users');
     } finally {
       setLoading(false);
     }
@@ -108,7 +108,7 @@ export default function AdminUsersPage() {
       setNotice('Admin user created successfully.');
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create admin user');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to create admin user');
     } finally { setCreating(false); }
   };
 
@@ -124,7 +124,7 @@ export default function AdminUsersPage() {
       setNotice('User updated.');
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update admin user');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to update admin user');
     } finally { setBusyId(null); }
   };
 
@@ -137,7 +137,7 @@ export default function AdminUsersPage() {
       updateDraft(id, { password: '' });
       setNotice('Password reset successfully.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reset password');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to reset password');
     } finally { setBusyId(null); }
   };
 
@@ -148,7 +148,7 @@ export default function AdminUsersPage() {
       setNotice('Two-factor authentication reset. The user will be prompted to set it up again on next login.');
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reset 2FA');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to reset 2FA');
     } finally { setBusyId(null); }
   };
 

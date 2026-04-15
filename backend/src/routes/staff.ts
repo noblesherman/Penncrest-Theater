@@ -121,7 +121,7 @@ export const staffRoutes: FastifyPluginAsync = async (app) => {
           }
         });
       } catch (err) {
-        handleRouteError(reply, err, 'Failed to redeem staff code');
+        handleRouteError(reply, err, 'We hit a small backstage snag while trying to redeem staff code');
       }
     }
   );

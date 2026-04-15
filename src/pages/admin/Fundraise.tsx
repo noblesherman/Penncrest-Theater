@@ -433,7 +433,7 @@ export default function AdminFundraisePage() {
         setSelectedEventId('');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load fundraising events');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load fundraising events');
     } finally {
       setLoading(false);
     }
@@ -446,7 +446,7 @@ export default function AdminFundraisePage() {
       const data = await adminFetch<{ sponsors: FundraisingSponsor[] }>('/api/admin/fundraising/sponsors');
       setSponsors(Array.isArray(data.sponsors) ? data.sponsors : []);
     } catch (err) {
-      setSponsorError(err instanceof Error ? err.message : 'Failed to load sponsors');
+      setSponsorError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load sponsors');
     } finally {
       setSponsorsLoading(false);
     }
@@ -460,7 +460,7 @@ export default function AdminFundraisePage() {
       setDonations(Array.isArray(data.donations) ? data.donations : []);
       setDonationSummary(data.summary || null);
     } catch (err) {
-      setDonationsError(err instanceof Error ? err.message : 'Failed to load donations');
+      setDonationsError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load donations');
     } finally {
       setDonationsLoading(false);
     }
@@ -482,7 +482,7 @@ export default function AdminFundraisePage() {
       setAttendeeRows(Array.isArray(data.rows) ? data.rows : []);
       setAttendeeSummary(data.summary || null);
     } catch (err) {
-      setAttendeesError(err instanceof Error ? err.message : 'Failed to load attendee and response data');
+      setAttendeesError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load attendee and response data');
       setAttendeeRows([]);
       setAttendeeSummary(null);
     } finally {
@@ -624,7 +624,7 @@ export default function AdminFundraisePage() {
         `Deleted ${response.summary.ordersDeleted} order(s), ${response.summary.ticketsDeleted} ticket(s), and ${response.summary.submissionsDeleted} questionnaire response(s).`
       );
     } catch (err) {
-      setAttendeesError(err instanceof Error ? err.message : 'Failed to delete orders for this fundraising event');
+      setAttendeesError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to delete orders for this fundraising event');
     } finally {
       setPurgingOrders(false);
     }
@@ -798,7 +798,7 @@ export default function AdminFundraisePage() {
       await loadEvents();
       closeWizard();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save fundraising event');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to save fundraising event');
     } finally {
       setSaving(false);
     }
@@ -817,7 +817,7 @@ export default function AdminFundraisePage() {
       setShowWizard(false);
       await loadEvents();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to archive fundraising event');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to archive fundraising event');
     }
   }
 
@@ -878,7 +878,7 @@ export default function AdminFundraisePage() {
       });
       setSponsorForm((prev) => ({ ...prev, logoUrl: uploaded.url }));
     } catch (err) {
-      setSponsorError(err instanceof Error ? err.message : 'Failed to upload sponsor logo');
+      setSponsorError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to upload sponsor logo');
     } finally {
       setIsSponsorLogoUploading(false);
     }
@@ -900,7 +900,7 @@ export default function AdminFundraisePage() {
       });
       setSponsorForm((prev) => ({ ...prev, imageUrl: uploaded.url }));
     } catch (err) {
-      setSponsorError(err instanceof Error ? err.message : 'Failed to upload sponsor image');
+      setSponsorError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to upload sponsor image');
     } finally {
       setIsSponsorImageUploading(false);
     }
@@ -957,7 +957,7 @@ export default function AdminFundraisePage() {
       await loadSponsors();
       closeSponsorWizard();
     } catch (err) {
-      setSponsorError(err instanceof Error ? err.message : 'Failed to save sponsor');
+      setSponsorError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to save sponsor');
     } finally {
       setSponsorSaving(false);
     }
@@ -975,7 +975,7 @@ export default function AdminFundraisePage() {
       }
       await loadSponsors();
     } catch (err) {
-      setSponsorError(err instanceof Error ? err.message : 'Failed to delete sponsor');
+      setSponsorError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to delete sponsor');
     } finally {
       setDeletingSponsorId(null);
     }
@@ -1021,7 +1021,7 @@ export default function AdminFundraisePage() {
       });
     } catch (err) {
       setActiveDonationIntent(null);
-      setDonationError(err instanceof Error ? err.message : 'Unable to start card checkout.');
+      setDonationError(err instanceof Error ? err.message : 'We could not start card checkout.');
     } finally {
       setDonationIntentLoading(false);
     }

@@ -237,7 +237,7 @@ export default function AdminOrderDetailPage() {
       const result = await adminFetch<OrderDetail>(`/api/admin/orders/${id}`);
       setData(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load order');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load order');
     } finally {
       setLoading(false);
     }
@@ -271,7 +271,7 @@ export default function AdminOrderDetailPage() {
     setTransactionError(null);
     void adminFetch<StripeTransactionDetail>(`/api/admin/orders/${data.id}/transaction`)
       .then((result) => { if (cancelled) return; setTransaction(result); })
-      .catch((err) => { if (cancelled) return; setTransactionError(err instanceof Error ? err.message : 'Failed to load transaction details'); })
+      .catch((err) => { if (cancelled) return; setTransactionError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load transaction details'); })
       .finally(() => { if (cancelled) return; setTransactionLoading(false); });
 
     return () => { cancelled = true; };
@@ -284,7 +284,7 @@ export default function AdminOrderDetailPage() {
       await adminFetch(`/api/admin/orders/${data.id}/resend`, { method: 'POST' });
       setNotice('Ticket confirmation email has been resent.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to resend tickets');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to resend tickets');
     } finally { setActionBusy(false); }
   };
 
@@ -299,7 +299,7 @@ export default function AdminOrderDetailPage() {
       setNotice(result.message || 'Refund request submitted.');
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to refund order');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to refund order');
     } finally { setActionBusy(false); }
   };
 
@@ -315,7 +315,7 @@ export default function AdminOrderDetailPage() {
       await adminFetch(`/api/admin/orders/${data.id}`, { method: 'DELETE' });
       navigate('/admin/orders');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete order');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to delete order');
     } finally {
       setActionBusy(false);
     }

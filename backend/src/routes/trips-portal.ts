@@ -277,7 +277,7 @@ export const tripPortalRoutes: FastifyPluginAsync = async (app) => {
         claimableStudents: [...grouped.values()]
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to load claim options');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load claim options');
     }
   });
 
@@ -383,7 +383,7 @@ export const tripPortalRoutes: FastifyPluginAsync = async (app) => {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         return reply.status(409).send({ error: 'Student is already claimed' });
       }
-      handleRouteError(reply, err, 'Failed to claim student');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to claim student');
     }
   });
 
@@ -508,7 +508,7 @@ export const tripPortalRoutes: FastifyPluginAsync = async (app) => {
         }))
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to load trip dashboard');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load trip dashboard');
     }
   });
 
@@ -588,7 +588,7 @@ export const tripPortalRoutes: FastifyPluginAsync = async (app) => {
         }))
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to load trip payment history');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load trip payment history');
     }
   });
 
@@ -748,7 +748,7 @@ export const tripPortalRoutes: FastifyPluginAsync = async (app) => {
         remainingAmountCents
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to start trip payment session');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to start trip payment session');
     }
   });
 };

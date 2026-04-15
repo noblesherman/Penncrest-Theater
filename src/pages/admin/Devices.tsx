@@ -179,7 +179,7 @@ export default function AdminDevicesPage() {
         setSelectedDeviceId(response.devices[0]?.id || '');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load managed devices');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load managed devices');
     } finally {
       setLoadingFleet(false);
     }
@@ -198,7 +198,7 @@ export default function AdminDevicesPage() {
       setSelectedDevice(response.device);
       setSettingDeviceName(response.device.displayName || '');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load managed device detail');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load managed device detail');
       setSelectedDevice(null);
     } finally {
       setLoadingDevice(false);
@@ -241,7 +241,7 @@ export default function AdminDevicesPage() {
       setNotice(`${type} queued`);
       await Promise.all([loadFleet(), loadDeviceDetail(selectedDeviceId)]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to queue command');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to queue command');
     } finally {
       setBusyAction(false);
     }
@@ -295,7 +295,7 @@ export default function AdminDevicesPage() {
       setSettingPin('');
       await loadDeviceDetail(selectedDeviceId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update PIN');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to update PIN');
     } finally {
       setBusyAction(false);
     }
@@ -327,7 +327,7 @@ export default function AdminDevicesPage() {
       setNotice('Device name updated');
       await Promise.all([loadFleet(), loadDeviceDetail(selectedDeviceId)]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update device name');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to update device name');
     } finally {
       setBusyAction(false);
     }
@@ -354,7 +354,7 @@ export default function AdminDevicesPage() {
       setSelectedDevice(null);
       await loadFleet();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete device');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to delete device');
     } finally {
       setBusyAction(false);
     }
@@ -399,7 +399,7 @@ export default function AdminDevicesPage() {
       hydrateReleaseForm(response.release);
       setNotice('Release metadata updated');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update release metadata');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to update release metadata');
     } finally {
       setBusyAction(false);
     }

@@ -29,14 +29,14 @@ export default function Shows() {
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok || !Array.isArray(data)) {
-          console.error('Failed to fetch shows', data);
+          console.error('We hit a small backstage snag while trying to fetch shows', data);
           setShows([]);
           return;
         }
         setShows(data);
       })
       .catch((err) => {
-        console.error('Failed to fetch shows', err);
+        console.error('We hit a small backstage snag while trying to fetch shows', err);
         setShows([]);
       });
   }, []);

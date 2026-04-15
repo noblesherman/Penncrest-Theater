@@ -43,7 +43,7 @@ export default function TicketPage() {
 
     apiFetch<TicketResponse>(`/api/tickets/${publicId}`)
       .then(setTicket)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load ticket'));
+      .catch((err) => setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load ticket'));
   }, [publicId]);
 
   useEffect(() => {

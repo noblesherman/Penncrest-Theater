@@ -418,7 +418,7 @@ export default function AdminOrdersPage() {
       if (sourceFilter) params.set('source', sourceFilter);
       params.set('scope', scope);
       setRows(await adminFetch<Order[]>(`/api/admin/orders?${params.toString()}`));
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load orders'); }
+    } catch (e) { setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to load orders'); }
     finally { setLoadingRows(false); }
   };
 
@@ -458,7 +458,7 @@ export default function AdminOrdersPage() {
           return { ...prev, performanceId: nextPerformanceId };
         });
       }
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load performances'); }
+    } catch (e) { setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to load performances'); }
   };
 
   useEffect(() => { void Promise.all([load(), loadPerformances()]); }, []);
@@ -507,7 +507,7 @@ export default function AdminOrdersPage() {
       startCashierLoop(assignForm.performanceId);
       void load();
       void loadSeatsForPerformance(assignForm.performanceId, { showLoading: false, syncSelection: false });
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to assign seats'); }
+    } catch (e) { setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to assign seats'); }
     finally { setSubmitting(false); }
   };
 
@@ -590,7 +590,7 @@ export default function AdminOrdersPage() {
       });
       return true;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to start manual card checkout';
+      const message = err instanceof Error ? err.message : 'We could not start manual card checkout';
       setManualCheckoutError(message);
       setInPersonFlowError(message);
       return false;
@@ -650,7 +650,7 @@ export default function AdminOrdersPage() {
       void load();
       void loadSeatsForPerformance(manualCheckout.performanceId, { showLoading: false, syncSelection: false });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to finalize successful manual charge.';
+      const message = err instanceof Error ? err.message : 'We could not finalize successful manual charge.';
       setManualCheckoutError(message);
       setInPersonFlowError(message);
       throw err;
@@ -710,7 +710,7 @@ export default function AdminOrdersPage() {
             studentCode: hasStudentInShowCompSelection ? normalizedStudentCode : undefined
           });
         } catch (e) {
-          setInPersonFlowError(e instanceof Error ? e.message : 'Failed to start manual checkout');
+          setInPersonFlowError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to start manual checkout');
         } finally {
           setInPersonSubmitting(false);
         }
@@ -739,7 +739,7 @@ export default function AdminOrdersPage() {
         });
         setTerminalDispatch(dispatch);
       } catch (e) {
-        setInPersonFlowError(e instanceof Error ? e.message : 'Failed to send sale to payment line');
+        setInPersonFlowError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to send sale to payment line');
       } finally {
         setInPersonSubmitting(false);
       }
@@ -777,7 +777,7 @@ export default function AdminOrdersPage() {
       startCashierLoop(assignForm.performanceId);
       void load();
     } catch (e) {
-      setInPersonFlowError(e instanceof Error ? e.message : 'Failed to finalize in-person sale');
+      setInPersonFlowError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to finalize in-person sale');
     } finally { setInPersonSubmitting(false); }
   };
 
@@ -1093,7 +1093,7 @@ export default function AdminOrdersPage() {
         }
       }
     } catch (e) {
-      setSeatPickerError(e instanceof Error ? e.message : 'Failed to load seats');
+      setSeatPickerError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to load seats');
     } finally {
       if (showLoading) setLoadingSeats(false);
     }

@@ -383,7 +383,7 @@ export default function EventRegistrationFormBuilderModal({ open, performance, p
         );
         setDuplicateSourceId(duplicateOptions[0]?.id || '');
       })
-      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load.'); })
+      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [open, performance?.id, duplicateOptions]);

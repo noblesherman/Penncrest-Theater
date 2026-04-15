@@ -47,7 +47,7 @@ export default function OrderLookup() {
       setResult(data);
     } catch (err) {
       setResult(null);
-      setError(err instanceof Error ? err.message : 'Failed to find order');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to find order');
     } finally {
       setLoading(false);
     }

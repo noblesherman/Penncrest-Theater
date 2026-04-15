@@ -111,14 +111,14 @@ function makeBlankSection(type: string): AboutSection {
 function fileToDataUrl(file: File, maxWidth: number, maxHeight: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Failed to read file.'));
+    reader.onerror = () => reject(new Error('We hit a small backstage snag while trying to read file.'));
     reader.onload = () => {
       if (typeof reader.result !== 'string') {
-        reject(new Error('Failed to parse image.'));
+        reject(new Error('We hit a small backstage snag while trying to parse image.'));
         return;
       }
       const img = new Image();
-      img.onerror = () => reject(new Error('Failed to load image.'));
+      img.onerror = () => reject(new Error('We hit a small backstage snag while trying to load image.'));
       img.onload = () => {
         const ratio = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
         const w = Math.max(1, Math.round(img.width * ratio));
@@ -654,7 +654,7 @@ export default function AdminAboutControlPage() {
       const state = await adminFetch<AdminAboutEditorState>('/api/admin/about/v2/editor-state');
       applyEditorState(state);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load');
+      setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to load');
     } finally {
       setLoading(false);
     }
@@ -863,7 +863,7 @@ export default function AdminAboutControlPage() {
       applyEditorState(result.editorState);
       setNotice('All draft changes published.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to publish');
+      setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to publish');
     } finally {
       setSaving(false);
     }
@@ -884,7 +884,7 @@ export default function AdminAboutControlPage() {
       applyEditorState(result.editorState);
       setNotice('Draft reset to published.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to reset draft');
+      setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to reset draft');
     } finally {
       setSaving(false);
     }
@@ -903,7 +903,7 @@ export default function AdminAboutControlPage() {
       applyEditorState(result.editorState);
       setNotice(`Staged delete removed for "${labelFromSlug(slug)}".`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to undo staged delete');
+      setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to undo staged delete');
     } finally {
       setSaving(false);
     }
@@ -930,7 +930,7 @@ export default function AdminAboutControlPage() {
       await load();
       setNotice('Default content restored to draft.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load defaults');
+      setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to load defaults');
     } finally {
       setSaving(false);
     }
@@ -956,7 +956,7 @@ export default function AdminAboutControlPage() {
       });
       setNotice(`${labelFromSlug(targetSlug)} ${enabled ? 'enabled' : 'disabled'}.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to update visibility');
+      setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to update visibility');
       void load();
     }
   };
@@ -999,7 +999,7 @@ export default function AdminAboutControlPage() {
         };
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to reorder pages');
+      setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to reorder pages');
       void load();
     }
   };
@@ -1028,7 +1028,7 @@ export default function AdminAboutControlPage() {
       setNewPageSlug('');
       setNotice(`Draft page "${normalized}" created.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create page');
+      setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to create page');
     } finally {
       setSaving(false);
     }
@@ -1073,7 +1073,7 @@ export default function AdminAboutControlPage() {
       setSlug(nextSlug);
       setNotice(`Slug changed from "${slug}" to "${nextSlug}".`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to rename slug');
+      setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to rename slug');
     } finally {
       setSaving(false);
     }
@@ -1091,7 +1091,7 @@ export default function AdminAboutControlPage() {
       await load();
       setNotice(`"${slug}" staged for deletion. Click Publish All to remove it from the live site.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to stage deletion');
+      setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to stage deletion');
     } finally {
       setSaving(false);
     }

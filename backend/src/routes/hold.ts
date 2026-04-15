@@ -29,7 +29,7 @@ export const holdRoutes: FastifyPluginAsync = async (app) => {
         heldSeatIds: result.heldSeatIds
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to sync hold');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to sync hold');
     }
     }
   );

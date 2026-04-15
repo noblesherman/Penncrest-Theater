@@ -51,7 +51,7 @@ export default function TheaterCalendar({ calendarUrl }: TheaterCalendarProps) {
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok || !Array.isArray(data)) {
-          throw new Error(data?.error || 'Failed to fetch calendar');
+          throw new Error(data?.error || 'We hit a small backstage snag while trying to fetch calendar');
         }
         const parsedEvents = data
           .map((e: any) => {
@@ -75,7 +75,7 @@ export default function TheaterCalendar({ calendarUrl }: TheaterCalendarProps) {
         setLoading(false);
       })
       .catch(err => {
-        console.error("Failed to fetch calendar", err);
+        console.error("We hit a small backstage snag while trying to fetch calendar", err);
         setLoading(false);
       });
   }, [calendarUrl]);

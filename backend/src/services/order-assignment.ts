@@ -382,7 +382,7 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
   });
 
   if (!order) {
-    throw new HttpError(500, 'Failed to create assigned order');
+    throw new HttpError(500, 'We hit a small backstage snag while trying to create assigned order');
   }
 
   return order;

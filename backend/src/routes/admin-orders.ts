@@ -893,7 +893,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(rows);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch orders');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch orders');
     }
   });
 
@@ -932,7 +932,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(order);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch order details');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch order details');
     }
   });
 
@@ -1001,7 +1001,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
           if (err instanceof Stripe.errors.StripeError) {
             app.log.warn(
               { err, paymentMethodId: paymentIntent.payment_method, orderId: order.id },
-              'Failed to retrieve Stripe payment method'
+              'We hit a small backstage snag while trying to retrieve Stripe payment method'
             );
           } else {
             throw err;
@@ -1032,7 +1032,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
           refundsById.set(refund.id, refund);
         } catch (err) {
           if (err instanceof Stripe.errors.StripeError) {
-            app.log.warn({ err, refundId: order.stripeRefundId, orderId: order.id }, 'Failed to retrieve Stripe refund');
+            app.log.warn({ err, refundId: order.stripeRefundId, orderId: order.id }, 'We hit a small backstage snag while trying to retrieve Stripe refund');
           } else {
             throw err;
           }
@@ -1162,7 +1162,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
       if (err instanceof Stripe.errors.StripeError) {
         return reply.status(502).send({ error: err.message || 'Stripe request failed' });
       }
-      handleRouteError(reply, err, 'Failed to fetch Stripe transaction details');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch Stripe transaction details');
     }
   });
 
@@ -1212,7 +1212,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
         source: created.source
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to assign seats');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to assign seats');
     }
   });
 
@@ -1259,7 +1259,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
         seats: quote.seats
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to prepare in-person sale quote');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to prepare in-person sale quote');
     }
   });
 
@@ -1329,7 +1329,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
       if (err instanceof Stripe.errors.StripeError) {
         return reply.status(502).send({ error: err.message || 'Payment provider error' });
       }
-      handleRouteError(reply, err, 'Failed to create manual in-person payment intent');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to create manual in-person payment intent');
     }
   });
 
@@ -1550,7 +1550,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
       if (err instanceof Stripe.errors.StripeError) {
         return reply.status(502).send({ error: err.message || 'Payment provider error' });
       }
-      handleRouteError(reply, err, 'Failed to complete manual in-person checkout');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to complete manual in-person checkout');
     }
   });
 
@@ -1613,7 +1613,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
         trackingSource
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to calculate tonight cash totals');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to calculate tonight cash totals');
     }
   });
 
@@ -1644,7 +1644,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
         }))
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to load terminal devices');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load terminal devices');
     }
   });
 
@@ -1777,7 +1777,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
           data: {
             status: 'FAILED',
             failureReason:
-              err instanceof Error ? err.message.slice(0, 500) : 'Failed to create Stripe payment intent',
+              err instanceof Error ? err.message.slice(0, 500) : 'We hit a small backstage snag while trying to create Stripe payment intent',
             processingHeartbeatAt: null,
             activeTimeoutAt: null
           }
@@ -1792,7 +1792,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
         throw err;
       }
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to send sale to terminal');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to send sale to terminal');
     }
   });
 
@@ -1825,7 +1825,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
 
         reply.send(serializeTerminalDispatchForAdmin({ dispatch }));
       } catch (err) {
-        handleRouteError(reply, err, 'Failed to load terminal dispatch status');
+        handleRouteError(reply, err, 'We hit a small backstage snag while trying to load terminal dispatch status');
       }
     }
   );
@@ -1940,7 +1940,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
           return reply.status(502).send({ error: err.message || 'Payment provider error' });
         }
 
-        handleRouteError(reply, err, 'Failed to retry terminal dispatch');
+        handleRouteError(reply, err, 'We hit a small backstage snag while trying to retry terminal dispatch');
       }
     }
   );
@@ -2009,7 +2009,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
 
         reply.send(serializeTerminalDispatchForAdmin({ dispatch }));
       } catch (err) {
-        handleRouteError(reply, err, 'Failed to cancel terminal dispatch');
+        handleRouteError(reply, err, 'We hit a small backstage snag while trying to cancel terminal dispatch');
       }
     }
   );
@@ -2106,7 +2106,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
         seats: quote.seats
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to finalize in-person sale');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to finalize in-person sale');
     }
   });
 
@@ -2173,7 +2173,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send({ success: true });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to resend tickets');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to resend tickets');
     }
   });
 
@@ -2233,7 +2233,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
         message: successMessage
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to refund order');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to refund order');
     }
   });
 
@@ -2374,7 +2374,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send({ success: true, deleted: true });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to delete order');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to delete order');
     }
   });
 };

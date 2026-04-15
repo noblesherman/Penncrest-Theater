@@ -585,7 +585,7 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send({ token });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to issue realtime stream token');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to issue realtime stream token');
     }
   });
 
@@ -645,7 +645,7 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
         createdAt: session.createdAt.toISOString()
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to start scanner session');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to start scanner session');
     }
   });
 
@@ -693,7 +693,7 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send({ success: true });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to end scanner session');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to end scanner session');
     }
   });
 
@@ -751,7 +751,7 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
         unsubscribe();
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to start realtime stream');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to start realtime stream');
     }
   });
 
@@ -1056,7 +1056,7 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
 
       return reply.send(payload);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to scan ticket');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to scan ticket');
     }
   });
 
@@ -1153,7 +1153,7 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
         }
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to undo check-in');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to undo check-in');
     }
   });
 
@@ -1246,7 +1246,7 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
         ticket: toTicketPayload(updated)
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to apply supervisor decision');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to apply supervisor decision');
     }
   });
 
@@ -1376,7 +1376,7 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
         })
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to load check-in summary');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load check-in summary');
     }
   });
 
@@ -1423,7 +1423,7 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
         }))
       );
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to search tickets');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to search tickets');
     }
   });
 
@@ -1476,7 +1476,7 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
         }))
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to load check-in timeline');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load check-in timeline');
     }
   });
 
@@ -1490,7 +1490,7 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
       const analytics = await computeCheckInAnalytics(parsed.data.performanceId);
       reply.send(analytics);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to compute check-in analytics');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to compute check-in analytics');
     }
   });
 
@@ -1531,7 +1531,7 @@ export const adminCheckInRoutes: FastifyPluginAsync = async (app) => {
       reply.header('Content-Disposition', `attachment; filename="checkin-analytics-${parsed.data.performanceId}.csv"`);
       reply.send(lines.join('\n'));
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to export analytics CSV');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to export analytics CSV');
     }
   });
 };

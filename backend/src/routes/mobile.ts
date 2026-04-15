@@ -247,10 +247,10 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
       });
     } catch (err) {
       if (err instanceof Stripe.errors.StripeError) {
-        return reply.status(502).send({ error: err.message || 'Unable to create terminal connection token' });
+        return reply.status(502).send({ error: err.message || 'We could not create terminal connection token' });
       }
 
-      handleRouteError(reply, err, 'Unable to create terminal connection token');
+      handleRouteError(reply, err, 'We could not create terminal connection token');
     }
   });
 
@@ -283,7 +283,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
         lastHeartbeatAt: session.lastHeartbeatAt.toISOString()
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Unable to register terminal device');
+      handleRouteError(reply, err, 'We could not register terminal device');
     }
   });
 
@@ -297,7 +297,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
       await heartbeatTerminalDeviceSession(parsed.data.deviceId);
       reply.send({ ok: true, deviceId: parsed.data.deviceId });
     } catch (err) {
-      handleRouteError(reply, err, 'Unable to update terminal heartbeat');
+      handleRouteError(reply, err, 'We could not update terminal heartbeat');
     }
   });
 
@@ -410,7 +410,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send({ dispatch: null });
     } catch (err) {
-      handleRouteError(reply, err, 'Unable to load terminal dispatch');
+      handleRouteError(reply, err, 'We could not load terminal dispatch');
     }
   });
 
@@ -514,7 +514,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
         failureReason: updated.failureReason
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Unable to update terminal dispatch status');
+      handleRouteError(reply, err, 'We could not update terminal dispatch status');
     }
   });
 
@@ -582,7 +582,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(502).send({ error: err.message || 'Payment provider error' });
       }
 
-      handleRouteError(reply, err, 'Unable to create manual payment intent for terminal dispatch');
+      handleRouteError(reply, err, 'We could not create manual payment intent for terminal dispatch');
     }
   });
 
@@ -740,7 +740,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(502).send({ error: err.message || 'Payment provider error' });
       }
 
-      handleRouteError(reply, err, 'Unable to complete terminal dispatch');
+      handleRouteError(reply, err, 'We could not complete terminal dispatch');
     }
   });
 
@@ -791,7 +791,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
 
       return reply.send({ ok: true });
     } catch (err) {
-      handleRouteError(reply, err, 'Unable to record terminal dispatch telemetry');
+      handleRouteError(reply, err, 'We could not record terminal dispatch telemetry');
     }
   });
 
@@ -946,7 +946,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(502).send({ error: err.message || 'Payment provider error' });
       }
 
-      handleRouteError(reply, err, 'Failed to create mobile payment intent');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to create mobile payment intent');
     }
   });
 
@@ -1026,7 +1026,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
         }
       });
       if (seats.length !== seatIds.length) {
-        throw new HttpError(400, 'Unable to load seats for payment completion');
+        throw new HttpError(400, 'We could not load seats for payment completion');
       }
 
       const normalizedCustomerName = metadata.customerName?.trim() || 'Walk-in Guest';
@@ -1113,7 +1113,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(502).send({ error: err.message || 'Payment provider error' });
       }
 
-      handleRouteError(reply, err, 'Failed to complete mobile payment');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to complete mobile payment');
     }
   });
 
@@ -1240,7 +1240,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
         }
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to validate scanned ticket');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to validate scanned ticket');
     }
   });
 };

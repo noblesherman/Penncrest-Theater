@@ -93,7 +93,7 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
 
         return reply.send(status);
       } catch (err) {
-        handleRouteError(reply, err, 'Failed to fetch checkout queue status');
+        handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch checkout queue status');
       }
     }
   );

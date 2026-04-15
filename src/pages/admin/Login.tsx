@@ -190,7 +190,7 @@ export default function AdminLoginPage() {
       }
       setAdminToken(result.token);
       navigate(getPostLoginRoute(), { replace: true });
-    } catch (err) { setError(err instanceof Error ? err.message : 'Failed to finish two-factor setup'); }
+    } catch (err) { setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to finish two-factor setup'); }
     finally { setLoading(false); }
   };
 

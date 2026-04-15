@@ -71,7 +71,7 @@ export default function AdminSeatsPage() {
         if (!mapped.length) { setPerformanceId(''); setSeats([]); return; }
         if (!mapped.some(r => r.id === performanceId)) setPerformanceId(mapped[0].id);
       })
-      .catch(e => setError(e instanceof Error ? e.message : 'Failed to load performances'));
+      .catch(e => setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to load performances'));
   };
 
   const loadSeats = useCallback(async () => {
@@ -90,7 +90,7 @@ export default function AdminSeatsPage() {
       } catch (e) {
         setError(e instanceof Error && e.message.toLowerCase().includes('not found')
           ? 'Seats endpoint unavailable. Restart the backend or switch to an active performance.'
-          : e instanceof Error ? e.message : 'Failed to load seats');
+          : e instanceof Error ? e.message : 'We hit a small backstage snag while trying to load seats');
       }
     } finally { setLoadingSeats(false); }
   }, [performanceId]);
@@ -132,7 +132,7 @@ export default function AdminSeatsPage() {
       await adminFetch(`/api/admin/seats/${mode}`, { method: 'POST', body: JSON.stringify({ performanceId, seatIds: selectedSeatIds }) });
       setSeatIdsInput('');
       await loadSeats();
-    } catch (e) { setError(e instanceof Error ? e.message : `Failed to ${mode} seats`); }
+    } catch (e) { setError(e instanceof Error ? e.message : `We hit a small backstage snag while trying to ${mode} seats`); }
   };
 
   const updateSeatFlags = async (seatId: string, payload: { isAccessible?: boolean; isCompanion?: boolean; companionForSeatId?: string | null }) => {
@@ -141,7 +141,7 @@ export default function AdminSeatsPage() {
     try {
       await adminFetch('/api/admin/seats/update', { method: 'POST', body: JSON.stringify({ performanceId, seatId, ...payload }) });
       await loadSeats();
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to update seat'); }
+    } catch (e) { setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to update seat'); }
   };
 
   const sections = useMemo(() => [...new Set(seats.map(s => s.sectionName))].sort(naturalSort), [seats]);

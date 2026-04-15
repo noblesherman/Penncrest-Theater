@@ -179,7 +179,7 @@ export const fundraisingSponsorRoutes: FastifyPluginAsync = async (app) => {
         reply.send(defaultFundraisingSponsors);
         return;
       }
-      handleRouteError(reply, err, 'Failed to fetch fundraising sponsors');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch fundraising sponsors');
     }
   });
 
@@ -196,7 +196,7 @@ export const fundraisingSponsorRoutes: FastifyPluginAsync = async (app) => {
         });
         return;
       }
-      handleRouteError(reply, err, 'Failed to fetch sponsor admin data');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch sponsor admin data');
     }
   });
 
@@ -233,7 +233,7 @@ export const fundraisingSponsorRoutes: FastifyPluginAsync = async (app) => {
       if (isMissingContentPageTableError(err)) {
         return reply.status(503).send({ error: 'Sponsor storage is not ready yet. Apply the latest database migration and restart the backend.' });
       }
-      handleRouteError(reply, err, 'Failed to create sponsor');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to create sponsor');
     }
   });
 
@@ -281,7 +281,7 @@ export const fundraisingSponsorRoutes: FastifyPluginAsync = async (app) => {
       if (isMissingContentPageTableError(err)) {
         return reply.status(503).send({ error: 'Sponsor storage is not ready yet. Apply the latest database migration and restart the backend.' });
       }
-      handleRouteError(reply, err, 'Failed to update sponsor');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to update sponsor');
     }
   });
 
@@ -319,7 +319,7 @@ export const fundraisingSponsorRoutes: FastifyPluginAsync = async (app) => {
       if (isMissingContentPageTableError(err)) {
         return reply.status(503).send({ error: 'Sponsor storage is not ready yet. Apply the latest database migration and restart the backend.' });
       }
-      handleRouteError(reply, err, 'Failed to delete sponsor');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to delete sponsor');
     }
   });
 };

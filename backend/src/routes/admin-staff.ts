@@ -53,7 +53,7 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(users);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch staff users');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch staff users');
     }
   });
 
@@ -101,7 +101,7 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
         }
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to revoke staff verification');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to revoke staff verification');
     }
   });
 
@@ -155,7 +155,7 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
         codes: created
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to generate redeem codes');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to generate redeem codes');
     }
   });
 
@@ -201,7 +201,7 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send({ page, pageSize, total, rows });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch redeem codes');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch redeem codes');
     }
   });
 
@@ -265,7 +265,7 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
         }
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to create teacher comp promo code');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to create teacher comp promo code');
     }
   });
 
@@ -323,7 +323,7 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
         }))
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch teacher comp promo codes');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch teacher comp promo codes');
     }
   });
 
@@ -371,7 +371,7 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
           }
         });
       } catch (err) {
-        handleRouteError(reply, err, 'Failed to revoke teacher comp promo code');
+        handleRouteError(reply, err, 'We hit a small backstage snag while trying to revoke teacher comp promo code');
       }
     }
   );
@@ -471,7 +471,7 @@ export const adminStaffRoutes: FastifyPluginAsync = async (app) => {
         }))
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch staff comp redemptions');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch staff comp redemptions');
     }
   });
 };

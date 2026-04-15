@@ -104,10 +104,10 @@ export function StartupPreflightScreen({ onReady }: StartupPreflightScreenProps)
           });
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Request failed';
+        const message = err instanceof Error ? err.message : 'That request missed its cue';
         setApiCheck({
           status: 'failed',
-          detail: `Unable to reach API: ${message}`,
+          detail: `We could not reach API: ${message}`,
           fix: 'Bring backend online, verify network access, and recheck EXPO_PUBLIC_API_BASE_URL.'
         });
       }
@@ -137,10 +137,10 @@ export function StartupPreflightScreen({ onReady }: StartupPreflightScreenProps)
           });
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Request failed';
+        const message = err instanceof Error ? err.message : 'That request missed its cue';
         setRoutesCheck({
           status: 'failed',
-          detail: `Unable to validate route support: ${message}`,
+          detail: `We could not validate route support: ${message}`,
           fix: 'Update backend so /api/mobile/preflight is available and reachable from this device.'
         });
       }

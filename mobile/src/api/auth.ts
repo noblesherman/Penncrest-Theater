@@ -1,4 +1,5 @@
 import { apiRequest } from './client';
+import { toTheaterFriendlyErrorMessage } from '../lib/theaterErrorTone';
 
 export type LoginResponse = {
   token: string;
@@ -32,16 +33,16 @@ export async function loginAdmin(params: {
   }
 
   if ('twoFactorSetupRequired' in payload && payload.twoFactorSetupRequired) {
-    throw new Error('Account requires first-time 2FA setup in the web admin.');
+    throw new Error(toTheaterFriendlyErrorMessage('Account requires first-time 2FA setup in the web admin.'));
   }
 
   if ('twoFactorRequired' in payload && payload.twoFactorRequired) {
-    throw new Error('Authentication code required. Enter your 6-digit code and try again.');
+    throw new Error(toTheaterFriendlyErrorMessage('Authentication code required. Enter your 6-digit code and try again.'));
   }
 
   if ('error' in payload && payload.error) {
-    throw new Error(payload.error);
+    throw new Error(toTheaterFriendlyErrorMessage(payload.error));
   }
 
-  throw new Error('Unable to log in');
+  throw new Error(toTheaterFriendlyErrorMessage('We could not log in'));
 }

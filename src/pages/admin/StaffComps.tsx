@@ -93,7 +93,7 @@ export default function AdminStaffCompsPage() {
       setRedemptions(redemptionRows.rows);
       setTeacherPromoCodes(teacherPromoCodeRows.rows);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load staff comp data');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load staff comp data');
     }
   };
 
@@ -122,7 +122,7 @@ export default function AdminStaffCompsPage() {
       setTeacherPromoCodeExpiresAt('');
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create teacher promo code');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to create teacher promo code');
     }
   };
 
@@ -136,7 +136,7 @@ export default function AdminStaffCompsPage() {
       });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to revoke teacher promo code');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to revoke teacher promo code');
     }
   };
 
@@ -150,7 +150,7 @@ export default function AdminStaffCompsPage() {
       });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to revoke user');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to revoke user');
     }
   };
 
@@ -190,7 +190,7 @@ export default function AdminStaffCompsPage() {
         setCopiedPromoCodeId((current) => (current === codeId ? null : current));
       }, 1400);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to copy promo code');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to copy promo code');
     }
   };
 

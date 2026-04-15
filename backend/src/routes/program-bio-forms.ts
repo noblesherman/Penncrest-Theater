@@ -250,7 +250,7 @@ async function generateUniquePublicSlug(tx: Prisma.TransactionClient, showTitle:
     }
   }
 
-  throw new HttpError(500, 'Unable to generate a unique public form link');
+  throw new HttpError(500, 'We could not generate a unique public form link');
 }
 
 function isAcceptingResponses(form: { isOpen: boolean; deadlineAt: Date }, now: Date): boolean {
@@ -845,7 +845,7 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
 
       reply.status(201).send(serializeFormSummary(created, new Date()));
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to create form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to create form');
     }
   });
 
@@ -871,7 +871,7 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
       const now = new Date();
       reply.send(forms.map((form) => serializeFormSummary(form, now)));
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch forms');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch forms');
     }
   });
 
@@ -902,7 +902,7 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(serializeFormSummary(form, new Date()));
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch form');
     }
   });
 
@@ -986,7 +986,7 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(serializeFormSummary(updated, new Date()));
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to update form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to update form');
     }
   });
 
@@ -1024,7 +1024,7 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
         }))
       );
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch form submissions');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch form submissions');
     }
   });
 
@@ -1116,7 +1116,7 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
         headshotObjectDeleted
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to delete form submission');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to delete form submission');
     }
   });
 
@@ -1220,7 +1220,7 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
         syncStudentCredits: result.syncStudentCredits
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to sync form submissions');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to sync form submissions');
     }
   });
 
@@ -1291,7 +1291,7 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(serializeFormSummary(archived, new Date()));
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to archive form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to archive form');
     }
   });
 
@@ -1359,7 +1359,7 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
         failedHeadshotObjectDeleteCount: r2DeleteFailures
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to delete form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to delete form');
     }
   });
 
@@ -1410,7 +1410,7 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
         requiredFields
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch form');
     }
   });
 
@@ -1569,7 +1569,7 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
         updatedAt: submission.updatedAt
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to submit form response');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to submit form response');
     }
   });
 };

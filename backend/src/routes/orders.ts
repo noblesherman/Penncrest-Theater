@@ -176,7 +176,7 @@ export const orderRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(serializeOrder(order));
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch order');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch order');
     }
     }
   );
@@ -239,7 +239,7 @@ export const orderRoutes: FastifyPluginAsync = async (app) => {
             : null
         });
       } catch (err) {
-        handleRouteError(reply, err, 'Failed to fetch order registration context');
+        handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch order registration context');
       }
     }
   );
@@ -361,7 +361,7 @@ export const orderRoutes: FastifyPluginAsync = async (app) => {
           updatedAt: upserted.updatedAt.toISOString()
         });
       } catch (err) {
-        handleRouteError(reply, err, 'Failed to save registration submission');
+        handleRouteError(reply, err, 'We hit a small backstage snag while trying to save registration submission');
       }
     }
   );
@@ -421,7 +421,7 @@ export const orderRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(serializeOrder(order));
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to lookup order');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to lookup order');
     }
     }
   );

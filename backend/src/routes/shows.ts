@@ -39,7 +39,7 @@ export const showRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(shows);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch shows');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch shows');
     }
   });
 
@@ -99,7 +99,7 @@ export const showRoutes: FastifyPluginAsync = async (app) => {
         }))
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch show');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch show');
     }
   });
 };

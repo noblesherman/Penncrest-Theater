@@ -954,7 +954,7 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
         }
         return reply.status(404).send({ error: 'About page not found' });
       }
-      handleRouteError(reply, err, 'Failed to load About content');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load About content');
     }
   });
 
@@ -967,7 +967,7 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
         reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
         return;
       }
-      handleRouteError(reply, err, 'Failed to load About editor state');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load About editor state');
     }
   });
 
@@ -1061,7 +1061,7 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
       if (isMissingContentPageTableError(err)) {
         return reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
       }
-      handleRouteError(reply, err, 'Failed to save About draft page');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to save About draft page');
     }
   });
 
@@ -1148,7 +1148,7 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
       if (isMissingContentPageTableError(err)) {
         return reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
       }
-      handleRouteError(reply, err, 'Failed to save About catalog draft');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to save About catalog draft');
     }
   });
 
@@ -1254,7 +1254,7 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
       if (isMissingContentPageTableError(err)) {
         return reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
       }
-      handleRouteError(reply, err, 'Failed to create About draft page');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to create About draft page');
     }
   });
 
@@ -1318,7 +1318,7 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
       if (isMissingContentPageTableError(err)) {
         return reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
       }
-      handleRouteError(reply, err, 'Failed to stage About draft deletion');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to stage About draft deletion');
     }
   });
 
@@ -1436,7 +1436,7 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
       if (isMissingContentPageTableError(err)) {
         return reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
       }
-      handleRouteError(reply, err, 'Failed to publish About drafts');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to publish About drafts');
     }
   });
 
@@ -1505,7 +1505,7 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
       if (isMissingContentPageTableError(err)) {
         return reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
       }
-      handleRouteError(reply, err, 'Failed to reset About drafts');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to reset About drafts');
     }
   });
 
@@ -1527,7 +1527,7 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
         })));
         return;
       }
-      handleRouteError(reply, err, 'Failed to load About editor');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load About editor');
     }
   });
 
@@ -1640,7 +1640,7 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
       if (isMissingContentPageTableError(err)) {
         return reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
       }
-      handleRouteError(reply, err, 'Failed to save About content');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to save About content');
     }
   });
 
@@ -1716,7 +1716,7 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
       if (isMissingContentPageTableError(err)) {
         return reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
       }
-      handleRouteError(reply, err, 'Failed to delete About content');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to delete About content');
     }
   });
 };

@@ -141,7 +141,7 @@ export default function FundraisingQuestionnairePage() {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load questionnaire');
+          setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load questionnaire');
         }
       } finally {
         if (!cancelled) {
@@ -173,7 +173,7 @@ export default function FundraisingQuestionnairePage() {
       );
       setSavedAt(result.updatedAt || result.submittedAt);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to submit questionnaire');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to submit questionnaire');
     } finally {
       setSaving(false);
     }

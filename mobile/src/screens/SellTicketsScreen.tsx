@@ -41,7 +41,7 @@ export function SellTicketsScreen({ navigation }: Props) {
           setSelectedPerformanceId(activeRows[0].id);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to load performances');
+        setError(err instanceof Error ? err.message : 'We could not load performances');
       } finally {
         setLoading(false);
       }
@@ -69,7 +69,7 @@ export function SellTicketsScreen({ navigation }: Props) {
         if (detailRequestIdRef.current !== requestId) return;
         setPerformanceDetail(null);
         setSelectedTierId(null);
-        const message = err instanceof Error ? err.message : 'Unable to load ticket types';
+        const message = err instanceof Error ? err.message : 'We could not load ticket types';
         setError(message === 'Performance not found' || message === 'Not Found' ? 'That performance is no longer available.' : message);
       } finally {
         if (detailRequestIdRef.current !== requestId) return;
@@ -109,7 +109,7 @@ export function SellTicketsScreen({ navigation }: Props) {
 
       navigation.navigate('TapToPay', { sale });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to start sale');
+      setError(err instanceof Error ? err.message : 'We could not start sale');
     } finally {
       setSubmitting(false);
     }

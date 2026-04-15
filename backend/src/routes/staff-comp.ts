@@ -100,7 +100,7 @@ export const staffCompRoutes: FastifyPluginAsync = async (app) => {
             lockoutApplied: params.lockoutApplied
           });
         } catch (recordErr) {
-          app.log.error({ err: recordErr }, 'Failed to record staff comp reservation attempt');
+          app.log.error({ err: recordErr }, 'We hit a small backstage snag while trying to record staff comp reservation attempt');
           return { lockoutApplied: false };
         }
       };
@@ -265,7 +265,7 @@ export const staffCompRoutes: FastifyPluginAsync = async (app) => {
           outcome: 'FAILED',
           failureReason: classifyReserveFailureReason(err)
         });
-        handleRouteError(reply, err, 'Failed to reserve staff comp ticket');
+        handleRouteError(reply, err, 'We hit a small backstage snag while trying to reserve staff comp ticket');
       }
     }
   );

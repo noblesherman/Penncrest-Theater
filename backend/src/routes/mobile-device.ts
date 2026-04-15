@@ -101,7 +101,7 @@ export const mobileDeviceRoutes: FastifyPluginAsync = async (app) => {
         deviceToken: token
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to register managed device');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to register managed device');
     }
   });
 
@@ -147,7 +147,7 @@ export const mobileDeviceRoutes: FastifyPluginAsync = async (app) => {
         }
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to process heartbeat');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to process heartbeat');
     }
   });
 
@@ -178,7 +178,7 @@ export const mobileDeviceRoutes: FastifyPluginAsync = async (app) => {
         }
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch next command');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch next command');
     }
   });
 
@@ -222,7 +222,7 @@ export const mobileDeviceRoutes: FastifyPluginAsync = async (app) => {
         }
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to acknowledge command');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to acknowledge command');
     }
   });
 
@@ -246,7 +246,7 @@ export const mobileDeviceRoutes: FastifyPluginAsync = async (app) => {
         }
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch release metadata');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch release metadata');
     }
   });
 
@@ -301,7 +301,7 @@ export const mobileDeviceRoutes: FastifyPluginAsync = async (app) => {
           remainingAttempts: result.remainingAttempts ?? env.MOBILE_ADMIN_PIN_MAX_ATTEMPTS
         });
       } catch (err) {
-        handleRouteError(reply, err, 'Failed to verify admin unlock PIN');
+        handleRouteError(reply, err, 'We hit a small backstage snag while trying to verify admin unlock PIN');
       }
     }
   );

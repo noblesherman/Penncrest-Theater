@@ -92,7 +92,7 @@ export default function Confirmation() {
         }
       } catch (err) {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Failed to load order confirmation');
+        setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load order confirmation');
       }
     };
 

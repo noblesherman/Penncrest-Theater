@@ -38,7 +38,7 @@ export const adminUploadRoutes: FastifyPluginAsync = async (app) => {
       const uploaded = await uploadImageFromDataUrl(parsed.data);
       reply.status(201).send(uploaded);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to upload image');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to upload image');
     }
   });
 
@@ -52,7 +52,7 @@ export const adminUploadRoutes: FastifyPluginAsync = async (app) => {
       const uploaded = await uploadPdfFromDataUrl(parsed.data);
       reply.status(201).send(uploaded);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to upload PDF');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to upload PDF');
     }
   });
 };

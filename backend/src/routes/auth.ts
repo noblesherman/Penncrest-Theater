@@ -179,7 +179,7 @@ async function fetchGoogleProfile(code: string): Promise<OAuthProfile> {
   });
 
   if (!profileRes.ok) {
-    throw new HttpError(401, 'Failed to fetch Google profile');
+    throw new HttpError(401, 'We hit a small backstage snag while trying to fetch Google profile');
   }
 
   const profile = (await profileRes.json()) as { email?: string; name?: string };
@@ -227,7 +227,7 @@ async function fetchMicrosoftProfile(code: string): Promise<OAuthProfile> {
   });
 
   if (!profileRes.ok) {
-    throw new HttpError(401, 'Failed to fetch Microsoft profile');
+    throw new HttpError(401, 'We hit a small backstage snag while trying to fetch Microsoft profile');
   }
 
   const profile = (await profileRes.json()) as {
@@ -401,7 +401,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           }
         });
       } catch (err) {
-        handleRouteError(reply, err, 'Failed to start local staff session');
+        handleRouteError(reply, err, 'We hit a small backstage snag while trying to start local staff session');
       }
     }
   );

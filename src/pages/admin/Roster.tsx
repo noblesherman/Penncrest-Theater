@@ -40,7 +40,7 @@ export default function AdminRosterPage() {
       }
       setPerformanceId((prev) => (mapped.some((item) => item.id === prev) ? prev : mapped[0].id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load performances');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load performances');
     }
   };
 
@@ -61,7 +61,7 @@ export default function AdminRosterPage() {
       const result = await adminFetch<RosterRow[]>(`/api/admin/roster?${params.toString()}`);
       setRows(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load roster');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load roster');
     } finally {
       setLoading(false);
     }

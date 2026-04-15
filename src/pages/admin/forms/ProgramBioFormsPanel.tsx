@@ -383,7 +383,7 @@ export default function ProgramBioFormsPanel() {
       });
       if (!selectedShowId && showMap.size > 0) setSelectedShowId(Array.from(showMap.values())[0].id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load forms');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load forms');
     } finally {
       setLoading(false);
     }
@@ -396,7 +396,7 @@ export default function ProgramBioFormsPanel() {
       const rows = await adminFetch<ProgramBioSubmission[]>(`/api/admin/forms/${formId}/submissions`);
       setSubmissions(rows);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load submissions');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load submissions');
       setSubmissions([]);
     } finally {
       setLoadingSubmissions(false);
@@ -484,7 +484,7 @@ export default function ProgramBioFormsPanel() {
 
       setNotice('Response deleted.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete response');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to delete response');
     } finally {
       setDeletingSubmissionId(null);
     }
@@ -507,7 +507,7 @@ export default function ProgramBioFormsPanel() {
       setSelectedFormId(norm.id);
       setNotice('Program bio form created.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create form');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to create form');
     } finally {
       setCreating(false);
     }
@@ -546,7 +546,7 @@ export default function ProgramBioFormsPanel() {
       }));
       setNotice('Form settings saved.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save form settings');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to save form settings');
     } finally {
       setSaving(false);
     }
@@ -580,7 +580,7 @@ export default function ProgramBioFormsPanel() {
       }));
       setNotice('Form archived. Data was preserved.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to archive form');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to archive form');
     } finally {
       setArchiving(false);
     }
@@ -617,7 +617,7 @@ export default function ProgramBioFormsPanel() {
       setSelectedSubmission(null);
       setNotice(`Form deleted permanently. Removed ${result.submissionCount} response${result.submissionCount === 1 ? '' : 's'}.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete form');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to delete form');
     } finally {
       setDeleting(false);
     }
@@ -636,7 +636,7 @@ export default function ProgramBioFormsPanel() {
       await loadSubmissions(formId);
       setNotice('Sync completed.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sync');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to sync');
     } finally {
       setSyncing(false);
     }
@@ -648,7 +648,7 @@ export default function ProgramBioFormsPanel() {
       await navigator.clipboard.writeText(url);
       setNotice('Share link copied.');
     } catch {
-      setError('Unable to copy link on this device/browser.');
+      setError('We could not copy link on this device/browser.');
     }
   }
 

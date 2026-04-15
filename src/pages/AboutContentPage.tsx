@@ -50,7 +50,7 @@ export default function AboutContentPage({ slug }: { slug: AboutPageSlug }) {
       })
       .catch((err) => {
         if (active && !usingLivePreview) {
-          setError(err instanceof Error ? err.message : 'Failed to load page');
+          setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load page');
         }
       });
 

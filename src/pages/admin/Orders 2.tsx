@@ -256,7 +256,7 @@ export default function AdminOrdersPage() {
       if (sourceFilter) params.set('source', sourceFilter);
       params.set('scope', scope);
       setRows(await adminFetch<Order[]>(`/api/admin/orders?${params.toString()}`));
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load orders'); }
+    } catch (e) { setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to load orders'); }
     finally { setLoadingRows(false); }
   };
 
@@ -286,7 +286,7 @@ export default function AdminOrdersPage() {
           ...prev,
           performanceId: mapped.some(r => r.id === prev.performanceId) ? prev.performanceId : mapped[0].id
         }));
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load performances'); }
+    } catch (e) { setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to load performances'); }
   };
 
   useEffect(() => { void Promise.all([load(), loadPerformances()]); }, []);
@@ -324,7 +324,7 @@ export default function AdminOrdersPage() {
       setAssignForm(prev => ({ ...prev, customerName: '', customerEmail: '', seatIdsInput: '', ticketType: '' }));
       setNotice(`Assigned ${seatIds.length} seat${seatIds.length === 1 ? '' : 's'} successfully.`);
       closeWizard(); void load();
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to assign seats'); }
+    } catch (e) { setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to assign seats'); }
     finally { setSubmitting(false); }
   };
 
@@ -403,7 +403,7 @@ export default function AdminOrdersPage() {
         });
         setTerminalDispatch(dispatch);
       } catch (e) {
-        const message = e instanceof Error ? e.message : 'Failed to send sale to terminal';
+        const message = e instanceof Error ? e.message : 'We hit a small backstage snag while trying to send sale to terminal';
         if (message.toLowerCase().includes('busy')) {
           setInPersonFlowError('Selected terminal is busy. Pick another active terminal or wait.');
           void loadTerminalDevices();
@@ -445,7 +445,7 @@ export default function AdminOrdersPage() {
       );
       closeWizard(); void load();
     } catch (e) {
-      setInPersonFlowError(e instanceof Error ? e.message : 'Failed to finalize in-person sale');
+      setInPersonFlowError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to finalize in-person sale');
     } finally { setInPersonSubmitting(false); }
   };
 
@@ -582,7 +582,7 @@ export default function AdminOrdersPage() {
       const seatList = Array.isArray(publicSeats) ? publicSeats : publicSeats.seats;
       setSeats(seatList.map(normalizeSeat)); setSeatPickerError(null);
     } catch (e) {
-      setSeatPickerError(e instanceof Error ? e.message : 'Failed to load seats');
+      setSeatPickerError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to load seats');
     } finally { setLoadingSeats(false); }
   }, []);
 

@@ -201,7 +201,7 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
       performanceListCache = writeCache(payload);
       reply.send(payload);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch performances');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch performances');
     }
   });
 
@@ -322,7 +322,7 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
       performanceDetailCache.set(params.id, writeCache(payload));
       reply.send(payload);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch performance');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch performance');
     }
   });
 
@@ -382,7 +382,7 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
           }))
         );
       } catch (err) {
-        handleRouteError(reply, err, 'Failed to fetch seats');
+        handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch seats');
       }
     }
   );

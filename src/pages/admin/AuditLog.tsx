@@ -30,7 +30,7 @@ export default function AdminAuditLogPage() {
       const result = await adminFetch<AuditResponse>('/api/admin/audit-logs?page=1&pageSize=100');
       setData(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load audit logs');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load audit logs');
     } finally {
       setLoading(false);
     }

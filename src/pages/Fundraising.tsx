@@ -193,7 +193,7 @@ export default function Fundraising() {
       setActiveDonationIntent({ paymentIntentId: response.paymentIntentId, clientSecret: response.clientSecret, publishableKey, amountCents: response.amountCents });
     } catch (err) {
       setActiveDonationIntent(null);
-      setDonationError(err instanceof Error ? err.message : 'Unable to start donation checkout.');
+      setDonationError(err instanceof Error ? err.message : 'We could not start donation checkout.');
     } finally {
       setDonationIntentLoading(false);
     }

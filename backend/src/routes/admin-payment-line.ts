@@ -111,7 +111,7 @@ export const adminPaymentLineRoutes: FastifyPluginAsync = async (app) => {
 
       return reply.status(forwarded.statusCode).send(body);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to enqueue payment line entry');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to enqueue payment line entry');
     }
   });
 
@@ -125,7 +125,7 @@ export const adminPaymentLineRoutes: FastifyPluginAsync = async (app) => {
       const entry = await fetchPaymentLineEntry(parsed.data.id);
       reply.send(entry);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to load payment line entry');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load payment line entry');
     }
   });
 
@@ -139,7 +139,7 @@ export const adminPaymentLineRoutes: FastifyPluginAsync = async (app) => {
       const snapshot = await fetchPaymentLineSnapshot(parsed.data.queueKey);
       reply.send(snapshot);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to load payment line snapshot');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load payment line snapshot');
     }
   });
 
@@ -162,7 +162,7 @@ export const adminPaymentLineRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(updated);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to move payment line entry to back of line');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to move payment line entry to back of line');
     }
   });
 
@@ -185,7 +185,7 @@ export const adminPaymentLineRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(updated);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to cancel payment line entry');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to cancel payment line entry');
     }
   });
 
@@ -217,7 +217,7 @@ export const adminPaymentLineRoutes: FastifyPluginAsync = async (app) => {
 
       reply.status(forwarded.statusCode).send(updated);
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to retry payment line entry');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to retry payment line entry');
     }
   });
 
@@ -240,7 +240,7 @@ export const adminPaymentLineRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send({ token });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to issue payment line events token');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to issue payment line events token');
     }
   });
 
@@ -307,7 +307,7 @@ export const adminPaymentLineRoutes: FastifyPluginAsync = async (app) => {
         unsubscribe();
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to start payment line stream');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to start payment line stream');
     }
   });
 };

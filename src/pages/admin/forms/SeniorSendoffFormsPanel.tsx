@@ -295,7 +295,7 @@ export default function SeniorSendoffFormsPanel() {
         setSelectedShowId(Array.from(showMap.values())[0].id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load forms');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load forms');
     } finally {
       setLoading(false);
     }
@@ -311,7 +311,7 @@ export default function SeniorSendoffFormsPanel() {
       setSubmissions(rows);
     } catch (err) {
       setSubmissions([]);
-      setError(err instanceof Error ? err.message : 'Failed to load submissions');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load submissions');
     } finally {
       setLoadingSubmissions(false);
     }
@@ -412,7 +412,7 @@ export default function SeniorSendoffFormsPanel() {
 
       setNotice('Response deleted.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete response');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to delete response');
     } finally {
       setDeletingSubmissionId(null);
     }
@@ -461,7 +461,7 @@ export default function SeniorSendoffFormsPanel() {
       setSelectedFormId(normalizedCreated.id);
       setNotice('Senior send-off form created.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create form');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to create form');
     } finally {
       setCreating(false);
     }
@@ -510,7 +510,7 @@ export default function SeniorSendoffFormsPanel() {
       }));
       setNotice('Form settings saved.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save form settings');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to save form settings');
     } finally {
       setSaving(false);
     }
@@ -546,7 +546,7 @@ export default function SeniorSendoffFormsPanel() {
       }));
       setNotice('Form archived. Data was preserved.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to archive form');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to archive form');
     } finally {
       setArchiving(false);
     }
@@ -585,7 +585,7 @@ export default function SeniorSendoffFormsPanel() {
         `Form deleted permanently. Removed ${result.submissionCount} response${result.submissionCount === 1 ? '' : 's'}.`
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete form');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to delete form');
     } finally {
       setDeleting(false);
     }
@@ -597,7 +597,7 @@ export default function SeniorSendoffFormsPanel() {
       await navigator.clipboard.writeText(url);
       setNotice('Share link copied.');
     } catch {
-      setError('Unable to copy link on this device/browser.');
+      setError('We could not copy link on this device/browser.');
     }
   }
 

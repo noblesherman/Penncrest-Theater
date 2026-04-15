@@ -51,7 +51,7 @@ export default function AdminArchivePage() {
       const rows = await adminFetch<ArchivedPerformance[]>('/api/admin/performances?scope=archived');
       setItems(rows);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load archived performances');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load archived performances');
     } finally {
       setLoading(false);
     }
@@ -79,7 +79,7 @@ export default function AdminArchivePage() {
       await adminFetch(`/api/admin/performances/${item.id}/restore`, { method: 'POST' });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to restore performance');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to restore performance');
     }
   };
 

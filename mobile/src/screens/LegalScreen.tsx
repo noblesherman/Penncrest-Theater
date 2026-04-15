@@ -10,7 +10,7 @@ async function openExternalUrl(url: string) {
   try {
     await Linking.openURL(url);
   } catch {
-    Alert.alert('Unable to open link', `Please open this URL manually:\n\n${url}`);
+    Alert.alert('We could not open link', `Please open this URL manually:\n\n${url}`);
   }
 }
 

@@ -118,7 +118,7 @@ async function generateUniquePublicSlug(tx: Prisma.TransactionClient, formName: 
       return candidate;
     }
   }
-  throw new HttpError(500, 'Unable to generate a unique custom form link');
+  throw new HttpError(500, 'We could not generate a unique custom form link');
 }
 
 function normalizeOptions(options: unknown): string[] {
@@ -386,7 +386,7 @@ export const customFormRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(forms.map((form) => serializeAdminForm(form)));
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to fetch custom forms');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch custom forms');
     }
   });
 
@@ -438,7 +438,7 @@ export const customFormRoutes: FastifyPluginAsync = async (app) => {
 
       reply.status(201).send(serializeAdminForm(created));
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to create custom form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to create custom form');
     }
   });
 
@@ -515,7 +515,7 @@ export const customFormRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(serializeAdminForm(updated));
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to update custom form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to update custom form');
     }
   });
 
@@ -560,7 +560,7 @@ export const customFormRoutes: FastifyPluginAsync = async (app) => {
         submissionCount: existing._count.submissions
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to delete custom form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to delete custom form');
     }
   });
 
@@ -597,7 +597,7 @@ export const customFormRoutes: FastifyPluginAsync = async (app) => {
         }))
       );
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to load custom form submissions');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load custom form submissions');
     }
   });
 
@@ -658,7 +658,7 @@ export const customFormRoutes: FastifyPluginAsync = async (app) => {
         submissionId: submission.id
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to delete custom form submission');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to delete custom form submission');
     }
   });
 
@@ -685,7 +685,7 @@ export const customFormRoutes: FastifyPluginAsync = async (app) => {
         definition: normalizeDefinition(form.definitionJson as unknown)
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to load custom form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load custom form');
     }
   });
 
@@ -737,7 +737,7 @@ export const customFormRoutes: FastifyPluginAsync = async (app) => {
         submittedAt: submission.submittedAt.toISOString()
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to submit custom form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to submit custom form');
     }
   });
 };

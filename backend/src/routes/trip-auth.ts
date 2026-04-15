@@ -99,7 +99,7 @@ export const tripAuthRoutes: FastifyPluginAsync = async (app) => {
           expiresInMinutes: env.TRIP_LOGIN_CODE_TTL_MINUTES
         });
       } catch (err) {
-        handleRouteError(reply, err, 'Failed to send trip login code');
+        handleRouteError(reply, err, 'We hit a small backstage snag while trying to send trip login code');
       }
     }
   );
@@ -231,7 +231,7 @@ export const tripAuthRoutes: FastifyPluginAsync = async (app) => {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2021') {
           return reply.status(503).send({ error: 'Database schema is out of date. Run backend migrations.' });
         }
-        handleRouteError(reply, err, 'Failed to verify trip login code');
+        handleRouteError(reply, err, 'We hit a small backstage snag while trying to verify trip login code');
       }
     }
   );
@@ -263,7 +263,7 @@ export const tripAuthRoutes: FastifyPluginAsync = async (app) => {
         student: account.student
       });
     } catch (err) {
-      handleRouteError(reply, err, 'Failed to load trip account session');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load trip account session');
     }
   });
 };

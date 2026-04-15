@@ -252,7 +252,7 @@ export default function SeniorSendoffFormPage() {
     setError(null);
     void apiFetch<PublicSeniorSendoffForm>(`/api/forms/senior-sendoff/${slug}`)
       .then((data) => setFormMeta(data))
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load form'))
+      .catch((err) => setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load form'))
       .finally(() => setLoading(false));
   }, [slug]);
 
@@ -356,7 +356,7 @@ export default function SeniorSendoffFormPage() {
       setActiveIntent(null);
       setPaymentError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to submit shout-out');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to submit shout-out');
     } finally {
       setSubmitting(false);
     }
@@ -389,7 +389,7 @@ export default function SeniorSendoffFormPage() {
         amountCents: response.amountCents
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to open payment step.');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to open payment step.');
     } finally {
       setPaymentLoading(false);
     }
@@ -422,7 +422,7 @@ export default function SeniorSendoffFormPage() {
 
       await submitShoutout();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to prepare submission');
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to prepare submission');
     }
   }
 
