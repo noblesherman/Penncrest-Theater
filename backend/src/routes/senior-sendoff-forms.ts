@@ -59,6 +59,11 @@ const createSeniorSendoffFormSchema = z.object({
   secondSubmissionPriceCents: z.coerce.number().int().min(0).max(100_000).optional()
 });
 
+const adminSeniorSendoffSubmissionParamsSchema = z.object({
+  id: z.string().trim().min(1),
+  submissionId: z.string().trim().min(1)
+});
+
 const updateSeniorSendoffFormSchema = z
   .object({
     title: z.string().trim().min(1).max(180).optional(),
@@ -712,6 +717,88 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
       );
     } catch (err) {
       handleRouteError(reply, err, 'Failed to fetch senior send-off submissions');
+    }
+  });
+
+  app.delete('/api/admin/forms/senior-sendoff/:id/submissions/:submissionId', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
+    const parsedParams = adminSeniorSendoffSubmissionParamsSchema.safeParse(request.params || {});
+    if (!parsedParams.success) {
+      return reply.status(400).send({ error: parsedParams.error.flatten() });
+    }
+
+    try {
+      const form = await prisma.seniorSendoffForm.findUnique({
+        where: { id: parsedParams.data.id },
+        select: {
+          id: true,
+          showId: true,
+          title: true,
+          show: {
+            select: {
+              title: true
+            }
+          }
+        }
+      });
+      if (!form) {
+        throw new HttpError(404, 'Form not found');
+      }
+
+      const submission = await prisma.seniorSendoffSubmission.findFirst({
+        where: {
+          id: parsedParams.data.submissionId,
+          formId: form.id
+        },
+        select: {
+          id: true,
+          parentName: true,
+          parentEmail: true,
+          studentName: true,
+          entryNumber: true,
+          isPaid: true,
+          paymentAmountCents: true,
+          paymentCurrency: true,
+          paymentIntentId: true
+        }
+      });
+      if (!submission) {
+        throw new HttpError(404, 'Submission not found');
+      }
+
+      await prisma.seniorSendoffSubmission.delete({
+        where: { id: submission.id }
+      });
+
+      await logAudit({
+        actor: adminActor(request),
+        actorAdminId: request.adminUser?.id || null,
+        action: 'SENIOR_SENDOFF_SUBMISSION_DELETED',
+        entityType: 'SeniorSendoffSubmission',
+        entityId: submission.id,
+        metadata: {
+          formId: form.id,
+          formTitle: form.title,
+          showId: form.showId,
+          showTitle: form.show.title,
+          parentName: submission.parentName,
+          parentEmail: submission.parentEmail,
+          studentName: submission.studentName,
+          entryNumber: submission.entryNumber,
+          isPaid: submission.isPaid,
+          paymentAmountCents: submission.paymentAmountCents,
+          paymentCurrency: submission.paymentCurrency,
+          paymentIntentId: submission.paymentIntentId
+        }
+      });
+
+      return reply.send({
+        deleted: true,
+        formId: form.id,
+        submissionId: submission.id,
+        isPaid: submission.isPaid
+      });
+    } catch (err) {
+      handleRouteError(reply, err, 'Failed to delete senior send-off submission');
     }
   });
 

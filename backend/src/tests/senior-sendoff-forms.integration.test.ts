@@ -334,4 +334,68 @@ describe.sequential('senior send-off forms integration', () => {
     expect(storedResponses.relationship).toBe('Parent');
     expect(storedResponses['favorite-memory']).toContain('Opening night');
   });
+
+  it('allows admins to delete an individual senior send-off submission', async () => {
+    const show = await createShowWithPerformance(`Senior Sendoff Delete ${Date.now()}`);
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/forms/senior-sendoff',
+      headers: authHeaders(),
+      payload: { showId: show.id, secondSubmissionPriceCents: 0 }
+    });
+    expect(createResponse.statusCode).toBe(201);
+    const form = createResponse.json();
+
+    const firstSubmit = await app.inject({
+      method: 'POST',
+      url: `/api/forms/senior-sendoff/${encodeURIComponent(form.publicSlug)}/submissions`,
+      payload: {
+        parentName: 'Delete Parent',
+        parentEmail: 'delete.parent@example.com',
+        parentPhone: '610-555-1000',
+        studentName: 'Delete Student',
+        message: 'Please remove this message.'
+      }
+    });
+    expect(firstSubmit.statusCode).toBe(201);
+    const firstSubmissionId = firstSubmit.json().submissionId;
+
+    const secondSubmit = await app.inject({
+      method: 'POST',
+      url: `/api/forms/senior-sendoff/${encodeURIComponent(form.publicSlug)}/submissions`,
+      payload: {
+        parentName: 'Keep Parent',
+        parentEmail: 'keep.parent@example.com',
+        parentPhone: '610-555-1001',
+        studentName: 'Keep Student',
+        message: 'This message should remain.'
+      }
+    });
+    expect(secondSubmit.statusCode).toBe(201);
+
+    const deleteResponse = await app.inject({
+      method: 'DELETE',
+      url: `/api/admin/forms/senior-sendoff/${encodeURIComponent(form.id)}/submissions/${encodeURIComponent(firstSubmissionId)}`,
+      headers: authHeaders()
+    });
+    expect(deleteResponse.statusCode).toBe(200);
+    expect(deleteResponse.json().deleted).toBe(true);
+
+    const remaining = await prisma.seniorSendoffSubmission.findMany({
+      where: { formId: form.id },
+      orderBy: { createdAt: 'asc' }
+    });
+    expect(remaining.length).toBe(1);
+    expect(remaining[0].parentEmail).toBe('keep.parent@example.com');
+
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: `/api/admin/forms/senior-sendoff/${encodeURIComponent(form.id)}/submissions`,
+      headers: authHeaders()
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().length).toBe(1);
+    expect(listResponse.json()[0].parentEmail).toBe('keep.parent@example.com');
+  });
 });

@@ -127,6 +127,11 @@ const createProgramBioFormSchema = z.object({
   deadlineAt: z.string().datetime().optional()
 });
 
+const adminProgramBioSubmissionParamsSchema = z.object({
+  id: z.string().trim().min(1),
+  submissionId: z.string().trim().min(1)
+});
+
 const updateProgramBioFormSchema = z
   .object({
     title: z.string().trim().min(1).max(180).optional(),
@@ -1020,6 +1025,98 @@ export const programBioFormRoutes: FastifyPluginAsync = async (app) => {
       );
     } catch (err) {
       handleRouteError(reply, err, 'Failed to fetch form submissions');
+    }
+  });
+
+  app.delete('/api/admin/forms/:id/submissions/:submissionId', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
+    const parsedParams = adminProgramBioSubmissionParamsSchema.safeParse(request.params || {});
+    if (!parsedParams.success) {
+      return reply.status(400).send({ error: parsedParams.error.flatten() });
+    }
+
+    try {
+      const form = await prisma.programBioForm.findUnique({
+        where: { id: parsedParams.data.id },
+        select: {
+          id: true,
+          showId: true,
+          title: true,
+          show: {
+            select: {
+              title: true
+            }
+          }
+        }
+      });
+      if (!form) {
+        throw new HttpError(404, 'Form not found');
+      }
+
+      const submission = await prisma.programBioSubmission.findFirst({
+        where: {
+          id: parsedParams.data.submissionId,
+          formId: form.id
+        },
+        select: {
+          id: true,
+          formId: true,
+          fullName: true,
+          schoolEmail: true,
+          headshotKey: true
+        }
+      });
+      if (!submission) {
+        throw new HttpError(404, 'Submission not found');
+      }
+
+      await prisma.programBioSubmission.delete({
+        where: { id: submission.id }
+      });
+
+      let headshotObjectDeleted = false;
+      if (submission.headshotKey) {
+        try {
+          await deleteUploadedObjectByKey(submission.headshotKey);
+          headshotObjectDeleted = true;
+        } catch (storageErr) {
+          app.log.warn(
+            {
+              formId: form.id,
+              submissionId: submission.id,
+              headshotKey: submission.headshotKey,
+              error: storageErr instanceof Error ? storageErr.message : String(storageErr)
+            },
+            'program bio submission deleted, but headshot object cleanup failed'
+          );
+        }
+      }
+
+      await logAudit({
+        actor: adminActor(request),
+        actorAdminId: request.adminUser?.id || null,
+        action: 'PROGRAM_BIO_SUBMISSION_DELETED',
+        entityType: 'ProgramBioSubmission',
+        entityId: submission.id,
+        metadata: {
+          formId: form.id,
+          formTitle: form.title,
+          showId: form.showId,
+          showTitle: form.show.title,
+          submissionFullName: submission.fullName,
+          submissionSchoolEmail: submission.schoolEmail,
+          headshotObjectDeleted,
+          headshotKey: submission.headshotKey || null
+        }
+      });
+
+      return reply.send({
+        deleted: true,
+        formId: form.id,
+        submissionId: submission.id,
+        headshotObjectDeleted
+      });
+    } catch (err) {
+      handleRouteError(reply, err, 'Failed to delete form submission');
     }
   });
 

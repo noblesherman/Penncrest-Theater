@@ -530,4 +530,71 @@ describe.sequential('program bio forms integration', () => {
     expect(preserved.gradeLevel).toBe(12);
     expect(preserved.bio).toContain('storytelling');
   });
+
+  it('allows admins to delete an individual submission', async () => {
+    const { show } = await createShowWithPerformance(`Delete Submission Show ${Date.now()}`);
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/forms',
+      headers: authHeaders(),
+      payload: { showId: show.id }
+    });
+    expect(createResponse.statusCode).toBe(201);
+    const form = createResponse.json();
+
+    const firstSubmission = await app.inject({
+      method: 'POST',
+      url: `/api/forms/${encodeURIComponent(form.publicSlug)}/submissions`,
+      payload: {
+        fullName: 'Delete Me',
+        schoolEmail: 'deleteme@rtmsd.org',
+        gradeLevel: 11,
+        roleInShow: 'Crew',
+        bio: 'Please remove this response for admin testing.',
+        headshotDataUrl: TEST_HEADSHOT_DATA_URL
+      }
+    });
+    expect(firstSubmission.statusCode).toBe(201);
+    const firstSubmissionId = firstSubmission.json().submissionId;
+
+    const secondSubmission = await app.inject({
+      method: 'POST',
+      url: `/api/forms/${encodeURIComponent(form.publicSlug)}/submissions`,
+      payload: {
+        fullName: 'Keep Me',
+        schoolEmail: 'keepme@rtmsd.org',
+        gradeLevel: 12,
+        roleInShow: 'Ensemble',
+        bio: 'This response should remain after deletion.',
+        headshotDataUrl: TEST_HEADSHOT_DATA_URL
+      }
+    });
+    expect(secondSubmission.statusCode).toBe(201);
+
+    const deleteResponse = await app.inject({
+      method: 'DELETE',
+      url: `/api/admin/forms/${encodeURIComponent(form.id)}/submissions/${encodeURIComponent(firstSubmissionId)}`,
+      headers: authHeaders()
+    });
+
+    expect(deleteResponse.statusCode).toBe(200);
+    expect(deleteResponse.json().deleted).toBe(true);
+
+    const remaining = await prisma.programBioSubmission.findMany({
+      where: { formId: form.id },
+      orderBy: { createdAt: 'asc' }
+    });
+    expect(remaining.length).toBe(1);
+    expect(remaining[0].schoolEmail).toBe('keepme@rtmsd.org');
+
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: `/api/admin/forms/${encodeURIComponent(form.id)}/submissions`,
+      headers: authHeaders()
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().length).toBe(1);
+    expect(listResponse.json()[0].schoolEmail).toBe('keepme@rtmsd.org');
+  });
 });

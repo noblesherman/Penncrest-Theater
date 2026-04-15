@@ -191,6 +191,7 @@ export default function SeniorSendoffFormsPanel() {
   const [saving, setSaving] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deletingSubmissionId, setDeletingSubmissionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'settings' | 'questions' | 'responses'>('settings');
@@ -358,6 +359,63 @@ export default function SeniorSendoffFormsPanel() {
   function goToNextSubmission(): void {
     if (!hasNextSubmission) return;
     setSelectedSubmission(submissions[selectedSubmissionIndex + 1]);
+  }
+
+  async function deleteSubmission(submission: SeniorSendoffSubmission): Promise<void> {
+    if (!selectedForm) return;
+    const confirmed = window.confirm(
+      `Delete the response from ${submission.parentName} for ${submission.studentName}? This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeletingSubmissionId(submission.id);
+    setError(null);
+    setNotice(null);
+
+    try {
+      await adminFetch(
+        `/api/admin/forms/senior-sendoff/${encodeURIComponent(selectedForm.id)}/submissions/${encodeURIComponent(submission.id)}`,
+        { method: 'DELETE' }
+      );
+
+      setSubmissions((current) => {
+        const removedIndex = current.findIndex((row) => row.id === submission.id);
+        const nextRows = current.filter((row) => row.id !== submission.id);
+
+        setSelectedSubmission((currentSelected) => {
+          if (!currentSelected || currentSelected.id !== submission.id) {
+            return currentSelected;
+          }
+          if (nextRows.length === 0) {
+            return null;
+          }
+          const nextIndex = removedIndex <= 0 ? 0 : Math.min(removedIndex - 1, nextRows.length - 1);
+          return nextRows[nextIndex];
+        });
+
+        return nextRows;
+      });
+
+      setForms((current) =>
+        current.map((form) =>
+          form.id === selectedForm.id
+            ? {
+                ...form,
+                responseCount: Math.max(0, form.responseCount - 1),
+                paidResponseCount: submission.isPaid
+                  ? Math.max(0, form.paidResponseCount - 1)
+                  : form.paidResponseCount
+              }
+            : form
+        )
+      );
+
+      setNotice('Response deleted.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete response');
+    } finally {
+      setDeletingSubmissionId(null);
+    }
   }
 
   async function createForm(): Promise<void> {
@@ -1155,6 +1213,7 @@ export default function SeniorSendoffFormsPanel() {
                                 <th className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-stone-500">Entry</th>
                                 <th className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-stone-500">Paid</th>
                                 <th className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-stone-500">Updated</th>
+                                <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-stone-500">Actions</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-stone-100">
@@ -1169,6 +1228,20 @@ export default function SeniorSendoffFormsPanel() {
                                   <td className="px-4 py-3 text-stone-500">#{submission.entryNumber}</td>
                                   <td className="px-4 py-3 text-stone-500">{submission.isPaid ? 'Yes' : 'No'}</td>
                                   <td className="px-4 py-3 text-stone-400">{new Date(submission.updatedAt).toLocaleDateString()}</td>
+                                  <td className="px-4 py-3 text-right">
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        void deleteSubmission(submission);
+                                      }}
+                                      disabled={deletingSubmissionId === submission.id}
+                                      className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                      {deletingSubmissionId === submission.id ? 'Deleting...' : 'Delete'}
+                                    </button>
+                                  </td>
                                 </tr>
                               ))}
                             </tbody>
@@ -1216,6 +1289,15 @@ export default function SeniorSendoffFormsPanel() {
                 >
                   Next
                   <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void deleteSubmission(selectedSubmission)}
+                  disabled={deletingSubmissionId === selectedSubmission.id}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {deletingSubmissionId === selectedSubmission.id ? 'Deleting...' : 'Delete'}
                 </button>
                 <button
                   type="button"
