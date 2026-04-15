@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Archive, ChevronRight, Copy, Download, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
+import { Archive, ChevronLeft, ChevronRight, Copy, Download, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
 import { adminFetch } from '../../../lib/adminAuth';
 
 type SeniorSendoffFormSummary = {
@@ -206,6 +206,12 @@ export default function SeniorSendoffFormsPanel() {
     () => new Map((selectedForm?.questions.customQuestions ?? []).map((question) => [question.id, question])),
     [selectedForm]
   );
+  const selectedSubmissionIndex = useMemo(() => {
+    if (!selectedSubmission) return -1;
+    return submissions.findIndex((submission) => submission.id === selectedSubmission.id);
+  }, [selectedSubmission, submissions]);
+  const hasPreviousSubmission = selectedSubmissionIndex > 0;
+  const hasNextSubmission = selectedSubmissionIndex >= 0 && selectedSubmissionIndex < submissions.length - 1;
 
   const updateSelectedDraftQuestions = useCallback(
     (updater: (questions: SeniorSendoffQuestions) => SeniorSendoffQuestions) => {
@@ -331,6 +337,28 @@ export default function SeniorSendoffFormsPanel() {
     }
     void loadSubmissions(selectedFormId);
   }, [selectedFormId, loadSubmissions]);
+
+  useEffect(() => {
+    if (!selectedSubmission) return;
+    const match = submissions.find((submission) => submission.id === selectedSubmission.id);
+    if (!match) {
+      setSelectedSubmission(null);
+      return;
+    }
+    if (match !== selectedSubmission) {
+      setSelectedSubmission(match);
+    }
+  }, [selectedSubmission, submissions]);
+
+  function goToPreviousSubmission(): void {
+    if (!hasPreviousSubmission) return;
+    setSelectedSubmission(submissions[selectedSubmissionIndex - 1]);
+  }
+
+  function goToNextSubmission(): void {
+    if (!hasNextSubmission) return;
+    setSelectedSubmission(submissions[selectedSubmissionIndex + 1]);
+  }
 
   async function createForm(): Promise<void> {
     if (!selectedShowId) {
@@ -1156,27 +1184,51 @@ export default function SeniorSendoffFormsPanel() {
         </div>
 
       {selectedSubmission && (
-        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setSelectedSubmission(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6" onClick={() => setSelectedSubmission(null)}>
           <div className="absolute inset-0 bg-black/25 backdrop-blur-sm" />
           <div
-            className="relative z-10 h-full w-full max-w-md overflow-y-auto bg-white shadow-2xl"
+            className="relative z-10 w-full max-w-3xl overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-stone-100 bg-white px-5 py-4">
+            <div className="flex items-center justify-between border-b border-stone-100 bg-white px-5 py-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-widest text-stone-400">Response</p>
                 <p className="mt-0.5 text-base font-bold text-stone-900">{selectedSubmission.parentName}</p>
+                <p className="mt-0.5 text-xs text-stone-400">
+                  {selectedSubmissionIndex >= 0 ? `Response ${selectedSubmissionIndex + 1} of ${submissions.length}` : `Total ${submissions.length}`}
+                </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedSubmission(null)}
-                className="rounded-lg p-1.5 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={goToPreviousSubmission}
+                  disabled={!hasPreviousSubmission}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={goToNextSubmission}
+                  disabled={!hasNextSubmission}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSubmission(null)}
+                  className="rounded-lg p-1.5 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+                  aria-label="Close response"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
-            <div className="p-5 space-y-5">
+            <div className="max-h-[80vh] overflow-y-auto p-5 space-y-5">
               <div className="grid grid-cols-2 gap-3">
                 {[
                   ['Parent Email', selectedSubmission.parentEmail],
