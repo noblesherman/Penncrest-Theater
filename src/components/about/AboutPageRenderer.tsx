@@ -201,7 +201,7 @@ function renderStory(section: AboutStorySection, previewMode: AboutRendererMode)
                   &ldquo;{section.quote}&rdquo;
                 </p>
                 {section.quoteAttribution && (
-                  <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-400">
+                  <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">
                     — {section.quoteAttribution}
                   </p>
                 )}
@@ -209,9 +209,9 @@ function renderStory(section: AboutStorySection, previewMode: AboutRendererMode)
             </motion.div>
           )}
 
-          <motion.div {...fadeUp(hasQuote ? 0.08 : 0, previewMode)} className="space-y-4 text-[0.9375rem] leading-relaxed text-stone-600">
+          <motion.div {...fadeUp(hasQuote ? 0.08 : 0, previewMode)} className="space-y-4 text-base leading-relaxed text-stone-600">
             {section.lead && (
-              <p className="text-[1.05rem] font-semibold text-stone-800" style={{ fontFamily: 'Georgia, serif' }}>
+              <p className="text-[1.125rem] font-semibold text-stone-800" style={{ fontFamily: 'Georgia, serif' }}>
                 {section.lead}
               </p>
             )}
@@ -858,8 +858,8 @@ export default function AboutPageRenderer({
           </motion.p>
 
           {/* Title split across two lines with red accent — matches site */}
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <motion.div {...fadeUp(0.05, mode)}>
+          <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
+            <motion.div {...fadeUp(0.05, mode)} className="lg:w-1/2">
               <h1
                 className={`font-bold leading-[0.97] text-stone-900 ${mode === 'admin' ? 'break-words' : ''}`}
                 style={{
@@ -883,7 +883,7 @@ export default function AboutPageRenderer({
             {page.hero.description && (
               <motion.p
                 {...fadeUp(0.1, mode)}
-                className="max-w-lg text-[0.9375rem] leading-relaxed text-stone-500 lg:text-right"
+                className="max-w-lg text-[1.05rem] leading-relaxed text-stone-600 lg:w-1/2"
               >
                 {page.hero.description}
               </motion.p>
