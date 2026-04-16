@@ -4,10 +4,12 @@ import {
 } from 'react';
 import {
   Activity, AlertCircle, ArrowDown, ArrowUp, Check,
+  Crop,
   CheckCircle2, ChevronDown, ChevronUp, ExternalLink,
   Eye, EyeOff, FilePenLine, ImagePlus, Link2, Loader2,
   Plus, RefreshCw, RotateCcw, Save, Trash2, Upload, X,
 } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import AboutPageRenderer from '../../components/about/AboutPageRenderer';
 import { adminFetch } from '../../lib/adminAuth';
 import {
@@ -308,11 +310,11 @@ function ReorderControls({
 // ─── Image field ──────────────────────────────────────────────────────────────
 
 function ImageField({
-  label, value, onChange, optional, disabled,
+  label, value, onChange, optional, disabled, cropAspectRatio = 4 / 3,
 }: {
   label: string; value?: AboutImage;
   onChange: (v: AboutImage | undefined) => void;
-  optional?: boolean; disabled?: boolean;
+  optional?: boolean; disabled?: boolean; cropAspectRatio?: number;
 }) {
   const cropStageRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{
@@ -322,9 +324,13 @@ function ImageField({
     startCropX: number;
     startCropY: number;
   } | null>(null);
+  const [cropOpen, setCropOpen] = useState(false);
+  const [draftCrop, setDraftCrop] = useState<{ x: number; y: number }>({ x: 50, y: 50 });
 
   const cropX = value?.cropX ?? 50;
   const cropY = value?.cropY ?? 50;
+
+  const clampCrop = (next: number) => Math.max(0, Math.min(100, next));
 
   const applyCrop = (nextCropX: number, nextCropY: number) => {
     onChange({
@@ -335,15 +341,31 @@ function ImageField({
     });
   };
 
+  const openCropEditor = () => {
+    if (!value?.url || disabled) return;
+    setDraftCrop({ x: cropX, y: cropY });
+    setCropOpen(true);
+  };
+
+  const closeCropEditor = () => {
+    dragRef.current = null;
+    setCropOpen(false);
+  };
+
+  const saveCropEditor = () => {
+    applyCrop(draftCrop.x, draftCrop.y);
+    closeCropEditor();
+  };
+
   const updateCropFromDragDelta = (deltaX: number, deltaY: number, startCropX: number, startCropY: number) => {
     const rect = cropStageRef.current?.getBoundingClientRect();
     if (!rect || rect.width <= 0 || rect.height <= 0) {
       return;
     }
 
-    const nextCropX = startCropX - (deltaX / rect.width) * 100;
-    const nextCropY = startCropY - (deltaY / rect.height) * 100;
-    applyCrop(nextCropX, nextCropY);
+    const nextCropX = clampCrop(startCropX - (deltaX / rect.width) * 100);
+    const nextCropY = clampCrop(startCropY - (deltaY / rect.height) * 100);
+    setDraftCrop({ x: nextCropX, y: nextCropY });
   };
 
   const onCropPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -355,8 +377,8 @@ function ImageField({
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
-      startCropX: cropX,
-      startCropY: cropY,
+      startCropX: draftCrop.x,
+      startCropY: draftCrop.y,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
     event.preventDefault();
@@ -380,7 +402,9 @@ function ImageField({
     }
 
     dragRef.current = null;
-    event.currentTarget.releasePointerCapture(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   };
 
   const onUpload = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -396,110 +420,161 @@ function ImageField({
   };
 
   return (
-    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <FieldLabel>{label}</FieldLabel>
-        {optional && value && (
-          <button
-            type="button"
-            onClick={() => onChange(undefined)}
-            disabled={disabled}
-            className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-red-800 disabled:opacity-40"
-          >
-            <X className="h-3 w-3" /> Remove
-          </button>
-        )}
-      </div>
-      <div className="flex gap-3">
-        <div className="h-16 w-24 shrink-0 overflow-hidden rounded-lg border border-zinc-200 bg-white">
-          {value?.url
-            ? <img src={value.url} alt={value.alt} className="h-full w-full object-cover" style={{ objectPosition: `${cropX}% ${cropY}%` }} />
-            : (
-              <div className="flex h-full items-center justify-center text-zinc-300">
-                <ImagePlus className="h-5 w-5" />
-              </div>
-            )}
-        </div>
-        <div className="min-w-0 flex-1 space-y-2">
-          <input
-            value={value?.url ?? ''}
-            onChange={(e) => onChange({ url: e.target.value, alt: value?.alt ?? '', cropX, cropY })}
-            disabled={disabled}
-            placeholder="Image URL or upload →"
-            className={inputClass}
-          />
-          <div className="flex items-center gap-2">
-            <input
-              value={value?.alt ?? ''}
-              onChange={(e) => onChange({ url: value?.url ?? '', alt: e.target.value, cropX, cropY })}
+    <>
+      <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <FieldLabel>{label}</FieldLabel>
+          {optional && value && (
+            <button
+              type="button"
+              onClick={() => onChange(undefined)}
               disabled={disabled}
-              placeholder="Alt text"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-red-800 disabled:opacity-40"
+            >
+              <X className="h-3 w-3" /> Remove
+            </button>
+          )}
+        </div>
+        <div className="flex gap-3">
+          <div className="h-16 w-24 shrink-0 overflow-hidden rounded-lg border border-zinc-200 bg-white">
+            {value?.url
+              ? <img src={value.url} alt={value.alt} className="h-full w-full object-cover" style={{ objectPosition: `${cropX}% ${cropY}%` }} />
+              : (
+                <div className="flex h-full items-center justify-center text-zinc-300">
+                  <ImagePlus className="h-5 w-5" />
+                </div>
+              )}
+          </div>
+          <div className="min-w-0 flex-1 space-y-2">
+            <input
+              value={value?.url ?? ''}
+              onChange={(e) => onChange({ url: e.target.value, alt: value?.alt ?? '', cropX, cropY })}
+              disabled={disabled}
+              placeholder="Image URL or upload →"
               className={inputClass}
             />
-            <label className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-xs font-semibold text-zinc-600 hover:bg-zinc-50">
-              <Upload className="h-3.5 w-3.5" /> Upload
+            <div className="flex items-center gap-2">
               <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => void onUpload(e)}
+                value={value?.alt ?? ''}
+                onChange={(e) => onChange({ url: value?.url ?? '', alt: e.target.value, cropX, cropY })}
                 disabled={disabled}
+                placeholder="Alt text"
+                className={inputClass}
               />
-            </label>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <label className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
-              Horizontal crop ({cropX}%)
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={cropX}
-                disabled={disabled}
-                onChange={(e) => applyCrop(Number(e.target.value), cropY)}
-                className="mt-1 w-full"
-              />
-            </label>
-            <label className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
-              Vertical crop ({cropY}%)
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={cropY}
-                disabled={disabled}
-                onChange={(e) => applyCrop(cropX, Number(e.target.value))}
-                className="mt-1 w-full"
-              />
-            </label>
-          </div>
-            {value?.url && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Visual crop (drag image)</p>
-                <div
-                  ref={cropStageRef}
-                  onPointerDown={onCropPointerDown}
-                  onPointerMove={onCropPointerMove}
-                  onPointerUp={onCropPointerEnd}
-                  onPointerCancel={onCropPointerEnd}
-                  className={`relative aspect-[4/3] w-full overflow-hidden rounded-xl border border-zinc-200 bg-white touch-none ${
-                    disabled ? 'cursor-not-allowed opacity-70' : 'cursor-grab active:cursor-grabbing'
-                  }`}
+              <label className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-xs font-semibold text-zinc-600 hover:bg-zinc-50">
+                <Upload className="h-3.5 w-3.5" /> Upload
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => void onUpload(e)}
+                  disabled={disabled}
+                />
+              </label>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={openCropEditor}
+                  disabled={disabled || !value?.url}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  <img
-                    src={value.url}
-                    alt={value.alt}
-                    draggable={false}
-                    className="h-full w-full select-none object-cover"
-                    style={{ objectPosition: `${cropX}% ${cropY}%` }}
-                  />
-                  <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-zinc-200" />
+                  <Crop className="h-3.5 w-3.5" /> Crop photo
+                </button>
+                <div className="inline-flex items-center justify-center rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2.5 text-xs font-semibold text-zinc-600">
+                  Framing: {Math.round(cropX)}% / {Math.round(cropY)}%
                 </div>
-              </div>
-            )}
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+
+      <AnimatePresence>
+        {cropOpen && value?.url && (
+          <motion.div
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 px-4 py-6 backdrop-blur-[2px]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={closeCropEditor}
+          >
+            <motion.div
+              className="w-full max-w-5xl overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
+              initial={{ opacity: 0, y: 10, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] as any }}
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Crop photo"
+            >
+              <div className="flex items-start justify-between border-b border-zinc-100 px-5 py-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Crop Editor</p>
+                  <h3 className="mt-1 text-lg font-bold text-zinc-900">Drag to Position Within Frame</h3>
+                  <p className="mt-1 text-xs text-zinc-500">This frame previews how this section will crop the image.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeCropEditor}
+                  className="rounded-lg border border-zinc-200 p-1.5 text-zinc-500 transition hover:bg-zinc-50 hover:text-zinc-700"
+                  aria-label="Close crop editor"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-4 p-5">
+                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                  <div
+                    ref={cropStageRef}
+                    onPointerDown={onCropPointerDown}
+                    onPointerMove={onCropPointerMove}
+                    onPointerUp={onCropPointerEnd}
+                    onPointerCancel={onCropPointerEnd}
+                    className="relative mx-auto w-full max-w-4xl overflow-hidden rounded-xl border border-zinc-300 bg-white shadow-sm touch-none cursor-grab active:cursor-grabbing"
+                    style={{ aspectRatio: cropAspectRatio }}
+                  >
+                    <img
+                      src={value.url}
+                      alt={value.alt}
+                      draggable={false}
+                      className="h-full w-full select-none object-cover"
+                      style={{ objectPosition: `${draftCrop.x}% ${draftCrop.y}%` }}
+                    />
+                    <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-zinc-300" />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
+                    Position: {Math.round(draftCrop.x)}% / {Math.round(draftCrop.y)}%
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={closeCropEditor}
+                      className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-600 hover:bg-zinc-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={saveCropEditor}
+                      className="rounded-lg bg-red-700 px-3 py-2 text-xs font-semibold text-white hover:bg-red-800"
+                    >
+                      Apply Crop
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 
@@ -1654,6 +1729,8 @@ export default function AdminAboutControlPage() {
         );
 
       case 'splitFeature':
+        {
+        const splitFeatureCropAspectRatio = section.id === 'costume-crew-gallery' ? 3 / 4 : 4 / 5;
         return (
           <SectionShell key={section.id} {...shellProps}>
             {galleryOnlySection
@@ -1684,7 +1761,7 @@ export default function AdminAboutControlPage() {
                   onMove={(d) => upSec(si, (s) => ({ ...(s as AboutSplitFeatureSection), images: reorder((s as AboutSplitFeatureSection).images, ii, d) }))}
                   onRemove={() => upSec(si, (s) => ({ ...(s as AboutSplitFeatureSection), images: (s as AboutSplitFeatureSection).images.filter((_, j) => j !== ii) }))}
                 >
-                  <ImageField label={`Image ${ii + 1}`} value={img}
+                  <ImageField label={`Image ${ii + 1}`} value={img} cropAspectRatio={splitFeatureCropAspectRatio}
                     onChange={(next) => upSec(si, (s) => ({ ...(s as AboutSplitFeatureSection), images: (s as AboutSplitFeatureSection).images.map((x, j) => j === ii ? (next ?? { url: '', alt: '' }) : x) }))} />
                 </SubItem>
               ))}
@@ -1694,6 +1771,7 @@ export default function AdminAboutControlPage() {
             </div>
           </SectionShell>
         );
+        }
 
       case 'testimonial':
         return (
@@ -1701,7 +1779,7 @@ export default function AdminAboutControlPage() {
             {headerFields}
             <Field label="Quote"><textarea value={section.quote} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutTestimonialSection), quote: e.target.value }))} className={taClass} /></Field>
             <Field label="Attribution"><input value={section.attribution} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutTestimonialSection), attribution: e.target.value }))} className={inputClass} placeholder="— Name, Role" /></Field>
-            <ImageField label="Feature image" value={section.image}
+            <ImageField label="Feature image" value={section.image} cropAspectRatio={3 / 4}
               onChange={(img) => upSec(si, (s) => ({ ...(s as AboutTestimonialSection), image: img ?? { url: '', alt: '' } }))} />
           </SectionShell>
         );
