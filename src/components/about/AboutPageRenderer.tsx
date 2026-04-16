@@ -517,7 +517,7 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
       ? 'mx-auto w-full max-w-none px-3 sm:px-6 lg:px-8'
       : 'mx-auto max-w-7xl px-6 sm:px-10';
     const desktopGridClass = isPerformerGallery
-      ? `${gridClass} hidden sm:grid w-full rounded-[24px] border border-stone-200 bg-white p-3 shadow-sm`
+      ? `${gridClass} hidden sm:grid w-full rounded-[32px] border border-stone-200/60 bg-white/80 p-4 shadow-xl backdrop-blur-xl ring-1 ring-black/5`
       : `${gridClass} hidden sm:grid`;
 
     return (
@@ -581,7 +581,7 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
             {performerImages.map((img, i) => (
               <figure
                 key={i}
-                  className={`relative overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm transition duration-300 hover:shadow-md ${
+                className={`group relative overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm transition-all duration-500 hover:z-10 hover:scale-[1.03] hover:shadow-xl ${
                   performerImages.length > 1 ? frameClasses[i % frameClasses.length] : ''
                 } ${
                   isPerformerGallery ? performerLayoutClasses[i % performerLayoutClasses.length] : ''
@@ -592,11 +592,13 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
                 <img
                   src={img.url}
                   alt={img.alt}
-                  className={`${imageAspectClass} w-full object-cover`}
+                  className={`${imageAspectClass} w-full object-cover transition-transform duration-700 group-hover:scale-110`}
                 />
                   {isPerformerGallery && (
-                    <figcaption className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent px-3 pb-3 pt-8 text-sm font-medium text-white">
-                      {performerDesktopCaptions[i] ?? img.alt}
+                    <figcaption className="pointer-events-none absolute inset-x-0 bottom-0 flex translate-y-4 flex-col justify-end bg-gradient-to-t from-black/90 via-black/40 to-transparent px-5 pb-5 pt-16 opacity-0 transition-all duration-500 group-hover:translate-y-0 group-hover:opacity-100">
+                      <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-red-400 drop-shadow-md">
+                        {performerDesktopCaptions[i] ?? img.alt}
+                      </span>
                     </figcaption>
                   )}
               </figure>
