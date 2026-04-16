@@ -62,6 +62,15 @@ const REQUIRED_GALLERY_SECTION_IDS_BY_SLUG: Record<string, string[]> = {
   'tech-crew': ['equipment'],
 };
 
+const PERFORMER_GALLERY_SLOT_CROP_ASPECT_RATIOS = [
+  7 / 6,
+  39 / 20,
+  31 / 20,
+  39 / 20,
+  31 / 20,
+  7 / 6,
+];
+
 const ADDABLE_SECTION_TYPES = Object.keys(SECTION_TYPE_LABELS) as Array<keyof typeof SECTION_TYPE_LABELS>;
 
 function publicPathForSlug(slug: string): string {
@@ -97,6 +106,20 @@ function isSubpageGallerySection(slug: string, section: AboutSection): boolean {
   if (section.type !== 'splitFeature') return false;
   if (section.id === 'equipment') return slug === 'tech-crew';
   return SUBPAGE_GALLERY_SECTION_IDS.has(section.id);
+}
+
+function splitFeatureCropAspectRatioForImage(sectionId: string, imageIndex: number): number {
+  if (sectionId === 'performer-gallery') {
+    return PERFORMER_GALLERY_SLOT_CROP_ASPECT_RATIOS[
+      imageIndex % PERFORMER_GALLERY_SLOT_CROP_ASPECT_RATIOS.length
+    ];
+  }
+
+  if (sectionId === 'costume-crew-gallery') {
+    return 3 / 4;
+  }
+
+  return 4 / 5;
 }
 
 function insertSectionBeforeCta(page: AboutPageContent, section: AboutSection): AboutPageContent {
@@ -492,7 +515,7 @@ function ImageField({
       <AnimatePresence>
         {cropOpen && value?.url && (
           <motion.div
-            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 px-4 py-6 backdrop-blur-[2px]"
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 px-3 py-4 backdrop-blur-[2px]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -500,7 +523,7 @@ function ImageField({
             onClick={closeCropEditor}
           >
             <motion.div
-              className="w-full max-w-5xl overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
+              className="w-full max-w-3xl max-h-[88vh] overflow-y-auto overflow-x-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
               initial={{ opacity: 0, y: 10, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.98 }}
@@ -526,7 +549,7 @@ function ImageField({
                 </button>
               </div>
 
-              <div className="space-y-4 p-5">
+              <div className="space-y-4 p-4 sm:p-5">
                 <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
                   <div
                     ref={cropStageRef}
@@ -534,8 +557,8 @@ function ImageField({
                     onPointerMove={onCropPointerMove}
                     onPointerUp={onCropPointerEnd}
                     onPointerCancel={onCropPointerEnd}
-                    className="relative mx-auto w-full max-w-4xl overflow-hidden rounded-xl border border-zinc-300 bg-white shadow-sm touch-none cursor-grab active:cursor-grabbing"
-                    style={{ aspectRatio: cropAspectRatio }}
+                    className="relative mx-auto w-full max-w-2xl overflow-hidden rounded-xl border border-zinc-300 bg-white shadow-sm touch-none cursor-grab active:cursor-grabbing"
+                    style={{ aspectRatio: cropAspectRatio, maxHeight: '56vh' }}
                   >
                     <img
                       src={value.url}
@@ -1730,7 +1753,6 @@ export default function AdminAboutControlPage() {
 
       case 'splitFeature':
         {
-        const splitFeatureCropAspectRatio = section.id === 'costume-crew-gallery' ? 3 / 4 : 4 / 5;
         return (
           <SectionShell key={section.id} {...shellProps}>
             {galleryOnlySection
@@ -1761,7 +1783,7 @@ export default function AdminAboutControlPage() {
                   onMove={(d) => upSec(si, (s) => ({ ...(s as AboutSplitFeatureSection), images: reorder((s as AboutSplitFeatureSection).images, ii, d) }))}
                   onRemove={() => upSec(si, (s) => ({ ...(s as AboutSplitFeatureSection), images: (s as AboutSplitFeatureSection).images.filter((_, j) => j !== ii) }))}
                 >
-                  <ImageField label={`Image ${ii + 1}`} value={img} cropAspectRatio={splitFeatureCropAspectRatio}
+                  <ImageField label={`Image ${ii + 1}`} value={img} cropAspectRatio={splitFeatureCropAspectRatioForImage(section.id, ii)}
                     onChange={(next) => upSec(si, (s) => ({ ...(s as AboutSplitFeatureSection), images: (s as AboutSplitFeatureSection).images.map((x, j) => j === ii ? (next ?? { url: '', alt: '' }) : x) }))} />
                 </SubItem>
               ))}
