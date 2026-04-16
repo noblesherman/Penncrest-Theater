@@ -442,6 +442,14 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
     const isCostumeGallery = section.id === 'costume-crew-gallery';
 
     const performerImages = isPerformerGallery ? section.images.slice(0, 6) : section.images;
+    const performerDesktopCaptions = [
+      'Voice warmup',
+      'Blocking rehearsal',
+      'Choreography pass',
+      'Scene run',
+      'Tech rehearsal',
+      'Performance notes'
+    ];
     const performerLayoutClasses = [
       'lg:col-span-3 lg:row-span-2',
       'lg:col-span-5 lg:row-span-2',
@@ -452,7 +460,7 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
     ];
 
     const gridClass = isPerformerGallery
-      ? 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-12 lg:auto-rows-[112px]'
+      ? 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-12 lg:auto-rows-[96px]'
       : isCostumeGallery
         ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:mx-auto lg:max-w-3xl'
         : 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3';
@@ -505,13 +513,16 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
       : isCostumeGallery
         ? 'h-[min(78vw,30rem)] max-w-[24rem]'
         : 'h-[min(74vw,28rem)] max-w-[26rem]';
+    const galleryShellClass = isPerformerGallery
+      ? 'mx-auto w-full max-w-none px-3 sm:px-6 lg:px-8'
+      : 'mx-auto max-w-7xl px-6 sm:px-10';
     const desktopGridClass = isPerformerGallery
-      ? `${gridClass} hidden sm:grid rounded-[24px] border border-stone-200 bg-white p-3 shadow-sm`
+      ? `${gridClass} hidden sm:grid w-full rounded-[24px] border border-stone-200 bg-white p-3 shadow-sm`
       : `${gridClass} hidden sm:grid`;
 
     return (
       <section className="bg-stone-50 py-16 sm:py-20">
-        <div className="mx-auto max-w-7xl px-6 sm:px-10">
+        <div className={galleryShellClass}>
           <motion.div
             {...fadeUp(0, previewMode)}
             className="sm:hidden"
@@ -570,7 +581,7 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
             {performerImages.map((img, i) => (
               <figure
                 key={i}
-                className={`overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm transition duration-300 hover:shadow-md ${
+                  className={`relative overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm transition duration-300 hover:shadow-md ${
                   performerImages.length > 1 ? frameClasses[i % frameClasses.length] : ''
                 } ${
                   isPerformerGallery ? performerLayoutClasses[i % performerLayoutClasses.length] : ''
@@ -583,6 +594,11 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
                   alt={img.alt}
                   className={`${imageAspectClass} w-full object-cover`}
                 />
+                  {isPerformerGallery && (
+                    <figcaption className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent px-3 pb-3 pt-8 text-sm font-medium text-white">
+                      {performerDesktopCaptions[i] ?? img.alt}
+                    </figcaption>
+                  )}
               </figure>
             ))}
           </motion.div>
