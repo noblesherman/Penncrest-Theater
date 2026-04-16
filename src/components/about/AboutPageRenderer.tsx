@@ -441,8 +441,18 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
     const isStageGallery = section.id === 'stage-crew-gallery';
     const isCostumeGallery = section.id === 'costume-crew-gallery';
 
+    const performerImages = isPerformerGallery ? section.images.slice(0, 6) : section.images;
+    const performerLayoutClasses = [
+      'lg:col-span-5 lg:row-span-3',
+      'lg:col-span-4 lg:row-span-2',
+      'lg:col-span-3 lg:row-span-2',
+      'lg:col-span-3 lg:row-span-2',
+      'lg:col-span-4 lg:row-span-2',
+      'lg:col-span-5 lg:row-span-3'
+    ];
+
     const gridClass = isPerformerGallery
-      ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4'
+      ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12 lg:auto-rows-[120px]'
       : isCostumeGallery
         ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:mx-auto lg:max-w-3xl'
         : 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3';
@@ -488,18 +498,44 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
         ? 'aspect-[3/4]'
         : 'aspect-[4/5]';
 
+    const mobileCardWidthClass = isCostumeGallery ? 'w-[88%]' : 'w-[84%]';
+
     return (
       <section className="bg-stone-50 py-16 sm:py-20">
         <div className="mx-auto max-w-7xl px-6 sm:px-10">
           <motion.div
             {...fadeUp(0, previewMode)}
-            className={gridClass}
+            className="-mx-2 flex snap-x snap-mandatory overflow-x-auto px-2 pb-2 pr-4 sm:hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
-            {section.images.map((img, i) => (
+            {performerImages.map((img, i) => (
+              <figure
+                key={i}
+                className={`snap-center shrink-0 ${mobileCardWidthClass} overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm transition duration-300 ${
+                  i === 0 ? 'ml-0' : '-ml-10'
+                } ${
+                  i % 2 === 0 ? 'translate-y-0 rotate-[-1deg]' : 'translate-y-3 rotate-[1deg]'
+                }`}
+              >
+                <img
+                  src={img.url}
+                  alt={img.alt}
+                  className={`${imageAspectClass} w-full object-cover`}
+                />
+              </figure>
+            ))}
+          </motion.div>
+
+          <motion.div
+            {...fadeUp(0, previewMode)}
+            className={`${gridClass} hidden sm:grid`}
+          >
+            {performerImages.map((img, i) => (
               <figure
                 key={i}
                 className={`overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm transition duration-300 hover:shadow-md ${
-                  section.images.length > 1 ? frameClasses[i % frameClasses.length] : ''
+                  performerImages.length > 1 ? frameClasses[i % frameClasses.length] : ''
+                } ${
+                  isPerformerGallery ? performerLayoutClasses[i % performerLayoutClasses.length] : ''
                 }`}
               >
                 <img
