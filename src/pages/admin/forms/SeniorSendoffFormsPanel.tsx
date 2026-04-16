@@ -459,7 +459,7 @@ export default function SeniorSendoffFormsPanel() {
         }
       }));
       setSelectedFormId(normalizedCreated.id);
-      setNotice('Senior send-off form created.');
+      setNotice('Shout out form created.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to create form');
     } finally {
@@ -518,7 +518,7 @@ export default function SeniorSendoffFormsPanel() {
 
   async function archiveForm(form: SeniorSendoffFormSummary): Promise<void> {
     const confirmed = window.confirm(
-      `Archive "${form.show.title}" senior send-off form?\n\nThis keeps all responses but removes it from active form operations.`
+      `Archive "${form.show.title}" shout out form?\n\nThis keeps all responses but removes it from active form operations.`
     );
     if (!confirmed) return;
 
@@ -554,7 +554,7 @@ export default function SeniorSendoffFormsPanel() {
 
   async function deleteForm(form: SeniorSendoffFormSummary): Promise<void> {
     const confirmed = window.confirm(
-      `Delete "${form.show.title}" senior send-off form permanently?\n\nThis permanently deletes the form and all submissions. This cannot be undone.`
+      `Delete "${form.show.title}" shout out form permanently?\n\nThis permanently deletes the form and all submissions. This cannot be undone.`
     );
     if (!confirmed) return;
 
@@ -694,7 +694,7 @@ export default function SeniorSendoffFormsPanel() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-red-700">Admin</p>
-          <h1 className="mt-0.5 text-2xl font-bold text-stone-900">Senior Send-Off Forms</h1>
+          <h1 className="mt-0.5 text-2xl font-bold text-stone-900">Shout Out Forms</h1>
           <p className="mt-1 text-sm text-stone-500">Create and manage playbill shout-out forms by show.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

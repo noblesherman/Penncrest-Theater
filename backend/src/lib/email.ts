@@ -478,7 +478,7 @@ export async function sendDonationThankYouEmail(payload: DonationThankYouEmailPa
 
 export async function sendSeniorSendoffSubmissionEmail(payload: SeniorSendoffSubmissionEmailPayload): Promise<void> {
   if (!transporter || !env.SMTP_FROM) {
-    console.warn('SMTP is not configured; skipping senior send-off confirmation email send.');
+    console.warn('SMTP is not configured; skipping shout out confirmation email send.');
     return;
   }
 
@@ -502,7 +502,7 @@ export async function sendSeniorSendoffSubmissionEmail(payload: SeniorSendoffSub
   const text = [
     `Hi ${parentName},`,
     '',
-    `Your Senior Send-Off shout-out was submitted for ${payload.studentName}.`,
+    `Your shout out was submitted for ${payload.studentName}.`,
     `Show: ${payload.showTitle}`,
     `Entry number for this student: ${payload.entryNumber} of 2`,
     payload.isPaid && paidAmountLabel ? `Payment received: ${paidAmountLabel}` : 'Payment: Not required',
@@ -528,7 +528,7 @@ export async function sendSeniorSendoffSubmissionEmail(payload: SeniorSendoffSub
             <tr>
               <td style="background:linear-gradient(160deg,#1a0505 0%,#3d0a0a 100%);border-radius:14px 14px 0 0;padding:24px;">
                 <div style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#c9a84c;margin-bottom:8px;">${BRAND_NAME}</div>
-                <div style="font-family:Georgia,'Times New Roman',serif;font-size:28px;font-weight:700;color:#f5f0e8;line-height:1.2;">Senior Send-Off Received</div>
+                <div style="font-family:Georgia,'Times New Roman',serif;font-size:28px;font-weight:700;color:#f5f0e8;line-height:1.2;">Shout Out Received</div>
                 <div style="margin-top:8px;font-family:Arial,sans-serif;font-size:14px;color:#f5d98b;line-height:1.5;">Your playbill shout-out has been submitted.</div>
               </td>
             </tr>
@@ -539,7 +539,7 @@ export async function sendSeniorSendoffSubmissionEmail(payload: SeniorSendoffSub
               <td style="background:#fffdf7;border:1px solid #e8dfc8;border-top:none;padding:24px;">
                 <p style="margin:0 0 10px 0;font-family:Georgia,'Times New Roman',serif;font-size:18px;color:#1a0a0a;">Hi ${safeParentName},</p>
                 <p style="margin:0 0 14px 0;font-family:Arial,sans-serif;font-size:14px;line-height:1.7;color:#3d2020;">
-                  We received your Senior Send-Off shout-out for <strong>${safeStudentName}</strong> in <strong>${safeShowTitle}</strong>.
+                  We received your shout out for <strong>${safeStudentName}</strong> in <strong>${safeShowTitle}</strong>.
                 </p>
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #c9a84c;border-radius:10px;background:#fdf8ee;margin-bottom:14px;">
                   <tr>
@@ -566,7 +566,7 @@ export async function sendSeniorSendoffSubmissionEmail(payload: SeniorSendoffSub
   await transporter.sendMail({
     from: env.SMTP_FROM,
     to: parentEmail,
-    subject: `Senior Send-Off submitted - ${payload.studentName} (${payload.showTitle})`,
+    subject: `Shout Out submitted - ${payload.studentName} (${payload.showTitle})`,
     text,
     html
   });

@@ -452,7 +452,7 @@ export default function AdminDashboardPage() {
                     value={`${data.adminModules.forms.programBio.responseCount} responses`}
                   />
                   <MetricPair
-                    label="Senior Sendoff"
+                    label="Shout Outs"
                     value={`${data.adminModules.forms.seniorSendoff.responseCount} responses`}
                   />
                 </div>

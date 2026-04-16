@@ -12,7 +12,7 @@ import { stripe } from '../lib/stripe.js';
 import { sendSeniorSendoffSubmissionEmail } from '../lib/email.js';
 
 const SENIOR_SENDOFF_SCHEMA_VERSION = 'SENIOR_SENDOFF_V1';
-const SENIOR_SENDOFF_DEFAULT_TITLE = 'Senior Send-Off Shout Outs';
+const SENIOR_SENDOFF_DEFAULT_TITLE = 'Shout Outs';
 const SENIOR_SENDOFF_DEFAULT_SECOND_SUBMISSION_PRICE_CENTS = 2500;
 const SENIOR_SENDOFF_MAX_MESSAGE_LENGTH = 1800;
 
@@ -480,8 +480,8 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
           throw new HttpError(
             409,
             existingForm.isArchived
-              ? 'A senior send-off form already exists for this show and is archived. Delete it first.'
-              : 'A senior send-off form already exists for this show'
+              ? 'A shout out form already exists for this show and is archived. Delete it first.'
+              : 'A shout out form already exists for this show'
           );
         }
 
@@ -546,7 +546,7 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
 
       reply.status(201).send(serializeFormSummary(created, new Date()));
     } catch (err) {
-      handleRouteError(reply, err, 'We hit a small backstage snag while trying to create senior send-off form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to create shout out form');
     }
   });
 
@@ -577,7 +577,7 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
       const now = new Date();
       reply.send(forms.map((form) => serializeFormSummary(form, now)));
     } catch (err) {
-      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch senior send-off forms');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch shout out forms');
     }
   });
 
@@ -674,7 +674,7 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(serializeFormSummary(updated, new Date()));
     } catch (err) {
-      handleRouteError(reply, err, 'We hit a small backstage snag while trying to update senior send-off form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to update shout out form');
     }
   });
 
@@ -716,7 +716,7 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
         }))
       );
     } catch (err) {
-      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch senior send-off submissions');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch shout out submissions');
     }
   });
 
@@ -798,7 +798,7 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
         isPaid: submission.isPaid
       });
     } catch (err) {
-      handleRouteError(reply, err, 'We hit a small backstage snag while trying to delete senior send-off submission');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to delete shout out submission');
     }
   });
 
@@ -879,7 +879,7 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
 
       reply.send(serializeFormSummary(archived, new Date()));
     } catch (err) {
-      handleRouteError(reply, err, 'We hit a small backstage snag while trying to archive senior send-off form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to archive shout out form');
     }
   });
 
@@ -937,7 +937,7 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
         paidSubmissionCount
       });
     } catch (err) {
-      handleRouteError(reply, err, 'We hit a small backstage snag while trying to delete senior send-off form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to delete shout out form');
     }
   });
 
@@ -993,7 +993,7 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
         requiredFields: ['parentName', 'parentEmail', 'parentPhone', 'studentName', 'message']
       });
     } catch (err) {
-      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch senior send-off form');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch shout out form');
     }
   });
 
@@ -1119,7 +1119,7 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
           currency: 'usd',
           automatic_payment_methods: { enabled: true },
           receipt_email: parentEmail,
-          description: `Senior send-off shout-out (${studentName}) - ${form.show.title}`,
+          description: `Shout out (${studentName}) - ${form.show.title}`,
           metadata: {
             source: 'senior_sendoff_second_submission',
             formId: form.id,
@@ -1296,7 +1296,7 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
           paymentIntentId: submission.paymentIntentId || null
         });
       } catch (mailErr) {
-        request.log.error({ err: mailErr, submissionId: submission.id }, 'We hit a small backstage snag while trying to send senior send-off submission email');
+        request.log.error({ err: mailErr, submissionId: submission.id }, 'We hit a small backstage snag while trying to send shout out submission email');
       }
 
       const remainingCount = Math.max(0, 2 - submission.entryNumber);
@@ -1316,7 +1316,7 @@ export const seniorSendoffFormRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(statusCode).send({ error: err.message || 'Payment provider error' });
       }
 
-      handleRouteError(reply, err, 'We hit a small backstage snag while trying to submit senior send-off');
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to submit shout out');
     }
   });
 };

@@ -224,8 +224,8 @@ function toSlugSafe(value: string): string {
 }
 
 // ── Shared input styles ──
-const inputCls = 'w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 placeholder:text-stone-400 focus:border-stone-400 focus:outline-none transition';
-const labelCls = 'block text-xs font-semibold uppercase tracking-wider text-stone-500 mb-1.5';
+const inputCls = 'w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-900 placeholder:text-stone-400 focus:border-stone-400 focus:outline-none transition';
+const labelCls = 'block text-xs font-semibold uppercase tracking-wider text-stone-500 mb-2';
 
 const PROGRAM_BIO_BASE_FIELD_ROWS = [
   {
@@ -739,20 +739,20 @@ export default function ProgramBioFormsPanel() {
   ] as const;
 
   return (
-    <div className="space-y-6 font-sans">
+    <div className="space-y-8 font-sans">
 
         {/* ── Page header ── */}
-        <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-wrap items-end justify-between gap-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-red-700">Admin</p>
-            <h1 className="mt-0.5 text-2xl font-bold text-stone-900">Program Bio Forms</h1>
-            <p className="mt-1 text-sm text-stone-500">Create and manage bio collection forms linked to a show.</p>
+            <h1 className="mt-1 text-2xl font-bold text-stone-900">Program Bio Forms</h1>
+            <p className="mt-2 text-sm text-stone-500">Create and manage bio collection forms linked to a show.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <select
               value={formScope}
               onChange={(event) => setFormScope(event.target.value as FormScope)}
-              className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700"
+              className="rounded-lg border border-stone-200 bg-white px-3 py-2.5 text-xs font-semibold text-stone-700"
             >
               <option value="active">Active</option>
               <option value="archived">Archived</option>
@@ -760,7 +760,7 @@ export default function ProgramBioFormsPanel() {
             </select>
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-600 transition hover:bg-stone-50 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-2.5 text-xs font-semibold text-stone-600 transition hover:bg-stone-50 disabled:opacity-50"
               onClick={() => void loadBase()}
               disabled={loading}
             >
@@ -772,24 +772,24 @@ export default function ProgramBioFormsPanel() {
 
         {/* ── Alerts ── */}
         {error && (
-          <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3.5 text-sm text-red-700">
             <span className="mt-0.5 h-1.5 w-1.5 flex-none rounded-full bg-red-500" />
             {error}
           </div>
         )}
         {notice && (
-          <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3.5 text-sm text-emerald-700">
             <span className="mt-0.5 h-1.5 w-1.5 flex-none rounded-full bg-emerald-500" />
             {notice}
           </div>
         )}
 
         {/* ── Create form row ── */}
-        <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
           <p className={labelCls}>Create New Form</p>
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-wrap items-end gap-4">
             <div className="flex-1 min-w-[200px]">
-              <p className="mb-1.5 text-xs text-stone-500">Show</p>
+              <p className="mb-2 text-xs text-stone-500">Show</p>
               <select className={inputCls} value={selectedShowId} onChange={(e) => setSelectedShowId(e.target.value)}>
                 {shows.length === 0 && <option value="">No shows available</option>}
                 {shows.map((s) => (
@@ -800,14 +800,14 @@ export default function ProgramBioFormsPanel() {
               </select>
             </div>
             <div className="w-52">
-              <p className="mb-1.5 text-xs text-stone-500">Deadline (optional)</p>
+              <p className="mb-2 text-xs text-stone-500">Deadline (optional)</p>
               <input type="datetime-local" value={createDeadlineAt} onChange={(e) => setCreateDeadlineAt(e.target.value)} className={inputCls} />
             </div>
             <button
               type="button"
               onClick={() => void createForm()}
               disabled={creating || !selectedShowId || usedShowIds.has(selectedShowId)}
-              className="inline-flex items-center gap-2 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-red-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Plus className="h-4 w-4" />
               {creating ? 'Creating…' : 'Create Form'}
@@ -816,10 +816,10 @@ export default function ProgramBioFormsPanel() {
         </div>
 
         {/* ── Main layout ── */}
-        <div className="grid gap-5 lg:grid-cols-[260px,1fr]">
+        <div className="grid gap-6 lg:grid-cols-[280px,1fr]">
 
           {/* Sidebar */}
-          <aside className="space-y-2">
+          <aside className="space-y-3">
             <p className={labelCls + ' px-1'}>All Forms</p>
             {visibleForms.length === 0 && !loading && (
               <p className="rounded-xl border border-stone-200 bg-white px-4 py-6 text-center text-sm text-stone-400">No forms yet.</p>
@@ -831,7 +831,7 @@ export default function ProgramBioFormsPanel() {
                   key={form.id}
                   type="button"
                   onClick={() => setSelectedFormId(form.id)}
-                  className={`group w-full rounded-xl border px-4 py-3 text-left transition ${
+                  className={`group w-full rounded-xl border px-4 py-4 text-left transition ${
                     active
                       ? 'border-red-200 bg-red-50'
                       : 'border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50'
@@ -867,10 +867,10 @@ export default function ProgramBioFormsPanel() {
             ) : (
               <div>
                 {/* Panel header */}
-                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-stone-100 px-6 pt-5 pb-4">
+                <div className="flex flex-wrap items-start justify-between gap-4 border-b border-stone-100 px-6 pt-6 pb-5">
                   <div>
                     <h2 className="text-lg font-bold text-stone-900">{selectedForm.show.title}</h2>
-                    <p className="mt-0.5 text-xs text-stone-400">
+                    <p className="mt-1 text-xs text-stone-400">
                       Schema v{selectedForm.schemaVersion} · {selectedForm.responseCount} response{selectedForm.responseCount !== 1 ? 's' : ''}
                       {selectedForm.isArchived && selectedForm.archivedAt ? ` · archived ${formatDateTime(selectedForm.archivedAt)}` : ''}
                     </p>
@@ -923,7 +923,7 @@ export default function ProgramBioFormsPanel() {
                       key={tab.key}
                       type="button"
                       onClick={() => setActiveTab(tab.key)}
-                      className={`py-3 px-1 mr-6 text-sm font-semibold border-b-2 transition ${
+                      className={`py-4 px-1 mr-8 text-sm font-semibold border-b-2 transition ${
                         activeTab === tab.key
                           ? 'border-red-700 text-red-700'
                           : 'border-transparent text-stone-400 hover:text-stone-700'
@@ -934,12 +934,12 @@ export default function ProgramBioFormsPanel() {
                   ))}
                 </div>
 
-                <div className="p-6">
+                <div className="p-8">
 
                   {/* ── SETTINGS TAB ── */}
                   {activeTab === 'settings' && (
-                    <div className="space-y-5">
-                      <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-6">
+                      <div className="grid gap-5 sm:grid-cols-2">
                         <div>
                           <label className={labelCls}>Title</label>
                           <input
@@ -959,7 +959,7 @@ export default function ProgramBioFormsPanel() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3">
+                      <div className="flex items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3.5">
                         <input
                           id="isOpen"
                           type="checkbox"
@@ -973,7 +973,7 @@ export default function ProgramBioFormsPanel() {
                         </label>
                       </div>
                       {selectedForm.isArchived && (
-                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 text-sm text-amber-800">
                           This form is archived. Responses are preserved, but it is no longer active.
                         </div>
                       )}
@@ -993,10 +993,10 @@ export default function ProgramBioFormsPanel() {
 
                   {/* ── QUESTIONS TAB ── */}
                   {activeTab === 'questions' && (
-                    <div className="space-y-6">
+                    <div className="space-y-7">
                       <div>
-                        <p className="text-sm font-semibold text-stone-700 mb-1">Base Fields</p>
-                        <p className="text-xs text-stone-400 mb-4">Enable, disable, or rename base fields. Disabled fields are hidden from students.</p>
+                        <p className="text-sm font-semibold text-stone-700 mb-1.5">Base Fields</p>
+                        <p className="text-xs text-stone-400 mb-5">Enable, disable, or rename base fields. Disabled fields are hidden from students.</p>
                         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                           {PROGRAM_BIO_BASE_FIELD_ROWS.map((field) => (
                             <div key={field.id} className={`rounded-xl border p-3 ${selectedDraft.questions[field.enabledKey] ? 'border-stone-200 bg-white' : 'border-stone-200 bg-stone-50/80'}`}>
@@ -1052,8 +1052,8 @@ export default function ProgramBioFormsPanel() {
                         </div>
                       </div>
 
-                      <div className="border-t border-stone-100 pt-5">
-                        <div className="mb-4 flex items-center justify-between">
+                      <div className="border-t border-stone-100 pt-6">
+                        <div className="mb-5 flex items-center justify-between">
                           <div>
                             <p className="text-sm font-semibold text-stone-700">Custom Questions</p>
                             <p className="text-xs text-stone-400">Additional fields shown after the base fields. Hidden questions are saved but not shown to students.</p>
