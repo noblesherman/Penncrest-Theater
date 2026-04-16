@@ -306,7 +306,7 @@ export default function AdminOrderDetailPage() {
   const deleteOrder = async () => {
     if (!data) return;
     const confirmed = window.confirm(
-      'Delete this canceled order permanently?\n\nThis cannot be undone.'
+      'Delete this order permanently?\n\nThis removes its tickets and returns seats to inventory. This cannot be undone.'
     );
     if (!confirmed) return;
 
@@ -349,15 +349,13 @@ export default function AdminOrderDetailPage() {
     Boolean(data.stripeRefundStatus) &&
     !['failed', 'canceled', 'succeeded'].includes(normalizedRefundStatus);
   const showRefundAction = canRefund && !refundSettled && !refundInFlight;
-  const canDeleteZeroValueWalkIn =
-    data.status === 'PAID' &&
+  const canDeleteWalkInCashOrder =
     data.source === 'DOOR' &&
     data.inPersonPaymentMethod === 'CASH' &&
-    data.amountTotal === 0 &&
     !data.stripeSessionId &&
     !data.stripePaymentIntentId;
   const canDeleteOrder =
-    hasAdminRole(admin.role, 'ADMIN') && (data.status === 'CANCELED' || canDeleteZeroValueWalkIn);
+    hasAdminRole(admin.role, 'ADMIN') && (data.status === 'CANCELED' || canDeleteWalkInCashOrder);
 
   const statusStyle = STATUS_STYLES[data.status] ?? 'bg-stone-100 text-stone-500 ring-1 ring-stone-200';
   const formattedTotal = `$${(data.amountTotal / 100).toFixed(2)}`;
@@ -793,7 +791,7 @@ export default function AdminOrderDetailPage() {
 
         {hasAdminRole(admin.role, 'ADMIN') && !canDeleteOrder && (
           <p className="mt-4 text-xs text-stone-400">
-            Only canceled orders or zero-dollar walk-in cash orders can be permanently deleted.
+            Only canceled orders or walk-in cash orders can be permanently deleted.
           </p>
         )}
 

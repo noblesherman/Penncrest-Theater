@@ -488,25 +488,49 @@ async function buildInPersonSaleQuote(params: {
     }
   }
 
-  const sortedSeats = isGeneralAdmission
-    ? [...normalizedSeatIds]
-        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
-        .map((seatId, index) => ({
-          id: seatId,
-          sectionName: 'General Admission',
-          row: 'GA',
-          number: index + 1,
-          price: Math.max(0, performance.pricingTiers[0]?.priceCents || 0),
-          status: 'AVAILABLE' as const,
-          isAccessible: false,
-          isCompanion: false,
-          companionForSeatId: null
-        }))
-    : sortSeats(performance.seats as InPersonSaleSeat[]);
-  let seatPriceSelections = sortedSeats.map((seat) => {
-    const ticketTierId = params.ticketSelectionBySeatId[seat.id];
+  const quoteSeats: Array<InPersonSaleSeat & { selectionKey: string }> = isGeneralAdmission
+    ? (
+        await prisma.seat.findMany({
+          where: {
+            performanceId: params.performanceId,
+            status: 'AVAILABLE'
+          },
+          orderBy: [
+            { sectionName: 'asc' },
+            { row: 'asc' },
+            { number: 'asc' },
+            { id: 'asc' }
+          ],
+          take: normalizedSeatIds.length,
+          select: {
+            id: true,
+            sectionName: true,
+            row: true,
+            number: true,
+            price: true,
+            status: true,
+            isAccessible: true,
+            isCompanion: true,
+            companionForSeatId: true
+          }
+        })
+      ).map((seat, index) => ({
+        ...seat,
+        selectionKey: normalizedSeatIds[index] || `ga-${index + 1}`
+      }))
+    : sortSeats(performance.seats as InPersonSaleSeat[]).map((seat) => ({
+        ...seat,
+        selectionKey: seat.id
+      }));
+
+  if (isGeneralAdmission && quoteSeats.length !== normalizedSeatIds.length) {
+    throw new HttpError(409, 'Not enough general admission tickets remain for this sale');
+  }
+
+  let seatPriceSelections = quoteSeats.map((seat) => {
+    const ticketTierId = params.ticketSelectionBySeatId[seat.selectionKey];
     if (!ticketTierId) {
-      throw new HttpError(400, `Missing ticket selection for ${isGeneralAdmission ? 'ticket' : 'seat'}: ${seat.id}`);
+      throw new HttpError(400, `Missing ticket selection for ${isGeneralAdmission ? 'ticket' : 'seat'}: ${seat.selectionKey}`);
     }
 
     if (ticketTierId === TEACHER_TICKET_OPTION_ID && !tierById.has(ticketTierId)) {
@@ -662,9 +686,9 @@ async function buildInPersonSaleQuote(params: {
     performanceId: performance.id,
     performanceTitle: performance.title || performance.show.title,
     isGeneralAdmission,
-    seatIds: sortedSeats.map((seat) => seat.id),
-    holdSeatIds: isGeneralAdmission ? [] : sortedSeats.map((seat) => seat.id),
-    seatCount: sortedSeats.length,
+    seatIds: quoteSeats.map((seat) => seat.id),
+    holdSeatIds: isGeneralAdmission ? [] : quoteSeats.map((seat) => seat.id),
+    seatCount: quoteSeats.length,
     expectedAmountCents,
     currency: 'usd',
     ticketOptions: ticketOptions
@@ -2276,18 +2300,16 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
           throw new HttpError(404, 'Order not found');
         }
 
-        const canDeleteZeroValueWalkIn =
-          order.status === 'PAID' &&
+        const canDeleteWalkInCashOrder =
           order.source === 'DOOR' &&
           order.inPersonPaymentMethod === 'CASH' &&
-          order.amountTotal === 0 &&
           !order.stripeSessionId &&
           !order.stripePaymentIntentId;
 
-        if (order.status !== 'CANCELED' && !canDeleteZeroValueWalkIn) {
+        if (order.status !== 'CANCELED' && !canDeleteWalkInCashOrder) {
           throw new HttpError(
             400,
-            'Only canceled orders or zero-dollar walk-in cash orders can be permanently deleted'
+            'Only canceled orders or walk-in cash orders can be permanently deleted'
           );
         }
 
