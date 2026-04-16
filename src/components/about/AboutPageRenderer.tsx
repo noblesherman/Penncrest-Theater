@@ -498,31 +498,66 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
         ? 'aspect-[3/4]'
         : 'aspect-[4/5]';
 
-    const mobileCardWidthClass = isCostumeGallery ? 'w-[88%]' : 'w-[84%]';
+    const mobileSlideSeconds = isPerformerGallery ? 2.6 : isCostumeGallery ? 2.8 : 2.5;
+    const mobileRepeatDelay = Math.max(0, (performerImages.length - 1) * mobileSlideSeconds);
+    const mobileStageClass = isPerformerGallery
+      ? 'h-[min(84vw,34rem)] max-w-[30rem]'
+      : isCostumeGallery
+        ? 'h-[min(78vw,30rem)] max-w-[24rem]'
+        : 'h-[min(74vw,28rem)] max-w-[26rem]';
 
     return (
       <section className="bg-stone-50 py-16 sm:py-20">
         <div className="mx-auto max-w-7xl px-6 sm:px-10">
           <motion.div
             {...fadeUp(0, previewMode)}
-            className="-mx-2 flex snap-x snap-mandatory overflow-x-auto px-2 pb-2 pr-4 sm:hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="sm:hidden"
           >
-            {performerImages.map((img, i) => (
-              <figure
-                key={i}
-                className={`snap-center shrink-0 ${mobileCardWidthClass} overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm transition duration-300 ${
-                  i === 0 ? 'ml-0' : '-ml-10'
-                } ${
-                  i % 2 === 0 ? 'translate-y-0 rotate-[-1deg]' : 'translate-y-3 rotate-[1deg]'
-                }`}
-              >
-                <img
-                  src={img.url}
-                  alt={img.alt}
-                  className={`${imageAspectClass} w-full object-cover`}
-                />
-              </figure>
-            ))}
+            <div className={`relative mx-auto w-full ${mobileStageClass}`}>
+              {performerImages.map((img, i) => {
+                const isFirst = i === 0;
+
+                return (
+                  <motion.figure
+                    key={i}
+                    className="absolute inset-0 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm"
+                    initial={isFirst
+                      ? { opacity: 1, rotateY: 0, scale: 1, y: 0 }
+                      : { opacity: 0, rotateY: -12, scale: 0.97, y: 8 }}
+                    animate={isFirst
+                      ? {
+                          opacity: [1, 1, 0, 0],
+                          rotateY: [0, 0, 10, 10],
+                          scale: [1, 1, 0.985, 0.985],
+                          y: [0, 0, -4, -4]
+                        }
+                      : {
+                          opacity: [0, 1, 1, 0],
+                          rotateY: [-12, 0, 0, 10],
+                          scale: [0.97, 1, 1, 0.985],
+                          y: [8, 0, 0, -4]
+                        }}
+                    transition={{
+                      duration: mobileSlideSeconds,
+                      times: [0, 0.18, 0.78, 1],
+                      delay: i * mobileSlideSeconds,
+                      repeat: Infinity,
+                      repeatDelay: mobileRepeatDelay,
+                      ease: [0.22, 1, 0.36, 1]
+                    }}
+                    style={{ transformPerspective: 1100 }}
+                  >
+                    <img
+                      src={img.url}
+                      alt={img.alt}
+                      className="h-full w-full object-cover"
+                    />
+                  </motion.figure>
+                );
+              })}
+
+              <div className="pointer-events-none absolute inset-x-6 bottom-3 h-12 rounded-full bg-gradient-to-t from-black/10 to-transparent" aria-hidden />
+            </div>
           </motion.div>
 
           <motion.div
