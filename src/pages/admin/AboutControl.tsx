@@ -314,11 +314,28 @@ function ImageField({
   onChange: (v: AboutImage | undefined) => void;
   optional?: boolean; disabled?: boolean;
 }) {
+  const cropX = value?.cropX ?? 50;
+  const cropY = value?.cropY ?? 50;
+
+  const applyCrop = (nextCropX: number, nextCropY: number) => {
+    onChange({
+      url: value?.url ?? '',
+      alt: value?.alt ?? '',
+      cropX: Math.max(0, Math.min(100, Math.round(nextCropX))),
+      cropY: Math.max(0, Math.min(100, Math.round(nextCropY))),
+    });
+  };
+
   const onUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file || !file.type.startsWith('image/')) return;
-    onChange({ url: await fileToDataUrl(file, 1600, 1600), alt: value?.alt ?? '' });
+    onChange({
+      url: await fileToDataUrl(file, 1600, 1600),
+      alt: value?.alt ?? '',
+      cropX,
+      cropY,
+    });
   };
 
   return (
@@ -339,7 +356,7 @@ function ImageField({
       <div className="flex gap-3">
         <div className="h-16 w-24 shrink-0 overflow-hidden rounded-lg border border-zinc-200 bg-white">
           {value?.url
-            ? <img src={value.url} alt={value.alt} className="h-full w-full object-cover" />
+            ? <img src={value.url} alt={value.alt} className="h-full w-full object-cover" style={{ objectPosition: `${cropX}% ${cropY}%` }} />
             : (
               <div className="flex h-full items-center justify-center text-zinc-300">
                 <ImagePlus className="h-5 w-5" />
@@ -349,7 +366,7 @@ function ImageField({
         <div className="min-w-0 flex-1 space-y-2">
           <input
             value={value?.url ?? ''}
-            onChange={(e) => onChange({ url: e.target.value, alt: value?.alt ?? '' })}
+            onChange={(e) => onChange({ url: e.target.value, alt: value?.alt ?? '', cropX, cropY })}
             disabled={disabled}
             placeholder="Image URL or upload →"
             className={inputClass}
@@ -357,7 +374,7 @@ function ImageField({
           <div className="flex items-center gap-2">
             <input
               value={value?.alt ?? ''}
-              onChange={(e) => onChange({ url: value?.url ?? '', alt: e.target.value })}
+              onChange={(e) => onChange({ url: value?.url ?? '', alt: e.target.value, cropX, cropY })}
               disabled={disabled}
               placeholder="Alt text"
               className={inputClass}
@@ -370,6 +387,32 @@ function ImageField({
                 className="hidden"
                 onChange={(e) => void onUpload(e)}
                 disabled={disabled}
+              />
+            </label>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
+              Horizontal crop ({cropX}%)
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={cropX}
+                disabled={disabled}
+                onChange={(e) => applyCrop(Number(e.target.value), cropY)}
+                className="mt-1 w-full"
+              />
+            </label>
+            <label className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
+              Vertical crop ({cropY}%)
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={cropY}
+                disabled={disabled}
+                onChange={(e) => applyCrop(cropX, Number(e.target.value))}
+                className="mt-1 w-full"
               />
             </label>
           </div>

@@ -67,7 +67,9 @@ const hrefSchema = z
 
 const imageSchema = z.object({
   url: imageSourceSchema,
-  alt: z.string().trim().max(180).default('')
+  alt: z.string().trim().max(180).default(''),
+  cropX: z.number().min(0).max(100).optional(),
+  cropY: z.number().min(0).max(100).optional()
 });
 
 const actionSchema = z.object({

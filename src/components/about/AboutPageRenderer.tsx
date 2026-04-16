@@ -9,6 +9,7 @@ import type {
   AboutCtaSection,
   AboutFeatureGridSection,
   AboutHistorySection,
+  AboutImage,
   AboutLinkGridSection,
   AboutListPanelSection,
   AboutPageContent,
@@ -54,6 +55,12 @@ const splitFeatureGalleryOnlyIds = new Set([
   'tech-crew-gallery',
   'equipment'
 ]);
+
+function imageObjectPosition(image?: AboutImage): { objectPosition: string } {
+  const x = typeof image?.cropX === 'number' ? Math.max(0, Math.min(100, image.cropX)) : 50;
+  const y = typeof image?.cropY === 'number' ? Math.max(0, Math.min(100, image.cropY)) : 50;
+  return { objectPosition: `${x}% ${y}%` };
+}
 
 // ─── Shared atoms ─────────────────────────────────────────────────────────────
 
@@ -247,6 +254,7 @@ function renderLinkGrid(section: AboutLinkGridSection, previewMode: AboutRendere
                         src={item.image.url}
                         alt={item.image.alt}
                         className="aspect-[4/3] w-full object-cover"
+                        style={imageObjectPosition(item.image)}
                       />
                     ) : (
                       <div className="aspect-[4/3] w-full bg-gradient-to-br from-red-50 to-stone-100" />
@@ -277,6 +285,7 @@ function renderLinkGrid(section: AboutLinkGridSection, previewMode: AboutRendere
                       src={item.image.url}
                       alt={item.image.alt}
                       className="aspect-[4/3] w-full object-cover transition-transform duration-700 ease-out group-hover:scale-110"
+                      style={imageObjectPosition(item.image)}
                     />
                   ) : (
                     <div className="aspect-[4/3] w-full bg-gradient-to-br from-red-50 to-stone-100 transition-transform duration-700 ease-out group-hover:scale-110" />
@@ -325,6 +334,7 @@ function renderPeople(section: AboutPeopleSection, previewMode: AboutRendererMod
                   src={person.image.url}
                   alt={person.image.alt || person.name}
                   className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-110"
+                  style={imageObjectPosition(person.image)}
                 />
                 <div className="absolute inset-0 transition-colors duration-500 group-hover:bg-red-950/10" />
               </div>
@@ -559,6 +569,7 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
                       src={img.url}
                       alt={img.alt}
                       className="h-full w-full object-cover"
+                      style={imageObjectPosition(img)}
                     />
                   </motion.figure>
                 );
@@ -587,6 +598,7 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
                   src={img.url}
                   alt={img.alt}
                   className={`${imageAspectClass} w-full object-cover transition-transform duration-700 group-hover:scale-110`}
+                  style={imageObjectPosition(img)}
                 />
                   <figcaption className="pointer-events-none absolute inset-x-0 bottom-0 flex translate-y-4 flex-col justify-end bg-gradient-to-t from-stone-900/80 via-stone-900/30 to-transparent px-5 pb-5 pt-20 opacity-0 transition-all duration-500 group-hover:translate-y-0 group-hover:opacity-100">
                     <span className="text-[12px] font-bold uppercase tracking-[0.15em] text-white drop-shadow-md">
@@ -620,6 +632,7 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
                 className={`w-full rounded-[24px] border border-stone-200/80 object-cover shadow-lg transition-all duration-700 relative z-10 hover:scale-[1.02] hover:shadow-2xl ${
                   section.images.length > 1 && i === 0 ? 'mt-8' : ''
                 }`}
+                style={imageObjectPosition(img)}
               />
             ))}
           </motion.div>
@@ -698,6 +711,7 @@ function renderTestimonial(section: AboutTestimonialSection, previewMode: AboutR
             src={section.image.url}
             alt={section.image.alt}
             className="aspect-[3/4] w-full rounded-[24px] border border-stone-700/80 object-cover shadow-2xl relative z-10 transition-transform duration-700 group-hover:scale-[1.03] group-hover:-rotate-1"
+            style={imageObjectPosition(section.image)}
           />
         </motion.div>
 

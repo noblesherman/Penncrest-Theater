@@ -75,7 +75,9 @@ const catalogImageSchema = z.object({
     .refine((value) => isHttpUrl(value) || isImageDataUrl(value) || isRelativePath(value), {
       message: 'Card image must be an image URL, image data URL, or site-relative path'
     }),
-  alt: z.string().trim().max(180).default('')
+  alt: z.string().trim().max(180).default(''),
+  cropX: z.number().min(0).max(100).optional(),
+  cropY: z.number().min(0).max(100).optional()
 });
 
 const catalogStateSchema = z.object({

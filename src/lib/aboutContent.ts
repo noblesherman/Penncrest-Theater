@@ -13,6 +13,8 @@ export type AboutPageSlug = string;
 export type AboutImage = {
   url: string;
   alt: string;
+  cropX?: number;
+  cropY?: number;
 };
 
 export type AboutAction = {
