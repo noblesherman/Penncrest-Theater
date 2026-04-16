@@ -443,16 +443,16 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
 
     const performerImages = isPerformerGallery ? section.images.slice(0, 6) : section.images;
     const performerLayoutClasses = [
-      'lg:col-span-5 lg:row-span-3',
-      'lg:col-span-4 lg:row-span-2',
-      'lg:col-span-3 lg:row-span-2',
-      'lg:col-span-3 lg:row-span-2',
-      'lg:col-span-4 lg:row-span-2',
-      'lg:col-span-5 lg:row-span-3'
+      'lg:col-span-7 lg:row-span-2',
+      'lg:col-span-5 lg:row-span-1',
+      'lg:col-span-5 lg:row-span-1',
+      'lg:col-span-4 lg:row-span-1',
+      'lg:col-span-4 lg:row-span-1',
+      'lg:col-span-4 lg:row-span-1'
     ];
 
     const gridClass = isPerformerGallery
-      ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12 lg:auto-rows-[120px]'
+      ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12 lg:auto-rows-[104px]'
       : isCostumeGallery
         ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:mx-auto lg:max-w-3xl'
         : 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3';
@@ -493,7 +493,7 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
           : techFrameClasses;
 
     const imageAspectClass = isPerformerGallery
-      ? 'aspect-[5/6]'
+      ? 'h-full'
       : isCostumeGallery
         ? 'aspect-[3/4]'
         : 'aspect-[4/5]';
@@ -536,6 +536,8 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
                   performerImages.length > 1 ? frameClasses[i % frameClasses.length] : ''
                 } ${
                   isPerformerGallery ? performerLayoutClasses[i % performerLayoutClasses.length] : ''
+                } ${
+                  isPerformerGallery ? 'h-full' : ''
                 }`}
               >
                 <img
