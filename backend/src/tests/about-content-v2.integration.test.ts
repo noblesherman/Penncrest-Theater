@@ -201,6 +201,77 @@ describe.sequential('about content v2 integration', () => {
     expect(performerCard).toBeUndefined();
   });
 
+  it('backfills legacy starter gallery sections into editable draft state', async () => {
+    const initialStateResponse = await app.inject({
+      method: 'GET',
+      url: '/api/admin/about/v2/editor-state',
+      headers: authHeaders(adminToken)
+    });
+    expect(initialStateResponse.statusCode).toBe(200);
+
+    const initialState = initialStateResponse.json() as any;
+    const stageCrewDraft = initialState.pages.find((page: any) => page.slug === 'stage-crew')?.draftPage;
+    expect(stageCrewDraft).toBeTruthy();
+
+    const legacyStageCrewDraft = {
+      ...stageCrewDraft,
+      sections: Array.isArray(stageCrewDraft.sections)
+        ? stageCrewDraft.sections.filter((section: any) => section?.id !== 'stage-crew-gallery')
+        : []
+    };
+
+    await prisma.contentPage.update({
+      where: {
+        scope_slug: {
+          scope: 'about',
+          slug: 'stage-crew'
+        }
+      },
+      data: {
+        title: stageCrewDraft.navLabel,
+        content: legacyStageCrewDraft as any,
+        draftContent: legacyStageCrewDraft as any,
+        publishedContent: legacyStageCrewDraft as any,
+        draftDeleted: false,
+        publishedDeleted: false
+      }
+    });
+
+    const reloadedStateResponse = await app.inject({
+      method: 'GET',
+      url: '/api/admin/about/v2/editor-state',
+      headers: authHeaders(adminToken)
+    });
+    expect(reloadedStateResponse.statusCode).toBe(200);
+
+    const reloadedState = reloadedStateResponse.json() as any;
+    const reloadedStageCrew = reloadedState.pages.find((page: any) => page.slug === 'stage-crew')?.draftPage;
+    expect(reloadedStageCrew).toBeTruthy();
+
+    const reloadedGallerySection = Array.isArray(reloadedStageCrew.sections)
+      ? reloadedStageCrew.sections.find((section: any) => section?.id === 'stage-crew-gallery')
+      : null;
+    expect(reloadedGallerySection).toBeTruthy();
+    expect(reloadedGallerySection.type).toBe('splitFeature');
+
+    const storedStageCrewRow = await prisma.contentPage.findUnique({
+      where: {
+        scope_slug: {
+          scope: 'about',
+          slug: 'stage-crew'
+        }
+      },
+      select: {
+        draftContent: true
+      }
+    });
+
+    const storedSections = Array.isArray((storedStageCrewRow?.draftContent as any)?.sections)
+      ? (storedStageCrewRow?.draftContent as any).sections
+      : [];
+    expect(storedSections.some((section: any) => section?.id === 'stage-crew-gallery')).toBe(true);
+  });
+
   it('auto-syncs Get Involved card counts for 1, 4, 5, and 12 enabled pages', async () => {
     const ensureDraftPage = async (pageSlug: string) => {
       const createResponse = await app.inject({

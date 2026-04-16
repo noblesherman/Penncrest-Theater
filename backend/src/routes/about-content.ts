@@ -580,7 +580,9 @@ function resolveStateForMissingRow(
   orderMap: Map<string, number>,
   seedMap: Map<string, CardSeed>
 ): ResolvedAboutState {
-  const fallbackPage = getDefaultAboutPage(slug) || buildTemplatePageForSlug(slug);
+  const fallbackPage = ensureStarterSubpageGallerySections(
+    getDefaultAboutPage(slug) || buildTemplatePageForSlug(slug)
+  );
   const catalog = buildDefaultCatalogState({
     slug,
     page: fallbackPage,
@@ -623,10 +625,16 @@ function resolveStateForRow(
   const parsedPublished = publishedDeleted ? null : parseStoredPage(publishedRaw, slug);
   const parsedDraft = draftDeleted ? null : parseStoredPage(draftRaw, slug);
 
-  const fallbackPage = getDefaultAboutPage(slug) || buildTemplatePageForSlug(slug);
+  const fallbackPage = ensureStarterSubpageGallerySections(
+    getDefaultAboutPage(slug) || buildTemplatePageForSlug(slug)
+  );
 
-  const publishedPage = publishedDeleted ? null : parsedPublished ?? fallbackPage;
-  const draftPage = draftDeleted ? null : parsedDraft ?? publishedPage ?? fallbackPage;
+  const publishedPage = publishedDeleted
+    ? null
+    : ensureStarterSubpageGallerySections(parsedPublished ?? fallbackPage);
+  const draftPage = draftDeleted
+    ? null
+    : ensureStarterSubpageGallerySections(parsedDraft ?? publishedPage ?? fallbackPage);
 
   const sourcePageForCatalog = draftPage ?? publishedPage ?? fallbackPage;
   const defaultCatalog = buildDefaultCatalogState({
@@ -883,105 +891,11 @@ function syncAboutLandingCards(page: AboutPageContent, cards: ReturnType<typeof 
   return parseAboutPageContent(next);
 }
 
-const publicSubpagePhotoSections: Record<string, AboutPageContent['sections'][number]> = {
-  performer: {
-    id: 'performer-gallery',
-    type: 'splitFeature',
-    hidden: false,
-    eyebrow: 'In Rehearsal',
-    heading: 'Life in the Ensemble',
-    lead:
-      'From first read-through to closing night, performers grow through repetition, trust, and shared creative energy.',
-    body: [
-      'Students rehearse scenes, music, and choreography in a structured environment that balances challenge with support.',
-      'Along the way, cast members build friendships and confidence that often carry far beyond the stage.'
-    ],
-    bullets: ['Scene study and character work', 'Vocal rehearsal and harmonies', 'Choreography and stage movement'],
-    images: [
-      {
-        url: 'https://picsum.photos/seed/performer-gallery-1/900/1100',
-        alt: 'Performer rehearsing under stage lights'
-      },
-      {
-        url: 'https://picsum.photos/seed/performer-gallery-2/900/1100',
-        alt: 'Cast rehearsal moment on stage'
-      },
-      {
-        url: 'https://picsum.photos/seed/performer-gallery-3/900/1100',
-        alt: 'Ensemble choreography rehearsal'
-      },
-      {
-        url: 'https://picsum.photos/seed/performer-gallery-4/900/1100',
-        alt: 'Performer practicing a solo moment'
-      },
-      {
-        url: 'https://picsum.photos/seed/performer-gallery-5/900/1100',
-        alt: 'Cast line run during rehearsal'
-      },
-      {
-        url: 'https://picsum.photos/seed/performer-gallery-6/900/1100',
-        alt: 'Ensemble staging on the main set'
-      }
-    ],
-    calloutTitle: 'A Supportive Process',
-    calloutBody: 'Every rehearsal is designed to help students take creative risks while learning to work as one ensemble.'
-  },
-  'stage-crew': {
-    id: 'stage-crew-gallery',
-    type: 'splitFeature',
-    hidden: false,
-    eyebrow: 'Build Days',
-    heading: 'Backstage in Motion',
-    lead:
-      'Stage Crew is hands-on and fast-paced, blending planning, construction, and timing during every production week.',
-    body: [
-      'Students collaborate on set pieces, organize prop tables, and practice transitions until every move is clean and safe.',
-      'The work is practical, creative, and essential to keeping performances smooth from curtain up to final bow.'
-    ],
-    bullets: ['Set construction and paint calls', 'Prop tracking and reset discipline', 'Scene-change timing and safety'],
-    images: [
-      {
-        url: 'https://picsum.photos/seed/stage-crew-gallery-1/900/1100',
-        alt: 'Stage crew constructing scenic walls'
-      },
-      {
-        url: 'https://picsum.photos/seed/stage-crew-gallery-2/900/1100',
-        alt: 'Backstage prop organization before a show'
-      },
-      {
-        url: 'https://picsum.photos/seed/stage-crew-gallery-3/900/1100',
-        alt: 'Crew preparing for a scene transition'
-      }
-    ],
-    calloutTitle: 'Team Coordination',
-    calloutBody: 'Stage Crew members learn to communicate clearly and execute under live show pressure.'
-  },
-  'costume-crew': {
-    id: 'costume-crew-gallery',
-    type: 'splitFeature',
-    hidden: false,
-    eyebrow: 'Wardrobe Studio',
-    heading: 'Style That Supports Story',
-    lead:
-      'Costume Crew blends creativity and practical detail, helping each performer step into character with confidence.',
-    body: [
-      'From sorting racks to quick-change planning, the costume team keeps garments organized, repaired, and performance-ready.',
-      'Students learn fabric care, visual storytelling, and backstage timing while supporting every scene.'
-    ],
-    bullets: ['Character-based styling choices', 'Fitting and adjustment workflow', 'Quick-change planning during shows'],
-    images: [
-      {
-        url: 'https://picsum.photos/seed/costume-crew-gallery-1/900/1100',
-        alt: 'Costume rack arranged for production'
-      },
-      {
-        url: 'https://picsum.photos/seed/costume-crew-gallery-2/900/1100',
-        alt: 'Costume fitting and adjustment session'
-      }
-    ],
-    calloutTitle: 'Precision and Creativity',
-    calloutBody: 'Costume Crew members balance visual design with practical show needs in every rehearsal and performance.'
-  }
+const requiredSubpageSectionIdsBySlug: Record<string, string[]> = {
+  performer: ['performer-gallery'],
+  'stage-crew': ['stage-crew-gallery'],
+  'costume-crew': ['costume-crew-gallery'],
+  'tech-crew': ['equipment']
 };
 
 const techCrewPhotoFallbacks: Array<{ url: string; alt: string }> = [
@@ -1011,6 +925,38 @@ function insertSectionBeforeCta(page: AboutPageContent, section: AboutPageConten
   return next;
 }
 
+function ensureStarterSubpageGallerySections(page: AboutPageContent): AboutPageContent {
+  const requiredSectionIds = requiredSubpageSectionIdsBySlug[page.slug] ?? [];
+  if (requiredSectionIds.length === 0) {
+    return page;
+  }
+
+  const defaultPage = getDefaultAboutPage(page.slug);
+  if (!defaultPage) {
+    return page;
+  }
+
+  let next = page;
+  for (const sectionId of requiredSectionIds) {
+    if (next.sections.some((section) => section.id === sectionId)) {
+      continue;
+    }
+
+    const defaultSection = defaultPage.sections.find((section) => section.id === sectionId);
+    if (!defaultSection) {
+      continue;
+    }
+
+    next = insertSectionBeforeCta(next, defaultSection);
+  }
+
+  if (next !== page) {
+    return parseAboutPageContent(next);
+  }
+
+  return page;
+}
+
 function ensureTechCrewGalleryImages(page: AboutPageContent): AboutPageContent {
   const sectionIndex = page.sections.findIndex((section) => section.id === 'equipment' && section.type === 'splitFeature');
   if (sectionIndex < 0) {
@@ -1037,11 +983,7 @@ function ensureTechCrewGalleryImages(page: AboutPageContent): AboutPageContent {
 }
 
 function applyPublicSubpagePhotoEnhancements(page: AboutPageContent): AboutPageContent {
-  let next = page;
-  const photoSection = publicSubpagePhotoSections[next.slug];
-  if (photoSection) {
-    next = insertSectionBeforeCta(next, photoSection);
-  }
+  let next = ensureStarterSubpageGallerySections(page);
 
   if (next.slug === 'tech-crew') {
     next = ensureTechCrewGalleryImages(next);
@@ -1055,7 +997,9 @@ function applyPublicSubpagePhotoEnhancements(page: AboutPageContent): AboutPageC
 }
 
 function serializeAdminPage(state: ResolvedAboutState) {
-  const fallbackPage = getDefaultAboutPage(state.slug) || buildTemplatePageForSlug(state.slug);
+  const fallbackPage = ensureStarterSubpageGallerySections(
+    getDefaultAboutPage(state.slug) || buildTemplatePageForSlug(state.slug)
+  );
   const page = state.draftPage ?? fallbackPage;
   return {
     page,
@@ -1156,6 +1100,7 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
     let content: AboutPageContent;
     try {
       content = parseAboutPageContent(parsedBody.data);
+      content = ensureStarterSubpageGallerySections(content);
     } catch (err) {
       return reply.status(400).send({
         error: err instanceof Error ? err.message : 'Invalid About page content'
@@ -1720,6 +1665,7 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
     let content: AboutPageContent;
     try {
       content = parseAboutPageContent(parsed.data);
+      content = ensureStarterSubpageGallerySections(content);
     } catch (err) {
       return reply.status(400).send({
         error: err instanceof Error ? err.message : 'Invalid About page content'

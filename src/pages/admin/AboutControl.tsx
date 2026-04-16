@@ -46,6 +46,13 @@ const SECTION_TYPE_LABELS: Record<string, string> = {
   cta: 'Call to Action',
 };
 
+const SUBPAGE_GALLERY_SECTION_IDS = new Set([
+  'performer-gallery',
+  'stage-crew-gallery',
+  'costume-crew-gallery',
+  'tech-crew-gallery',
+]);
+
 const ADDABLE_SECTION_TYPES = Object.keys(SECTION_TYPE_LABELS) as Array<keyof typeof SECTION_TYPE_LABELS>;
 
 function publicPathForSlug(slug: string): string {
@@ -75,6 +82,12 @@ function normalizeSlugInput(value: string): string {
 
 function newSectionId(): string {
   return `s-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function isSubpageGallerySection(slug: string, section: AboutSection): boolean {
+  if (section.type !== 'splitFeature') return false;
+  if (section.id === 'equipment') return slug === 'tech-crew';
+  return SUBPAGE_GALLERY_SECTION_IDS.has(section.id);
 }
 
 function makeBlankSection(type: string): AboutSection {
@@ -421,12 +434,12 @@ function StringList({
 
 function SectionShell({
   id, index, label, hidden, onToggleHidden,
-  onMoveUp, onMoveDown, onRemove, isFirst, isLast, changed = false, children,
+  onMoveUp, onMoveDown, onRemove, isFirst, isLast, changed = false, gallerySection = false, children,
 }: {
   id: string; index: number; label: string;
   hidden: boolean; onToggleHidden: () => void;
   onMoveUp: () => void; onMoveDown: () => void; onRemove: () => void;
-  isFirst: boolean; isLast: boolean; changed?: boolean; children: ReactNode;
+  isFirst: boolean; isLast: boolean; changed?: boolean; gallerySection?: boolean; children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -448,6 +461,11 @@ function SectionShell({
               title="Has unpublished changes"
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-300 ring-1 ring-amber-200/80"
             />
+          )}
+          {gallerySection && (
+            <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+              Gallery Section
+            </span>
           )}
           {hidden && (
             <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
@@ -1231,6 +1249,7 @@ export default function AdminAboutControlPage() {
       index: si + 1,
       label,
       changed: changedSectionIds.has(section.id),
+      gallerySection: isSubpageGallerySection(slug, section),
       hidden: section.hidden === true,
       onToggleHidden: () => upSec(si, (s) => ({ ...s, hidden: s.hidden !== true })),
       isFirst: si === 0,
