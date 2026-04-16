@@ -446,14 +446,6 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
     const isCostumeGallery = section.id === 'costume-crew-gallery';
 
     const performerImages = isPerformerGallery ? section.images.slice(0, 6) : section.images;
-    const performerDesktopCaptions = [
-      'Voice warmup',
-      'Blocking rehearsal',
-      'Choreography pass',
-      'Scene run',
-      'Tech rehearsal',
-      'Performance notes'
-    ];
     const performerLayoutClasses = [
       'lg:col-span-3 lg:row-span-2',
       'lg:col-span-5 lg:row-span-2',
@@ -598,7 +590,7 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
                 />
                   <figcaption className="pointer-events-none absolute inset-x-0 bottom-0 flex translate-y-4 flex-col justify-end bg-gradient-to-t from-stone-900/80 via-stone-900/30 to-transparent px-5 pb-5 pt-20 opacity-0 transition-all duration-500 group-hover:translate-y-0 group-hover:opacity-100">
                     <span className="text-[12px] font-bold uppercase tracking-[0.15em] text-white drop-shadow-md">
-                      {isPerformerGallery ? (performerDesktopCaptions[i] ?? img.alt) : img.alt}
+                      {img.alt}
                     </span>
                   </figcaption>
               </figure>
