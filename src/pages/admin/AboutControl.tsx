@@ -1,5 +1,5 @@
 import {
-  type ChangeEvent, type ReactNode,
+  type ChangeEvent, type PointerEvent as ReactPointerEvent, type ReactNode,
   useEffect, useMemo, useRef, useState,
 } from 'react';
 import {
@@ -314,6 +314,15 @@ function ImageField({
   onChange: (v: AboutImage | undefined) => void;
   optional?: boolean; disabled?: boolean;
 }) {
+  const cropStageRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startCropX: number;
+    startCropY: number;
+  } | null>(null);
+
   const cropX = value?.cropX ?? 50;
   const cropY = value?.cropY ?? 50;
 
@@ -324,6 +333,54 @@ function ImageField({
       cropX: Math.max(0, Math.min(100, Math.round(nextCropX))),
       cropY: Math.max(0, Math.min(100, Math.round(nextCropY))),
     });
+  };
+
+  const updateCropFromDragDelta = (deltaX: number, deltaY: number, startCropX: number, startCropY: number) => {
+    const rect = cropStageRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) {
+      return;
+    }
+
+    const nextCropX = startCropX - (deltaX / rect.width) * 100;
+    const nextCropY = startCropY - (deltaY / rect.height) * 100;
+    applyCrop(nextCropX, nextCropY);
+  };
+
+  const onCropPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (disabled || !value?.url) {
+      return;
+    }
+
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startCropX: cropX,
+      startCropY: cropY,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+
+  const onCropPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    updateCropFromDragDelta(deltaX, deltaY, drag.startCropX, drag.startCropY);
+  };
+
+  const onCropPointerEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    dragRef.current = null;
+    event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
   const onUpload = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -416,6 +473,30 @@ function ImageField({
               />
             </label>
           </div>
+            {value?.url && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Visual crop (drag image)</p>
+                <div
+                  ref={cropStageRef}
+                  onPointerDown={onCropPointerDown}
+                  onPointerMove={onCropPointerMove}
+                  onPointerUp={onCropPointerEnd}
+                  onPointerCancel={onCropPointerEnd}
+                  className={`relative aspect-[4/3] w-full overflow-hidden rounded-xl border border-zinc-200 bg-white touch-none ${
+                    disabled ? 'cursor-not-allowed opacity-70' : 'cursor-grab active:cursor-grabbing'
+                  }`}
+                >
+                  <img
+                    src={value.url}
+                    alt={value.alt}
+                    draggable={false}
+                    className="h-full w-full select-none object-cover"
+                    style={{ objectPosition: `${cropX}% ${cropY}%` }}
+                  />
+                  <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-zinc-200" />
+                </div>
+              </div>
+            )}
         </div>
       </div>
     </div>
@@ -1578,7 +1659,7 @@ export default function AdminAboutControlPage() {
             {galleryOnlySection
               ? (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                  Gallery-only section: the public page uses image and alt text from this section.
+                    Gallery-only section: the public page uses image, alt text, and crop framing from this section.
                 </div>
               )
               : (
