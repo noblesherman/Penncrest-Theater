@@ -23,6 +23,9 @@ const getIconForSlug = (slug: AboutPageSlug) => {
 
 export default function AboutSubpageTransition({ slug, onComplete }: { slug: AboutPageSlug, onComplete?: () => void }) {
   useEffect(() => {
+    // Scroll to the top of the page immediately when the transition starts
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+
     // Notify parent component when the main part of the transition hides the screen
     // so it can safely swap content underneath.
     const timer = setTimeout(() => {
