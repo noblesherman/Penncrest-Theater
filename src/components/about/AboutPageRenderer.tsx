@@ -460,7 +460,7 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
     ];
 
     const gridClass = isPerformerGallery
-      ? 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-12 lg:auto-rows-[96px]'
+      ? 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-12 lg:auto-rows-[136px]'
       : isCostumeGallery
         ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:mx-auto lg:max-w-3xl'
         : 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3';
