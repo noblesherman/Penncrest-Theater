@@ -248,7 +248,7 @@ const splitFeatureSectionSchema = z.object({
   lead: z.string().trim().max(500).default(''),
   body: z.array(longText).min(1).max(6),
   bullets: z.array(z.string().trim().min(1).max(160)).max(12).default([]),
-  images: z.array(imageSchema).min(1).max(4),
+  images: z.array(imageSchema).min(1).max(8),
   calloutTitle: z.string().trim().max(120).optional().default(''),
   calloutBody: z.string().trim().max(400).optional().default('')
 });
