@@ -883,6 +883,169 @@ function syncAboutLandingCards(page: AboutPageContent, cards: ReturnType<typeof 
   return parseAboutPageContent(next);
 }
 
+const publicSubpagePhotoSections: Record<string, AboutPageContent['sections'][number]> = {
+  performer: {
+    id: 'performer-gallery',
+    type: 'splitFeature',
+    hidden: false,
+    eyebrow: 'In Rehearsal',
+    heading: 'Life in the Ensemble',
+    lead:
+      'From first read-through to closing night, performers grow through repetition, trust, and shared creative energy.',
+    body: [
+      'Students rehearse scenes, music, and choreography in a structured environment that balances challenge with support.',
+      'Along the way, cast members build friendships and confidence that often carry far beyond the stage.'
+    ],
+    bullets: ['Scene study and character work', 'Vocal rehearsal and harmonies', 'Choreography and stage movement'],
+    images: [
+      {
+        url: 'https://picsum.photos/seed/performer-gallery-1/900/1100',
+        alt: 'Performer rehearsing under stage lights'
+      },
+      {
+        url: 'https://picsum.photos/seed/performer-gallery-2/900/1100',
+        alt: 'Cast rehearsal moment on stage'
+      },
+      {
+        url: 'https://picsum.photos/seed/performer-gallery-3/900/1100',
+        alt: 'Ensemble choreography rehearsal'
+      }
+    ],
+    calloutTitle: 'A Supportive Process',
+    calloutBody: 'Every rehearsal is designed to help students take creative risks while learning to work as one ensemble.'
+  },
+  'stage-crew': {
+    id: 'stage-crew-gallery',
+    type: 'splitFeature',
+    hidden: false,
+    eyebrow: 'Build Days',
+    heading: 'Backstage in Motion',
+    lead:
+      'Stage Crew is hands-on and fast-paced, blending planning, construction, and timing during every production week.',
+    body: [
+      'Students collaborate on set pieces, organize prop tables, and practice transitions until every move is clean and safe.',
+      'The work is practical, creative, and essential to keeping performances smooth from curtain up to final bow.'
+    ],
+    bullets: ['Set construction and paint calls', 'Prop tracking and reset discipline', 'Scene-change timing and safety'],
+    images: [
+      {
+        url: 'https://picsum.photos/seed/stage-crew-gallery-1/900/1100',
+        alt: 'Stage crew constructing scenic walls'
+      },
+      {
+        url: 'https://picsum.photos/seed/stage-crew-gallery-2/900/1100',
+        alt: 'Backstage prop organization before a show'
+      },
+      {
+        url: 'https://picsum.photos/seed/stage-crew-gallery-3/900/1100',
+        alt: 'Crew preparing for a scene transition'
+      }
+    ],
+    calloutTitle: 'Team Coordination',
+    calloutBody: 'Stage Crew members learn to communicate clearly and execute under live show pressure.'
+  },
+  'costume-crew': {
+    id: 'costume-crew-gallery',
+    type: 'splitFeature',
+    hidden: false,
+    eyebrow: 'Wardrobe Studio',
+    heading: 'Style That Supports Story',
+    lead:
+      'Costume Crew blends creativity and practical detail, helping each performer step into character with confidence.',
+    body: [
+      'From sorting racks to quick-change planning, the costume team keeps garments organized, repaired, and performance-ready.',
+      'Students learn fabric care, visual storytelling, and backstage timing while supporting every scene.'
+    ],
+    bullets: ['Character-based styling choices', 'Fitting and adjustment workflow', 'Quick-change planning during shows'],
+    images: [
+      {
+        url: 'https://picsum.photos/seed/costume-crew-gallery-1/900/1100',
+        alt: 'Costume rack arranged for production'
+      },
+      {
+        url: 'https://picsum.photos/seed/costume-crew-gallery-2/900/1100',
+        alt: 'Costume fitting and adjustment session'
+      },
+      {
+        url: 'https://picsum.photos/seed/costume-crew-gallery-3/900/1100',
+        alt: 'Wardrobe prep table before a performance'
+      }
+    ],
+    calloutTitle: 'Precision and Creativity',
+    calloutBody: 'Costume Crew members balance visual design with practical show needs in every rehearsal and performance.'
+  }
+};
+
+const techCrewPhotoFallbacks: Array<{ url: string; alt: string }> = [
+  {
+    url: 'https://picsum.photos/seed/techbooth/1000/700',
+    alt: 'Tech booth'
+  },
+  {
+    url: 'https://picsum.photos/seed/techlights/1000/700',
+    alt: 'Lighting rig and cue programming'
+  },
+  {
+    url: 'https://picsum.photos/seed/techsound/1000/700',
+    alt: 'Sound mixing board during rehearsal'
+  }
+];
+
+function insertSectionBeforeCta(page: AboutPageContent, section: AboutPageContent['sections'][number]): AboutPageContent {
+  if (page.sections.some((candidate) => candidate.id === section.id)) {
+    return page;
+  }
+
+  const next = structuredClone(page);
+  const ctaIndex = next.sections.findIndex((candidate) => candidate.type === 'cta');
+  const insertIndex = ctaIndex >= 0 ? ctaIndex : next.sections.length;
+  next.sections.splice(insertIndex, 0, section);
+  return next;
+}
+
+function ensureTechCrewGalleryImages(page: AboutPageContent): AboutPageContent {
+  const sectionIndex = page.sections.findIndex((section) => section.id === 'equipment' && section.type === 'splitFeature');
+  if (sectionIndex < 0) {
+    return page;
+  }
+
+  const next = structuredClone(page);
+  const section = next.sections[sectionIndex];
+  if (!section || section.type !== 'splitFeature') {
+    return page;
+  }
+
+  const nextImages = section.images.slice(0, 4);
+  const seenUrls = new Set(nextImages.map((image) => image.url));
+  for (const fallback of techCrewPhotoFallbacks) {
+    if (nextImages.length >= 4) break;
+    if (seenUrls.has(fallback.url)) continue;
+    nextImages.push(fallback);
+    seenUrls.add(fallback.url);
+  }
+
+  section.images = nextImages;
+  return next;
+}
+
+function applyPublicSubpagePhotoEnhancements(page: AboutPageContent): AboutPageContent {
+  let next = page;
+  const photoSection = publicSubpagePhotoSections[next.slug];
+  if (photoSection) {
+    next = insertSectionBeforeCta(next, photoSection);
+  }
+
+  if (next.slug === 'tech-crew') {
+    next = ensureTechCrewGalleryImages(next);
+  }
+
+  if (next !== page) {
+    return parseAboutPageContent(next);
+  }
+
+  return page;
+}
+
 function serializeAdminPage(state: ResolvedAboutState) {
   const fallbackPage = getDefaultAboutPage(state.slug) || buildTemplatePageForSlug(state.slug);
   const page = state.draftPage ?? fallbackPage;
@@ -923,7 +1086,7 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
       if (!row) {
         const defaultPage = getDefaultAboutPage(params.data.slug);
         if (defaultPage) {
-          return reply.send(defaultPage);
+          return reply.send(applyPublicSubpagePhotoEnhancements(defaultPage));
         }
         return reply.status(404).send({ error: 'About page not found' });
       }
@@ -936,13 +1099,13 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
 
       const parsedPublished = parseStoredPage(rawPublished, row.slug);
       if (parsedPublished) {
-        return reply.send(parsedPublished);
+        return reply.send(applyPublicSubpagePhotoEnhancements(parsedPublished));
       }
 
       const fallback = getDefaultAboutPage(params.data.slug);
       if (fallback) {
         request.log.warn({ scope, slug: params.data.slug }, 'Invalid stored About content encountered; serving defaults');
-        return reply.send(fallback);
+        return reply.send(applyPublicSubpagePhotoEnhancements(fallback));
       }
 
       return reply.status(404).send({ error: 'About page not found' });
@@ -950,7 +1113,7 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
       if (isMissingContentPageTableError(err)) {
         const defaultPage = getDefaultAboutPage(params.data.slug);
         if (defaultPage) {
-          return reply.send(defaultPage);
+          return reply.send(applyPublicSubpagePhotoEnhancements(defaultPage));
         }
         return reply.status(404).send({ error: 'About page not found' });
       }

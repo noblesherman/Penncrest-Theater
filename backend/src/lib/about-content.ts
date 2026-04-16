@@ -476,6 +476,36 @@ export const defaultAboutPages: Record<string, AboutPageContent> = {
         ]
       },
       {
+        id: 'performer-gallery',
+        type: 'splitFeature',
+        hidden: false,
+        eyebrow: 'In Rehearsal',
+        heading: 'Life in the Ensemble',
+        lead:
+          'From first read-through to closing night, performers grow through repetition, trust, and shared creative energy.',
+        body: [
+          'Students rehearse scenes, music, and choreography in a structured environment that balances challenge with support.',
+          'Along the way, cast members build friendships and confidence that often carry far beyond the stage.'
+        ],
+        bullets: ['Scene study and character work', 'Vocal rehearsal and harmonies', 'Choreography and stage movement'],
+        images: [
+          {
+            url: 'https://picsum.photos/seed/performer-gallery-1/900/1100',
+            alt: 'Performer rehearsing under stage lights'
+          },
+          {
+            url: 'https://picsum.photos/seed/performer-gallery-2/900/1100',
+            alt: 'Cast rehearsal moment on stage'
+          },
+          {
+            url: 'https://picsum.photos/seed/performer-gallery-3/900/1100',
+            alt: 'Ensemble choreography rehearsal'
+          }
+        ],
+        calloutTitle: 'A Supportive Process',
+        calloutBody: 'Every rehearsal is designed to help students take creative risks while learning to work as one ensemble.'
+      },
+      {
         id: 'performer-cta',
         type: 'cta',
         hidden: false,
@@ -527,6 +557,36 @@ export const defaultAboutPages: Record<string, AboutPageContent> = {
             description: 'Coordinate transitions during rehearsals and shows with timing and consistency.'
           }
         ]
+      },
+      {
+        id: 'stage-crew-gallery',
+        type: 'splitFeature',
+        hidden: false,
+        eyebrow: 'Build Days',
+        heading: 'Backstage in Motion',
+        lead:
+          'Stage Crew is hands-on and fast-paced, blending planning, construction, and timing during every production week.',
+        body: [
+          'Students collaborate on set pieces, organize prop tables, and practice transitions until every move is clean and safe.',
+          'The work is practical, creative, and essential to keeping performances smooth from curtain up to final bow.'
+        ],
+        bullets: ['Set construction and paint calls', 'Prop tracking and reset discipline', 'Scene-change timing and safety'],
+        images: [
+          {
+            url: 'https://picsum.photos/seed/stage-crew-gallery-1/900/1100',
+            alt: 'Stage crew constructing scenic walls'
+          },
+          {
+            url: 'https://picsum.photos/seed/stage-crew-gallery-2/900/1100',
+            alt: 'Backstage prop organization before a show'
+          },
+          {
+            url: 'https://picsum.photos/seed/stage-crew-gallery-3/900/1100',
+            alt: 'Crew preparing for a scene transition'
+          }
+        ],
+        calloutTitle: 'Team Coordination',
+        calloutBody: 'Stage Crew members learn to communicate clearly and execute under live show pressure.'
       },
       {
         id: 'stage-crew-cta',
@@ -660,6 +720,14 @@ export const defaultAboutPages: Record<string, AboutPageContent> = {
           {
             url: 'https://picsum.photos/seed/techbooth/1000/700',
             alt: 'Tech booth'
+          },
+          {
+            url: 'https://picsum.photos/seed/techlights/1000/700',
+            alt: 'Lighting rig and cue programming'
+          },
+          {
+            url: 'https://picsum.photos/seed/techsound/1000/700',
+            alt: 'Sound mixing board during rehearsal'
           }
         ],
         calloutTitle: 'Backstage Leadership',
@@ -713,6 +781,36 @@ export const defaultAboutPages: Record<string, AboutPageContent> = {
             description: 'Manage costume tracking, repairs, and quick changes during rehearsal and performance.'
           }
         ]
+      },
+      {
+        id: 'costume-crew-gallery',
+        type: 'splitFeature',
+        hidden: false,
+        eyebrow: 'Wardrobe Studio',
+        heading: 'Style That Supports Story',
+        lead:
+          'Costume Crew blends creativity and practical detail, helping each performer step into character with confidence.',
+        body: [
+          'From sorting racks to quick-change planning, the costume team keeps garments organized, repaired, and performance-ready.',
+          'Students learn fabric care, visual storytelling, and backstage timing while supporting every scene.'
+        ],
+        bullets: ['Character-based styling choices', 'Fitting and adjustment workflow', 'Quick-change planning during shows'],
+        images: [
+          {
+            url: 'https://picsum.photos/seed/costume-crew-gallery-1/900/1100',
+            alt: 'Costume rack arranged for production'
+          },
+          {
+            url: 'https://picsum.photos/seed/costume-crew-gallery-2/900/1100',
+            alt: 'Costume fitting and adjustment session'
+          },
+          {
+            url: 'https://picsum.photos/seed/costume-crew-gallery-3/900/1100',
+            alt: 'Wardrobe prep table before a performance'
+          }
+        ],
+        calloutTitle: 'Precision and Creativity',
+        calloutBody: 'Costume Crew members balance visual design with practical show needs in every rehearsal and performance.'
       },
       {
         id: 'costume-crew-cta',
