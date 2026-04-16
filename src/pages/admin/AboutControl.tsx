@@ -53,6 +53,13 @@ const SUBPAGE_GALLERY_SECTION_IDS = new Set([
   'tech-crew-gallery',
 ]);
 
+const REQUIRED_GALLERY_SECTION_IDS_BY_SLUG: Record<string, string[]> = {
+  performer: ['performer-gallery'],
+  'stage-crew': ['stage-crew-gallery'],
+  'costume-crew': ['costume-crew-gallery'],
+  'tech-crew': ['equipment'],
+};
+
 const ADDABLE_SECTION_TYPES = Object.keys(SECTION_TYPE_LABELS) as Array<keyof typeof SECTION_TYPE_LABELS>;
 
 function publicPathForSlug(slug: string): string {
@@ -88,6 +95,48 @@ function isSubpageGallerySection(slug: string, section: AboutSection): boolean {
   if (section.type !== 'splitFeature') return false;
   if (section.id === 'equipment') return slug === 'tech-crew';
   return SUBPAGE_GALLERY_SECTION_IDS.has(section.id);
+}
+
+function insertSectionBeforeCta(page: AboutPageContent, section: AboutSection): AboutPageContent {
+  if (page.sections.some((candidate) => candidate.id === section.id)) {
+    return page;
+  }
+
+  const next = cloneAboutPage(page);
+  const ctaIndex = next.sections.findIndex((candidate) => candidate.type === 'cta');
+  const insertIndex = ctaIndex >= 0 ? ctaIndex : next.sections.length;
+  next.sections.splice(insertIndex, 0, cloneAboutPage(section));
+  return next;
+}
+
+function ensureAdminSubpageGallerySections(
+  page: AboutPageContent,
+  defaultsBySlug: Record<string, AboutPageContent>
+): AboutPageContent {
+  const requiredSectionIds = REQUIRED_GALLERY_SECTION_IDS_BY_SLUG[page.slug] ?? [];
+  if (requiredSectionIds.length === 0) return page;
+
+  const defaultPage = defaultsBySlug[page.slug];
+  if (!defaultPage) return page;
+
+  let next = page;
+  for (const sectionId of requiredSectionIds) {
+    const existingSection = next.sections.find((section) => section.id === sectionId);
+    if (existingSection?.type === 'splitFeature') {
+      continue;
+    }
+
+    const defaultSection = defaultPage.sections.find(
+      (section): section is AboutSplitFeatureSection => section.id === sectionId && section.type === 'splitFeature'
+    );
+    if (!defaultSection) {
+      continue;
+    }
+
+    next = insertSectionBeforeCta(next, defaultSection);
+  }
+
+  return next;
 }
 
 function makeBlankSection(type: string): AboutSection {
@@ -627,11 +676,16 @@ export default function AdminAboutControlPage() {
       const normalized = cloneAboutPage(source);
       normalized.slug = ps.slug;
       if (!normalized.navLabel?.trim()) normalized.navLabel = labelFromSlug(ps.slug);
+      const normalizedWithGalleries = ensureAdminSubpageGallerySections(normalized, nextDefaults);
+
+      const published = ps.publishedPage
+        ? ensureAdminSubpageGallerySections(cloneAboutPage(ps.publishedPage), nextDefaults)
+        : null;
 
       nextPages[ps.slug] = {
-        local: cloneAboutPage(normalized),
-        serverDraft: cloneAboutPage(normalized),
-        published: ps.publishedPage ? cloneAboutPage(ps.publishedPage) : null,
+        local: cloneAboutPage(normalizedWithGalleries),
+        serverDraft: cloneAboutPage(normalizedWithGalleries),
+        published,
         draftDeleted: ps.draftDeleted ?? false,
         publishedDeleted: ps.publishedDeleted ?? false,
         draftUpdatedAt: ps.draftUpdatedAt ?? null,
