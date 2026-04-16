@@ -34,7 +34,7 @@ const fadeUp = (delay = 0, previewMode: AboutRendererMode = 'public') =>
         initial: { opacity: 0, y: 18 },
         whileInView: { opacity: 1, y: 0 },
         viewport: { once: true, margin: '-50px' },
-        transition: { duration: 0.55, delay, ease: [0.22, 1, 0.36, 1] },
+        transition: { duration: 0.55, delay, ease: [0.22, 1, 0.36, 1] as any },
       };
 
 // ─── Per-slug gradient strip (matches site nav strip) ─────────────────────────
@@ -150,9 +150,9 @@ function ActionBtn({
   const isInternal = action.href.startsWith('/') && !action.href.startsWith('//');
 
   const solid =
-    'group inline-flex items-center gap-2 rounded-full bg-red-700 px-7 py-3.5 text-sm font-semibold text-white shadow-md transition-all duration-300 hover:bg-red-800 hover:-translate-y-0.5 hover:shadow-lg';
+    'group inline-flex items-center gap-2 rounded-[24px] bg-red-700 px-7 py-3 text-sm font-semibold text-white shadow-md transition-all duration-300 hover:bg-red-800 hover:-translate-y-1 hover:shadow-lg hover:ring-[3px] hover:ring-red-700/30';
   const ghost =
-    'group inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-sm font-semibold text-stone-700 ring-1 ring-inset ring-stone-300/80 transition-all duration-300 hover:bg-stone-100/80 hover:-translate-y-0.5 hover:shadow-sm hover:ring-stone-400';
+    'group inline-flex items-center gap-2 rounded-[24px] px-7 py-3 text-sm font-semibold text-stone-700 ring-1 ring-inset ring-stone-300/80 transition-all duration-300 hover:bg-stone-50 hover:-translate-y-1 hover:shadow-md hover:ring-stone-400 hover:text-stone-900 bg-white/50 backdrop-blur-md';
 
   const cls = variant === 'solid' ? solid : ghost;
   const icon = isEmail
@@ -269,31 +269,31 @@ function renderLinkGrid(section: AboutLinkGridSection, previewMode: AboutRendere
               ) : (
                 <Link
                   to={item.href}
-                  className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white/90 backdrop-blur-md transition-all duration-300 hover:-translate-y-1.5 hover:border-red-100 hover:shadow-2xl"
+                  className="group relative flex h-full flex-col overflow-hidden rounded-[24px] border border-stone-200/80 bg-white/90 backdrop-blur-md transition-all duration-500 hover:-translate-y-2 hover:border-red-200 hover:shadow-[0_20px_40px_-15px_rgba(220,38,38,0.15)]"
                 >
                 <div className="overflow-hidden bg-stone-100 relative">
                   {item.image?.url ? (
                     <img
                       src={item.image.url}
                       alt={item.image.alt}
-                      className="aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                      className="aspect-[4/3] w-full object-cover transition-transform duration-700 ease-out group-hover:scale-110"
                     />
                   ) : (
-                    <div className="aspect-[4/3] w-full bg-gradient-to-br from-red-50 to-stone-100" />
+                    <div className="aspect-[4/3] w-full bg-gradient-to-br from-red-50 to-stone-100 transition-transform duration-700 ease-out group-hover:scale-110" />
                   )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-red-950/20 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-red-950/20 to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
                 </div>
-                <div className="flex flex-1 flex-col p-5">
+                <div className="flex flex-1 flex-col p-6">
                   <h3
-                    className="mb-1.5 font-bold text-stone-900 transition group-hover:text-red-700"
-                    style={{ fontFamily: 'Georgia, serif', fontSize: '1.1rem' }}
+                    className="mb-1.5 font-bold text-stone-900 transition-colors duration-300 group-hover:text-red-700"
+                    style={{ fontFamily: 'Georgia, serif', fontSize: '1.25rem' }}
                   >
                     {item.title}
                   </h3>
-                  <p className="flex-1 text-sm leading-relaxed text-stone-500">{item.description}</p>
+                  <p className="flex-1 text-sm leading-relaxed text-stone-500 transition-colors duration-300 group-hover:text-stone-600">{item.description}</p>
                   <span className="mt-4 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-red-600">
                     Learn more
-                    <ArrowRight className="h-3 w-3 transition-transform duration-150 group-hover:translate-x-0.5" />
+                    <ArrowRight className="h-3 w-3 transition-transform duration-300 group-hover:translate-x-1" />
                   </span>
                 </div>
                 </Link>
@@ -318,29 +318,29 @@ function renderPeople(section: AboutPeopleSection, previewMode: AboutRendererMod
             <motion.article
               key={i}
               {...fadeUp(i * 0.07, previewMode)}
-              className="group overflow-hidden rounded-[24px] border border-stone-200/80 bg-white/90 backdrop-blur-sm transition-all duration-500 hover:-translate-y-1 hover:border-red-100 hover:shadow-2xl"
+              className="group overflow-hidden rounded-[24px] border border-stone-200/80 bg-white/90 backdrop-blur-sm transition-all duration-500 hover:-translate-y-2 hover:border-red-200 hover:shadow-[0_20px_40px_-15px_rgba(220,38,38,0.15)]"
             >
               <div className="relative aspect-[4/3] overflow-hidden bg-stone-200">
                 <img
                   src={person.image.url}
                   alt={person.image.alt || person.name}
-                  className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
+                  className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-110"
                 />
                 <div className="absolute inset-0 transition-colors duration-500 group-hover:bg-red-950/10" />
               </div>
               <div className="relative p-6">
-                <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-red-50/60 blur-2xl opacity-0 transition-opacity duration-500 group-hover:opacity-100 pointer-events-none" />
+                <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-red-100/60 blur-2xl opacity-0 transition-opacity duration-500 group-hover:opacity-100 pointer-events-none" />
                 <h3
                   className="font-bold text-stone-900 transition-colors duration-300 group-hover:text-red-950"
                   style={{ fontFamily: 'Georgia, serif', fontSize: '1.15rem' }}
                 >
                   {person.name}
                 </h3>
-                <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-red-600">
+                <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-red-600 transition-colors duration-300 group-hover:text-red-700">
                   {person.role}
                 </p>
                 {person.bio && (
-                  <p className="mt-3 text-sm leading-relaxed text-stone-500">{person.bio}</p>
+                  <p className="mt-3 text-[0.9375rem] leading-relaxed text-stone-500 transition-colors duration-300 group-hover:text-stone-600">{person.bio}</p>
                 )}
               </div>
             </motion.article>
@@ -411,24 +411,24 @@ function renderFeatureGrid(section: AboutFeatureGridSection, previewMode: AboutR
             <motion.div
               key={i}
               {...fadeUp(i * 0.065, previewMode)}
-              className="group relative overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-50/50 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-red-100 hover:bg-white hover:shadow-xl"
+              className="group relative overflow-hidden rounded-[24px] border border-stone-200/80 bg-stone-50/50 p-8 transition-all duration-500 hover:-translate-y-2 hover:border-red-200 hover:bg-white hover:shadow-[0_20px_40px_-15px_rgba(220,38,38,0.15)]"
             >
-              <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-red-50/50 blur-3xl transition-opacity duration-300 group-hover:opacity-100 opacity-0" />
+              <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-red-100/50 blur-3xl transition-opacity duration-500 group-hover:opacity-100 opacity-0" />
               {/* Number — editorial detail that matches the site's playbill feel */}
               <p
-                className="mb-3 text-[2rem] font-black leading-none text-stone-200 select-none transition-colors duration-300 group-hover:text-red-100"
+                className="mb-4 text-[2.5rem] font-black leading-none text-stone-200/80 select-none transition-all duration-500 group-hover:-translate-y-1 group-hover:text-red-100"
                 style={{ fontFamily: 'Georgia, serif' }}
                 aria-hidden
               >
                 {String(i + 1).padStart(2, '0')}
               </p>
               <h3
-                className="mb-2 font-bold text-stone-900"
-                style={{ fontFamily: 'Georgia, serif', fontSize: '1.1rem' }}
+                className="mb-2.5 font-bold text-stone-900 transition-colors duration-300 group-hover:text-red-950"
+                style={{ fontFamily: 'Georgia, serif', fontSize: '1.25rem' }}
               >
                 {item.title}
               </h3>
-              <p className="text-sm leading-relaxed text-stone-500">{item.description}</p>
+              <p className="text-[0.9375rem] leading-relaxed text-stone-500 transition-colors duration-300 group-hover:text-stone-600">{item.description}</p>
             </motion.div>
           ))}
         </div>
@@ -773,9 +773,9 @@ function renderCta(section: AboutCtaSection, previewMode: AboutRendererMode) {
       <div className="mx-auto max-w-6xl px-6 sm:px-10">
         <motion.div
           {...fadeUp(0, previewMode)}
-          className="group relative overflow-hidden rounded-[32px] border border-stone-200/60 bg-gradient-to-br from-orange-50/80 via-white/90 to-red-50/80 p-8 sm:p-12 shadow-xl backdrop-blur-xl transition hover:shadow-2xl hover:border-red-100"
+          className="group relative overflow-hidden rounded-[32px] border border-stone-200/60 bg-gradient-to-br from-orange-50/80 via-white/90 to-red-50/80 p-8 sm:p-12 shadow-xl backdrop-blur-xl transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_20px_40px_-15px_rgba(220,38,38,0.2)] hover:border-red-200"
         >
-          <div className="absolute -left-32 -top-32 h-64 w-64 rounded-full bg-red-100/40 blur-3xl transition-opacity duration-700 group-hover:opacity-100 opacity-0 pointer-events-none" />
+          <div className="absolute -left-32 -top-32 h-64 w-64 rounded-full bg-red-100/50 blur-3xl transition-opacity duration-700 group-hover:opacity-100 opacity-0 pointer-events-none" />
           <Eyebrow>{section.eyebrow}</Eyebrow>
           <h2
             className="max-w-3xl font-bold text-stone-900"
