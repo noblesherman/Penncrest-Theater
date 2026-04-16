@@ -849,7 +849,7 @@ export default function AboutPageRenderer({
         {/* Thin gradient strip identical to site nav */}
         <div className={`absolute left-0 right-0 top-0 h-[3px] bg-gradient-to-r ${strip}`} aria-hidden />
 
-        <div className="mx-auto max-w-7xl px-6 pb-12 pt-12 sm:px-10 sm:pb-12 sm:pt-14">
+        <div className="mx-auto max-w-7xl px-6 pb-6 pt-12 sm:px-10 sm:pb-8 sm:pt-14">
           <motion.p
             {...fadeUp(0, mode)}
             className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-red-600"

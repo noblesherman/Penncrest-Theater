@@ -4,6 +4,8 @@ import AboutPageRenderer from '../components/about/AboutPageRenderer';
 import { apiFetch } from '../lib/api';
 import type { AboutPageContent, AboutPageSlug } from '../lib/aboutContent';
 
+import AboutSubpageLoader from '../components/about/AboutSubpageLoader';
+
 export default function AboutContentPage({ slug }: { slug: AboutPageSlug }) {
   const [page, setPage] = useState<AboutPageContent | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +98,7 @@ export default function AboutContentPage({ slug }: { slug: AboutPageSlug }) {
   }
 
   if (!page) {
-    return <div className="min-h-[50vh] bg-stone-50 flex items-center justify-center text-stone-500">Loading page...</div>;
+    return <AboutSubpageLoader slug={slug} />;
   }
 
   return <AboutPageRenderer page={page} />;
