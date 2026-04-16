@@ -390,6 +390,10 @@ function renderHistory(section: AboutHistorySection, previewMode: AboutRendererM
 // ─── Feature Grid ─────────────────────────────────────────────────────────────
 
 function renderFeatureGrid(section: AboutFeatureGridSection, previewMode: AboutRendererMode) {
+  const gridColsClass = section.id === 'roles'
+    ? 'mt-10 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4'
+    : 'mt-10 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3';
+
   return (
     <section className="bg-white py-16 sm:py-20">
       <div className="mx-auto max-w-7xl px-6 sm:px-10">
@@ -399,7 +403,7 @@ function renderFeatureGrid(section: AboutFeatureGridSection, previewMode: AboutR
             {section.intro}
           </p>
         )}
-        <div className="mt-10 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <div className={gridColsClass}>
           {section.items.map((item, i) => (
             <motion.div
               key={i}
@@ -433,31 +437,75 @@ function renderFeatureGrid(section: AboutFeatureGridSection, previewMode: AboutR
 
 function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: AboutRendererMode) {
   if (splitFeatureGalleryOnlyIds.has(section.id)) {
-    const galleryTiltClasses = [
+    const isPerformerGallery = section.id === 'performer-gallery';
+    const isStageGallery = section.id === 'stage-crew-gallery';
+    const isCostumeGallery = section.id === 'costume-crew-gallery';
+
+    const gridClass = isPerformerGallery
+      ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4'
+      : isCostumeGallery
+        ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:mx-auto lg:max-w-3xl'
+        : 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3';
+
+    const performerFrameClasses = [
+      'sm:translate-y-3 sm:-rotate-[0.8deg]',
+      'sm:-translate-y-1 sm:rotate-[0.9deg]',
+      'sm:translate-y-2 sm:-rotate-[0.6deg]',
+      'sm:-translate-y-2 sm:rotate-[0.7deg]',
+      'sm:translate-y-1 sm:-rotate-[0.5deg]',
+      'sm:-translate-y-3 sm:rotate-[0.8deg]'
+    ];
+
+    const stageFrameClasses = [
+      'sm:translate-y-4 sm:-rotate-[1deg]',
+      'sm:-translate-y-1 sm:rotate-[0.8deg]',
+      'sm:translate-y-2 sm:-rotate-[0.7deg]'
+    ];
+
+    const costumeFrameClasses = [
+      'sm:translate-y-1 sm:-rotate-[0.5deg]',
+      'sm:-translate-y-1 sm:rotate-[0.5deg]'
+    ];
+
+    const techFrameClasses = [
       'sm:translate-y-5 sm:-rotate-[1.4deg]',
       'sm:-translate-y-1 sm:rotate-[1deg]',
       'sm:translate-y-3 sm:-rotate-[0.8deg]',
       'sm:-translate-y-2 sm:rotate-[1.2deg]'
     ];
 
+    const frameClasses = isPerformerGallery
+      ? performerFrameClasses
+      : isStageGallery
+        ? stageFrameClasses
+        : isCostumeGallery
+          ? costumeFrameClasses
+          : techFrameClasses;
+
+    const imageAspectClass = isPerformerGallery
+      ? 'aspect-[5/6]'
+      : isCostumeGallery
+        ? 'aspect-[3/4]'
+        : 'aspect-[4/5]';
+
     return (
       <section className="bg-stone-50 py-16 sm:py-20">
         <div className="mx-auto max-w-7xl px-6 sm:px-10">
           <motion.div
             {...fadeUp(0, previewMode)}
-            className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+            className={gridClass}
           >
             {section.images.map((img, i) => (
               <figure
                 key={i}
                 className={`overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm transition duration-300 hover:shadow-md ${
-                  section.images.length > 1 ? galleryTiltClasses[i % galleryTiltClasses.length] : ''
+                  section.images.length > 1 ? frameClasses[i % frameClasses.length] : ''
                 }`}
               >
                 <img
                   src={img.url}
                   alt={img.alt}
-                  className="aspect-[4/5] w-full object-cover"
+                  className={`${imageAspectClass} w-full object-cover`}
                 />
               </figure>
             ))}

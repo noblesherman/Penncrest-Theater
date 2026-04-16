@@ -500,6 +500,18 @@ export const defaultAboutPages: Record<string, AboutPageContent> = {
           {
             url: 'https://picsum.photos/seed/performer-gallery-3/900/1100',
             alt: 'Ensemble choreography rehearsal'
+          },
+          {
+            url: 'https://picsum.photos/seed/performer-gallery-4/900/1100',
+            alt: 'Performer practicing a solo moment'
+          },
+          {
+            url: 'https://picsum.photos/seed/performer-gallery-5/900/1100',
+            alt: 'Cast line run during rehearsal'
+          },
+          {
+            url: 'https://picsum.photos/seed/performer-gallery-6/900/1100',
+            alt: 'Ensemble staging on the main set'
           }
         ],
         calloutTitle: 'A Supportive Process',
@@ -803,10 +815,6 @@ export const defaultAboutPages: Record<string, AboutPageContent> = {
           {
             url: 'https://picsum.photos/seed/costume-crew-gallery-2/900/1100',
             alt: 'Costume fitting and adjustment session'
-          },
-          {
-            url: 'https://picsum.photos/seed/costume-crew-gallery-3/900/1100',
-            alt: 'Wardrobe prep table before a performance'
           }
         ],
         calloutTitle: 'Precision and Creativity',
