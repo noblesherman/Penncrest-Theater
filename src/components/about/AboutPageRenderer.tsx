@@ -47,6 +47,14 @@ const slugStrip: Record<string, string> = {
   'parents-association':'from-red-700 via-amber-400 to-yellow-300',
 };
 
+const splitFeatureGalleryOnlyIds = new Set([
+  'performer-gallery',
+  'stage-crew-gallery',
+  'costume-crew-gallery',
+  'tech-crew-gallery',
+  'equipment'
+]);
+
 // ─── Shared atoms ─────────────────────────────────────────────────────────────
 
 /** Matches the "PENNCREST HIGH SCHOOL THEATER" eyebrow label used site-wide */
@@ -424,6 +432,41 @@ function renderFeatureGrid(section: AboutFeatureGridSection, previewMode: AboutR
 // ─── Split Feature ────────────────────────────────────────────────────────────
 
 function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: AboutRendererMode) {
+  if (splitFeatureGalleryOnlyIds.has(section.id)) {
+    const galleryTiltClasses = [
+      'sm:translate-y-5 sm:-rotate-[1.4deg]',
+      'sm:-translate-y-1 sm:rotate-[1deg]',
+      'sm:translate-y-3 sm:-rotate-[0.8deg]',
+      'sm:-translate-y-2 sm:rotate-[1.2deg]'
+    ];
+
+    return (
+      <section className="bg-stone-50 py-16 sm:py-20">
+        <div className="mx-auto max-w-7xl px-6 sm:px-10">
+          <motion.div
+            {...fadeUp(0, previewMode)}
+            className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          >
+            {section.images.map((img, i) => (
+              <figure
+                key={i}
+                className={`overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm transition duration-300 hover:shadow-md ${
+                  section.images.length > 1 ? galleryTiltClasses[i % galleryTiltClasses.length] : ''
+                }`}
+              >
+                <img
+                  src={img.url}
+                  alt={img.alt}
+                  className="aspect-[4/5] w-full object-cover"
+                />
+              </figure>
+            ))}
+          </motion.div>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="bg-stone-50 py-16 sm:py-20">
       <div className="mx-auto max-w-7xl px-6 sm:px-10">
