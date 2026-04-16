@@ -520,9 +520,7 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
     const galleryShellClass = isPerformerGallery
       ? 'mx-auto w-full max-w-none px-3 sm:px-6 lg:px-8'
       : 'mx-auto max-w-7xl px-6 sm:px-10';
-    const desktopGridClass = isPerformerGallery
-      ? `${gridClass} hidden sm:grid w-full rounded-[32px] border border-stone-200/60 bg-white/80 p-4 shadow-xl backdrop-blur-xl ring-1 ring-black/5`
-      : `${gridClass} hidden sm:grid`;
+    const desktopGridClass = `${gridClass} hidden sm:grid w-full rounded-[32px] border border-stone-200/60 bg-white/80 p-6 shadow-xl backdrop-blur-xl ring-1 ring-black/5`;
 
     return (
       <section className="bg-stone-50 py-16 sm:py-20">
@@ -598,13 +596,11 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
                   alt={img.alt}
                   className={`${imageAspectClass} w-full object-cover transition-transform duration-700 group-hover:scale-110`}
                 />
-                  {isPerformerGallery && (
-                    <figcaption className="pointer-events-none absolute inset-x-0 bottom-0 flex translate-y-4 flex-col justify-end bg-gradient-to-t from-black/90 via-black/40 to-transparent px-5 pb-5 pt-16 opacity-0 transition-all duration-500 group-hover:translate-y-0 group-hover:opacity-100">
-                      <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-red-400 drop-shadow-md">
-                        {performerDesktopCaptions[i] ?? img.alt}
-                      </span>
-                    </figcaption>
-                  )}
+                  <figcaption className="pointer-events-none absolute inset-x-0 bottom-0 flex translate-y-4 flex-col justify-end bg-gradient-to-t from-stone-900/80 via-stone-900/30 to-transparent px-5 pb-5 pt-20 opacity-0 transition-all duration-500 group-hover:translate-y-0 group-hover:opacity-100">
+                    <span className="text-[12px] font-bold uppercase tracking-[0.15em] text-white drop-shadow-md">
+                      {isPerformerGallery ? (performerDesktopCaptions[i] ?? img.alt) : img.alt}
+                    </span>
+                  </figcaption>
               </figure>
             ))}
           </motion.div>
