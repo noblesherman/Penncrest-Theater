@@ -150,9 +150,9 @@ function ActionBtn({
   const isInternal = action.href.startsWith('/') && !action.href.startsWith('//');
 
   const solid =
-    'group inline-flex items-center gap-2 rounded-full bg-red-700 px-6 py-3 text-sm font-semibold text-white transition hover:bg-red-800';
+    'group inline-flex items-center gap-2 rounded-full bg-red-700 px-7 py-3.5 text-sm font-semibold text-white shadow-md transition-all duration-300 hover:bg-red-800 hover:-translate-y-0.5 hover:shadow-lg';
   const ghost =
-    'group inline-flex items-center gap-2 rounded-full border border-stone-300 px-6 py-3 text-sm font-semibold text-stone-700 transition hover:bg-stone-100';
+    'group inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-sm font-semibold text-stone-700 ring-1 ring-inset ring-stone-300/80 transition-all duration-300 hover:bg-stone-100/80 hover:-translate-y-0.5 hover:shadow-sm hover:ring-stone-400';
 
   const cls = variant === 'solid' ? solid : ghost;
   const icon = isEmail
@@ -269,18 +269,19 @@ function renderLinkGrid(section: AboutLinkGridSection, previewMode: AboutRendere
               ) : (
                 <Link
                   to={item.href}
-                  className="group flex h-full flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white transition duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+                  className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white/90 backdrop-blur-md transition-all duration-300 hover:-translate-y-1.5 hover:border-red-100 hover:shadow-2xl"
                 >
-                <div className="overflow-hidden bg-stone-100">
+                <div className="overflow-hidden bg-stone-100 relative">
                   {item.image?.url ? (
                     <img
                       src={item.image.url}
                       alt={item.image.alt}
-                      className="aspect-[4/3] w-full object-cover transition duration-500 group-hover:scale-105"
+                      className="aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-105"
                     />
                   ) : (
                     <div className="aspect-[4/3] w-full bg-gradient-to-br from-red-50 to-stone-100" />
                   )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-red-950/20 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                 </div>
                 <div className="flex flex-1 flex-col p-5">
                   <h3
@@ -317,18 +318,20 @@ function renderPeople(section: AboutPeopleSection, previewMode: AboutRendererMod
             <motion.article
               key={i}
               {...fadeUp(i * 0.07, previewMode)}
-              className="overflow-hidden rounded-2xl border border-stone-200 bg-white"
+              className="group overflow-hidden rounded-[24px] border border-stone-200/80 bg-white/90 backdrop-blur-sm transition-all duration-500 hover:-translate-y-1 hover:border-red-100 hover:shadow-2xl"
             >
-              <div className="aspect-[4/3] overflow-hidden bg-stone-200">
+              <div className="relative aspect-[4/3] overflow-hidden bg-stone-200">
                 <img
                   src={person.image.url}
                   alt={person.image.alt || person.name}
-                  className="h-full w-full object-cover transition duration-500 hover:scale-105"
+                  className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
                 />
+                <div className="absolute inset-0 transition-colors duration-500 group-hover:bg-red-950/10" />
               </div>
-              <div className="p-5">
+              <div className="relative p-6">
+                <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-red-50/60 blur-2xl opacity-0 transition-opacity duration-500 group-hover:opacity-100 pointer-events-none" />
                 <h3
-                  className="font-bold text-stone-900"
+                  className="font-bold text-stone-900 transition-colors duration-300 group-hover:text-red-950"
                   style={{ fontFamily: 'Georgia, serif', fontSize: '1.15rem' }}
                 >
                   {person.name}
@@ -408,11 +411,12 @@ function renderFeatureGrid(section: AboutFeatureGridSection, previewMode: AboutR
             <motion.div
               key={i}
               {...fadeUp(i * 0.065, previewMode)}
-              className="rounded-2xl border border-stone-200 bg-stone-50 p-6 transition hover:border-red-100 hover:bg-white hover:shadow-md"
+              className="group relative overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-50/50 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-red-100 hover:bg-white hover:shadow-xl"
             >
+              <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-red-50/50 blur-3xl transition-opacity duration-300 group-hover:opacity-100 opacity-0" />
               {/* Number — editorial detail that matches the site's playbill feel */}
               <p
-                className="mb-3 text-[2rem] font-black leading-none text-stone-200 select-none"
+                className="mb-3 text-[2rem] font-black leading-none text-stone-200 select-none transition-colors duration-300 group-hover:text-red-100"
                 style={{ fontFamily: 'Georgia, serif' }}
                 aria-hidden
               >
@@ -617,14 +621,15 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
           {/* Images */}
           <motion.div
             {...fadeUp(0, previewMode)}
-            className={`grid gap-4 ${section.images.length > 1 ? 'grid-cols-2' : ''}`}
+            className={`grid gap-4 relative group ${section.images.length > 1 ? 'grid-cols-2' : ''}`}
           >
+            <div className="absolute -inset-4 bg-red-50/40 rounded-3xl blur-3xl opacity-0 transition-opacity duration-700 group-hover:opacity-100 mix-blend-multiply pointer-events-none" />
             {section.images.map((img, i) => (
               <img
                 key={i}
                 src={img.url}
                 alt={img.alt}
-                className={`w-full rounded-2xl border border-stone-200 object-cover shadow-sm ${
+                className={`w-full rounded-[24px] border border-stone-200/80 object-cover shadow-lg transition-all duration-700 relative z-10 hover:scale-[1.02] hover:shadow-2xl ${
                   section.images.length > 1 && i === 0 ? 'mt-8' : ''
                 }`}
               />
@@ -699,11 +704,12 @@ function renderTestimonial(section: AboutTestimonialSection, previewMode: AboutR
           </div>
         </motion.div>
 
-        <motion.div {...fadeUp(0.09, previewMode)} className="mx-auto w-full max-w-xs flex-shrink-0 lg:w-64">
+        <motion.div {...fadeUp(0.09, previewMode)} className="group mx-auto w-full max-w-xs flex-shrink-0 lg:w-64 relative">
+          <div className="absolute -inset-4 bg-amber-500/20 rounded-full blur-2xl opacity-0 transition-opacity duration-700 group-hover:opacity-100 pointer-events-none" />
           <img
             src={section.image.url}
             alt={section.image.alt}
-            className="aspect-[3/4] w-full rounded-2xl border border-stone-700 object-cover shadow-2xl"
+            className="aspect-[3/4] w-full rounded-[24px] border border-stone-700/80 object-cover shadow-2xl relative z-10 transition-transform duration-700 group-hover:scale-[1.03] group-hover:-rotate-1"
           />
         </motion.div>
 
@@ -716,21 +722,23 @@ function renderTestimonial(section: AboutTestimonialSection, previewMode: AboutR
 
 function renderListPanel(section: AboutListPanelSection, previewMode: AboutRendererMode) {
   return (
-    <section className="bg-stone-100 py-16 sm:py-20">
+    <section className="bg-stone-50 py-16 sm:py-20">
       <div className="mx-auto max-w-6xl px-6 sm:px-10">
-        <div className="rounded-2xl border border-stone-200 bg-white p-8 sm:p-10">
-          <div className="grid gap-10 lg:grid-cols-2 lg:items-start">
+        <div className="rounded-[32px] border border-stone-200/80 bg-white/80 backdrop-blur-xl p-8 sm:p-12 shadow-sm transition-all duration-300 hover:shadow-lg hover:border-red-100">
+          <div className="grid gap-12 lg:grid-cols-2 lg:items-start relative">
+            
+            <div className="absolute top-0 right-0 -mr-8 -mt-8 h-48 w-48 rounded-full bg-red-50/60 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
 
-            <motion.div {...fadeUp(0, previewMode)}>
+            <motion.div {...fadeUp(0, previewMode)} className="relative z-10">
               <SectionHeading eyebrow={section.eyebrow} heading={section.heading} previewMode={previewMode} />
               {section.body && (
-                <p className="mt-4 text-[0.9375rem] leading-relaxed text-stone-600">{section.body}</p>
+                <p className="mt-5 text-[0.95rem] leading-relaxed text-stone-600">{section.body}</p>
               )}
             </motion.div>
 
             <motion.div
               {...fadeUp(0.07, previewMode)}
-              className="rounded-2xl border border-red-100 bg-red-50 p-6"
+              className="rounded-[24px] border border-red-100/50 bg-gradient-to-br from-red-50/50 to-red-50/10 p-8 shadow-inner"
             >
               <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white text-red-700 shadow-sm">
                 <CalendarDays className="h-4.5 w-4.5" />
@@ -769,8 +777,9 @@ function renderCta(section: AboutCtaSection, previewMode: AboutRendererMode) {
       <div className="mx-auto max-w-6xl px-6 sm:px-10">
         <motion.div
           {...fadeUp(0, previewMode)}
-          className="rounded-2xl border border-stone-200 bg-gradient-to-br from-orange-50 via-white to-red-50 p-8 sm:p-10"
+          className="group relative overflow-hidden rounded-[32px] border border-stone-200/60 bg-gradient-to-br from-orange-50/80 via-white/90 to-red-50/80 p-8 sm:p-12 shadow-xl backdrop-blur-xl transition hover:shadow-2xl hover:border-red-100"
         >
+          <div className="absolute -left-32 -top-32 h-64 w-64 rounded-full bg-red-100/40 blur-3xl transition-opacity duration-700 group-hover:opacity-100 opacity-0 pointer-events-none" />
           <Eyebrow>{section.eyebrow}</Eyebrow>
           <h2
             className="max-w-3xl font-bold text-stone-900"
