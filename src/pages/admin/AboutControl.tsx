@@ -1297,13 +1297,16 @@ export default function AdminAboutControlPage() {
   // ── Section renderer ──────────────────────────────────────────────────────
 
   const renderSection = (section: AboutSection, si: number) => {
-    const label = `${SECTION_TYPE_LABELS[section.type] ?? section.type}${(section as any).heading ? ` — ${(section as any).heading}` : ''}`;
+    const galleryOnlySection = isSubpageGallerySection(slug, section);
+    const label = galleryOnlySection
+      ? 'Gallery'
+      : `${SECTION_TYPE_LABELS[section.type] ?? section.type}${(section as any).heading ? ` — ${(section as any).heading}` : ''}`;
     const shellProps = {
       id: section.id,
       index: si + 1,
       label,
       changed: changedSectionIds.has(section.id),
-      gallerySection: isSubpageGallerySection(slug, section),
+      gallerySection: galleryOnlySection,
       hidden: section.hidden === true,
       onToggleHidden: () => upSec(si, (s) => ({ ...s, hidden: s.hidden !== true })),
       isFirst: si === 0,
@@ -1529,16 +1532,26 @@ export default function AdminAboutControlPage() {
       case 'splitFeature':
         return (
           <SectionShell key={section.id} {...shellProps}>
-            {headerFields}
-            <Field label="Lead text"><textarea value={section.lead} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutSplitFeatureSection), lead: e.target.value }))} className={taClass} /></Field>
-            <StringList label="Body paragraphs" values={section.body} addLabel="Add paragraph"
-              onChange={(v) => upSec(si, (s) => ({ ...(s as AboutSplitFeatureSection), body: v }))} />
-            <StringList label="Bullet points" values={section.bullets} addLabel="Add bullet"
-              onChange={(v) => upSec(si, (s) => ({ ...(s as AboutSplitFeatureSection), bullets: v }))} />
-            <Row2>
-              <Field label="Callout title"><input value={section.calloutTitle ?? ''} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutSplitFeatureSection), calloutTitle: e.target.value }))} className={inputClass} /></Field>
-              <Field label="Callout body"><input value={section.calloutBody ?? ''} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutSplitFeatureSection), calloutBody: e.target.value }))} className={inputClass} /></Field>
-            </Row2>
+            {galleryOnlySection
+              ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                  Gallery-only section: the public page uses image and alt text from this section.
+                </div>
+              )
+              : (
+                <>
+                  {headerFields}
+                  <Field label="Lead text"><textarea value={section.lead} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutSplitFeatureSection), lead: e.target.value }))} className={taClass} /></Field>
+                  <StringList label="Body paragraphs" values={section.body} addLabel="Add paragraph"
+                    onChange={(v) => upSec(si, (s) => ({ ...(s as AboutSplitFeatureSection), body: v }))} />
+                  <StringList label="Bullet points" values={section.bullets} addLabel="Add bullet"
+                    onChange={(v) => upSec(si, (s) => ({ ...(s as AboutSplitFeatureSection), bullets: v }))} />
+                  <Row2>
+                    <Field label="Callout title"><input value={section.calloutTitle ?? ''} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutSplitFeatureSection), calloutTitle: e.target.value }))} className={inputClass} /></Field>
+                    <Field label="Callout body"><input value={section.calloutBody ?? ''} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutSplitFeatureSection), calloutBody: e.target.value }))} className={inputClass} /></Field>
+                  </Row2>
+                </>
+              )}
             <div className="space-y-3">
               <FieldLabel>Images</FieldLabel>
               {section.images.map((img, ii) => (
