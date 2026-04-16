@@ -443,27 +443,27 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
 
     const performerImages = isPerformerGallery ? section.images.slice(0, 6) : section.images;
     const performerLayoutClasses = [
-      'lg:col-span-7 lg:row-span-2',
-      'lg:col-span-5 lg:row-span-1',
-      'lg:col-span-5 lg:row-span-1',
-      'lg:col-span-4 lg:row-span-1',
-      'lg:col-span-4 lg:row-span-1',
-      'lg:col-span-4 lg:row-span-1'
+      'lg:col-span-3 lg:row-span-2',
+      'lg:col-span-5 lg:row-span-2',
+      'lg:col-span-4 lg:row-span-2',
+      'lg:col-span-5 lg:row-span-2',
+      'lg:col-span-4 lg:row-span-2',
+      'lg:col-span-3 lg:row-span-2'
     ];
 
     const gridClass = isPerformerGallery
-      ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12 lg:auto-rows-[104px]'
+      ? 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-12 lg:auto-rows-[112px]'
       : isCostumeGallery
         ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:mx-auto lg:max-w-3xl'
         : 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3';
 
     const performerFrameClasses = [
-      'sm:translate-y-3 sm:-rotate-[0.8deg]',
-      'sm:-translate-y-1 sm:rotate-[0.9deg]',
-      'sm:translate-y-2 sm:-rotate-[0.6deg]',
-      'sm:-translate-y-2 sm:rotate-[0.7deg]',
-      'sm:translate-y-1 sm:-rotate-[0.5deg]',
-      'sm:-translate-y-3 sm:rotate-[0.8deg]'
+      '',
+      '',
+      '',
+      '',
+      '',
+      ''
     ];
 
     const stageFrameClasses = [
@@ -505,6 +505,9 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
       : isCostumeGallery
         ? 'h-[min(78vw,30rem)] max-w-[24rem]'
         : 'h-[min(74vw,28rem)] max-w-[26rem]';
+    const desktopGridClass = isPerformerGallery
+      ? `${gridClass} hidden sm:grid rounded-[24px] border border-stone-200 bg-white p-3 shadow-sm`
+      : `${gridClass} hidden sm:grid`;
 
     return (
       <section className="bg-stone-50 py-16 sm:py-20">
@@ -562,7 +565,7 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
 
           <motion.div
             {...fadeUp(0, previewMode)}
-            className={`${gridClass} hidden sm:grid`}
+            className={desktopGridClass}
           >
             {performerImages.map((img, i) => (
               <figure
