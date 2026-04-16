@@ -354,8 +354,12 @@ export default function AdminOrderDetailPage() {
     data.inPersonPaymentMethod === 'CASH' &&
     !data.stripeSessionId &&
     !data.stripePaymentIntentId;
+  const canDeletePendingOnlineOrder =
+    data.source === 'ONLINE' &&
+    data.status === 'PENDING' &&
+    data.tickets.length === 0;
   const canDeleteOrder =
-    hasAdminRole(admin.role, 'ADMIN') && (data.status === 'CANCELED' || canDeleteWalkInCashOrder);
+    hasAdminRole(admin.role, 'ADMIN') && (data.status === 'CANCELED' || canDeleteWalkInCashOrder || canDeletePendingOnlineOrder);
 
   const statusStyle = STATUS_STYLES[data.status] ?? 'bg-stone-100 text-stone-500 ring-1 ring-stone-200';
   const formattedTotal = `$${(data.amountTotal / 100).toFixed(2)}`;
@@ -791,7 +795,7 @@ export default function AdminOrderDetailPage() {
 
         {hasAdminRole(admin.role, 'ADMIN') && !canDeleteOrder && (
           <p className="mt-4 text-xs text-stone-400">
-            Only canceled orders or walk-in cash orders can be permanently deleted.
+            Only canceled orders, walk-in cash orders, or pending online orders with no issued tickets can be permanently deleted.
           </p>
         )}
 

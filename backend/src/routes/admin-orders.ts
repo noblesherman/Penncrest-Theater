@@ -2271,6 +2271,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
           select: {
             id: true,
             status: true,
+            holdToken: true,
             performanceId: true,
             amountTotal: true,
             source: true,
@@ -2306,10 +2307,15 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
           !order.stripeSessionId &&
           !order.stripePaymentIntentId;
 
-        if (order.status !== 'CANCELED' && !canDeleteWalkInCashOrder) {
+        const canDeletePendingOnlineOrder =
+          order.source === 'ONLINE' &&
+          order.status === 'PENDING' &&
+          order._count.tickets === 0;
+
+        if (order.status !== 'CANCELED' && !canDeleteWalkInCashOrder && !canDeletePendingOnlineOrder) {
           throw new HttpError(
             400,
-            'Only canceled orders or walk-in cash orders can be permanently deleted'
+            'Only canceled orders, walk-in cash orders, or pending online orders with no issued tickets can be permanently deleted'
           );
         }
 
@@ -2324,11 +2330,17 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
             where: {
               id: { in: seatIds },
               performanceId: order.performanceId,
-              status: 'SOLD'
+              status: { in: ['SOLD', 'HELD'] }
             },
             data: {
               status: 'AVAILABLE',
               holdSessionId: null
+            }
+          });
+
+          await tx.seatHold.deleteMany({
+            where: {
+              seatId: { in: seatIds }
             }
           });
         } else if (!order.performance.seatSelectionEnabled && order._count.orderSeats > 0) {
@@ -2360,6 +2372,18 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
               }
             });
           }
+        }
+
+        if (order.holdToken) {
+          await tx.holdSession.updateMany({
+            where: {
+              holdToken: order.holdToken,
+              status: 'ACTIVE'
+            },
+            data: {
+              status: 'CANCELED'
+            }
+          });
         }
 
         await tx.order.delete({
