@@ -2402,7 +2402,7 @@ export default function AdminOrdersPage() {
               animate={{ y: 0,  opacity: 1, scale: 1    }}
               exit={{    y: 24, opacity: 0, scale: 0.97 }}
               transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-              className={`${CHECKOUT_PANEL_BASE} my-auto flex max-h-[calc(100dvh-2rem)] ${
+              className={`${CHECKOUT_PANEL_BASE} my-auto flex max-h-[calc(100dvh-4rem)] ${
                 step === 2 ? 'max-w-[720px]' : 'max-w-[540px]'
               } flex-col overflow-hidden rounded-3xl transition-[max-width,height]`}
             >
@@ -2560,7 +2560,7 @@ export default function AdminOrdersPage() {
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.96, opacity: 0, y: 16 }}
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className={`${CHECKOUT_PANEL_BASE} my-auto flex h-full max-h-[calc(100dvh-2.5rem)] w-full max-w-[1280px] flex-col overflow-hidden rounded-3xl`}
+              className={`${CHECKOUT_PANEL_BASE} my-auto flex max-h-[calc(100dvh-4rem)] w-full max-w-[1280px] flex-col overflow-hidden rounded-3xl`}
             >
               {/* Seat picker header */}
               <div className="flex-shrink-0 border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white px-4 pb-3 pt-4 sm:px-5">
@@ -2645,7 +2645,7 @@ export default function AdminOrdersPage() {
 
               {/* Seat map */}
               <div className="min-h-0 flex-1 px-4 pb-2 pt-2 sm:px-5 flex flex-col">
-                <div className="mx-auto h-full w-full flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100/70">
+                <div className="mx-auto min-h-[clamp(400px,65vh,800px)] w-full flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100/70">
                   <SeatMapViewport
                     seats={seats}
                     visibleSeats={visibleSeats}
@@ -2653,7 +2653,7 @@ export default function AdminOrdersPage() {
                     loadingLabel="Loading seats…"
                     emptyText="No seats for this performance."
                     resetKey={assignForm.performanceId || 'admin-orders-seat-map'}
-                    containerClassName="h-full w-full"
+                    containerClassName="h-full w-full min-h-[clamp(400px,65vh,800px)]"
                     verticalAlign="center"
                     fitViewportPadding={112}
                     controlsClassName="absolute bottom-4 right-4 z-30 flex flex-col gap-2"
