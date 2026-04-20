@@ -1816,7 +1816,7 @@ export default function Booking() {
                   </p>
                   {ticketOptions.some((option) => option.id === TEACHER_TICKET_OPTION_ID) && (
                     <p className="mt-2 inline-flex items-center rounded-md border border-amber-200 bg-amber-50/70 px-2.5 py-1 text-xs text-amber-900">
-                      RTMSD staff: choose <span className="ml-1 font-semibold">RTMSD STAFF</span> in the dropdown.
+                      RTMSD staff: choose <span className="ml-1 font-semibold">RTMSD STAFF</span>  in the dropdown.
                     </p>
                   )}
                   {hasMixedCompSelection && (
