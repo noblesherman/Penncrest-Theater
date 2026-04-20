@@ -228,12 +228,17 @@ const STEPS = [
   { id: 'tickets', label: 'Checkout',    icon: Tag     },
 ];
 
+const CHECKOUT_OVERLAY_BASE =
+  'fixed inset-0 flex items-center justify-center bg-black/55 backdrop-blur-sm';
+const CHECKOUT_PANEL_BASE =
+  'w-full rounded-[28px] border border-slate-200/90 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.28)]';
+
 // ── base input styles ─────────────────────────────────────────────────────────
 
 const baseInput = [
-  'w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900',
-  'placeholder:text-slate-300 transition',
-  'focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100',
+  'w-full rounded-xl border border-slate-200/90 bg-white px-4 py-3 text-sm font-medium text-slate-900',
+  'placeholder:text-slate-400 transition',
+  'focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100/80',
 ].join(' ');
 
 const baseSelect = baseInput + ' cursor-pointer';
@@ -242,7 +247,7 @@ const baseSelect = baseInput + ' cursor-pointer';
 
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
-    <p className="mb-2 text-xs font-bold uppercase tracking-widest text-slate-400">{children}</p>
+    <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{children}</p>
   );
 }
 
@@ -250,7 +255,7 @@ function FieldLabel({ children }: { children: ReactNode }) {
 
 function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`rounded-2xl border border-slate-100 bg-white ${className}`}>
+    <div className={`rounded-2xl border border-slate-200/80 bg-white shadow-[0_6px_20px_rgba(15,23,42,0.05)] ${className}`}>
       {children}
     </div>
   );
@@ -2050,14 +2055,14 @@ export default function AdminOrdersPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[65] flex items-end justify-center bg-black/40 backdrop-blur-sm sm:items-center sm:p-4"
+            className={`${CHECKOUT_OVERLAY_BASE} z-[65] items-end justify-center overflow-y-auto p-3 sm:items-center sm:p-5`}
           >
             <motion.div
               initial={{ y: 18, opacity: 0, scale: 0.98 }}
               animate={{ y: 0, opacity: 1, scale: 1 }}
               exit={{ y: 18, opacity: 0, scale: 0.98 }}
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="w-full rounded-t-3xl border border-slate-100 bg-white shadow-2xl sm:max-w-lg sm:rounded-3xl"
+              className={`${CHECKOUT_PANEL_BASE} my-auto max-h-[calc(100dvh-2rem)] max-w-lg overflow-hidden rounded-3xl`}
             >
               <div className="border-b border-slate-100 px-5 pb-4 pt-5">
                 <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Cashier Setup</p>
@@ -2065,7 +2070,7 @@ export default function AdminOrdersPage() {
                 <p className="mt-1 text-sm text-slate-500">This selection will be remembered as your cashier default.</p>
               </div>
 
-              <div className="px-5 py-5">
+              <div className="overflow-y-auto px-5 py-5">
                 <FieldLabel>Performance</FieldLabel>
                 <select
                   value={cashierPerformanceDraftId}
@@ -2109,14 +2114,14 @@ export default function AdminOrdersPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
+            className={`${CHECKOUT_OVERLAY_BASE} z-[70] overflow-y-auto p-3 sm:p-5`}
           >
             <motion.div
               initial={{ y: 14, opacity: 0, scale: 0.98 }}
               animate={{ y: 0, opacity: 1, scale: 1 }}
               exit={{ y: 14, opacity: 0, scale: 0.98 }}
               transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-              className="w-full max-w-2xl rounded-3xl border border-slate-200 bg-white shadow-2xl"
+              className={`${CHECKOUT_PANEL_BASE} my-auto max-h-[calc(100dvh-2rem)] max-w-2xl overflow-hidden rounded-3xl`}
             >
               <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-6 py-5">
                 <div>
@@ -2190,14 +2195,14 @@ export default function AdminOrdersPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[85] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            className={`${CHECKOUT_OVERLAY_BASE} z-[85] overflow-y-auto p-3 sm:p-5`}
           >
             <motion.div
               initial={{ y: 12, opacity: 0, scale: 0.98 }}
               animate={{ y: 0, opacity: 1, scale: 1 }}
               exit={{ y: 12, opacity: 0, scale: 0.98 }}
               transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-              className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white shadow-2xl"
+              className={`${CHECKOUT_PANEL_BASE} my-auto flex max-h-[calc(100dvh-2rem)] max-w-xl flex-col overflow-hidden rounded-3xl`}
             >
               <div className="border-b border-slate-100 px-6 py-5">
                 <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Manual checkout</p>
@@ -2207,7 +2212,7 @@ export default function AdminOrdersPage() {
                 </p>
               </div>
 
-              <div className="space-y-4 px-6 py-5">
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                   Card details are collected in Stripe. A successful charge is finalized into this same cashier order flow.
                 </div>
@@ -2287,14 +2292,14 @@ export default function AdminOrdersPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
+            className={`${CHECKOUT_OVERLAY_BASE} z-[80] overflow-y-auto p-3 sm:p-5`}
           >
             <motion.div
               initial={{ y: 12, opacity: 0, scale: 0.98 }}
               animate={{ y: 0, opacity: 1, scale: 1 }}
               exit={{ y: 12, opacity: 0, scale: 0.98 }}
               transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-              className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white shadow-2xl"
+              className={`${CHECKOUT_PANEL_BASE} my-auto flex max-h-[calc(100dvh-2rem)] max-w-lg flex-col overflow-hidden rounded-3xl`}
             >
               <div className="border-b border-slate-100 px-6 py-5">
                 <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Terminal dispatch</p>
@@ -2315,7 +2320,7 @@ export default function AdminOrdersPage() {
                 </p>
               </div>
 
-              <div className="space-y-3 px-6 py-5 text-sm text-slate-600">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-5 text-sm text-slate-600">
                 <p>
                   Attempt {terminalDispatch.attemptCount} · Hold expires {new Date(terminalDispatch.holdExpiresAt).toLocaleTimeString()}
                 </p>
@@ -2387,20 +2392,20 @@ export default function AdminOrdersPage() {
 
       {/* ── Checkout Wizard ── */}
       <AnimatePresence>
-        {showWizard && (
+        {showWizard && !seatPickerOpen && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-2 backdrop-blur-sm sm:p-4"
+            className={`${CHECKOUT_OVERLAY_BASE} z-[90] overflow-y-auto p-3 sm:p-5`}
           >
             <motion.div
               initial={{ y: 24, opacity: 0, scale: 0.97 }}
               animate={{ y: 0,  opacity: 1, scale: 1    }}
               exit={{    y: 24, opacity: 0, scale: 0.97 }}
               transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-              className="flex w-full max-w-[500px] max-h-[calc(100svh-5rem)] flex-col overflow-hidden bg-white shadow-2xl sm:max-h-[calc(100svh-6rem)] sm:max-w-[460px] sm:rounded-3xl"
+              className={`${CHECKOUT_PANEL_BASE} my-auto flex max-h-[calc(100dvh-2rem)] max-w-[540px] flex-col overflow-hidden rounded-3xl`}
             >
               {/* Wizard header */}
-              <div className="flex-shrink-0 border-b border-slate-100 px-3.5 pb-2.5 pt-3.5">
+              <div className="flex-shrink-0 border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white px-4 pb-3 pt-4">
                 <div className="mb-4 flex items-center justify-between">
                   <p className="font-bold text-slate-900" style={{ fontFamily: "var(--font-sans)" }}>Cashier Checkout</p>
                   <button
@@ -2420,9 +2425,9 @@ export default function AdminOrdersPage() {
                         type="button"
                         onClick={() => goTo(i)}
                         className={`flex flex-1 items-center justify-center gap-1.5 rounded-full py-2 text-xs font-bold transition-all ${
-                          active ? 'bg-rose-600 text-white' :
-                          done   ? 'bg-emerald-50 text-emerald-700' :
-                                   'text-slate-400 hover:text-slate-600'
+                          active ? 'bg-slate-900 text-white shadow-sm' :
+                          done   ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' :
+                                   'bg-slate-100/80 text-slate-500 hover:bg-slate-200/80 hover:text-slate-700'
                         }`}
                       >
                         {done
@@ -2436,7 +2441,7 @@ export default function AdminOrdersPage() {
                 </div>
                 <div className="mt-3 h-1 w-full rounded-full bg-slate-100 overflow-hidden">
                   <motion.div
-                    className="h-full rounded-full bg-rose-500"
+                    className="h-full rounded-full bg-slate-900"
                     animate={{ width: `${((step + 1) / STEPS.length) * 100}%` }}
                     transition={{ duration: 0.3, ease: 'easeInOut' }}
                   />
@@ -2444,7 +2449,7 @@ export default function AdminOrdersPage() {
               </div>
 
               {/* Wizard body */}
-              <div className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3">
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.div
                     key={step}
@@ -2471,7 +2476,7 @@ export default function AdminOrdersPage() {
               </div>
 
               {/* Wizard footer */}
-              <div className="flex-shrink-0 border-t border-slate-100 bg-white px-3.5 py-2.5">
+              <div className="flex-shrink-0 border-t border-slate-200 bg-slate-50/70 px-4 py-3">
                 <div className="flex items-center justify-between gap-3">
                   <button
                     type="button"
@@ -2546,17 +2551,17 @@ export default function AdminOrdersPage() {
         {showWizard && seatPickerOpen && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[220] h-[100dvh] w-screen flex items-center justify-center overflow-hidden bg-black p-3 sm:p-5"
+            className={`${CHECKOUT_OVERLAY_BASE} z-[220] overflow-y-auto p-3 sm:p-5`}
           >
             <motion.div
               initial={{ scale: 0.96, opacity: 0, y: 16 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.96, opacity: 0, y: 16 }}
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="flex h-[calc(100svh-9rem)] w-full max-w-[820px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:h-[calc(100svh-10rem)] sm:rounded-3xl"
+              className={`${CHECKOUT_PANEL_BASE} my-auto flex max-h-[calc(100dvh-2.5rem)] max-w-[1080px] flex-col overflow-hidden rounded-3xl`}
             >
               {/* Seat picker header */}
-              <div className="flex-shrink-0 border-b border-slate-100 px-3.5 pb-2.5 pt-3.5">
+              <div className="flex-shrink-0 border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white px-4 pb-3 pt-4 sm:px-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-bold text-slate-900" style={{ fontFamily: "var(--font-sans)" }}>Select seats</p>
@@ -2594,7 +2599,7 @@ export default function AdminOrdersPage() {
               </div>
 
               {/* Section tabs */}
-              <div className="flex-shrink-0 border-b border-slate-100 px-3.5 py-2">
+              <div className="flex-shrink-0 border-b border-slate-200 bg-slate-50/70 px-4 py-2 sm:px-5">
                 <div className="flex flex-wrap gap-1.5">
                   {['All', ...sections].map(section => (
                     <button
@@ -2629,7 +2634,7 @@ export default function AdminOrdersPage() {
               </div>
 
               {seatPickerError && (
-                <div className="px-3.5 pt-2.5">
+                <div className="px-4 pt-3 sm:px-5">
                   <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
                     <AlertCircle className="h-4 w-4 flex-shrink-0" /> {seatPickerError}
                   </div>
@@ -2637,8 +2642,8 @@ export default function AdminOrdersPage() {
               )}
 
               {/* Seat map */}
-              <div className="min-h-0 flex-1 px-3.5 pb-1.5 pt-1">
-                <div className="mx-auto h-full min-h-[300px] w-full overflow-hidden rounded-2xl border border-slate-100">
+              <div className="min-h-0 flex-1 px-4 pb-2 pt-2 sm:px-5">
+                <div className="mx-auto h-full min-h-[clamp(260px,45vh,520px)] w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100/70">
                   <SeatMapViewport
                     seats={seats}
                     visibleSeats={visibleSeats}
@@ -2646,9 +2651,9 @@ export default function AdminOrdersPage() {
                     loadingLabel="Loading seats…"
                     emptyText="No seats for this performance."
                     resetKey={assignForm.performanceId || 'admin-orders-seat-map'}
-                    containerClassName="h-full min-h-[300px]"
+                    containerClassName="h-full min-h-[clamp(260px,45vh,520px)]"
                     verticalAlign="center"
-                    fitViewportPadding={145}
+                    fitViewportPadding={112}
                     controlsClassName="absolute bottom-4 right-4 z-30 flex flex-col gap-2"
                     renderSeat={({ seat, x, y }) => {
                       const isSelected = selectedSeatIdSet.has(seat.id);
@@ -2691,7 +2696,7 @@ export default function AdminOrdersPage() {
               </div>
 
               {/* Seat picker footer */}
-              <div className="flex-shrink-0 border-t border-slate-100 px-3.5 py-2">
+              <div className="flex-shrink-0 border-t border-slate-200 bg-slate-50/70 px-4 py-2.5 sm:px-5">
                 <div className="mb-3 min-h-[32px]">
                   {selectedMappedSeats.length === 0 && selectedUnknownSeatIds.length === 0 ? (
                     <p className="text-sm text-slate-400">No seats selected yet.</p>
