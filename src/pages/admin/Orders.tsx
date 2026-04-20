@@ -2117,7 +2117,7 @@ export default function AdminOrdersPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className={`${CHECKOUT_OVERLAY_BASE} z-[1310] overflow-y-auto p-3 sm:p-5`}
+            className={`${CHECKOUT_OVERLAY_BASE} z-[2360] overflow-y-auto p-3 sm:p-5`}
           >
             <motion.div
               initial={{ y: 14, opacity: 0, scale: 0.98 }}
@@ -2198,7 +2198,7 @@ export default function AdminOrdersPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className={`${CHECKOUT_OVERLAY_BASE} z-[1320] overflow-y-auto p-3 sm:p-5`}
+            className={`${CHECKOUT_OVERLAY_BASE} z-[2370] overflow-y-auto p-3 sm:p-5`}
           >
             <motion.div
               initial={{ y: 12, opacity: 0, scale: 0.98 }}
@@ -2295,7 +2295,7 @@ export default function AdminOrdersPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className={`${CHECKOUT_OVERLAY_BASE} z-[1330] overflow-y-auto p-3 sm:p-5`}
+            className={`${CHECKOUT_OVERLAY_BASE} z-[2380] overflow-y-auto p-3 sm:p-5`}
           >
             <motion.div
               initial={{ y: 12, opacity: 0, scale: 0.98 }}
