@@ -1814,6 +1814,11 @@ export default function Booking() {
                   <p className="text-sm md:text-base text-stone-600 mt-2">
                     Assign a ticket category for each selected {seatSelectionEnabled ? 'seat' : 'ticket'}.
                   </p>
+                  {ticketOptions.some((option) => option.id === TEACHER_TICKET_OPTION_ID) && (
+                    <p className="mt-2 text-xs text-stone-500">
+                      RTMSD staff: choose <span className="font-semibold text-stone-700">RTMSD STAFF</span> in the dropdown.
+                    </p>
+                  )}
                   {hasMixedCompSelection && (
                     <p className="text-xs text-red-600 mt-2">
                       Teacher and Student in Show complimentary seats cannot be checked out together. Pick one comp type per order.

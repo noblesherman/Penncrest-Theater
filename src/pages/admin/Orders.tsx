@@ -1999,17 +1999,17 @@ export default function AdminOrdersPage() {
           <h1 className="text-[1.75rem] font-black tracking-tight text-slate-900" style={{ fontFamily: "var(--font-sans)" }}>Orders</h1>
           <p className="mt-1 text-sm text-slate-400">Search, manage, and process ticket orders.</p>
         </div>
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
           <Link
             to="/admin/devices"
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900 sm:w-auto sm:whitespace-nowrap"
           >
             <ExternalLink className="h-4 w-4" /> Device Control
           </Link>
           <motion.button
             whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
             onClick={openCashierFlow}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900 sm:w-auto sm:whitespace-nowrap"
           >
             <Plus className="h-4 w-4" /> Legacy Cashier Wizard
           </motion.button>
@@ -2390,14 +2390,14 @@ export default function AdminOrdersPage() {
         {showWizard && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2 backdrop-blur-sm sm:p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-2 backdrop-blur-sm sm:p-4"
           >
             <motion.div
               initial={{ y: 24, opacity: 0, scale: 0.97 }}
               animate={{ y: 0,  opacity: 1, scale: 1    }}
               exit={{    y: 24, opacity: 0, scale: 0.97 }}
               transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-              className="flex w-full max-h-[96dvh] flex-col overflow-hidden bg-white shadow-2xl sm:max-w-xl sm:rounded-3xl"
+              className="flex w-full max-h-[calc(100svh-1rem)] flex-col overflow-hidden bg-white shadow-2xl sm:max-h-[calc(100svh-2rem)] sm:max-w-xl sm:rounded-3xl"
             >
               {/* Wizard header */}
               <div className="flex-shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
@@ -2546,14 +2546,14 @@ export default function AdminOrdersPage() {
         {showWizard && seatPickerOpen && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4"
+            className="fixed inset-0 z-[60] flex items-end justify-center overflow-y-auto bg-black/50 backdrop-blur-sm sm:items-center sm:p-4"
           >
             <motion.div
               initial={{ scale: 0.96, opacity: 0, y: 16 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.96, opacity: 0, y: 16 }}
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="flex h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:h-auto sm:max-h-[90dvh] sm:max-w-5xl sm:rounded-3xl"
+              className="flex h-[calc(100svh-1rem)] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:h-auto sm:max-h-[calc(100svh-2rem)] sm:max-w-5xl sm:rounded-3xl"
             >
               {/* Seat picker header */}
               <div className="flex-shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
