@@ -2397,10 +2397,10 @@ export default function AdminOrdersPage() {
               animate={{ y: 0,  opacity: 1, scale: 1    }}
               exit={{    y: 24, opacity: 0, scale: 0.97 }}
               transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-              className="flex w-full max-h-[calc(100svh-1rem)] flex-col overflow-hidden bg-white shadow-2xl sm:max-h-[calc(100svh-2rem)] sm:max-w-xl sm:rounded-3xl"
+              className="flex w-full max-w-[560px] max-h-[calc(100svh-3rem)] flex-col overflow-hidden bg-white shadow-2xl sm:max-h-[calc(100svh-4rem)] sm:max-w-[520px] sm:rounded-3xl"
             >
               {/* Wizard header */}
-              <div className="flex-shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
+              <div className="flex-shrink-0 border-b border-slate-100 px-4 pb-3 pt-4">
                 <div className="mb-4 flex items-center justify-between">
                   <p className="font-bold text-slate-900" style={{ fontFamily: "var(--font-sans)" }}>Cashier Checkout</p>
                   <button
@@ -2444,7 +2444,7 @@ export default function AdminOrdersPage() {
               </div>
 
               {/* Wizard body */}
-              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.div
                     key={step}
@@ -2471,7 +2471,7 @@ export default function AdminOrdersPage() {
               </div>
 
               {/* Wizard footer */}
-              <div className="flex-shrink-0 border-t border-slate-100 bg-white px-5 py-4">
+              <div className="flex-shrink-0 border-t border-slate-100 bg-white px-4 py-3">
                 <div className="flex items-center justify-between gap-3">
                   <button
                     type="button"
@@ -2553,10 +2553,10 @@ export default function AdminOrdersPage() {
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.96, opacity: 0, y: 16 }}
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="flex h-[calc(100svh-3.5rem)] w-full max-w-[1180px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:h-[calc(100svh-4rem)] sm:rounded-3xl"
+              className="flex h-[calc(100svh-5rem)] w-full max-w-[980px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:h-[calc(100svh-6rem)] sm:rounded-3xl"
             >
               {/* Seat picker header */}
-              <div className="flex-shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
+              <div className="flex-shrink-0 border-b border-slate-100 px-4 pb-3 pt-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-bold text-slate-900" style={{ fontFamily: "var(--font-sans)" }}>Select seats</p>
@@ -2594,7 +2594,7 @@ export default function AdminOrdersPage() {
               </div>
 
               {/* Section tabs */}
-              <div className="flex-shrink-0 border-b border-slate-100 px-5 py-3">
+              <div className="flex-shrink-0 border-b border-slate-100 px-4 py-2.5">
                 <div className="flex flex-wrap gap-1.5">
                   {['All', ...sections].map(section => (
                     <button
@@ -2629,7 +2629,7 @@ export default function AdminOrdersPage() {
               </div>
 
               {seatPickerError && (
-                <div className="px-5 pt-3">
+                <div className="px-4 pt-3">
                   <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
                     <AlertCircle className="h-4 w-4 flex-shrink-0" /> {seatPickerError}
                   </div>
@@ -2637,8 +2637,8 @@ export default function AdminOrdersPage() {
               )}
 
               {/* Seat map */}
-              <div className="min-h-0 flex-1 px-4 pb-2 pt-2 sm:px-5">
-                <div className="mx-auto h-full max-h-[clamp(280px,50svh,560px)] w-full overflow-hidden rounded-2xl border border-slate-100">
+              <div className="min-h-0 flex-1 px-4 pb-2 pt-1">
+                <div className="mx-auto h-full max-h-[clamp(220px,42svh,460px)] w-full overflow-hidden rounded-2xl border border-slate-100">
                   <SeatMapViewport
                     seats={seats}
                     visibleSeats={visibleSeats}
@@ -2646,9 +2646,9 @@ export default function AdminOrdersPage() {
                     loadingLabel="Loading seats…"
                     emptyText="No seats for this performance."
                     resetKey={assignForm.performanceId || 'admin-orders-seat-map'}
-                    containerClassName="h-full min-h-[260px]"
+                    containerClassName="h-full min-h-[220px]"
                     verticalAlign="center"
-                    fitViewportPadding={180}
+                    fitViewportPadding={220}
                     controlsClassName="absolute bottom-4 right-4 z-30 flex flex-col gap-2"
                     renderSeat={({ seat, x, y }) => {
                       const isSelected = selectedSeatIdSet.has(seat.id);
@@ -2691,7 +2691,7 @@ export default function AdminOrdersPage() {
               </div>
 
               {/* Seat picker footer */}
-              <div className="flex-shrink-0 border-t border-slate-100 px-5 py-3">
+              <div className="flex-shrink-0 border-t border-slate-100 px-4 py-2.5">
                 <div className="mb-3 min-h-[32px]">
                   {selectedMappedSeats.length === 0 && selectedUnknownSeatIds.length === 0 ? (
                     <p className="text-sm text-slate-400">No seats selected yet.</p>
