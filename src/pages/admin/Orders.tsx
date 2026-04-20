@@ -2052,161 +2052,165 @@ export default function AdminOrdersPage() {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {showCashierPerformancePicker && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className={`${CHECKOUT_OVERLAY_BASE} z-[1300] items-end justify-center overflow-y-auto p-3 sm:items-center sm:p-5`}
-          >
+      {canUsePortal ? createPortal(
+        <AnimatePresence>
+          {showCashierPerformancePicker && (
             <motion.div
-              initial={{ y: 18, opacity: 0, scale: 0.98 }}
-              animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: 18, opacity: 0, scale: 0.98 }}
-              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className={`${CHECKOUT_PANEL_BASE} my-auto max-h-[calc(100dvh-2rem)] max-w-lg overflow-hidden rounded-3xl`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className={`${CHECKOUT_OVERLAY_BASE} z-[1300] items-end justify-center overflow-y-auto p-3 sm:items-center sm:p-5`}
             >
-              <div className="border-b border-slate-100 px-5 pb-4 pt-5">
-                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Cashier Setup</p>
-                <h2 className="mt-1 text-xl font-black text-slate-900">Choose performance</h2>
-                <p className="mt-1 text-sm text-slate-500">This selection will be remembered as your cashier default.</p>
-              </div>
-
-              <div className="overflow-y-auto px-5 py-5">
-                <FieldLabel>Performance</FieldLabel>
-                <select
-                  value={cashierPerformanceDraftId}
-                  onChange={(e) => setCashierPerformanceDraftId(e.target.value)}
-                  className={baseSelect}
-                >
-                  {performances.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.title}
-                      {p.isFundraiser ? ' [Fundraiser]' : ''}
-                      {' — '}
-                      {new Date(p.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-4">
-                <button
-                  type="button"
-                  onClick={() => setShowCashierPerformancePicker(false)}
-                  className="inline-flex items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmCashierPerformanceSelection}
-                  className="inline-flex items-center justify-center gap-2 rounded-full bg-rose-600 px-5 py-2 text-sm font-bold text-white transition hover:bg-rose-700"
-                >
-                  Continue
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-
-        {saleRecap && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className={`${CHECKOUT_OVERLAY_BASE} z-[2360] overflow-y-auto p-3 sm:p-5`}
-          >
-            <motion.div
-              initial={{ y: 14, opacity: 0, scale: 0.98 }}
-              animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: 14, opacity: 0, scale: 0.98 }}
-              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-              className={`${CHECKOUT_PANEL_BASE} my-auto max-h-[calc(100dvh-2rem)] max-w-2xl overflow-hidden rounded-3xl`}
-            >
-              <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-6 py-5">
-                <div>
-                  <p className="text-sm font-bold uppercase tracking-widest text-slate-400">Seat write-down</p>
-                  <h2 className="mt-1 text-2xl font-black text-slate-900">
-                    {saleRecap.seats.length} ticket{saleRecap.seats.length === 1 ? '' : 's'} sold
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {saleRecap.paymentMethod === 'CASH' ? 'Cash' : 'Card'} • ${(saleRecap.expectedAmountCents / 100).toFixed(2)}
-                  </p>
+              <motion.div
+                initial={{ y: 18, opacity: 0, scale: 0.98 }}
+                animate={{ y: 0, opacity: 1, scale: 1 }}
+                exit={{ y: 18, opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                className={`${CHECKOUT_PANEL_BASE} my-auto max-h-[calc(100dvh-2rem)] max-w-lg overflow-hidden rounded-3xl`}
+              >
+                <div className="border-b border-slate-100 px-5 pb-4 pt-5">
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Cashier Setup</p>
+                  <h2 className="mt-1 text-xl font-black text-slate-900">Choose performance</h2>
+                  <p className="mt-1 text-sm text-slate-500">This selection will be remembered as your cashier default.</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setSaleRecap(null)}
-                  className="rounded-full p-1.5 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
 
-              <div className="max-h-[48dvh] overflow-y-auto px-6 py-5">
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {saleRecap.seats.map((seat) => (
-                    <div key={seat.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
-                      <p className="text-sm font-bold text-slate-900">
-                        {seat.row === 'GA'
-                          ? `${seat.sectionName} Ticket ${seat.number}`
-                          : `${seat.sectionName} · Row ${seat.row} · Seat ${seat.number}`}
-                      </p>
-                      <p className="text-xs text-slate-500">{seat.ticketType}</p>
-                    </div>
-                  ))}
+                <div className="overflow-y-auto px-5 py-5">
+                  <FieldLabel>Performance</FieldLabel>
+                  <select
+                    value={cashierPerformanceDraftId}
+                    onChange={(e) => setCashierPerformanceDraftId(e.target.value)}
+                    className={baseSelect}
+                  >
+                    {performances.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.title}
+                        {p.isFundraiser ? ' [Fundraiser]' : ''}
+                        {' — '}
+                        {new Date(p.startsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-6 py-4">
-                <p className="text-sm font-semibold text-slate-500">
-                  Auto-close in <span className="text-slate-900">{saleRecapSecondsLeft}s</span>
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-4">
                   <button
                     type="button"
-                    onClick={() =>
-                      setSaleRecap((prev) =>
-                        prev
-                          ? { ...prev, expiresAtMs: Math.max(prev.expiresAtMs, Date.now()) + 10000 }
-                          : prev
-                      )
-                    }
-                    className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100"
+                    onClick={() => setShowCashierPerformancePicker(false)}
+                    className="inline-flex items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
                   >
-                    Give me 10 seconds longer
+                    Cancel
                   </button>
+                  <button
+                    type="button"
+                    onClick={confirmCashierPerformanceSelection}
+                    className="inline-flex items-center justify-center gap-2 rounded-full bg-rose-600 px-5 py-2 text-sm font-bold text-white transition hover:bg-rose-700"
+                  >
+                    Continue
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+
+          {saleRecap && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className={`${CHECKOUT_OVERLAY_BASE} z-[2360] overflow-y-auto p-3 sm:p-5`}
+            >
+              <motion.div
+                initial={{ y: 14, opacity: 0, scale: 0.98 }}
+                animate={{ y: 0, opacity: 1, scale: 1 }}
+                exit={{ y: 14, opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                className={`${CHECKOUT_PANEL_BASE} my-auto max-h-[calc(100dvh-2rem)] max-w-2xl overflow-hidden rounded-3xl`}
+              >
+                <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-6 py-5">
+                  <div>
+                    <p className="text-sm font-bold uppercase tracking-widest text-slate-400">Seat write-down</p>
+                    <h2 className="mt-1 text-2xl font-black text-slate-900">
+                      {saleRecap.seats.length} ticket{saleRecap.seats.length === 1 ? '' : 's'} sold
+                    </h2>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {saleRecap.paymentMethod === 'CASH' ? 'Cash' : 'Card'} • ${(saleRecap.expectedAmountCents / 100).toFixed(2)}
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => setSaleRecap(null)}
-                    className="inline-flex items-center justify-center rounded-full bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
+                    className="rounded-full p-1.5 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600"
                   >
-                    Close
+                    <X className="h-5 w-5" />
                   </button>
                 </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
-      <AnimatePresence>
-        {manualCheckout && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className={`${CHECKOUT_OVERLAY_BASE} z-[2370] overflow-y-auto p-3 sm:p-5`}
-          >
+                <div className="max-h-[48dvh] overflow-y-auto px-6 py-5">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {saleRecap.seats.map((seat) => (
+                      <div key={seat.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
+                        <p className="text-sm font-bold text-slate-900">
+                          {seat.row === 'GA'
+                            ? `${seat.sectionName} Ticket ${seat.number}`
+                            : `${seat.sectionName} · Row ${seat.row} · Seat ${seat.number}`}
+                        </p>
+                        <p className="text-xs text-slate-500">{seat.ticketType}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-6 py-4">
+                  <p className="text-sm font-semibold text-slate-500">
+                    Auto-close in <span className="text-slate-900">{saleRecapSecondsLeft}s</span>
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSaleRecap((prev) =>
+                          prev
+                            ? { ...prev, expiresAtMs: Math.max(prev.expiresAtMs, Date.now()) + 10000 }
+                            : prev
+                        )
+                      }
+                      className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100"
+                    >
+                      Give me 10 seconds longer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSaleRecap(null)}
+                      className="inline-flex items-center justify-center rounded-full bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      ) : null}
+
+      {canUsePortal ? createPortal(
+        <AnimatePresence>
+          {manualCheckout && (
             <motion.div
-              initial={{ y: 12, opacity: 0, scale: 0.98 }}
-              animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: 12, opacity: 0, scale: 0.98 }}
-              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-              className={`${CHECKOUT_PANEL_BASE} my-auto flex max-h-[calc(100dvh-2rem)] max-w-xl flex-col overflow-hidden rounded-3xl`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className={`${CHECKOUT_OVERLAY_BASE} z-[2370] overflow-y-auto p-3 sm:p-5`}
             >
+              <motion.div
+                initial={{ y: 12, opacity: 0, scale: 0.98 }}
+                animate={{ y: 0, opacity: 1, scale: 1 }}
+                exit={{ y: 12, opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                className={`${CHECKOUT_PANEL_BASE} my-auto flex max-h-[calc(100dvh-2rem)] max-w-xl flex-col overflow-hidden rounded-3xl`}
+              >
               <div className="border-b border-slate-100 px-6 py-5">
                 <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Manual checkout</p>
                 <h2 className="mt-1 text-2xl font-black text-slate-900">Enter card details</h2>
@@ -2284,26 +2288,29 @@ export default function AdminOrdersPage() {
                   Cancel checkout
                 </button>
               </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body
+      ) : null}
 
-      <AnimatePresence>
-        {terminalDispatch && !manualCheckout && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className={`${CHECKOUT_OVERLAY_BASE} z-[2380] overflow-y-auto p-3 sm:p-5`}
-          >
+      {canUsePortal ? createPortal(
+        <AnimatePresence>
+          {terminalDispatch && !manualCheckout && (
             <motion.div
-              initial={{ y: 12, opacity: 0, scale: 0.98 }}
-              animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: 12, opacity: 0, scale: 0.98 }}
-              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-              className={`${CHECKOUT_PANEL_BASE} my-auto flex max-h-[calc(100dvh-2rem)] max-w-lg flex-col overflow-hidden rounded-3xl`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className={`${CHECKOUT_OVERLAY_BASE} z-[2380] overflow-y-auto p-3 sm:p-5`}
             >
+              <motion.div
+                initial={{ y: 12, opacity: 0, scale: 0.98 }}
+                animate={{ y: 0, opacity: 1, scale: 1 }}
+                exit={{ y: 12, opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                className={`${CHECKOUT_PANEL_BASE} my-auto flex max-h-[calc(100dvh-2rem)] max-w-lg flex-col overflow-hidden rounded-3xl`}
+              >
               <div className="border-b border-slate-100 px-6 py-5">
                 <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Terminal dispatch</p>
                 <h2 className="mt-1 text-2xl font-black text-slate-900">
@@ -2388,10 +2395,12 @@ export default function AdminOrdersPage() {
                   </>
                 )}
               </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body
+      ) : null}
 
       {/* ── Checkout Wizard ── */}
       {canUsePortal ? createPortal(
