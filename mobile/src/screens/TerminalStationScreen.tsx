@@ -33,7 +33,11 @@ type PaymentPath = 'tap' | 'unknown';
 const DEVICE_ID_KEY = 'theater.mobile.terminal.deviceId';
 const TERMINAL_NAME_KEY = 'theater.mobile.terminal.name';
 const DEFAULT_TERMINAL_NAME = 'Box Office Terminal';
-const AUTO_START_RETRY_DELAY_MS = 5_000;
+const AUTO_START_FAST_POLL_MS = 750;
+const AUTO_START_WARM_POLL_MS = 1_500;
+const AUTO_START_IDLE_POLL_MS = 3_000;
+const AUTO_START_DEEP_IDLE_POLL_MS = 5_000;
+const AUTO_START_RETRY_DELAY_MS = 4_000;
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -79,7 +83,6 @@ export function TerminalStationScreen(_props: Props) {
   const [lastFailureReason, setLastFailureReason] = useState<string | null>(null);
   const [lastFailurePath, setLastFailurePath] = useState<PaymentPath>('unknown');
   const [operatorBusy, setOperatorBusy] = useState(false);
-  const [clockNowMs, setClockNowMs] = useState(() => Date.now());
 
   const terminalInitPromiseRef = useRef<Promise<void> | null>(null);
   const terminalInitializedRef = useRef(false);
@@ -88,6 +91,7 @@ export function TerminalStationScreen(_props: Props) {
   const processingEntryIdRef = useRef<string | null>(null);
   const lineSessionRef = useRef<PaymentLineSession | null>(null);
   const autoStartBlockedUntilRef = useRef(0);
+  const autoStartMissStreakRef = useRef(0);
 
   useEffect(() => {
     lineSessionRef.current = lineSession;
@@ -118,23 +122,8 @@ export function TerminalStationScreen(_props: Props) {
     return lineSnapshot.entries.find((entry) => entry.entryId === lineSnapshot.nextUpEntryId) || null;
   }, [lineSnapshot]);
 
-  const activeTimeoutAtIso = lineSession?.activeTimeoutAt || activeLineEntry?.activeTimeoutAt || null;
-  const activeSecondsRemaining = useMemo(() => {
-    if (!activeTimeoutAtIso) return null;
-    const remainingMs = new Date(activeTimeoutAtIso).getTime() - clockNowMs;
-    return Math.max(0, Math.ceil(remainingMs / 1000));
-  }, [activeTimeoutAtIso, clockNowMs]);
-
   const activeSellerLabel = useMemo(() => formatSellerLabel(activeLineEntry), [activeLineEntry]);
   const nextSellerLabel = useMemo(() => formatSellerLabel(nextUpEntry), [nextUpEntry]);
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      setClockNowMs(Date.now());
-    }, 1_000);
-
-    return () => clearInterval(id);
-  }, []);
 
   const reportTelemetry = useCallback(
     async (params: {
@@ -570,20 +559,23 @@ export function TerminalStationScreen(_props: Props) {
 
   const startNextPayment = useCallback(async (mode: 'auto' | 'manual' = 'manual') => {
     if (!token || !deviceId) {
-      return;
+      return { sessionStarted: false, waitingCount: 0, hadError: false };
     }
 
     if (mode === 'auto' && Date.now() < autoStartBlockedUntilRef.current) {
-      return;
+      return { sessionStarted: false, waitingCount: 0, hadError: false };
     }
 
-    setStartingPayment(true);
-    setError(null);
-    setHeartbeatError(null);
+    if (mode === 'manual') {
+      setStartingPayment(true);
+      setError(null);
+      setHeartbeatError(null);
+    }
 
     try {
       const response = await startMobilePaymentLine(token, { deviceId });
       autoStartBlockedUntilRef.current = 0;
+      setHeartbeatError(null);
       setLineSnapshot(response.snapshot);
       setLineSession(response.session);
 
@@ -591,18 +583,29 @@ export function TerminalStationScreen(_props: Props) {
         setStatusMessage(
           `Now serving ${formatSellerLabel(response.snapshot.entries.find((entry) => entry.entryId === response.session?.activeEntryId) || null)}.`
         );
-      } else {
+      } else if (mode === 'manual') {
         setStatusMessage('No waiting payments in line.');
       }
+
+      return {
+        sessionStarted: Boolean(response.session),
+        waitingCount: response.snapshot.waitingCount,
+        hadError: false
+      };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'We could not start payment line';
       if (mode === 'auto') {
         autoStartBlockedUntilRef.current = Date.now() + AUTO_START_RETRY_DELAY_MS;
+        setHeartbeatError(message);
+        return { sessionStarted: false, waitingCount: 0, hadError: true };
       }
       setError(message);
       setStatusMessage(message);
+      return { sessionStarted: false, waitingCount: 0, hadError: true };
     } finally {
-      setStartingPayment(false);
+      if (mode === 'manual') {
+        setStartingPayment(false);
+      }
     }
   }, [deviceId, token]);
 
@@ -717,34 +720,6 @@ export function TerminalStationScreen(_props: Props) {
   );
 
   useEffect(() => {
-    if (!token || !deviceId || lineSession) {
-      return;
-    }
-
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const snapshot = await fetchMobilePaymentLineSnapshot(token, deviceId);
-        if (cancelled) {
-          return;
-        }
-        setLineSnapshot(snapshot);
-      } catch {
-      }
-    };
-
-    void poll();
-    const timer = setInterval(() => {
-      void poll();
-    }, 4_000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [deviceId, lineSession, token]);
-
-  useEffect(() => {
     if (!token || !deviceId || !lineSession?.sessionId) {
       return;
     }
@@ -795,27 +770,62 @@ export function TerminalStationScreen(_props: Props) {
   }, [deviceId, lineSession?.heartbeatIntervalSeconds, lineSession?.sessionId, token]);
 
   useEffect(() => {
-    if (!token || !deviceId || lineSession || startingPayment || processing || registering || operatorBusy) {
+    if (!token || !deviceId || lineSession || processing || registering || operatorBusy) {
       return;
     }
 
-    const waitingCount = lineSnapshot?.waitingCount ?? 0;
-    const hasActiveEntry = activeLineEntry?.uiState === 'ACTIVE_PAYMENT';
-    if (!hasActiveEntry && waitingCount <= 0) {
-      return;
-    }
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
-    void startNextPayment('auto');
+    const schedule = (delayMs: number) => {
+      timer = setTimeout(() => {
+        void tick();
+      }, delayMs);
+    };
+
+    const tick = async () => {
+      if (cancelled) return;
+
+      const result = await startNextPayment('auto');
+      if (cancelled) return;
+
+      let nextDelay = AUTO_START_IDLE_POLL_MS;
+
+      if (result.hadError) {
+        autoStartMissStreakRef.current = Math.min(100, autoStartMissStreakRef.current + 1);
+        nextDelay = AUTO_START_DEEP_IDLE_POLL_MS;
+      } else if (result.sessionStarted || result.waitingCount > 0) {
+        autoStartMissStreakRef.current = 0;
+        nextDelay = AUTO_START_FAST_POLL_MS;
+      } else {
+        autoStartMissStreakRef.current += 1;
+        if (autoStartMissStreakRef.current <= 2) {
+          nextDelay = AUTO_START_WARM_POLL_MS;
+        } else if (autoStartMissStreakRef.current <= 8) {
+          nextDelay = AUTO_START_IDLE_POLL_MS;
+        } else {
+          nextDelay = AUTO_START_DEEP_IDLE_POLL_MS;
+        }
+      }
+
+      schedule(nextDelay);
+    };
+
+    schedule(0);
+
+    return () => {
+      cancelled = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
   }, [
-    activeLineEntry?.uiState,
     deviceId,
     lineSession,
-    lineSnapshot?.waitingCount,
     operatorBusy,
     processing,
     registering,
     startNextPayment,
-    startingPayment,
     token
   ]);
 
@@ -892,10 +902,6 @@ export function TerminalStationScreen(_props: Props) {
             <View style={styles.metricItem}>
               <Text style={styles.metricLabel}>Amount</Text>
               <Text style={styles.metricValue}>${((activeLineEntry?.expectedAmountCents || 0) / 100).toFixed(2)}</Text>
-            </View>
-            <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>Remaining</Text>
-              <Text style={styles.metricValue}>{activeSecondsRemaining == null ? '—' : `${activeSecondsRemaining}s`}</Text>
             </View>
             <View style={styles.metricItem}>
               <Text style={styles.metricLabel}>Waiting</Text>

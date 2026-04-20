@@ -133,7 +133,7 @@ export function StartupPreflightScreen({ onReady }: StartupPreflightScreenProps)
             status: 'ok',
             detail: preflight.stripe.publishableKeyConfigured
               ? 'Required backend routes are available and Stripe keys are configured.'
-              : 'Required backend routes are available (publishable key missing only affects manual card entry).'
+              : 'Required backend routes are available. Publishable key is optional for terminal-station mode.'
           });
         }
       } catch (err) {

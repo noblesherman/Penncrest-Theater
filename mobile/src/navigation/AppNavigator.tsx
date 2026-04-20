@@ -6,10 +6,8 @@ import { HomeScreen } from '../screens/HomeScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { LegalScreen } from '../screens/LegalScreen';
 import { ScanScreen } from '../screens/ScanScreen';
-import { SellTicketsScreen } from '../screens/SellTicketsScreen';
 import { StartupPreflightScreen } from '../screens/StartupPreflightScreen';
 import { SuccessScreen } from '../screens/SuccessScreen';
-import { TapToPayScreen } from '../screens/TapToPayScreen';
 import { TerminalStationScreen } from '../screens/TerminalStationScreen';
 import { MaintenanceScreen } from '../screens/MaintenanceScreen';
 import type { RootStackParamList } from './types';
@@ -45,8 +43,6 @@ export function AppNavigator() {
           <Stack.Screen name="Legal" component={LegalScreen} options={{ title: 'Legal & Support' }} />
           <Stack.Screen name="TerminalStation" component={TerminalStationScreen} options={{ headerShown: false }} />
           <Stack.Screen name="ScanTickets" component={ScanScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="SellTickets" component={SellTicketsScreen} options={{ title: 'Sell Tickets' }} />
-          <Stack.Screen name="TapToPay" component={TapToPayScreen} options={{ title: 'Tap to Pay' }} />
           <Stack.Screen name="Success" component={SuccessScreen} options={{ title: 'Success', headerBackVisible: false }} />
         </Stack.Navigator>
       )}

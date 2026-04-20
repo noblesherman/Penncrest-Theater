@@ -1,13 +1,10 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { CreatePaymentIntentResponse } from '../api/mobile';
 import { useAuth } from '../auth/AuthContext';
 import { AdminEscapeModal } from '../components/AdminEscapeModal';
 import type { RootStackParamList } from '../navigation/types';
-import { clearPendingSale, loadPendingSale } from '../payments/paymentRecovery';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -43,7 +40,6 @@ function ActionButton({ icon, label, sublabel, onPress, variant = 'primary' }: A
 
 export function HomeScreen({ navigation }: Props) {
   const { logout } = useAuth();
-  const [pendingSale, setPendingSale] = useState<CreatePaymentIntentResponse | null>(null);
   const [showAdminModal, setShowAdminModal] = useState(false);
 
   const onLogout = async () => {
@@ -53,20 +49,6 @@ export function HomeScreen({ navigation }: Props) {
       Alert.alert('Logout failed', 'Please close and reopen the app.');
     }
   };
-
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      void loadPendingSale()
-        .then((sale) => {
-          if (!cancelled) setPendingSale(sale);
-        })
-        .catch(() => {
-          if (!cancelled) setPendingSale(null);
-        });
-      return () => { cancelled = true; };
-    }, [])
-  );
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -89,24 +71,22 @@ export function HomeScreen({ navigation }: Props) {
             onPress={() => navigation.navigate('ScanTickets')}
           />
           <ActionButton
-            icon="🎭"
-            label="Sell Tickets"
-            sublabel="Process walk-up sales"
-            onPress={() => navigation.navigate('SellTickets')}
-          />
-          {pendingSale ? (
-            <ActionButton
-              icon="⏯"
-              label="Resume Payment"
-              sublabel={`Intent: ${pendingSale.paymentIntentId}`}
-              onPress={() => navigation.navigate('TapToPay', { sale: pendingSale })}
-            />
-          ) : null}
-          <ActionButton
             icon="📲"
             label="Terminal Station"
             sublabel="Wait for web cashier dispatches"
             onPress={() => navigation.navigate('TerminalStation')}
+          />
+          <ActionButton
+            icon="🚫"
+            label="App Sales Disabled"
+            sublabel="Use web cashier for manual checkout"
+            onPress={() =>
+              Alert.alert(
+                'Use Web Cashier',
+                'Manual on-device selling is disabled on this app. Start the sale from the web cashier and send it to Terminal Station.'
+              )
+            }
+            variant="secondary"
           />
         </View>
 
@@ -118,19 +98,6 @@ export function HomeScreen({ navigation }: Props) {
             onPress={() => navigation.navigate('Legal')}
             variant="secondary"
           />
-          {pendingSale ? (
-            <ActionButton
-              icon="✕"
-              label="Clear Pending Payment"
-              sublabel="Remove stale in-progress sale"
-              onPress={() => {
-                void clearPendingSale()
-                  .then(() => setPendingSale(null))
-                  .catch(() => Alert.alert('We could not clear payment', 'Please try again.'));
-              }}
-              variant="secondary"
-            />
-          ) : null}
           <ActionButton
             icon="↩"
             label="Log Out"

@@ -167,12 +167,6 @@ export type TerminalIncomingDispatch = {
   }>;
 };
 
-export type TerminalManualPaymentIntent = {
-  paymentIntentId: string;
-  clientSecret: string;
-  publishableKey: string;
-};
-
 export type MobileStartupPreflight = {
   status: 'ok' | 'degraded';
   apiReachable: boolean;
@@ -450,20 +444,6 @@ export async function completeTerminalDispatch(
       method: 'POST',
       token,
       body: { deviceId: payload.deviceId, mockApproved: payload.mockApproved, paymentIntentId: payload.paymentIntentId }
-    }
-  );
-}
-
-export async function createTerminalDispatchManualPaymentIntent(
-  token: string,
-  payload: { dispatchId: string; deviceId: string }
-): Promise<TerminalManualPaymentIntent> {
-  return apiRequest<TerminalManualPaymentIntent>(
-    `/api/mobile/terminal/dispatch/${encodeURIComponent(payload.dispatchId)}/manual-payment-intent`,
-    {
-      method: 'POST',
-      token,
-      body: { deviceId: payload.deviceId }
     }
   );
 }
