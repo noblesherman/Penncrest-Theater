@@ -1,4 +1,5 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
@@ -1994,6 +1995,8 @@ export default function AdminOrdersPage() {
     </div>,
   ];
 
+  const canUsePortal = typeof document !== 'undefined';
+
   // ── render ─────────────────────────────────────────────────────────────────
   return (
     <div className="max-w-3xl space-y-6">
@@ -2391,19 +2394,20 @@ export default function AdminOrdersPage() {
       </AnimatePresence>
 
       {/* ── Checkout Wizard ── */}
-      <AnimatePresence>
-        {showWizard && !seatPickerOpen && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className={`${CHECKOUT_OVERLAY_BASE} z-[1340] overflow-y-auto p-3 sm:p-5`}
-          >
+      {canUsePortal ? createPortal(
+        <AnimatePresence>
+          {showWizard && !seatPickerOpen && (
             <motion.div
-              initial={{ y: 24, opacity: 0, scale: 0.97 }}
-              animate={{ y: 0,  opacity: 1, scale: 1    }}
-              exit={{    y: 24, opacity: 0, scale: 0.97 }}
-              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-              className={`${CHECKOUT_PANEL_BASE} my-auto flex max-h-[calc(100dvh-2rem)] max-w-[540px] flex-col overflow-hidden rounded-3xl`}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className={`${CHECKOUT_OVERLAY_BASE} z-[2340] overflow-y-auto p-3 sm:p-5`}
             >
+              <motion.div
+                initial={{ y: 24, opacity: 0, scale: 0.97 }}
+                animate={{ y: 0,  opacity: 1, scale: 1    }}
+                exit={{    y: 24, opacity: 0, scale: 0.97 }}
+                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                className={`${CHECKOUT_PANEL_BASE} my-auto flex max-h-[calc(100dvh-2rem)] max-w-[540px] flex-col overflow-hidden rounded-3xl`}
+              >
               {/* Wizard header */}
               <div className="flex-shrink-0 border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white px-4 pb-3 pt-4">
                 <div className="mb-4 flex items-center justify-between">
@@ -2541,25 +2545,28 @@ export default function AdminOrdersPage() {
                   )}
                 </div>
               </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body
+      ) : null}
 
       {/* ── Seat Picker Modal ── */}
-      <AnimatePresence>
-        {showWizard && seatPickerOpen && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className={`${CHECKOUT_OVERLAY_BASE} z-[1350] overflow-y-auto p-3 sm:p-5`}
-          >
+      {canUsePortal ? createPortal(
+        <AnimatePresence>
+          {showWizard && seatPickerOpen && (
             <motion.div
-              initial={{ scale: 0.96, opacity: 0, y: 16 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.96, opacity: 0, y: 16 }}
-              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className={`${CHECKOUT_PANEL_BASE} my-auto flex max-h-[calc(100dvh-2.5rem)] max-w-[1080px] flex-col overflow-hidden rounded-3xl`}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className={`${CHECKOUT_OVERLAY_BASE} z-[2350] items-start overflow-hidden p-0`}
             >
+              <motion.div
+                initial={{ scale: 0.96, opacity: 0, y: 16 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.96, opacity: 0, y: 16 }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                className={`${CHECKOUT_PANEL_BASE} flex h-[100dvh] max-h-[100dvh] max-w-[1120px] flex-col overflow-hidden rounded-none`}
+              >
               {/* Seat picker header */}
               <div className="flex-shrink-0 border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white px-4 pb-3 pt-4 sm:px-5">
                 <div className="flex items-start justify-between gap-3">
@@ -2643,7 +2650,7 @@ export default function AdminOrdersPage() {
 
               {/* Seat map */}
               <div className="min-h-0 flex-1 px-4 pb-2 pt-2 sm:px-5">
-                <div className="mx-auto h-full min-h-[clamp(260px,45vh,520px)] w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100/70">
+                <div className="mx-auto h-full min-h-[clamp(320px,54vh,680px)] w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100/70">
                   <SeatMapViewport
                     seats={seats}
                     visibleSeats={visibleSeats}
@@ -2651,9 +2658,9 @@ export default function AdminOrdersPage() {
                     loadingLabel="Loading seats…"
                     emptyText="No seats for this performance."
                     resetKey={assignForm.performanceId || 'admin-orders-seat-map'}
-                    containerClassName="h-full min-h-[clamp(260px,45vh,520px)]"
+                    containerClassName="h-full min-h-[clamp(320px,54vh,680px)]"
                     verticalAlign="center"
-                    fitViewportPadding={112}
+                    fitViewportPadding={72}
                     controlsClassName="absolute bottom-4 right-4 z-30 flex flex-col gap-2"
                     renderSeat={({ seat, x, y }) => {
                       const isSelected = selectedSeatIdSet.has(seat.id);
@@ -2736,10 +2743,12 @@ export default function AdminOrdersPage() {
                   </button>
                 </div>
               </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body
+      ) : null}
 
       {/* ── Search bar ── */}
       <form onSubmit={search} className="flex flex-wrap gap-2">
