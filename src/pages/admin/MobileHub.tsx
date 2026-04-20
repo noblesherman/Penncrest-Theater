@@ -4,6 +4,7 @@ import { Link, Navigate } from 'react-router-dom';
 import {
   CalendarClock,
   CircleDollarSign,
+  HandCoins,
   LayoutDashboard,
   QrCode,
   ReceiptText,
@@ -42,6 +43,13 @@ const quickLinks: QuickLink[] = [
     label: 'Dashboard',
     description: 'Daily overview and status',
     icon: LayoutDashboard,
+    minRole: 'BOX_OFFICE'
+  },
+  {
+    to: '/admin/fundraise/check-in',
+    label: 'Fundraise Check-In',
+    description: 'Check in and run walk-up sales',
+    icon: HandCoins,
     minRole: 'BOX_OFFICE'
   },
   {
