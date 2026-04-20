@@ -2644,8 +2644,8 @@ export default function AdminOrdersPage() {
               )}
 
               {/* Seat map */}
-              <div className="min-h-0 flex-1 px-4 pb-2 pt-2 sm:px-5">
-                <div className="mx-auto h-full min-h-[clamp(260px,45vh,520px)] w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100/70">
+              <div className="min-h-0 flex-1 px-4 pb-2 pt-2 sm:px-5 flex flex-col">
+                <div className="mx-auto h-full w-full flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100/70">
                   <SeatMapViewport
                     seats={seats}
                     visibleSeats={visibleSeats}
@@ -2653,7 +2653,7 @@ export default function AdminOrdersPage() {
                     loadingLabel="Loading seats…"
                     emptyText="No seats for this performance."
                     resetKey={assignForm.performanceId || 'admin-orders-seat-map'}
-                    containerClassName="h-full min-h-[clamp(260px,45vh,520px)]"
+                    containerClassName="h-full w-full"
                     verticalAlign="center"
                     fitViewportPadding={112}
                     controlsClassName="absolute bottom-4 right-4 z-30 flex flex-col gap-2"
