@@ -2546,14 +2546,14 @@ export default function AdminOrdersPage() {
         {showWizard && seatPickerOpen && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] flex items-center justify-center overflow-hidden bg-black/55 p-2 backdrop-blur-sm sm:p-4"
+            className="fixed inset-0 z-[220] h-[100dvh] w-screen flex items-center justify-center overflow-hidden bg-black p-3 sm:p-5"
           >
             <motion.div
               initial={{ scale: 0.96, opacity: 0, y: 16 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.96, opacity: 0, y: 16 }}
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="flex h-[calc(100svh-6.5rem)] w-full max-w-[860px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:h-[calc(100svh-7.5rem)] sm:rounded-3xl"
+              className="flex h-[calc(100svh-9rem)] w-full max-w-[820px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:h-[calc(100svh-10rem)] sm:rounded-3xl"
             >
               {/* Seat picker header */}
               <div className="flex-shrink-0 border-b border-slate-100 px-3.5 pb-2.5 pt-3.5">
@@ -2638,7 +2638,7 @@ export default function AdminOrdersPage() {
 
               {/* Seat map */}
               <div className="min-h-0 flex-1 px-3.5 pb-1.5 pt-1">
-                <div className="mx-auto h-full min-h-[320px] w-full overflow-hidden rounded-2xl border border-slate-100">
+                <div className="mx-auto h-full min-h-[300px] w-full overflow-hidden rounded-2xl border border-slate-100">
                   <SeatMapViewport
                     seats={seats}
                     visibleSeats={visibleSeats}
@@ -2646,9 +2646,9 @@ export default function AdminOrdersPage() {
                     loadingLabel="Loading seats…"
                     emptyText="No seats for this performance."
                     resetKey={assignForm.performanceId || 'admin-orders-seat-map'}
-                    containerClassName="h-full min-h-[320px]"
+                    containerClassName="h-full min-h-[300px]"
                     verticalAlign="center"
-                    fitViewportPadding={130}
+                    fitViewportPadding={145}
                     controlsClassName="absolute bottom-4 right-4 z-30 flex flex-col gap-2"
                     renderSeat={({ seat, x, y }) => {
                       const isSelected = selectedSeatIdSet.has(seat.id);
