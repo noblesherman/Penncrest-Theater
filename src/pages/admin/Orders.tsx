@@ -2546,14 +2546,14 @@ export default function AdminOrdersPage() {
         {showWizard && seatPickerOpen && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] flex items-end justify-center overflow-y-auto bg-black/50 backdrop-blur-sm sm:items-center sm:p-4"
+            className="fixed inset-0 z-[60] flex items-stretch justify-stretch overflow-hidden bg-black/55 p-2 backdrop-blur-sm sm:p-3"
           >
             <motion.div
               initial={{ scale: 0.96, opacity: 0, y: 16 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.96, opacity: 0, y: 16 }}
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="flex h-[calc(100svh-1rem)] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:h-auto sm:max-h-[calc(100svh-2rem)] sm:max-w-5xl sm:rounded-3xl"
+              className="flex h-full w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:rounded-3xl"
             >
               {/* Seat picker header */}
               <div className="flex-shrink-0 border-b border-slate-100 px-5 pb-4 pt-5">
@@ -2637,8 +2637,8 @@ export default function AdminOrdersPage() {
               )}
 
               {/* Seat map */}
-              <div className="min-h-0 flex-1 px-5 pb-2 pt-3">
-                <div className="h-full overflow-hidden rounded-2xl border border-slate-100">
+              <div className="min-h-0 flex-1 px-4 pb-2 pt-2 sm:px-5">
+                <div className="mx-auto h-full max-h-[clamp(300px,56svh,620px)] w-full overflow-hidden rounded-2xl border border-slate-100">
                   <SeatMapViewport
                     seats={seats}
                     visibleSeats={visibleSeats}
@@ -2646,8 +2646,9 @@ export default function AdminOrdersPage() {
                     loadingLabel="Loading seats…"
                     emptyText="No seats for this performance."
                     resetKey={assignForm.performanceId || 'admin-orders-seat-map'}
-                    containerClassName="h-[420px] sm:h-full"
+                    containerClassName="h-full min-h-[260px]"
                     verticalAlign="top"
+                    fitViewportPadding={140}
                     controlsClassName="absolute bottom-4 right-4 z-30 flex flex-col gap-2"
                     renderSeat={({ seat, x, y }) => {
                       const isSelected = selectedSeatIdSet.has(seat.id);
@@ -2690,7 +2691,7 @@ export default function AdminOrdersPage() {
               </div>
 
               {/* Seat picker footer */}
-              <div className="flex-shrink-0 border-t border-slate-100 px-5 py-4">
+              <div className="flex-shrink-0 border-t border-slate-100 px-5 py-3">
                 <div className="mb-3 min-h-[32px]">
                   {selectedMappedSeats.length === 0 && selectedUnknownSeatIds.length === 0 ? (
                     <p className="text-sm text-slate-400">No seats selected yet.</p>

@@ -6,7 +6,7 @@ const naturalSort = (a: string, b: string) => a.localeCompare(b, undefined, { nu
 const MAP_PADDING_X = 120;
 const MAP_PADDING_TOP = 200;
 const MAP_PADDING_BOTTOM = 140;
-const FIT_VIEWPORT_PADDING = 96;
+const DEFAULT_FIT_VIEWPORT_PADDING = 96;
 const MAP_FRAME_PADDING = 40;
 
 export type SeatMapSeat = {
@@ -42,6 +42,7 @@ type SeatMapViewportProps<T extends SeatMapSeat> = {
   controlsClassName?: string;
   viewportStyle?: CSSProperties;
   verticalAlign?: 'center' | 'top';
+  fitViewportPadding?: number;
   renderSeat: (props: SeatRenderProps<T>) => ReactNode;
 };
 
@@ -58,6 +59,7 @@ export function SeatMapViewport<T extends SeatMapSeat>({
   controlsClassName = 'absolute bottom-4 right-4 z-30 flex flex-col gap-2',
   viewportStyle,
   verticalAlign = 'center',
+  fitViewportPadding = DEFAULT_FIT_VIEWPORT_PADDING,
   renderSeat,
 }: SeatMapViewportProps<T>) {
   const transformRef = useRef<ReactZoomPanPinchContentRef>(null);
@@ -128,8 +130,8 @@ export function SeatMapViewport<T extends SeatMapSeat>({
       const wrapperHeight = transform?.instance.wrapperComponent?.clientHeight ?? mapViewportRef.current?.clientHeight ?? 0;
       if (!transform || wrapperWidth <= 0 || wrapperHeight <= 0) return;
 
-      const availableWidth = Math.max(200, wrapperWidth - FIT_VIEWPORT_PADDING);
-      const availableHeight = Math.max(200, wrapperHeight - FIT_VIEWPORT_PADDING);
+      const availableWidth = Math.max(200, wrapperWidth - fitViewportPadding);
+      const availableHeight = Math.max(200, wrapperHeight - fitViewportPadding);
       const fitScale = Math.min(availableWidth / mapContent.width, availableHeight / mapContent.height, 1);
       const clampedScale = Math.max(0.2, fitScale);
       const positionX = (wrapperWidth - mapContent.width * clampedScale) / 2;
@@ -137,7 +139,7 @@ export function SeatMapViewport<T extends SeatMapSeat>({
       const positionY = verticalAlign === 'top' ? Math.min(centeredY, 24) : centeredY;
       transform.setTransform(positionX, positionY, clampedScale, animationTime, 'easeOut');
     },
-    [mapContent.height, mapContent.width, verticalAlign]
+    [fitViewportPadding, mapContent.height, mapContent.width, verticalAlign]
   );
 
   useEffect(() => {
