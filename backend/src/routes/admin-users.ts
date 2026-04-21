@@ -91,12 +91,15 @@ export const adminUserRoutes: FastifyPluginAsync = async (app) => {
     }
 
     try {
+      const isBoxOfficeRole = parsed.data.role === 'BOX_OFFICE';
       const created = await prisma.adminUser.create({
         data: {
           username: normalizeAdminUsername(parsed.data.username),
           name: parsed.data.name.trim(),
           passwordHash: await hashPassword(parsed.data.password),
-          role: parsed.data.role
+          role: parsed.data.role,
+          twoFactorEnabled: isBoxOfficeRole ? false : undefined,
+          twoFactorSecretEncrypted: isBoxOfficeRole ? null : undefined
         }
       });
 
@@ -126,6 +129,7 @@ export const adminUserRoutes: FastifyPluginAsync = async (app) => {
 
     try {
       await assertSuperAdminSafety(params.id, parsed.data.role, parsed.data.isActive);
+      const clearsTwoFactorForBoxOffice = parsed.data.role === 'BOX_OFFICE';
 
       const updated = await prisma.adminUser.update({
         where: { id: params.id },
@@ -134,7 +138,9 @@ export const adminUserRoutes: FastifyPluginAsync = async (app) => {
             parsed.data.username !== undefined ? normalizeAdminUsername(parsed.data.username) : undefined,
           name: parsed.data.name?.trim(),
           role: parsed.data.role,
-          isActive: parsed.data.isActive
+          isActive: parsed.data.isActive,
+          twoFactorEnabled: clearsTwoFactorForBoxOffice ? false : undefined,
+          twoFactorSecretEncrypted: clearsTwoFactorForBoxOffice ? null : undefined
         }
       });
 

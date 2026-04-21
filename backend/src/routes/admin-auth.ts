@@ -4,7 +4,7 @@ import { ensureBootstrapSuperAdmin, normalizeAdminUsername, serializeAdminUser }
 import { prisma } from '../lib/prisma.js';
 import { verifyPassword } from '../lib/password.js';
 import { encryptSecret, decryptSecret } from '../lib/secret-box.js';
-import { verifyTotpCode } from '../lib/totp.js';
+import { buildOtpAuthUrl, formatTotpSecret, generateTotpSecret, verifyTotpCode } from '../lib/totp.js';
 
 const loginSchema = z.object({
   username: z.string().min(1),
@@ -64,7 +64,47 @@ export const adminAuthRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(401).send({ error: 'Invalid credentials' });
       }
 
-      if (admin.twoFactorEnabled) {
+      if (admin.role === 'BOX_OFFICE' && (admin.twoFactorEnabled || Boolean(admin.twoFactorSecretEncrypted))) {
+        admin = await prisma.adminUser.update({
+          where: { id: admin.id },
+          data: {
+            twoFactorEnabled: false,
+            twoFactorSecretEncrypted: null
+          }
+        });
+      }
+
+      const isSuperAdmin = admin.role === 'SUPER_ADMIN';
+      const isAdminWithOptionalTwoFactor = admin.role === 'ADMIN' && admin.twoFactorEnabled;
+      const requiresTwoFactorCheck = isSuperAdmin || isAdminWithOptionalTwoFactor;
+
+      if (isSuperAdmin && (!admin.twoFactorEnabled || !admin.twoFactorSecretEncrypted)) {
+        const twoFactorSetupSecret = generateTotpSecret();
+        const setupToken = await app.jwt.sign(
+          {
+            role: 'admin_setup',
+            purpose: 'admin-2fa-setup',
+            adminId: admin.id,
+            username: admin.username,
+            twoFactorSetupSecret
+          },
+          { expiresIn: '15m' }
+        );
+
+        return reply.send({
+          twoFactorSetupRequired: true,
+          setupToken,
+          manualEntryKey: formatTotpSecret(twoFactorSetupSecret),
+          otpAuthUrl: buildOtpAuthUrl({
+            issuer: 'Penncrest Theater Admin',
+            accountName: admin.username,
+            secret: twoFactorSetupSecret
+          }),
+          admin: serializeAdminUser(admin)
+        });
+      }
+
+      if (requiresTwoFactorCheck) {
         if (!admin.twoFactorSecretEncrypted) {
           return reply.status(500).send({ error: 'Two-factor authentication is not configured correctly' });
         }
@@ -131,6 +171,10 @@ export const adminAuthRoutes: FastifyPluginAsync = async (app) => {
 
       if (!admin || !admin.isActive) {
         return reply.status(404).send({ error: 'Admin account not found' });
+      }
+
+      if (admin.role === 'BOX_OFFICE') {
+        return reply.status(403).send({ error: 'Two-factor authentication is not enabled for box office accounts' });
       }
 
       admin = await prisma.adminUser.update({

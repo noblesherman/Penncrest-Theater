@@ -254,6 +254,24 @@ export default function AdminUsersPage() {
             const draft = drafts[user.id];
             if (!draft) return null;
             const isBusy = busyId === user.id;
+            const twoFactorLabel =
+              user.role === 'BOX_OFFICE'
+                ? '2FA Off (Role)'
+                : user.role === 'SUPER_ADMIN'
+                  ? user.twoFactorEnabled
+                    ? '2FA On'
+                    : '2FA Required'
+                  : user.twoFactorEnabled
+                    ? '2FA On'
+                    : '2FA Optional';
+            const twoFactorStyle =
+              user.role === 'BOX_OFFICE'
+                ? 'bg-stone-100 text-stone-600 ring-stone-200'
+                : user.twoFactorEnabled
+                  ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                  : user.role === 'SUPER_ADMIN'
+                    ? 'bg-rose-50 text-rose-700 ring-rose-200'
+                    : 'bg-amber-50 text-amber-700 ring-amber-200';
 
             return (
               <div key={user.id} className="rounded-2xl border border-stone-100 bg-white shadow-sm">
@@ -275,10 +293,8 @@ export default function AdminUsersPage() {
                         : 'bg-stone-100 text-stone-500 ring-stone-200'}
                     />
                     <Badge
-                      label={user.twoFactorEnabled ? '2FA On' : '2FA Pending'}
-                      style={user.twoFactorEnabled
-                        ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-                        : 'bg-amber-50 text-amber-700 ring-amber-200'}
+                      label={twoFactorLabel}
+                      style={twoFactorStyle}
                     />
                     <span className="text-xs text-stone-400">
                       {user.lastLoginAt
@@ -346,13 +362,15 @@ export default function AdminUsersPage() {
                     >
                       Reset Password
                     </button>
-                    <button
-                      onClick={() => { void resetTwoFactor(user.id); }}
-                      disabled={isBusy}
-                      className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-                    >
-                      Reset 2FA
-                    </button>
+                    {user.role !== 'BOX_OFFICE' && (
+                      <button
+                        onClick={() => { void resetTwoFactor(user.id); }}
+                        disabled={isBusy}
+                        className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                      >
+                        Reset 2FA
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
