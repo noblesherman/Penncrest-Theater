@@ -20,7 +20,7 @@ import { SeatMapViewport } from '../components/SeatMapViewport';
 import EventRegistrationCheckoutForm from '../components/EventRegistrationCheckoutForm';
 import { apiFetch } from '../lib/api';
 import { getClientToken } from '../lib/clientToken';
-import { buildConfirmationPath, rememberOrderAccessToken } from '../lib/orderAccess';
+import { buildCheckoutThankYouPath, rememberOrderAccessToken } from '../lib/orderAccess';
 import type { EventRegistrationPublicFormResponse, EventRegistrationSubmissionPayload } from '../lib/eventRegistrationForm';
 
 interface Seat {
@@ -680,7 +680,7 @@ export default function Booking() {
     }
 
     rememberOrderAccessToken(pendingStripePayment.orderId, pendingStripePayment.orderAccessToken);
-    navigate(buildConfirmationPath(pendingStripePayment.orderId, pendingStripePayment.orderAccessToken));
+    navigate(buildCheckoutThankYouPath(pendingStripePayment.orderId, pendingStripePayment.orderAccessToken));
   }, [navigate, pendingStripePayment]);
 
   useEffect(() => {
@@ -741,7 +741,7 @@ export default function Booking() {
 
           if (status.orderId) {
             rememberOrderAccessToken(status.orderId, status.orderAccessToken);
-            navigate(buildConfirmationPath(status.orderId, status.orderAccessToken));
+            navigate(buildCheckoutThankYouPath(status.orderId, status.orderAccessToken));
             return;
           }
 
@@ -969,7 +969,7 @@ export default function Booking() {
 
       if (checkout.orderId) {
         rememberOrderAccessToken(checkout.orderId, checkout.orderAccessToken);
-        navigate(buildConfirmationPath(checkout.orderId, checkout.orderAccessToken));
+        navigate(buildCheckoutThankYouPath(checkout.orderId, checkout.orderAccessToken));
         return;
       }
 
