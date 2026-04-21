@@ -48,12 +48,3 @@ export function buildConfirmationPath(orderId: string, token?: string | null): s
 
   return `/confirmation?${params.toString()}`;
 }
-
-export function buildCheckoutThankYouPath(orderId: string, token?: string | null): string {
-  const params = new URLSearchParams({ orderId });
-  if (token) {
-    params.set('token', token);
-  }
-
-  return `/checkout-thank-you?${params.toString()}`;
-}

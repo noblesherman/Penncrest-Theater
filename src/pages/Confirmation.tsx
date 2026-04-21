@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { Calendar, MapPin, Ticket, Search, ChevronLeft, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { Calendar, Heart, MapPin, Ticket, Search, ChevronLeft, ChevronRight, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { apiFetch } from '../lib/api';
 import { getRememberedOrderAccessToken, rememberOrderAccessToken } from '../lib/orderAccess';
@@ -47,6 +47,7 @@ type OrderResponse = {
 
 const VISIBLE_REFRESH_DELAY_MS = 20_000;
 const HIDDEN_REFRESH_DELAY_MS = 60_000;
+const CHECKOUT_TRANSITION_DURATION_MS = 1400;
 
 function getTicketKey(ticket: OrderResponse['tickets'][number], index: number): string {
   return ticket.id || ticket.publicId || ticket.seatId || `ticket-${index}`;
@@ -54,6 +55,7 @@ function getTicketKey(ticket: OrderResponse['tickets'][number], index: number): 
 
 export default function Confirmation() {
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const orderId = searchParams.get('orderId');
   const tokenFromUrl = searchParams.get('token');
   const [orderData, setOrderData] = useState<OrderResponse | null>(null);
@@ -63,6 +65,10 @@ export default function Confirmation() {
   const [isVisible, setIsVisible] = useState(() =>
     typeof document === 'undefined' ? true : document.visibilityState === 'visible'
   );
+  const shouldPlayCheckoutTransition = Boolean(
+    (location.state as { checkoutTransition?: string } | null)?.checkoutTransition === 'thank-you'
+  );
+  const [showCheckoutTransition, setShowCheckoutTransition] = useState(shouldPlayCheckoutTransition);
   const carouselRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -70,6 +76,20 @@ export default function Confirmation() {
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, []);
+
+  useEffect(() => {
+    if (!shouldPlayCheckoutTransition) {
+      setShowCheckoutTransition(false);
+      return;
+    }
+
+    setShowCheckoutTransition(true);
+    const timer = window.setTimeout(() => {
+      setShowCheckoutTransition(false);
+    }, CHECKOUT_TRANSITION_DURATION_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [shouldPlayCheckoutTransition]);
 
   useEffect(() => {
     if (!orderId) { setError('Missing order ID in URL.'); return; }
@@ -144,9 +164,22 @@ export default function Confirmation() {
     setActiveTicketIndex(clampedIndex);
   };
 
+  const checkoutTransitionOverlay = showCheckoutTransition ? (
+    <div className="checkout-transition-overlay" aria-hidden="true">
+      <div className="checkout-transition-card">
+        <div className="checkout-transition-heart-wrap">
+          <Heart className="checkout-transition-heart" fill="currentColor" />
+        </div>
+        <p className="checkout-transition-text">Thank you</p>
+      </div>
+    </div>
+  ) : null;
+
   if (error) {
     return (
       <div style={styles.page}>
+        <style>{css}</style>
+        {checkoutTransitionOverlay}
         <div style={{ ...styles.errorCard }}>
           <p style={{ color: '#b45309', fontSize: 16 }}>{error}</p>
         </div>
@@ -157,6 +190,8 @@ export default function Confirmation() {
   if (!orderData) {
     return (
       <div style={styles.page}>
+        <style>{css}</style>
+        {checkoutTransitionOverlay}
         <div style={styles.loadingWrap}>
           <div style={styles.loadingDot} />
           <span style={styles.loadingText}>Loading your tickets…</span>
@@ -173,6 +208,7 @@ export default function Confirmation() {
   return (
     <div style={styles.page}>
       <style>{css}</style>
+      {checkoutTransitionOverlay}
 
       {/* ── Header ───────────────────────────────────────────── */}
       <header style={styles.header}>
@@ -859,6 +895,67 @@ const styles: Record<string, React.CSSProperties> = {
 };
 
 const css = `
+  .checkout-transition-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 220;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    background: radial-gradient(circle at 50% 45%, rgba(28, 25, 23, 0.06), rgba(28, 25, 23, 0.6));
+    animation: checkout-transition-fade 1.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .checkout-transition-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 22px 26px;
+    border-radius: 24px;
+    border: 1px solid rgba(245, 245, 244, 0.82);
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 18px 46px -22px rgba(15, 23, 42, 0.55);
+    animation: checkout-transition-card-in 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .checkout-transition-heart-wrap {
+    width: 62px;
+    height: 62px;
+    border-radius: 9999px;
+    border: 2px solid rgba(185, 28, 28, 0.2);
+    display: grid;
+    place-items: center;
+    position: relative;
+    animation: checkout-heart-ring 1s ease-out both;
+  }
+
+  .checkout-transition-heart-wrap::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    border-radius: 9999px;
+    border: 1px solid rgba(185, 28, 28, 0.16);
+    animation: checkout-heart-ring-echo 1s ease-out both;
+  }
+
+  .checkout-transition-heart {
+    width: 30px;
+    height: 30px;
+    color: #b91c1c;
+    animation: checkout-heart-pulse 0.9s ease-in-out both;
+  }
+
+  .checkout-transition-text {
+    margin: 0;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 29px;
+    font-weight: 700;
+    color: #1c1917;
+    letter-spacing: 0.01em;
+  }
+
   .nav-arrow:disabled { opacity: 0.25; cursor: default; }
   .nav-arrow:not(:disabled):hover { background: #f5f5f4 !important; }
   .btn-secondary:hover { background: #f5f5f4 !important; }
@@ -870,5 +967,40 @@ const css = `
   @keyframes pulse {
     0%, 100% { transform: scale(1); opacity: 1; }
     50% { transform: scale(1.4); opacity: 0.5; }
+  }
+
+  @keyframes checkout-transition-fade {
+    0% { opacity: 0; }
+    20% { opacity: 1; }
+    78% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  @keyframes checkout-transition-card-in {
+    0% {
+      opacity: 0;
+      transform: translateY(12px) scale(0.97);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes checkout-heart-pulse {
+    0%, 100% { transform: scale(1); }
+    28% { transform: scale(1.15); }
+    54% { transform: scale(0.94); }
+    76% { transform: scale(1.08); }
+  }
+
+  @keyframes checkout-heart-ring {
+    0% { transform: scale(0.72); opacity: 0.9; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  @keyframes checkout-heart-ring-echo {
+    0% { transform: scale(0.78); opacity: 0.8; }
+    100% { transform: scale(1.18); opacity: 0; }
   }
 `;

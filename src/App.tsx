@@ -4,6 +4,7 @@ import CurtainIntro from './components/CurtainIntro';
 import Layout from './components/Layout';
 import RouteSeo from './components/RouteSeo';
 import Home from './pages/Home';
+import Confirmation from './pages/Confirmation';
 
 const Shows = lazy(() => import('./pages/Shows'));
 const CommunityEvents = lazy(() => import('./pages/CommunityEvents'));
@@ -26,8 +27,6 @@ const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
 const TermsOfService = lazy(() => import('./pages/TermsOfService'));
 const RefundPolicy = lazy(() => import('./pages/RefundPolicy'));
 const Booking = lazy(() => import('./pages/Booking'));
-const CheckoutThankYou = lazy(() => import('./pages/CheckoutThankYou'));
-const Confirmation = lazy(() => import('./pages/Confirmation'));
 const OrderLookup = lazy(() => import('./pages/OrderLookup'));
 const TicketPage = lazy(() => import('./pages/Ticket'));
 const StaffTicketsPage = lazy(() => import('./pages/StaffTickets'));
@@ -127,7 +126,6 @@ export default function App() {
                   <Route path="shows" element={<Shows />} />
                   <Route path="shows/community-events" element={<CommunityEvents />} />
                   <Route path="shows/:id" element={<ShowDetails />} />
-                  <Route path="checkout-thank-you" element={<CheckoutThankYou />} />
                   <Route path="confirmation" element={<Confirmation />} />
                   <Route path="orders/lookup" element={<OrderLookup />} />
                   <Route path="tickets/:publicId" element={<TicketPage />} />
