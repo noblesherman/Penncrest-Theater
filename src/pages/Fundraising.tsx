@@ -142,6 +142,7 @@ export default function Fundraising() {
   const [selectedDonationAmountCents, setSelectedDonationAmountCents] = useState<number | null>(null);
   const [donorName, setDonorName] = useState('');
   const [donorEmail, setDonorEmail] = useState('');
+  const [donorRecognitionPreference, setDonorRecognitionPreference] = useState<'known' | 'anonymous'>('known');
   const [customDonationAmount, setCustomDonationAmount] = useState('');
   const [activeDonationIntent, setActiveDonationIntent] = useState<ActiveDonationIntent | null>(null);
   const [donationIntentLoading, setDonationIntentLoading] = useState(false);
@@ -232,6 +233,7 @@ export default function Fundraising() {
           amountCents,
           donorName: normalizedDonorName,
           donorEmail: normalizedDonorEmail,
+          donorRecognitionPreference,
           donationOptionId: activeOption.id,
           donationOptionName: activeOption.name,
           donationLevelId: level?.id,
@@ -532,6 +534,36 @@ export default function Fundraising() {
                     />
                   </div>
                   <p className="mt-2 text-xs text-stone-400">We'll send your thank-you note and receipt here.</p>
+                  <div className="mt-4 rounded-2xl border border-stone-200 bg-stone-50 p-3.5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Recognition Preference</p>
+                    <div className="mt-2 inline-flex rounded-xl border border-stone-200 bg-white p-1 max-sm:flex max-sm:w-full">
+                      <button
+                        type="button"
+                        onClick={() => setDonorRecognitionPreference('known')}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition max-sm:flex-1 ${
+                          donorRecognitionPreference === 'known'
+                            ? 'bg-red-700 text-white'
+                            : 'text-stone-600 hover:text-stone-900'
+                        }`}
+                      >
+                        Known
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDonorRecognitionPreference('anonymous')}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition max-sm:flex-1 ${
+                          donorRecognitionPreference === 'anonymous'
+                            ? 'bg-red-700 text-white'
+                            : 'text-stone-600 hover:text-stone-900'
+                        }`}
+                      >
+                        Anonymous
+                      </button>
+                    </div>
+                    <p className="mt-2 text-xs text-stone-500">
+                      If you choose Known, your name may appear in places like press releases, playbills, or donor acknowledgments.
+                    </p>
+                  </div>
 
                   <div className="my-5 h-px bg-stone-200" />
 

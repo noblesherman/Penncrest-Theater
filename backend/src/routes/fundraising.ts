@@ -130,6 +130,7 @@ const donationIntentSchema = z.object({
   amountCents: z.coerce.number().int().min(100).max(100000),
   donorName: z.string().trim().min(1).max(120),
   donorEmail: z.string().trim().email().max(320),
+  donorRecognitionPreference: z.enum(['known', 'anonymous']).optional(),
   donationOptionId: z.string().trim().min(1).max(80).optional(),
   donationOptionName: z.string().trim().min(1).max(140).optional(),
   donationLevelId: z.string().trim().min(1).max(80).optional(),
@@ -325,11 +326,13 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
         const amountCents = parsed.data.amountCents;
         const donorName = parsed.data.donorName.trim();
         const donorEmail = parsed.data.donorEmail.trim().toLowerCase();
+        const donorRecognitionPreference = parsed.data.donorRecognitionPreference || 'known';
         const metadata: Record<string, string> = {
           source: 'fundraising_donation',
           amountCents: String(amountCents),
           donorName,
-          donorEmail
+          donorEmail,
+          donorRecognitionPreference
         };
 
         if (parsed.data.donationOptionId) metadata.donationOptionId = parsed.data.donationOptionId;
@@ -338,9 +341,10 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
         if (parsed.data.donationLevelTitle) metadata.donationLevelTitle = parsed.data.donationLevelTitle;
         if (parsed.data.donationLevelAmountLabel) metadata.donationLevelAmountLabel = parsed.data.donationLevelAmountLabel;
 
+        const donorDescriptor = donorRecognitionPreference === 'anonymous' ? 'Anonymous Donor' : donorName;
         const donationDescriptor = parsed.data.donationOptionName
-          ? `${parsed.data.donationOptionName}: ${donorName}`
-          : donorName;
+          ? `${parsed.data.donationOptionName}: ${donorDescriptor}`
+          : donorDescriptor;
         const paymentIntent = await stripe.paymentIntents.create({
           amount: amountCents,
           currency: 'usd',
@@ -419,6 +423,8 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
           status: intent.status,
           donorName: intent.metadata?.donorName || 'Supporter',
           donorEmail: intent.metadata?.donorEmail || intent.receipt_email || '',
+          donorRecognitionPreference:
+            intent.metadata?.donorRecognitionPreference === 'anonymous' ? 'anonymous' : 'known',
           donationOptionName: intent.metadata?.donationOptionName || null,
           donationLevelTitle: intent.metadata?.donationLevelTitle || null,
           donationLevelAmountLabel: intent.metadata?.donationLevelAmountLabel || null,

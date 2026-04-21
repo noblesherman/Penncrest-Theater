@@ -106,6 +106,7 @@ type AdminFundraisingDonation = {
   status: string;
   donorName: string;
   donorEmail: string;
+  donorRecognitionPreference: 'known' | 'anonymous';
   donationOptionName: string | null;
   donationLevelTitle: string | null;
   donationLevelAmountLabel: string | null;
@@ -449,6 +450,7 @@ export default function AdminFundraisePage() {
   const [customDonationAmount, setCustomDonationAmount] = useState('');
   const [donorName, setDonorName] = useState('');
   const [donorEmail, setDonorEmail] = useState('');
+  const [donorRecognitionPreference, setDonorRecognitionPreference] = useState<'known' | 'anonymous'>('known');
   const [activeDonationIntent, setActiveDonationIntent] = useState<ActiveDonationIntent | null>(null);
   const [donationIntentLoading, setDonationIntentLoading] = useState(false);
   const [donationError, setDonationError] = useState<string | null>(null);
@@ -1272,6 +1274,7 @@ export default function AdminFundraisePage() {
           amountCents,
           donorName: normalizedDonorName,
           donorEmail: normalizedDonorEmail,
+          donorRecognitionPreference,
           donationOptionId: selectedDonationOption.id,
           donationOptionName: selectedDonationOption.name,
           donationLevelId: level?.id,
@@ -2466,6 +2469,37 @@ export default function AdminFundraisePage() {
                   </label>
                 </div>
 
+                <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Recognition Preference</p>
+                  <div className="mt-2 inline-flex rounded-xl border border-stone-200 bg-white p-1">
+                    <button
+                      type="button"
+                      onClick={() => setDonorRecognitionPreference('known')}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                        donorRecognitionPreference === 'known'
+                          ? 'bg-red-700 text-white'
+                          : 'text-stone-600 hover:text-stone-900'
+                      }`}
+                    >
+                      Known
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDonorRecognitionPreference('anonymous')}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                        donorRecognitionPreference === 'anonymous'
+                          ? 'bg-red-700 text-white'
+                          : 'text-stone-600 hover:text-stone-900'
+                      }`}
+                    >
+                      Anonymous
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-stone-500">
+                    Known donors may be included in recognition like playbills, acknowledgments, or press releases.
+                  </p>
+                </div>
+
                 <div className="space-y-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Donation Amount</p>
                   <div className="flex flex-wrap gap-2">
@@ -2625,6 +2659,9 @@ export default function AdminFundraisePage() {
                           <div>
                             <p className="text-sm font-semibold text-stone-900">{donation.donorName || 'Supporter'}</p>
                             <p className="text-xs text-stone-500">{donation.donorEmail || donation.receiptEmail || 'No email'}</p>
+                            <p className="mt-1 text-[11px] text-stone-500">
+                              {donation.donorRecognitionPreference === 'anonymous' ? 'Anonymous preference' : 'Known preference'}
+                            </p>
                             {donation.donationOptionName || donation.donationLevelTitle ? (
                               <p className="mt-1 text-[11px] text-stone-500">
                                 {[donation.donationOptionName, donation.donationLevelTitle, donation.donationLevelAmountLabel]
