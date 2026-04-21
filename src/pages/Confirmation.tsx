@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Calendar, Heart, MapPin, Ticket, Search, ChevronLeft, ChevronRight, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { apiFetch } from '../lib/api';
-import { getRememberedOrderAccessToken, rememberOrderAccessToken } from '../lib/orderAccess';
+import { consumeCheckoutTransition, getRememberedOrderAccessToken, rememberOrderAccessToken } from '../lib/orderAccess';
 import { toQrCodeDataUrl } from '../lib/qrCode';
 
 type OrderResponse = {
@@ -55,7 +55,6 @@ function getTicketKey(ticket: OrderResponse['tickets'][number], index: number): 
 
 export default function Confirmation() {
   const [searchParams] = useSearchParams();
-  const location = useLocation();
   const orderId = searchParams.get('orderId');
   const tokenFromUrl = searchParams.get('token');
   const [orderData, setOrderData] = useState<OrderResponse | null>(null);
@@ -65,10 +64,7 @@ export default function Confirmation() {
   const [isVisible, setIsVisible] = useState(() =>
     typeof document === 'undefined' ? true : document.visibilityState === 'visible'
   );
-  const shouldPlayCheckoutTransition = Boolean(
-    (location.state as { checkoutTransition?: string } | null)?.checkoutTransition === 'thank-you'
-  );
-  const [showCheckoutTransition, setShowCheckoutTransition] = useState(shouldPlayCheckoutTransition);
+  const [showCheckoutTransition, setShowCheckoutTransition] = useState(() => consumeCheckoutTransition(orderId));
   const carouselRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -78,18 +74,20 @@ export default function Confirmation() {
   }, []);
 
   useEffect(() => {
-    if (!shouldPlayCheckoutTransition) {
-      setShowCheckoutTransition(false);
-      return;
+    if (consumeCheckoutTransition(orderId)) {
+      setShowCheckoutTransition(true);
     }
+  }, [orderId]);
 
-    setShowCheckoutTransition(true);
+  useEffect(() => {
+    if (!showCheckoutTransition) return;
+
     const timer = window.setTimeout(() => {
       setShowCheckoutTransition(false);
     }, CHECKOUT_TRANSITION_DURATION_MS);
 
     return () => window.clearTimeout(timer);
-  }, [shouldPlayCheckoutTransition]);
+  }, [showCheckoutTransition]);
 
   useEffect(() => {
     if (!orderId) { setError('Missing order ID in URL.'); return; }
