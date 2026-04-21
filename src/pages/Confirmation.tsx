@@ -148,7 +148,7 @@ export default function Confirmation() {
     return (
       <div style={styles.page}>
         <div style={{ ...styles.errorCard }}>
-          <p style={{ color: '#b45309', fontFamily: 'Georgia, serif', fontSize: 16 }}>{error}</p>
+          <p style={{ color: '#b45309', fontSize: 16 }}>{error}</p>
         </div>
       </div>
     );
@@ -250,18 +250,19 @@ export default function Confirmation() {
             return (
               <article key={ticketKey} style={styles.slide}>
                 <div style={styles.ticketCard} className="ticket-card">
-
-                  {/* ── Checked-in badge ── */}
-                  {checkedIn && (
-                    <div style={styles.checkedBadge}>
-                      <CheckCircle2 size={14} strokeWidth={2.5} color="#059669" />
-                      <span>Checked in · {format(new Date(ticket.checkedInAt!), 'MMM d, h:mm a')}</span>
+                  {/* ── Top row: check-in + counter ── */}
+                  <div style={checkedIn ? styles.ticketTopRowChecked : styles.ticketTopRow}>
+                    {checkedIn ? (
+                      <div style={styles.checkedBadge}>
+                        <CheckCircle2 size={14} strokeWidth={2.5} color="#059669" />
+                        <span>Checked in · {format(new Date(ticket.checkedInAt!), 'MMM d, h:mm a')}</span>
+                      </div>
+                    ) : (
+                      <div />
+                    )}
+                    <div style={styles.ticketCounter}>
+                      {index + 1} / {totalTickets}
                     </div>
-                  )}
-
-                  {/* ── Ticket number pill ── */}
-                  <div style={styles.ticketCounter}>
-                    {index + 1} / {totalTickets}
                   </div>
 
                   {/* ── Seat block ── */}
@@ -395,7 +396,7 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     alignItems: 'center',
     paddingBottom: 48,
-    fontFamily: "'DM Sans', 'Helvetica Neue', Arial, sans-serif",
+    fontFamily: '"Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif',
   },
 
   /* Header */
@@ -412,7 +413,6 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '0 24px',
   },
   orderLabel: {
-    fontFamily: "'DM Mono', 'Courier New', monospace",
     fontSize: 11,
     letterSpacing: '0.14em',
     color: '#a8a29e',
@@ -420,7 +420,6 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: 'uppercase',
   },
   showTitle: {
-    fontFamily: "'Playfair Display', Georgia, serif",
     fontSize: 'clamp(26px, 6vw, 38px)',
     fontWeight: 800,
     color: '#fafaf9',
@@ -535,14 +534,27 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
   },
 
-  /* Checked-in badge */
+  /* Ticket top row */
+  ticketTopRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 40,
+    padding: '8px 18px 0',
+  },
+  ticketTopRowChecked: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 40,
+    padding: '9px 18px',
+    background: '#ecfdf5',
+    borderBottom: '1px solid #a7f3d0',
+  },
   checkedBadge: {
     display: 'flex',
     alignItems: 'center',
     gap: 6,
-    background: '#ecfdf5',
-    borderBottom: '1px solid #a7f3d0',
-    padding: '9px 18px',
     fontSize: 12,
     fontWeight: 600,
     color: '#065f46',
@@ -551,13 +563,12 @@ const styles: Record<string, React.CSSProperties> = {
 
   /* Ticket counter */
   ticketCounter: {
-    position: 'absolute',
-    top: 14,
-    right: 16,
-    fontFamily: "'DM Mono', monospace",
     fontSize: 11,
     color: STONE_600,
     letterSpacing: '0.06em',
+    fontWeight: 500,
+    marginLeft: 12,
+    whiteSpace: 'nowrap',
   },
 
   /* Seat */
@@ -568,7 +579,6 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 10,
   },
   seatLabel: {
-    fontFamily: "'Playfair Display', Georgia, serif",
     fontSize: 26,
     fontWeight: 800,
     color: STONE_900,
@@ -580,7 +590,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontVariantNumeric: 'tabular-nums',
   },
   seatSection: {
-    fontFamily: "'Playfair Display', Georgia, serif",
     fontSize: 22,
     fontWeight: 800,
     color: STONE_900,
@@ -617,7 +626,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: STONE_900,
     fontVariantNumeric: 'tabular-nums',
     lineHeight: 1,
-    fontFamily: "'Playfair Display', Georgia, serif",
   },
   seatDivider: {
     width: 1,
@@ -851,8 +859,6 @@ const styles: Record<string, React.CSSProperties> = {
 };
 
 const css = `
-  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@700;800;900&display=swap');
-
   .nav-arrow:disabled { opacity: 0.25; cursor: default; }
   .nav-arrow:not(:disabled):hover { background: #f5f5f4 !important; }
   .btn-secondary:hover { background: #f5f5f4 !important; }

@@ -171,6 +171,29 @@ function loadEmailLogoAttachment(): EmailLogoAttachment | null {
   return cachedLogoAttachment;
 }
 
+// Shared dark-mode style block injected into every HTML email
+const DARK_MODE_STYLES = `
+  <style>
+    @media (prefers-color-scheme: dark) {
+      .email-outer   { background-color: #1a1108 !important; }
+      .email-body    { background-color: #251a0a !important; border-color: #4a3820 !important; }
+      .email-body p,
+      .email-body div { color: #e8dfc8 !important; }
+      .detail-box    { background-color: #2e1f0a !important; border-color: #8b6914 !important; }
+      .detail-label  { color: #c9a84c !important; }
+      .detail-value  { color: #f0e6cc !important; }
+      .ticket-row    { background-color: #2e1f0a !important; border-color: #8b6914 !important; }
+      .ticket-meta   { color: #c9a84c !important; }
+      .wallet-box    { background-color: #2e1f0a !important; border-color: #8b6914 !important; }
+      .tip-box       { background-color: #2e1f0a !important; }
+      .msg-box       { background-color: #2e1f0a !important; border-color: #4a3820 !important; color: #e8dfc8 !important; }
+      .section-label { color: #c9a84c !important; }
+    }
+    /* Prevent iOS / Gmail auto-resizing tiny text */
+    body { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+  </style>
+`;
+
 export async function sendTicketsEmail(payload: TicketEmailPayload): Promise<void> {
   if (!transporter || !env.SMTP_FROM) {
     console.warn('SMTP is not configured; skipping ticket email send.');
@@ -240,23 +263,23 @@ export async function sendTicketsEmail(payload: TicketEmailPayload): Promise<voi
       return `
         <tr>
           <td style="padding:0 0 10px 0;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #c9a84c;border-radius:11px;background:#fffdf7;overflow:hidden;">
+            <table class="ticket-row" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #c9a84c;border-radius:11px;background:#fffdf7;overflow:hidden;">
               <tr>
-                <td style="padding:7px 14px;background:#8b1a1a;">
-                  <div style="font-family:Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:1.2px;color:#f5d98b;text-transform:uppercase;">${seatLabel}</div>
+                <td style="padding:8px 16px;background:#8b1a1a;">
+                  <div class="ticket-meta" style="font-family:Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:1.4px;color:#f5d98b;text-transform:uppercase;">${seatLabel}</div>
                 </td>
               </tr>
               <tr>
-                <td style="padding:13px 14px;">
+                <td style="padding:14px 16px;">
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                     <tr>
-                      <td style="font-family:Arial,sans-serif;font-size:12px;color:#5a3a1a;vertical-align:middle;">${typeLabel}${attendee}</td>
-                      <td align="right" style="vertical-align:middle;">
-                        <a href="${safeLink}" style="display:inline-block;background:#8b1a1a;color:#f5d98b;text-decoration:none;padding:8px 16px;border-radius:7px;font-size:12px;font-weight:700;font-family:Arial,sans-serif;border:1px solid #c9a84c;white-space:nowrap;">Open My Ticket</a>
+                      <td style="font-family:Arial,sans-serif;font-size:13px;color:#5a3a1a;vertical-align:middle;line-height:1.4;">${typeLabel}${attendee}</td>
+                      <td align="right" style="vertical-align:middle;padding-left:12px;">
+                        <a href="${safeLink}" style="display:inline-block;background:#8b1a1a;color:#f5d98b;text-decoration:none;padding:9px 18px;border-radius:8px;font-size:12px;font-weight:700;font-family:Arial,sans-serif;border:1px solid #c9a84c;white-space:nowrap;letter-spacing:0.3px;">Open My Ticket</a>
                       </td>
                     </tr>
                   </table>
-                  <div style="font-size:11px;color:#8b7355;line-height:1.5;margin-top:8px;word-break:break-all;font-family:Arial,sans-serif;">${safeLink}</div>
+                  <div style="font-size:11px;color:#9b8365;line-height:1.5;margin-top:9px;word-break:break-all;font-family:Arial,sans-serif;">${safeLink}</div>
                 </td>
               </tr>
             </table>
@@ -266,30 +289,39 @@ export async function sendTicketsEmail(payload: TicketEmailPayload): Promise<voi
     })
     .join('');
 
-  const html = `
-    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
-      Your Penncrest Theater tickets are ready. Open all tickets in one wallet link.
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="supported-color-schemes" content="light dark" />
+  ${DARK_MODE_STYLES}
+</head>
+<body style="margin:0;padding:0;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;">
+      Your Penncrest Theater tickets are ready. Open all tickets in one wallet link.&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
     </div>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:26px 12px;">
+    <table class="email-outer" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:28px 12px;">
       <tr>
         <td align="center">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;">
 
             <!-- HEADER -->
             <tr>
-              <td style="background:linear-gradient(160deg,#1a0505 0%,#3d0a0a 60%,#5a1010 100%);border-radius:16px 16px 0 0;padding:28px 28px 24px 28px;">
+              <td style="background:linear-gradient(160deg,#1a0505 0%,#3d0a0a 60%,#5a1010 100%);border-radius:16px 16px 0 0;padding:32px 32px 28px 32px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                   <tr>
                     <td valign="middle">
-                      <div style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#c9a84c;margin-bottom:8px;">${BRAND_NAME}</div>
-                      <div style="font-family:Georgia,'Times New Roman',serif;font-size:28px;font-weight:700;color:#f5f0e8;line-height:1.2;">You're going to the show!</div>
-                      <div style="margin-top:10px;font-family:Georgia,'Times New Roman',serif;font-size:14px;font-style:italic;color:rgba(245,217,139,0.85);line-height:1.5;">Your tickets are confirmed and waiting for you.</div>
+                      <div style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:#c9a84c;margin-bottom:10px;">${BRAND_NAME}</div>
+                      <div style="font-family:Georgia,'Times New Roman',serif;font-size:30px;font-weight:700;color:#f5f0e8;line-height:1.2;margin-bottom:10px;">You&rsquo;re going to the show!</div>
+                      <div style="font-family:Georgia,'Times New Roman',serif;font-size:14px;font-style:italic;color:rgba(245,217,139,0.80);line-height:1.6;">Your tickets are confirmed and waiting for you.</div>
                     </td>
-                    <td valign="middle" align="right" style="padding-left:12px;">
+                    <td valign="middle" align="right" style="padding-left:16px;min-width:84px;">
                       ${
                         logoSrc
-                          ? `<img src="${logoSrc}" width="72" height="72" alt="${BRAND_NAME} lion crest" style="display:block;width:72px;height:72px;object-fit:contain;border-radius:10px;border:2px solid #c9a84c;background:#3d0a0a;padding:4px;box-sizing:border-box;" />`
-                          : `<table role="presentation" cellpadding="0" cellspacing="0" width="72" style="width:72px;height:72px;border-radius:10px;border:2px solid #c9a84c;background:#5a1010;"><tr><td width="72" height="72" align="center" valign="middle" style="width:72px;height:72px;text-align:center;vertical-align:middle;line-height:72px;mso-line-height-rule:exactly;"><span style="display:inline-block;line-height:1;font-size:32px;font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;">&#127917;</span></td></tr></table>`
+                          ? `<img src="${logoSrc}" width="76" height="76" alt="${BRAND_NAME} logo" style="display:block;width:76px;height:76px;object-fit:contain;border-radius:12px;border:2px solid #c9a84c;background:#3d0a0a;padding:5px;box-sizing:border-box;" />`
+                          : `<table role="presentation" cellpadding="0" cellspacing="0" width="76" style="width:76px;height:76px;border-radius:12px;border:2px solid #c9a84c;background:#5a1010;"><tr><td width="76" height="76" align="center" valign="middle" style="width:76px;height:76px;text-align:center;vertical-align:middle;font-size:34px;font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;">&#127917;</td></tr></table>`
                       }
                     </td>
                   </tr>
@@ -297,47 +329,48 @@ export async function sendTicketsEmail(payload: TicketEmailPayload): Promise<voi
               </td>
             </tr>
 
-            <!-- GOLD DIVIDER LINE -->
+            <!-- GOLD DIVIDER -->
             <tr>
-              <td style="height:3px;background:linear-gradient(90deg,#8b1a1a,#c9a84c,#8b1a1a);"></td>
+              <td style="height:3px;background:linear-gradient(90deg,#6b0f0f,#c9a84c,#6b0f0f);"></td>
             </tr>
 
             <!-- BODY -->
             <tr>
-              <td style="background:#fffdf7;padding:26px 28px 8px 28px;border:1px solid #e8dfc8;border-top:none;">
-                <p style="margin:0 0 6px 0;font-size:16px;line-height:1.6;font-family:Georgia,serif;color:#1a0a0a;">Hey ${safeCustomerName}!</p>
-                <p style="margin:0 0 12px 0;font-size:15px;line-height:1.75;font-family:Arial,sans-serif;color:#3d2020;">
+              <td class="email-body" style="background:#fffdf7;padding:28px 32px 10px 32px;border:1px solid #e8dfc8;border-top:none;">
+
+                <p style="margin:0 0 8px 0;font-size:17px;line-height:1.5;font-family:Georgia,serif;color:#1a0a0a;">Hey ${safeCustomerName}!</p>
+                <p style="margin:0 0 14px 0;font-size:14px;line-height:1.8;font-family:Arial,sans-serif;color:#3d2020;">
                   We are so excited to have you join us for <strong style="color:#8b1a1a;">${safeShowTitle}</strong>. Our cast and crew have been working incredibly hard, and we can&rsquo;t wait to share this show with you.
                 </p>
-                <p style="margin:0 0 18px 0;font-size:15px;line-height:1.75;font-family:Arial,sans-serif;color:#3d2020;">
+                <p style="margin:0 0 20px 0;font-size:14px;line-height:1.8;font-family:Arial,sans-serif;color:#3d2020;">
                   Here&rsquo;s everything you need for the big night:
                 </p>
 
-                <!-- ORDER DETAILS BOX -->
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #c9a84c;border-radius:10px;background:#fdf8ee;margin-bottom:22px;">
+                <!-- SHOW DETAILS BOX -->
+                <table class="detail-box" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #c9a84c;border-radius:12px;background:#fdf8ee;margin-bottom:24px;">
                   <tr>
-                    <td style="padding:6px 16px;background:#c9a84c;border-radius:9px 9px 0 0;">
-                      <div style="font-family:Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;color:#3d1a00;">Show Details</div>
+                    <td style="padding:7px 18px;background:#c9a84c;border-radius:11px 11px 0 0;">
+                      <div style="font-family:Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3d1a00;">Show Details</div>
                     </td>
                   </tr>
                   <tr>
-                    <td style="padding:14px 16px;font-family:Arial,sans-serif;font-size:13px;line-height:2;color:#1a0a0a;">
+                    <td style="padding:16px 18px;font-family:Arial,sans-serif;font-size:13px;line-height:1;">
                       <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                         <tr>
-                          <td style="color:#8b6914;font-weight:700;width:120px;vertical-align:top;">When</td>
-                          <td style="color:#1a0a0a;">${escapeHtml(startsAt)}</td>
+                          <td class="detail-label" style="color:#8b6914;font-weight:700;width:110px;vertical-align:top;padding-bottom:10px;">When</td>
+                          <td class="detail-value" style="color:#1a0a0a;padding-bottom:10px;line-height:1.5;">${escapeHtml(startsAt)}</td>
                         </tr>
                         <tr>
-                          <td style="color:#8b6914;font-weight:700;vertical-align:top;">Where</td>
-                          <td style="color:#1a0a0a;">${safeVenue}</td>
+                          <td class="detail-label" style="color:#8b6914;font-weight:700;vertical-align:top;padding-bottom:10px;">Where</td>
+                          <td class="detail-value" style="color:#1a0a0a;padding-bottom:10px;">${safeVenue}</td>
                         </tr>
                         <tr>
-                          <td style="color:#8b6914;font-weight:700;vertical-align:top;">Order ID</td>
-                          <td style="color:#1a0a0a;">${safeOrderId}</td>
+                          <td class="detail-label" style="color:#8b6914;font-weight:700;vertical-align:top;padding-bottom:10px;">Order ID</td>
+                          <td class="detail-value" style="color:#1a0a0a;padding-bottom:10px;font-size:12px;letter-spacing:0.4px;">${safeOrderId}</td>
                         </tr>
                         <tr>
-                          <td style="color:#8b6914;font-weight:700;vertical-align:top;">Email</td>
-                          <td style="color:#1a0a0a;">${safeCustomerEmail}</td>
+                          <td class="detail-label" style="color:#8b6914;font-weight:700;vertical-align:top;">Email</td>
+                          <td class="detail-value" style="color:#1a0a0a;">${safeCustomerEmail}</td>
                         </tr>
                       </table>
                     </td>
@@ -347,13 +380,13 @@ export async function sendTicketsEmail(payload: TicketEmailPayload): Promise<voi
                 ${
                   safeWalletUrl
                     ? `
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:18px;">
+                <table class="wallet-box" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:22px;">
                   <tr>
-                    <td style="border:1px solid #c9a84c;border-radius:12px;background:#fff8e8;padding:16px;">
-                      <div style="font-family:Arial,sans-serif;font-size:10px;font-weight:700;color:#8b6914;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.8px;">Open All Tickets</div>
-                      <div style="font-family:Arial,sans-serif;font-size:13px;color:#3d2020;line-height:1.6;margin-bottom:12px;">Use one wallet link to swipe through every ticket in this order.</div>
-                      <a href="${safeWalletUrl}" style="display:inline-block;background:#8b1a1a;color:#f5d98b;text-decoration:none;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:700;font-family:Arial,sans-serif;border:1px solid #c9a84c;">Open All Tickets</a>
-                      <div style="font-size:11px;color:#8b7355;line-height:1.5;margin-top:10px;word-break:break-all;font-family:Arial,sans-serif;">${safeWalletUrl}</div>
+                    <td style="border:1px solid #c9a84c;border-radius:12px;background:#fff8e8;padding:18px 18px 16px;">
+                      <div style="font-family:Arial,sans-serif;font-size:10px;font-weight:700;color:#8b6914;margin-bottom:6px;text-transform:uppercase;letter-spacing:1.2px;">Open All Tickets</div>
+                      <div style="font-family:Arial,sans-serif;font-size:13px;color:#3d2020;line-height:1.65;margin-bottom:14px;">Use one wallet link to swipe through every ticket in this order &mdash; no need to open them individually.</div>
+                      <a href="${safeWalletUrl}" style="display:inline-block;background:#8b1a1a;color:#f5d98b;text-decoration:none;padding:11px 20px;border-radius:8px;font-size:13px;font-weight:700;font-family:Arial,sans-serif;border:1px solid #c9a84c;letter-spacing:0.3px;">Open All Tickets &rarr;</a>
+                      <div style="font-size:11px;color:#9b8365;line-height:1.5;margin-top:12px;word-break:break-all;font-family:Arial,sans-serif;">${safeWalletUrl}</div>
                     </td>
                   </tr>
                 </table>
@@ -362,7 +395,7 @@ export async function sendTicketsEmail(payload: TicketEmailPayload): Promise<voi
                 }
 
                 <!-- TICKETS SECTION LABEL -->
-                <div style="font-family:Georgia,serif;font-size:16px;font-weight:700;color:#1a0a0a;margin-bottom:12px;">
+                <div class="section-label" style="font-family:Georgia,serif;font-size:15px;font-weight:700;color:#1a0a0a;margin-bottom:12px;">
                   Individual ticket links
                 </div>
 
@@ -372,30 +405,33 @@ export async function sendTicketsEmail(payload: TicketEmailPayload): Promise<voi
                 </table>
 
                 <!-- TIP BOX -->
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+                <table class="tip-box" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
                   <tr>
-                    <td style="border-left:3px solid #c9a84c;padding:12px 14px;background:#fdf8ee;border-radius:0 8px 8px 0;">
-                      <div style="font-family:Arial,sans-serif;font-size:10px;font-weight:700;color:#8b6914;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.8px;">A quick tip</div>
-                      <div style="font-family:Arial,sans-serif;font-size:13px;color:#3d2020;line-height:1.6;">Pull up your ticket links on your phone before you arrive &mdash; each one has a QR code for easy entry. Doors open 30 minutes before showtime.</div>
+                    <td style="border-left:3px solid #c9a84c;padding:13px 16px;background:#fdf8ee;border-radius:0 10px 10px 0;">
+                      <div style="font-family:Arial,sans-serif;font-size:10px;font-weight:700;color:#8b6914;margin-bottom:5px;text-transform:uppercase;letter-spacing:1px;">Quick tip</div>
+                      <div style="font-family:Arial,sans-serif;font-size:13px;color:#3d2020;line-height:1.7;">Pull up your ticket links before you arrive &mdash; each one has a QR code for easy entry. Doors open 30&nbsp;minutes before showtime.</div>
                     </td>
                   </tr>
                 </table>
+
               </td>
+            </tr>
+
+            <!-- FOOTER DIVIDER -->
+            <tr>
+              <td style="height:3px;background:linear-gradient(90deg,#6b0f0f,#c9a84c,#6b0f0f);"></td>
             </tr>
 
             <!-- FOOTER -->
             <tr>
-              <td style="height:3px;background:linear-gradient(90deg,#8b1a1a,#c9a84c,#8b1a1a);"></td>
-            </tr>
-            <tr>
-              <td style="background:linear-gradient(160deg,#1a0505 0%,#3d0a0a 100%);border-radius:0 0 16px 16px;padding:18px 28px;">
+              <td style="background:linear-gradient(160deg,#1a0505 0%,#3d0a0a 100%);border-radius:0 0 16px 16px;padding:20px 32px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                   <tr>
                     <td>
-                      <p style="margin:0;font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:rgba(245,240,232,0.85);">Thank you for supporting the students of ${BRAND_NAME}. See you opening night!</p>
+                      <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;line-height:1.7;color:rgba(245,240,232,0.80);">Thank you for supporting the students of ${BRAND_NAME}.<br/>See you opening night!</p>
                     </td>
                     <td align="right" valign="middle" style="padding-left:16px;">
-                      <div style="font-family:Georgia,serif;font-size:18px;color:#c9a84c;">&#127914;</div>
+                      <div style="font-family:Georgia,serif;font-size:22px;color:#c9a84c;">&#127914;</div>
                     </td>
                   </tr>
                 </table>
@@ -406,7 +442,8 @@ export async function sendTicketsEmail(payload: TicketEmailPayload): Promise<voi
         </td>
       </tr>
     </table>
-  `;
+</body>
+</html>`;
 
   await transporter.sendMail({
     from: env.SMTP_FROM,
@@ -456,46 +493,80 @@ export async function sendDonationThankYouEmail(payload: DonationThankYouEmailPa
     BRAND_NAME
   ].join('\n');
 
-  const html = `
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:24px 12px;">
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="supported-color-schemes" content="light dark" />
+  ${DARK_MODE_STYLES}
+</head>
+<body style="margin:0;padding:0;">
+    <table class="email-outer" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:28px 12px;">
       <tr>
         <td align="center">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;">
             <tr>
-              <td style="background:linear-gradient(160deg,#1a0505 0%,#3d0a0a 100%);border-radius:14px 14px 0 0;padding:24px;">
-                <div style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#c9a84c;margin-bottom:8px;">${BRAND_NAME}</div>
-                <div style="font-family:Georgia,'Times New Roman',serif;font-size:28px;font-weight:700;color:#f5f0e8;line-height:1.2;">Thank You</div>
-                <div style="margin-top:8px;font-family:Arial,sans-serif;font-size:14px;color:#f5d98b;line-height:1.5;">Your donation helps our students build incredible productions.</div>
+              <td style="background:linear-gradient(160deg,#1a0505 0%,#3d0a0a 100%);border-radius:16px 16px 0 0;padding:32px 32px 28px;">
+                <div style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:#c9a84c;margin-bottom:10px;">${BRAND_NAME}</div>
+                <div style="font-family:Georgia,'Times New Roman',serif;font-size:30px;font-weight:700;color:#f5f0e8;line-height:1.2;margin-bottom:10px;">Thank You</div>
+                <div style="font-family:Arial,sans-serif;font-size:14px;color:rgba(245,217,139,0.80);line-height:1.65;">Your donation helps our students build incredible productions.</div>
               </td>
             </tr>
             <tr>
-              <td style="height:3px;background:linear-gradient(90deg,#8b1a1a,#c9a84c,#8b1a1a);"></td>
+              <td style="height:3px;background:linear-gradient(90deg,#6b0f0f,#c9a84c,#6b0f0f);"></td>
             </tr>
             <tr>
-              <td style="background:#fffdf7;border:1px solid #e8dfc8;border-top:none;padding:24px;">
-                <p style="margin:0 0 10px 0;font-family:Georgia,'Times New Roman',serif;font-size:18px;color:#1a0a0a;">Hi ${safeDonorName},</p>
-                <p style="margin:0 0 14px 0;font-family:Arial,sans-serif;font-size:14px;line-height:1.7;color:#3d2020;">
+              <td class="email-body" style="background:#fffdf7;border:1px solid #e8dfc8;border-top:none;padding:28px 32px 24px;">
+                <p style="margin:0 0 12px 0;font-family:Georgia,'Times New Roman',serif;font-size:18px;color:#1a0a0a;">Hi ${safeDonorName},</p>
+                <p style="margin:0 0 16px 0;font-family:Arial,sans-serif;font-size:14px;line-height:1.8;color:#3d2020;">
                   Thank you for your generous donation to ${BRAND_NAME}. We truly appreciate your support.
                 </p>
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #c9a84c;border-radius:10px;background:#fdf8ee;">
+                <table class="detail-box" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #c9a84c;border-radius:12px;background:#fdf8ee;margin-bottom:16px;">
                   <tr>
-                    <td style="padding:12px 14px;font-family:Arial,sans-serif;font-size:13px;color:#1a0a0a;line-height:1.8;">
-                      <div><strong style="color:#8b6914;">Donation amount:</strong> ${safeAmountLabel}</div>
-                      <div><strong style="color:#8b6914;">Donation ID:</strong> ${safeDonationId}</div>
-                      <div><strong style="color:#8b6914;">Receipt email:</strong> ${safeDonorEmail}</div>
+                    <td style="padding:7px 18px;background:#c9a84c;border-radius:11px 11px 0 0;">
+                      <div style="font-family:Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3d1a00;">Donation Details</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:16px 18px;font-family:Arial,sans-serif;font-size:13px;line-height:1;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                        <tr>
+                          <td class="detail-label" style="color:#8b6914;font-weight:700;width:130px;vertical-align:top;padding-bottom:10px;">Amount</td>
+                          <td class="detail-value" style="color:#1a0a0a;padding-bottom:10px;">${safeAmountLabel}</td>
+                        </tr>
+                        <tr>
+                          <td class="detail-label" style="color:#8b6914;font-weight:700;vertical-align:top;padding-bottom:10px;">Donation ID</td>
+                          <td class="detail-value" style="color:#1a0a0a;padding-bottom:10px;font-size:12px;letter-spacing:0.4px;">${safeDonationId}</td>
+                        </tr>
+                        <tr>
+                          <td class="detail-label" style="color:#8b6914;font-weight:700;vertical-align:top;">Receipt email</td>
+                          <td class="detail-value" style="color:#1a0a0a;">${safeDonorEmail}</td>
+                        </tr>
+                      </table>
                     </td>
                   </tr>
                 </table>
-                <p style="margin:14px 0 0 0;font-family:Arial,sans-serif;font-size:13px;line-height:1.6;color:#3d2020;">
-                  Stripe also sent your official payment receipt to your email.
+                <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;line-height:1.7;color:#3d2020;">
+                  Stripe also sent your official payment receipt to your email address.
                 </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="height:3px;background:linear-gradient(90deg,#6b0f0f,#c9a84c,#6b0f0f);"></td>
+            </tr>
+            <tr>
+              <td style="background:linear-gradient(160deg,#1a0505 0%,#3d0a0a 100%);border-radius:0 0 16px 16px;padding:18px 32px;">
+                <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;line-height:1.7;color:rgba(245,240,232,0.80);">With gratitude &mdash; ${BRAND_NAME}</p>
               </td>
             </tr>
           </table>
         </td>
       </tr>
     </table>
-  `;
+</body>
+</html>`;
 
   await transporter.sendMail({
     from: env.SMTP_FROM,
@@ -550,48 +621,92 @@ export async function sendSeniorSendoffSubmissionEmail(payload: SeniorSendoffSub
     .filter(Boolean)
     .join('\n');
 
-  const html = `
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:24px 12px;">
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="supported-color-schemes" content="light dark" />
+  ${DARK_MODE_STYLES}
+</head>
+<body style="margin:0;padding:0;">
+    <table class="email-outer" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:28px 12px;">
       <tr>
         <td align="center">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;">
             <tr>
-              <td style="background:linear-gradient(160deg,#1a0505 0%,#3d0a0a 100%);border-radius:14px 14px 0 0;padding:24px;">
-                <div style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#c9a84c;margin-bottom:8px;">${BRAND_NAME}</div>
-                <div style="font-family:Georgia,'Times New Roman',serif;font-size:28px;font-weight:700;color:#f5f0e8;line-height:1.2;">Shout Out Received</div>
-                <div style="margin-top:8px;font-family:Arial,sans-serif;font-size:14px;color:#f5d98b;line-height:1.5;">Your playbill shout-out has been submitted.</div>
+              <td style="background:linear-gradient(160deg,#1a0505 0%,#3d0a0a 100%);border-radius:16px 16px 0 0;padding:32px 32px 28px;">
+                <div style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:#c9a84c;margin-bottom:10px;">${BRAND_NAME}</div>
+                <div style="font-family:Georgia,'Times New Roman',serif;font-size:30px;font-weight:700;color:#f5f0e8;line-height:1.2;margin-bottom:10px;">Shout Out Received</div>
+                <div style="font-family:Arial,sans-serif;font-size:14px;color:rgba(245,217,139,0.80);line-height:1.65;">Your playbill shout-out has been submitted successfully.</div>
               </td>
             </tr>
             <tr>
-              <td style="height:3px;background:linear-gradient(90deg,#8b1a1a,#c9a84c,#8b1a1a);"></td>
+              <td style="height:3px;background:linear-gradient(90deg,#6b0f0f,#c9a84c,#6b0f0f);"></td>
             </tr>
             <tr>
-              <td style="background:#fffdf7;border:1px solid #e8dfc8;border-top:none;padding:24px;">
-                <p style="margin:0 0 10px 0;font-family:Georgia,'Times New Roman',serif;font-size:18px;color:#1a0a0a;">Hi ${safeParentName},</p>
-                <p style="margin:0 0 14px 0;font-family:Arial,sans-serif;font-size:14px;line-height:1.7;color:#3d2020;">
+              <td class="email-body" style="background:#fffdf7;border:1px solid #e8dfc8;border-top:none;padding:28px 32px 24px;">
+                <p style="margin:0 0 12px 0;font-family:Georgia,'Times New Roman',serif;font-size:18px;color:#1a0a0a;">Hi ${safeParentName},</p>
+                <p style="margin:0 0 18px 0;font-family:Arial,sans-serif;font-size:14px;line-height:1.8;color:#3d2020;">
                   We received your shout out for <strong>${safeStudentName}</strong> in <strong>${safeShowTitle}</strong>.
                 </p>
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #c9a84c;border-radius:10px;background:#fdf8ee;margin-bottom:14px;">
+                <table class="detail-box" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #c9a84c;border-radius:12px;background:#fdf8ee;margin-bottom:20px;">
                   <tr>
-                    <td style="padding:12px 14px;font-family:Arial,sans-serif;font-size:13px;color:#1a0a0a;line-height:1.8;">
-                      <div><strong style="color:#8b6914;">Entry number:</strong> ${safeEntryNumber} of 2</div>
-                      <div><strong style="color:#8b6914;">Parent email:</strong> ${safeParentEmail}</div>
-                      <div><strong style="color:#8b6914;">Parent phone:</strong> ${safeParentPhone}</div>
-                      <div><strong style="color:#8b6914;">Student:</strong> ${safeStudentName}</div>
-                      <div><strong style="color:#8b6914;">Payment:</strong> ${safePaidAmount || 'Not required'}</div>
-                      ${safePaymentIntentId ? `<div><strong style="color:#8b6914;">Payment ID:</strong> ${safePaymentIntentId}</div>` : ''}
+                    <td style="padding:7px 18px;background:#c9a84c;border-radius:11px 11px 0 0;">
+                      <div style="font-family:Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3d1a00;">Submission Details</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:16px 18px;font-family:Arial,sans-serif;font-size:13px;line-height:1;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                        <tr>
+                          <td class="detail-label" style="color:#8b6914;font-weight:700;width:130px;vertical-align:top;padding-bottom:10px;">Entry</td>
+                          <td class="detail-value" style="color:#1a0a0a;padding-bottom:10px;">${safeEntryNumber} of 2</td>
+                        </tr>
+                        <tr>
+                          <td class="detail-label" style="color:#8b6914;font-weight:700;vertical-align:top;padding-bottom:10px;">Parent email</td>
+                          <td class="detail-value" style="color:#1a0a0a;padding-bottom:10px;">${safeParentEmail}</td>
+                        </tr>
+                        <tr>
+                          <td class="detail-label" style="color:#8b6914;font-weight:700;vertical-align:top;padding-bottom:10px;">Parent phone</td>
+                          <td class="detail-value" style="color:#1a0a0a;padding-bottom:10px;">${safeParentPhone}</td>
+                        </tr>
+                        <tr>
+                          <td class="detail-label" style="color:#8b6914;font-weight:700;vertical-align:top;padding-bottom:10px;">Student</td>
+                          <td class="detail-value" style="color:#1a0a0a;padding-bottom:10px;">${safeStudentName}</td>
+                        </tr>
+                        <tr>
+                          <td class="detail-label" style="color:#8b6914;font-weight:700;vertical-align:top;${safePaymentIntentId ? 'padding-bottom:10px;' : ''}">Payment</td>
+                          <td class="detail-value" style="color:#1a0a0a;${safePaymentIntentId ? 'padding-bottom:10px;' : ''}">${safePaidAmount || 'Not required'}</td>
+                        </tr>
+                        ${safePaymentIntentId ? `
+                        <tr>
+                          <td class="detail-label" style="color:#8b6914;font-weight:700;vertical-align:top;">Payment ID</td>
+                          <td class="detail-value" style="color:#1a0a0a;font-size:12px;letter-spacing:0.4px;">${safePaymentIntentId}</td>
+                        </tr>` : ''}
+                      </table>
                     </td>
                   </tr>
                 </table>
-                <div style="font-family:Arial,sans-serif;font-size:12px;font-weight:700;color:#8b6914;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.8px;">Message</div>
-                <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.7;color:#3d2020;border:1px solid #e8dfc8;border-radius:10px;background:#fff;padding:12px 14px;white-space:pre-wrap;">${safeMessage}</div>
+                <div class="section-label" style="font-family:Arial,sans-serif;font-size:10px;font-weight:700;color:#8b6914;margin-bottom:8px;text-transform:uppercase;letter-spacing:1.2px;">Message</div>
+                <div class="msg-box" style="font-family:Arial,sans-serif;font-size:13px;line-height:1.75;color:#3d2020;border:1px solid #e8dfc8;border-radius:10px;background:#fff;padding:14px 16px;white-space:pre-wrap;">${safeMessage}</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="height:3px;background:linear-gradient(90deg,#6b0f0f,#c9a84c,#6b0f0f);"></td>
+            </tr>
+            <tr>
+              <td style="background:linear-gradient(160deg,#1a0505 0%,#3d0a0a 100%);border-radius:0 0 16px 16px;padding:18px 32px;">
+                <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;line-height:1.7;color:rgba(245,240,232,0.80);">Thank you for supporting ${BRAND_NAME}.</p>
               </td>
             </tr>
           </table>
         </td>
       </tr>
     </table>
-  `;
+</body>
+</html>`;
 
   await transporter.sendMail({
     from: env.SMTP_FROM,
@@ -623,31 +738,44 @@ export async function sendTripLoginCodeEmail(payload: TripLoginCodeEmailPayload)
     'If you did not request this, you can ignore this message.'
   ].join('\n');
 
-  const html = `
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:24px 12px;">
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="supported-color-schemes" content="light dark" />
+  ${DARK_MODE_STYLES}
+</head>
+<body style="margin:0;padding:0;">
+    <table class="email-outer" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:28px 12px;">
       <tr>
         <td align="center">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;">
             <tr>
-              <td style="background:#1a0505;border-radius:14px 14px 0 0;padding:20px;">
-                <div style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#c9a84c;margin-bottom:8px;">${BRAND_NAME}</div>
-                <div style="font-family:Georgia,'Times New Roman',serif;font-size:24px;font-weight:700;color:#f5f0e8;line-height:1.2;">Trip Payments Sign-In Code</div>
+              <td style="background:#1a0505;border-radius:16px 16px 0 0;padding:28px 32px 24px;">
+                <div style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:#c9a84c;margin-bottom:10px;">${BRAND_NAME}</div>
+                <div style="font-family:Georgia,'Times New Roman',serif;font-size:26px;font-weight:700;color:#f5f0e8;line-height:1.2;">Trip Payments Sign-In Code</div>
               </td>
             </tr>
             <tr>
-              <td style="background:#fffdf7;border:1px solid #e8dfc8;border-top:none;border-radius:0 0 14px 14px;padding:22px;">
-                <p style="margin:0 0 12px 0;font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#3d2020;">Hi ${safeName},</p>
-                <p style="margin:0 0 12px 0;font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#3d2020;">Use this one-time code to sign in:</p>
-                <div style="font-family:Arial,sans-serif;font-size:34px;letter-spacing:5px;font-weight:700;color:#8b1a1a;margin:4px 0 14px 0;">${safeCode}</div>
-                <p style="margin:0 0 8px 0;font-family:Arial,sans-serif;font-size:13px;color:#5a3a1a;">Expires: ${safeExpiry}</p>
-                <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;color:#6f5a44;">If you did not request this code, you can ignore this email.</p>
+              <td style="height:3px;background:linear-gradient(90deg,#6b0f0f,#c9a84c,#6b0f0f);"></td>
+            </tr>
+            <tr>
+              <td class="email-body" style="background:#fffdf7;border:1px solid #e8dfc8;border-top:none;border-radius:0 0 16px 16px;padding:28px 32px 24px;">
+                <p style="margin:0 0 14px 0;font-family:Arial,sans-serif;font-size:14px;line-height:1.7;color:#3d2020;">Hi ${safeName},</p>
+                <p style="margin:0 0 14px 0;font-family:Arial,sans-serif;font-size:14px;line-height:1.7;color:#3d2020;">Use this one-time code to sign in to the trip portal:</p>
+                <div style="font-family:'Courier New',Courier,monospace;font-size:38px;letter-spacing:8px;font-weight:700;color:#8b1a1a;margin:4px 0 18px 0;line-height:1;">${safeCode}</div>
+                <p style="margin:0 0 10px 0;font-family:Arial,sans-serif;font-size:13px;color:#5a3a1a;line-height:1.6;">Expires: <strong>${safeExpiry}</strong></p>
+                <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;color:#9b8365;line-height:1.6;">If you did not request this code, you can safely ignore this email.</p>
               </td>
             </tr>
           </table>
         </td>
       </tr>
     </table>
-  `;
+</body>
+</html>`;
 
   await transporter.sendMail({
     from: env.SMTP_FROM,
