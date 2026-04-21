@@ -790,8 +790,8 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 10,
     marginTop: 24,
     width: '100%',
-    maxWidth: 420,
-    padding: '0 44px',
+    maxWidth: 460,
+    padding: '0 32px',
     boxSizing: 'border-box' as const,
   },
   btnSecondary: {
