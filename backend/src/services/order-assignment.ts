@@ -333,6 +333,7 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
     if (params.sendEmail) {
       const emailPayload: TicketEmailPayload = {
         orderId: createdOrder.id,
+        orderAccessToken: createdOrder.accessToken,
         customerName: name,
         customerEmail: email,
         showTitle: performance.title || performance.show.title,

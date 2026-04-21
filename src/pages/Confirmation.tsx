@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Calendar, MapPin, Ticket, Search } from 'lucide-react';
+import { Calendar, MapPin, Ticket, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { apiFetch } from '../lib/api';
 import { getRememberedOrderAccessToken, rememberOrderAccessToken } from '../lib/orderAccess';
+import { toQrCodeDataUrl } from '../lib/qrCode';
 
 type OrderResponse = {
   order: {
@@ -27,9 +28,9 @@ type OrderResponse = {
     isGeneralAdmission?: boolean;
   };
   tickets: Array<{
-    id: string;
-    publicId: string;
-    seatId: string;
+    id?: string | null;
+    publicId?: string | null;
+    seatId?: string | null;
     sectionName: string;
     row: string;
     number: number;
@@ -38,18 +39,20 @@ type OrderResponse = {
     ticketType?: string | null;
     isComplimentary?: boolean;
     attendeeName?: string | null;
+    qrPayload?: string | null;
+    checkedInAt?: string | null;
+    checkedInBy?: string | null;
   }>;
 };
 
-const MIN_PENDING_POLL_DELAY_MS = 2_500;
-const MAX_PENDING_POLL_DELAY_MS = 15_000;
-const HIDDEN_PENDING_POLL_DELAY_MS = 20_000;
-const PENDING_POLL_JITTER_MS = 600;
-const MAX_PENDING_POLL_ATTEMPTS = 20;
+const VISIBLE_REFRESH_DELAY_MS = 20_000;
+const HIDDEN_REFRESH_DELAY_MS = 60_000;
 
-function getPendingPollDelayMs(attemptNumber: number): number {
-  const exponentialDelay = Math.round(MIN_PENDING_POLL_DELAY_MS * Math.pow(1.35, attemptNumber));
-  return Math.min(MAX_PENDING_POLL_DELAY_MS, exponentialDelay);
+function getTicketKey(
+  ticket: OrderResponse['tickets'][number],
+  index: number
+): string {
+  return ticket.id || ticket.publicId || ticket.seatId || `ticket-${index}`;
 }
 
 export default function Confirmation() {
@@ -58,6 +61,20 @@ export default function Confirmation() {
   const tokenFromUrl = searchParams.get('token');
   const [orderData, setOrderData] = useState<OrderResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [qrByTicketKey, setQrByTicketKey] = useState<Record<string, string>>({});
+  const [activeTicketIndex, setActiveTicketIndex] = useState(0);
+  const [isVisible, setIsVisible] = useState(() => (typeof document === 'undefined' ? true : document.visibilityState === 'visible'));
+  const carouselRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      setIsVisible(document.visibilityState === 'visible');
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (!orderId) {
@@ -74,35 +91,86 @@ export default function Confirmation() {
     rememberOrderAccessToken(orderId, orderAccessToken);
 
     let cancelled = false;
-    let attempts = 0;
-    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    let hasLoadedOnce = false;
 
-    const fetchOrder = async () => {
+    const fetchOrder = async (initialLoad = false) => {
       try {
         const result = await apiFetch<OrderResponse>(`/api/orders/${orderId}?token=${encodeURIComponent(orderAccessToken)}`);
         if (cancelled) return;
         setOrderData(result);
-
-        if (result.order.status === 'PENDING' && attempts < MAX_PENDING_POLL_ATTEMPTS) {
-          attempts += 1;
-          const isHidden = document.visibilityState !== 'visible';
-          const baseDelay = isHidden ? HIDDEN_PENDING_POLL_DELAY_MS : getPendingPollDelayMs(attempts - 1);
-          const jitter = Math.floor(Math.random() * PENDING_POLL_JITTER_MS);
-          pollTimer = setTimeout(fetchOrder, baseDelay + jitter);
-        }
+        setError(null);
+        hasLoadedOnce = true;
       } catch (err) {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load order confirmation');
+        if (!hasLoadedOnce || initialLoad) {
+          setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load order confirmation');
+        }
       }
     };
 
-    fetchOrder();
+    void fetchOrder(true);
+    const interval = window.setInterval(() => {
+      void fetchOrder();
+    }, isVisible ? VISIBLE_REFRESH_DELAY_MS : HIDDEN_REFRESH_DELAY_MS);
 
     return () => {
       cancelled = true;
-      if (pollTimer) clearTimeout(pollTimer);
+      window.clearInterval(interval);
     };
-  }, [orderId, tokenFromUrl]);
+  }, [orderId, tokenFromUrl, isVisible]);
+
+  useEffect(() => {
+    setQrByTicketKey({});
+  }, [orderId]);
+
+  useEffect(() => {
+    if (!orderData) {
+      return;
+    }
+
+    let cancelled = false;
+    const missingTickets = orderData.tickets
+      .map((ticket, index) => ({
+        key: getTicketKey(ticket, index),
+        qrPayload: ticket.qrPayload
+      }))
+      .filter((ticket) => Boolean(ticket.qrPayload) && !qrByTicketKey[ticket.key]);
+
+    if (missingTickets.length === 0) {
+      return;
+    }
+
+    void Promise.all(
+      missingTickets.map(async (ticket) => {
+        const imageUrl = await toQrCodeDataUrl(ticket.qrPayload as string, 240);
+        return [ticket.key, imageUrl] as const;
+      })
+    )
+      .then((entries) => {
+        if (cancelled) return;
+        setQrByTicketKey((current) => {
+          const next = { ...current };
+          for (const [key, imageUrl] of entries) {
+            next[key] = imageUrl;
+          }
+          return next;
+        });
+      })
+      .catch(() => {
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [orderData, qrByTicketKey]);
+
+  useEffect(() => {
+    if (!orderData) {
+      setActiveTicketIndex(0);
+      return;
+    }
+    setActiveTicketIndex((current) => Math.min(current, Math.max(0, orderData.tickets.length - 1)));
+  }, [orderData]);
 
   const totalLabel = useMemo(() => {
     if (!orderData) return '$0.00';
@@ -119,6 +187,21 @@ export default function Confirmation() {
 
   const pending = orderData.order.status === 'PENDING';
   const finalizationFailed = orderData.order.status === 'FINALIZATION_FAILED';
+  const totalTickets = orderData.tickets.length;
+
+  const goToTicket = (index: number) => {
+    const container = carouselRef.current;
+    if (!container || totalTickets === 0) {
+      return;
+    }
+
+    const clampedIndex = Math.max(0, Math.min(totalTickets - 1, index));
+    const nextChild = container.children.item(clampedIndex) as HTMLElement | null;
+    if (nextChild) {
+      nextChild.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+    }
+    setActiveTicketIndex(clampedIndex);
+  };
 
   return (
     <div className="min-h-screen bg-yellow-50 px-4 py-10 sm:py-20">
@@ -162,31 +245,100 @@ export default function Confirmation() {
             </div>
 
             <div className="bg-stone-50 rounded-2xl p-6 mb-8 border border-stone-100">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <h3 className="font-bold text-stone-900 uppercase tracking-wider text-sm">Tickets</h3>
-                <div className="text-sm font-bold text-stone-700">Total {totalLabel}</div>
+                <div className="flex items-center gap-4">
+                  <div className="text-sm font-bold text-stone-700">Total {totalLabel}</div>
+                  {totalTickets > 0 && (
+                    <div className="text-xs font-semibold text-stone-500">
+                      {activeTicketIndex + 1} / {totalTickets}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="space-y-3">
-                {orderData.tickets.map((ticket) => (
-                  <div key={ticket.seatId} className="flex flex-col gap-3 rounded-xl border border-stone-100 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <div className="font-bold text-stone-900">
-                        {ticket.isGeneralAdmission || orderData.performance.isGeneralAdmission
-                          ? `General Admission Ticket ${ticket.number || 1}`
-                          : `${ticket.sectionName} - Row ${ticket.row} Seat ${ticket.number}`}
+              <div className="mb-3 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => goToTicket(activeTicketIndex - 1)}
+                  disabled={activeTicketIndex <= 0 || totalTickets <= 1}
+                  className="inline-flex items-center gap-1 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 disabled:opacity-40"
+                  aria-label="Previous ticket"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => goToTicket(activeTicketIndex + 1)}
+                  disabled={activeTicketIndex >= totalTickets - 1 || totalTickets <= 1}
+                  className="inline-flex items-center gap-1 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 disabled:opacity-40"
+                  aria-label="Next ticket"
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div
+                ref={carouselRef}
+                onScroll={(event) => {
+                  const container = event.currentTarget;
+                  if (!container.clientWidth || totalTickets === 0) return;
+                  const index = Math.round(container.scrollLeft / container.clientWidth);
+                  setActiveTicketIndex(Math.max(0, Math.min(totalTickets - 1, index)));
+                }}
+                className="flex snap-x snap-mandatory overflow-x-auto scroll-smooth"
+                aria-label="Order ticket wallet"
+              >
+                {orderData.tickets.map((ticket, index) => {
+                  const seatLabel =
+                    ticket.isGeneralAdmission || orderData.performance.isGeneralAdmission
+                      ? `General Admission Ticket ${ticket.number || index + 1}`
+                      : `${ticket.sectionName} - Row ${ticket.row} Seat ${ticket.number}`;
+                  const ticketKey = getTicketKey(ticket, index);
+                  const qrImageUrl = qrByTicketKey[ticketKey];
+
+                  return (
+                    <article key={ticketKey} className="min-w-full snap-start">
+                      <div className="flex min-h-[360px] flex-col gap-4 rounded-2xl border border-stone-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex-1 space-y-2">
+                          <div className="font-bold text-stone-900">{seatLabel}</div>
+                          {ticket.ticketType && <div className="text-xs text-stone-500">Type: {ticket.ticketType}</div>}
+                          {ticket.attendeeName && <div className="text-xs text-stone-500">Attendee: {ticket.attendeeName}</div>}
+                          {ticket.isComplimentary && <div className="text-xs font-semibold text-green-700">Complimentary</div>}
+                          {ticket.checkedInAt && (
+                            <div className="mt-2 inline-flex flex-col rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                              <span className="font-semibold uppercase tracking-wide">Checked In</span>
+                              <span>{format(new Date(ticket.checkedInAt), 'MMM d, yyyy @ h:mm a')}</span>
+                              {ticket.checkedInBy && <span>By {ticket.checkedInBy}</span>}
+                            </div>
+                          )}
+                          {ticket.publicId && !finalizationFailed && (
+                            <Link to={`/tickets/${ticket.publicId}`} className="inline-flex items-center gap-1 pt-1 text-sm font-bold text-yellow-700 hover:text-yellow-900">
+                              <Ticket className="w-4 h-4" /> Open Single Ticket
+                            </Link>
+                          )}
+                        </div>
+
+                        <div className="mx-auto flex flex-col items-center">
+                          {qrImageUrl ? (
+                            <img
+                              src={qrImageUrl}
+                              alt="Ticket QR"
+                              className="h-52 w-52 rounded-xl border border-stone-200 sm:h-56 sm:w-56"
+                            />
+                          ) : (
+                            <div className="flex h-52 w-52 items-center justify-center rounded-xl border border-stone-200 bg-stone-50 text-sm text-stone-400 sm:h-56 sm:w-56">
+                              {ticket.qrPayload ? 'Generating QR…' : 'QR pending'}
+                            </div>
+                          )}
+                          <div className="mt-2 text-[11px] text-stone-400">Present this QR at the door</div>
+                        </div>
                       </div>
-                      {ticket.ticketType && <div className="text-xs text-stone-500">Type: {ticket.ticketType}</div>}
-                      {ticket.attendeeName && <div className="text-xs text-stone-500">Attendee: {ticket.attendeeName}</div>}
-                      {ticket.isComplimentary && <div className="text-xs text-green-700 font-semibold">Complimentary</div>}
-                    </div>
-                    {ticket.publicId && !finalizationFailed && (
-                      <Link to={`/tickets/${ticket.publicId}`} className="inline-flex items-center gap-1 text-sm font-bold text-yellow-700 hover:text-yellow-900">
-                        <Ticket className="w-4 h-4" /> View Ticket
-                      </Link>
-                    )}
-                  </div>
-                ))}
+                    </article>
+                  );
+                })}
               </div>
             </div>
 

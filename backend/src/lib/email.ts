@@ -16,6 +16,7 @@ export type TicketEmailTicket = {
 
 export type TicketEmailPayload = {
   orderId: string;
+  orderAccessToken?: string | null;
   customerName: string;
   customerEmail: string;
   showTitle: string;
@@ -183,6 +184,13 @@ export async function sendTicketsEmail(payload: TicketEmailPayload): Promise<voi
   const safeCustomerEmail = escapeHtml(payload.customerEmail);
   const logo = loadEmailLogoAttachment();
   const logoSrc = logo ? `cid:${logo.cid}` : null;
+  const walletUrl = payload.orderAccessToken
+    ? `${env.APP_BASE_URL}/confirmation?${new URLSearchParams({
+        orderId: payload.orderId,
+        token: payload.orderAccessToken
+      }).toString()}`
+    : null;
+  const safeWalletUrl = walletUrl ? escapeHtml(walletUrl) : null;
 
   const ticketLines = payload.tickets
     .map((ticket, index) => {
@@ -206,12 +214,17 @@ export async function sendTicketsEmail(payload: TicketEmailPayload): Promise<voi
     `Performance: ${startsAt}`,
     `Venue: ${payload.venue}`,
     '',
-    'Your ticket links:',
+    walletUrl ? 'Open all tickets (wallet):' : null,
+    walletUrl || null,
+    walletUrl ? '' : null,
+    'Individual ticket links (fallback):',
     ticketLines,
     '',
     `Thanks for supporting ${BRAND_NAME}.`,
     'See you at the show!'
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   const htmlTickets = payload.tickets
     .map((ticket, index) => {
@@ -255,7 +268,7 @@ export async function sendTicketsEmail(payload: TicketEmailPayload): Promise<voi
 
   const html = `
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
-      Your Penncrest Theater tickets are ready. Open each ticket link for entry QR codes.
+      Your Penncrest Theater tickets are ready. Open all tickets in one wallet link.
     </div>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:26px 12px;">
       <tr>
@@ -331,9 +344,26 @@ export async function sendTicketsEmail(payload: TicketEmailPayload): Promise<voi
                   </tr>
                 </table>
 
+                ${
+                  safeWalletUrl
+                    ? `
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:18px;">
+                  <tr>
+                    <td style="border:1px solid #c9a84c;border-radius:12px;background:#fff8e8;padding:16px;">
+                      <div style="font-family:Arial,sans-serif;font-size:10px;font-weight:700;color:#8b6914;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.8px;">Open All Tickets</div>
+                      <div style="font-family:Arial,sans-serif;font-size:13px;color:#3d2020;line-height:1.6;margin-bottom:12px;">Use one wallet link to swipe through every ticket in this order.</div>
+                      <a href="${safeWalletUrl}" style="display:inline-block;background:#8b1a1a;color:#f5d98b;text-decoration:none;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:700;font-family:Arial,sans-serif;border:1px solid #c9a84c;">Open All Tickets</a>
+                      <div style="font-size:11px;color:#8b7355;line-height:1.5;margin-top:10px;word-break:break-all;font-family:Arial,sans-serif;">${safeWalletUrl}</div>
+                    </td>
+                  </tr>
+                </table>
+                `
+                    : ''
+                }
+
                 <!-- TICKETS SECTION LABEL -->
                 <div style="font-family:Georgia,serif;font-size:16px;font-weight:700;color:#1a0a0a;margin-bottom:12px;">
-                  Your tickets
+                  Individual ticket links
                 </div>
 
                 <!-- TICKETS -->

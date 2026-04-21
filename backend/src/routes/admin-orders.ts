@@ -2166,6 +2166,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
 
       await sendTicketsEmail({
         orderId: order.id,
+        orderAccessToken: order.accessToken,
         customerName: order.customerName,
         customerEmail: order.email,
         showTitle: order.performance.title || order.performance.show.title,

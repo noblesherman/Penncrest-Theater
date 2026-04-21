@@ -27,6 +27,12 @@ function toPrismaJson(value: unknown) {
 }
 
 function serializeOrder(order: any) {
+  const toCheckedInAtIso = (value: unknown): string | null => {
+    if (!value) return null;
+    if (value instanceof Date) return value.toISOString();
+    if (typeof value === 'string') return value;
+    return null;
+  };
   const isGeneralAdmission = order.performance.seatSelectionEnabled === false;
   const ticketBySeatId = new Map<
     string,
@@ -34,6 +40,8 @@ function serializeOrder(order: any) {
       id: string;
       publicId: string;
       qrPayload: string;
+      checkedInAt: string | null;
+      checkedInBy: string | null;
     }
   >(
     order.tickets
@@ -43,7 +51,9 @@ function serializeOrder(order: any) {
         {
           id: ticket.id,
           publicId: ticket.publicId,
-          qrPayload: ticket.qrPayload
+          qrPayload: ticket.qrPayload,
+          checkedInAt: toCheckedInAtIso(ticket.checkedInAt),
+          checkedInBy: ticket.checkedInBy || null
         }
       ])
   );
@@ -88,7 +98,9 @@ function serializeOrder(order: any) {
         ticketType: orderSeat.ticketType,
         isComplimentary: orderSeat.isComplimentary,
         attendeeName: orderSeat.attendeeName,
-        qrPayload: ticket?.qrPayload
+        qrPayload: ticket?.qrPayload,
+        checkedInAt: toCheckedInAtIso(ticket?.checkedInAt),
+        checkedInBy: ticket?.checkedInBy || null
       };
     })
   };
@@ -419,7 +431,10 @@ export const orderRoutes: FastifyPluginAsync = async (app) => {
         throw new HttpError(404, 'Order not found');
       }
 
-      reply.send(serializeOrder(order));
+      reply.send({
+        ...serializeOrder(order),
+        orderAccessToken: order.accessToken
+      });
     } catch (err) {
       handleRouteError(reply, err, 'We hit a small backstage snag while trying to lookup order');
     }

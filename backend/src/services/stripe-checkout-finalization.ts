@@ -465,6 +465,7 @@ async function sendTicketsEmailForOrder(orderId: string): Promise<void> {
   try {
     await sendTicketsEmail({
       orderId: paidOrder.id,
+      orderAccessToken: paidOrder.accessToken,
       customerName: paidOrder.customerName,
       customerEmail: paidOrder.email,
       showTitle: paidOrder.performance.title || paidOrder.performance.show.title,

@@ -158,6 +158,67 @@ let adminToken: string;
 let adminUserId: string;
 let expireStalePendingCheckoutAttempts: typeof import('../services/checkout-attempt-service.js').expireStalePendingCheckoutAttempts;
 
+async function runPaidCheckout(params: {
+  performanceId: string;
+  seatIds: string[];
+  holdToken: string;
+  clientToken: string;
+  customerEmail: string;
+  customerName: string;
+}): Promise<{
+  orderId: string;
+  clientSecret?: string;
+  orderAccessToken?: string;
+}> {
+  const checkoutResponse = await app.inject({
+    method: 'POST',
+    url: '/api/checkout',
+    payload: {
+      performanceId: params.performanceId,
+      checkoutMode: 'PAID',
+      seatIds: params.seatIds,
+      holdToken: params.holdToken,
+      clientToken: params.clientToken,
+      customerEmail: params.customerEmail,
+      customerName: params.customerName,
+      customerPhone: '610-555-0101'
+    }
+  });
+
+  expect(checkoutResponse.statusCode).toBe(200);
+  const checkoutBody = checkoutResponse.json();
+
+  if (checkoutBody?.status !== 'QUEUED') {
+    return checkoutBody;
+  }
+
+  const queueId = String(checkoutBody.queueId || '');
+  expect(queueId).toBeTruthy();
+
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const statusResponse = await app.inject({
+      method: 'GET',
+      url: `/api/checkout/queue/${encodeURIComponent(queueId)}?holdToken=${encodeURIComponent(params.holdToken)}&clientToken=${encodeURIComponent(params.clientToken)}`
+    });
+
+    expect(statusResponse.statusCode).toBe(200);
+    const statusBody = statusResponse.json();
+
+    if (statusBody?.status === 'READY') {
+      return statusBody;
+    }
+
+    if (statusBody?.status === 'FAILED' || statusBody?.status === 'EXPIRED') {
+      throw new Error(`Queued checkout did not complete: ${statusBody.status} (${statusBody.reason || 'unknown'})`);
+    }
+
+    const refreshDelayMs = Math.max(25, Math.min(250, Number(statusBody?.refreshAfterMs || 50)));
+    await new Promise((resolve) => setTimeout(resolve, refreshDelayMs));
+  }
+
+  throw new Error('Timed out waiting for queued checkout to become READY');
+}
+
 async function createPerformance(title: string, emailSeed: string) {
   const show = await prisma.show.create({
     data: {
@@ -259,23 +320,17 @@ describe.sequential('critical lifecycle smoke', () => {
     const holdBody = holdResponse.json();
     expect(holdBody.heldSeatIds).toEqual([seat.id]);
 
-    const checkoutResponse = await app.inject({
-      method: 'POST',
-      url: '/api/checkout',
-      payload: {
-        performanceId: performance.id,
-        checkoutMode: 'PAID',
-        seatIds: [seat.id],
-        holdToken: holdBody.holdToken,
-        clientToken,
-        customerEmail: buyerEmail,
-        customerName: 'Jordan Buyer'
-      }
+    const checkoutResult = await runPaidCheckout({
+      performanceId: performance.id,
+      seatIds: [seat.id],
+      holdToken: holdBody.holdToken,
+      clientToken,
+      customerEmail: buyerEmail,
+      customerName: 'Jordan Buyer'
     });
 
-    expect(checkoutResponse.statusCode).toBe(200);
-    expect(checkoutResponse.json().clientSecret).toContain('pi_smoke_');
-    expect(checkoutResponse.json().orderId).toBeTruthy();
+    expect(checkoutResult.clientSecret).toContain('pi_smoke_');
+    expect(checkoutResult.orderId).toBeTruthy();
 
     const order = await prisma.order.findFirstOrThrow({
       where: {
@@ -355,8 +410,36 @@ describe.sequential('critical lifecycle smoke', () => {
     const confirmationBody = confirmationResponse.json();
     expect(confirmationBody.order.status).toBe('PAID');
     expect(confirmationBody.tickets).toHaveLength(1);
+    expect(confirmationBody.tickets[0]?.checkedInAt).toBeNull();
+    expect(confirmationBody.tickets[0]?.checkedInBy).toBeNull();
     const ticketPublicId = confirmationBody.tickets[0]?.publicId;
     expect(ticketPublicId).toBeTruthy();
+
+    const lookupResponse = await app.inject({
+      method: 'POST',
+      url: '/api/orders/lookup',
+      payload: {
+        orderId: order.id,
+        email: buyerEmail
+      }
+    });
+
+    expect(lookupResponse.statusCode).toBe(200);
+    const lookupBody = lookupResponse.json();
+    expect(lookupBody.orderAccessToken).toBe(order.accessToken);
+    expect(lookupBody.tickets[0]?.checkedInAt).toBeNull();
+    expect(lookupBody.tickets[0]?.checkedInBy).toBeNull();
+
+    const lookupInvalidEmailResponse = await app.inject({
+      method: 'POST',
+      url: '/api/orders/lookup',
+      payload: {
+        orderId: order.id,
+        email: `wrong_${buyerEmail}`
+      }
+    });
+
+    expect(lookupInvalidEmailResponse.statusCode).toBe(404);
 
     const sessionStartResponse = await app.inject({
       method: 'POST',
@@ -390,6 +473,15 @@ describe.sequential('critical lifecycle smoke', () => {
 
     expect(firstScanResponse.statusCode).toBe(200);
     expect(firstScanResponse.json().outcome).toBe('VALID');
+
+    const checkedInConfirmationResponse = await app.inject({
+      method: 'GET',
+      url: `/api/orders/${order.id}?token=${encodeURIComponent(order.accessToken)}`
+    });
+    expect(checkedInConfirmationResponse.statusCode).toBe(200);
+    const checkedInConfirmationBody = checkedInConfirmationResponse.json();
+    expect(checkedInConfirmationBody.tickets[0]?.checkedInAt).toBeTruthy();
+    expect(checkedInConfirmationBody.tickets[0]?.checkedInBy).toBeTruthy();
 
     const duplicateScanResponse = await app.inject({
       method: 'POST',
@@ -486,22 +578,14 @@ describe.sequential('critical lifecycle smoke', () => {
     expect(holdResponse.statusCode).toBe(200);
     const holdBody = holdResponse.json();
 
-    const checkoutResponse = await app.inject({
-      method: 'POST',
-      url: '/api/checkout',
-      payload: {
-        performanceId: performance.id,
-        checkoutMode: 'PAID',
-        seatIds: [seat.id],
-        holdToken: holdBody.holdToken,
-        clientToken,
-        customerEmail: buyerEmail,
-        customerName: 'Stale Buyer'
-      }
+    const checkoutBody = await runPaidCheckout({
+      performanceId: performance.id,
+      seatIds: [seat.id],
+      holdToken: holdBody.holdToken,
+      clientToken,
+      customerEmail: buyerEmail,
+      customerName: 'Stale Buyer'
     });
-
-    expect(checkoutResponse.statusCode).toBe(200);
-    const checkoutBody = checkoutResponse.json();
 
     await prisma.order.update({
       where: { id: checkoutBody.orderId },
@@ -546,21 +630,14 @@ describe.sequential('critical lifecycle smoke', () => {
 
     const holdBody = holdResponse.json();
 
-    const checkoutResponse = await app.inject({
-      method: 'POST',
-      url: '/api/checkout',
-      payload: {
-        performanceId: performance.id,
-        checkoutMode: 'PAID',
-        seatIds: [seat.id],
-        holdToken: holdBody.holdToken,
-        clientToken,
-        customerEmail: buyerEmail,
-        customerName: 'Recovery Buyer'
-      }
+    await runPaidCheckout({
+      performanceId: performance.id,
+      seatIds: [seat.id],
+      holdToken: holdBody.holdToken,
+      clientToken,
+      customerEmail: buyerEmail,
+      customerName: 'Recovery Buyer'
     });
-
-    expect(checkoutResponse.statusCode).toBe(200);
 
     const order = await prisma.order.findFirstOrThrow({
       where: {

@@ -2,8 +2,10 @@ import { FormEvent, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { apiFetch } from '../lib/api';
+import { buildConfirmationPath, rememberOrderAccessToken } from '../lib/orderAccess';
 
 type LookupResponse = {
+  orderAccessToken?: string;
   order: {
     id: string;
     status: string;
@@ -44,6 +46,9 @@ export default function OrderLookup() {
         method: 'POST',
         body: JSON.stringify({ orderId, email })
       });
+      if (data.orderAccessToken) {
+        rememberOrderAccessToken(data.order.id, data.orderAccessToken);
+      }
       setResult(data);
     } catch (err) {
       setResult(null);
@@ -90,6 +95,14 @@ export default function OrderLookup() {
           <div className="space-y-3">
             <div className="text-sm text-stone-600">Order <span className="font-bold text-stone-900">{result.order.id}</span> ({result.order.status})</div>
             <div className="text-sm text-stone-600">{result.performance.showTitle} at {new Date(result.performance.startsAt).toLocaleString()}</div>
+            {result.orderAccessToken && (
+              <Link
+                to={buildConfirmationPath(result.order.id, result.orderAccessToken)}
+                className="inline-flex w-full items-center justify-center rounded-xl bg-stone-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-stone-800"
+              >
+                Open All Tickets
+              </Link>
+            )}
             <div className="space-y-2">
               {result.tickets.map((ticket) => (
                 <div key={ticket.publicId} className="flex flex-col gap-2 rounded-xl border border-stone-200 bg-stone-50 p-3 sm:flex-row sm:items-center sm:justify-between">
