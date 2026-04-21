@@ -507,19 +507,24 @@ const styles: Record<string, React.CSSProperties> = {
     scrollBehavior: 'smooth',
     WebkitOverflowScrolling: 'touch',
     scrollbarWidth: 'none' as const,
-    padding: '0 44px',
+    padding: 0,
     gap: 0,
+    boxSizing: 'border-box' as const,
   },
 
   /* Slide / ticket card */
   slide: {
     minWidth: '100%',
+    flex: '0 0 100%',
     scrollSnapAlign: 'start',
     padding: '4px 0 8px',
     boxSizing: 'border-box' as const,
+    display: 'flex',
+    justifyContent: 'center',
   },
   ticketCard: {
     position: 'relative',
+    width: '100%',
     background: '#fff',
     borderRadius: 20,
     boxShadow: '0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06)',
