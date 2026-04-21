@@ -21,9 +21,15 @@ export const INDEXABLE_STATIC_ROUTES = [
   '/shows',
   '/shows/community-events',
   '/about',
+  '/performer',
+  '/stage-crew',
   '/tech-crew',
+  '/costume-crew',
   '/set-design',
   '/musical-theater',
   '/interest-meeting',
-  '/fundraising'
+  '/fundraising',
+  '/privacy-policy',
+  '/terms-of-service',
+  '/refund-policy'
 ] as const;

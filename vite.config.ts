@@ -54,12 +54,29 @@ function toAbsoluteUrl(pathname: string, siteUrl: string): string {
   return new URL(pathname, `${resolveSiteUrl(siteUrl)}/`).toString();
 }
 
+function buildSitemapRoutes(routes: readonly string[]): string[] {
+  const normalizedRoutes = new Set<string>();
+
+  for (const rawRoute of routes) {
+    const trimmedRoute = rawRoute.trim();
+    if (!trimmedRoute) continue;
+    if (trimmedRoute.includes(':') || trimmedRoute.includes('*')) continue;
+
+    const withLeadingSlash = trimmedRoute.startsWith('/') ? trimmedRoute : `/${trimmedRoute}`;
+    const normalizedPath = withLeadingSlash === '/' ? '/' : withLeadingSlash.replace(/\/+$/, '');
+    normalizedRoutes.add(normalizedPath);
+  }
+
+  return [...normalizedRoutes];
+}
+
 function createSeoAssetsPlugin(siteUrl: string): PluginOption {
   const normalizedSiteUrl = resolveSiteUrl(siteUrl);
   const buildDate = new Date().toISOString().slice(0, 10);
+  const sitemapRoutes = buildSitemapRoutes(INDEXABLE_STATIC_ROUTES);
   const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${INDEXABLE_STATIC_ROUTES.map((route) => `  <url>
+${sitemapRoutes.map((route) => `  <url>
     <loc>${toAbsoluteUrl(route, normalizedSiteUrl)}</loc>
     <lastmod>${buildDate}</lastmod>
     <changefreq>${route === '/' ? 'weekly' : 'monthly'}</changefreq>
