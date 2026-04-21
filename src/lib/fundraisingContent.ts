@@ -26,6 +26,21 @@ export type DonationLevel = {
   detail: string;
 };
 
+export type FundraisingDonationOptionLevel = {
+  id: string;
+  amountLabel: string;
+  title: string;
+  detail: string;
+  suggestedAmountCents: number;
+};
+
+export type FundraisingDonationOption = {
+  id: string;
+  name: string;
+  description: string;
+  levels: FundraisingDonationOptionLevel[];
+};
+
 export type FundraisingSponsor = {
   id: string;
   name: string;
@@ -191,6 +206,100 @@ export const sponsorshipTiers: SponsorshipTier[] = [
     level: 'Center Stage',
     amount: '$1,000+',
     benefit: 'Everything in Orchestra, plus sponsor listing on all advertising and press releases.'
+  }
+];
+
+export const fundraisingDonationOptions: FundraisingDonationOption[] = [
+  {
+    id: 'regular-donation',
+    name: 'Regular Donation',
+    description: 'Support costumes, sets, rehearsal materials, and production needs across the full season.',
+    levels: [
+      {
+        id: 'regular-spotlight-supporter',
+        amountLabel: '$25',
+        title: 'Spotlight Supporter',
+        detail: 'Supports scripts, rehearsal essentials, and student project supplies.',
+        suggestedAmountCents: 2500
+      },
+      {
+        id: 'regular-stage-builder',
+        amountLabel: '$100',
+        title: 'Stage Builder',
+        detail: 'Helps cover set construction materials, paint, and prop hardware.',
+        suggestedAmountCents: 10000
+      },
+      {
+        id: 'regular-season-champion',
+        amountLabel: '$250+',
+        title: 'Season Champion',
+        detail: 'Funds costumes, microphones, and production support for major shows.',
+        suggestedAmountCents: 25000
+      }
+    ]
+  },
+  {
+    id: 'scholarship-donation',
+    name: 'Scholarship Donation',
+    description: 'Fund student participation scholarships so every performer can join regardless of financial barriers.',
+    levels: [
+      {
+        id: 'scholarship-script-starter',
+        amountLabel: '$50',
+        title: 'Script Starter',
+        detail: 'Offsets script, workbook, and rehearsal supply costs for one student.',
+        suggestedAmountCents: 5000
+      },
+      {
+        id: 'scholarship-ensemble-boost',
+        amountLabel: '$150',
+        title: 'Ensemble Boost',
+        detail: 'Helps cover costume pieces and production fees for participating students.',
+        suggestedAmountCents: 15000
+      },
+      {
+        id: 'scholarship-full-spotlight',
+        amountLabel: '$500+',
+        title: 'Full Spotlight',
+        detail: 'Provides major scholarship support for student theater participation during the season.',
+        suggestedAmountCents: 50000
+      }
+    ]
+  },
+  {
+    id: 'sponsorship-donation',
+    name: 'Sponsorship Donation',
+    description: 'Contribute at sponsor-level support with recognition and outreach benefits for your organization.',
+    levels: [
+      {
+        id: 'sponsor-balcony',
+        amountLabel: '$50 - $249',
+        title: 'Balcony',
+        detail: 'Quarter-page ad in our programs for all four productions next school year, plus listing on the sponsor page.',
+        suggestedAmountCents: 5000
+      },
+      {
+        id: 'sponsor-mezzanine',
+        amountLabel: '$250 - $499',
+        title: 'Mezzanine',
+        detail: 'Everything in Balcony, plus tax-deductible donation documentation and a half-page program ad.',
+        suggestedAmountCents: 25000
+      },
+      {
+        id: 'sponsor-orchestra',
+        amountLabel: '$500 - $999',
+        title: 'Orchestra',
+        detail: 'Everything in Mezzanine, plus listing on donor posters displayed during performances and a full-page program ad.',
+        suggestedAmountCents: 50000
+      },
+      {
+        id: 'sponsor-center-stage',
+        amountLabel: '$1,000+',
+        title: 'Center Stage',
+        detail: 'Everything in Orchestra, plus sponsor listing on all advertising and press releases.',
+        suggestedAmountCents: 100000
+      }
+    ]
   }
 ];
 

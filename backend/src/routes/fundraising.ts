@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import { FastifyPluginAsync } from 'fastify';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { env } from '../lib/env.js';
@@ -9,10 +10,131 @@ import { logAudit } from '../lib/audit-log.js';
 import { reconcileDonationThankYouEmail } from '../services/donation-thank-you-service.js';
 import { releasePendingStudentCreditForOrderTx } from '../services/student-ticket-credit-service.js';
 
+const DONATION_CATALOG_SCOPE = 'fundraising';
+const DONATION_CATALOG_SLUG = 'donation-options';
+
+const donationLevelCatalogSchema = z.object({
+  id: z.string().trim().min(1).max(80),
+  amountLabel: z.string().trim().min(1).max(80),
+  title: z.string().trim().min(1).max(140),
+  detail: z.string().trim().min(1).max(500),
+  suggestedAmountCents: z.coerce.number().int().min(100).max(250000)
+});
+
+const donationOptionCatalogSchema = z.object({
+  id: z.string().trim().min(1).max(80),
+  name: z.string().trim().min(1).max(140),
+  description: z.string().trim().max(320).default(''),
+  levels: z.array(donationLevelCatalogSchema).min(1).max(24)
+});
+
+const donationCatalogSchema = z.object({
+  options: z.array(donationOptionCatalogSchema).min(1).max(12)
+});
+
+const defaultFundraisingDonationOptions: z.infer<typeof donationCatalogSchema>['options'] = [
+  {
+    id: 'regular-donation',
+    name: 'Regular Donation',
+    description: 'Support costumes, sets, rehearsal materials, and production needs across the full season.',
+    levels: [
+      {
+        id: 'regular-spotlight-supporter',
+        amountLabel: '$25',
+        title: 'Spotlight Supporter',
+        detail: 'Supports scripts, rehearsal essentials, and student project supplies.',
+        suggestedAmountCents: 2500
+      },
+      {
+        id: 'regular-stage-builder',
+        amountLabel: '$100',
+        title: 'Stage Builder',
+        detail: 'Helps cover set construction materials, paint, and prop hardware.',
+        suggestedAmountCents: 10000
+      },
+      {
+        id: 'regular-season-champion',
+        amountLabel: '$250+',
+        title: 'Season Champion',
+        detail: 'Funds costumes, microphones, and production support for major shows.',
+        suggestedAmountCents: 25000
+      }
+    ]
+  },
+  {
+    id: 'scholarship-donation',
+    name: 'Scholarship Donation',
+    description: 'Fund student participation scholarships so every performer can join regardless of financial barriers.',
+    levels: [
+      {
+        id: 'scholarship-script-starter',
+        amountLabel: '$50',
+        title: 'Script Starter',
+        detail: 'Offsets script, workbook, and rehearsal supply costs for one student.',
+        suggestedAmountCents: 5000
+      },
+      {
+        id: 'scholarship-ensemble-boost',
+        amountLabel: '$150',
+        title: 'Ensemble Boost',
+        detail: 'Helps cover costume pieces and production fees for participating students.',
+        suggestedAmountCents: 15000
+      },
+      {
+        id: 'scholarship-full-spotlight',
+        amountLabel: '$500+',
+        title: 'Full Spotlight',
+        detail: 'Provides major scholarship support for student theater participation during the season.',
+        suggestedAmountCents: 50000
+      }
+    ]
+  },
+  {
+    id: 'sponsorship-donation',
+    name: 'Sponsorship Donation',
+    description: 'Contribute at sponsor-level support with recognition and outreach benefits for your organization.',
+    levels: [
+      {
+        id: 'sponsor-balcony',
+        amountLabel: '$50 - $249',
+        title: 'Balcony',
+        detail: 'Quarter-page ad in our programs for all four productions next school year, plus listing on the sponsor page.',
+        suggestedAmountCents: 5000
+      },
+      {
+        id: 'sponsor-mezzanine',
+        amountLabel: '$250 - $499',
+        title: 'Mezzanine',
+        detail: 'Everything in Balcony, plus tax-deductible donation documentation and a half-page program ad.',
+        suggestedAmountCents: 25000
+      },
+      {
+        id: 'sponsor-orchestra',
+        amountLabel: '$500 - $999',
+        title: 'Orchestra',
+        detail: 'Everything in Mezzanine, plus listing on donor posters displayed during performances and a full-page program ad.',
+        suggestedAmountCents: 50000
+      },
+      {
+        id: 'sponsor-center-stage',
+        amountLabel: '$1,000+',
+        title: 'Center Stage',
+        detail: 'Everything in Orchestra, plus sponsor listing on all advertising and press releases.',
+        suggestedAmountCents: 100000
+      }
+    ]
+  }
+];
+
 const donationIntentSchema = z.object({
   amountCents: z.coerce.number().int().min(100).max(100000),
   donorName: z.string().trim().min(1).max(120),
-  donorEmail: z.string().trim().email().max(320)
+  donorEmail: z.string().trim().email().max(320),
+  donationOptionId: z.string().trim().min(1).max(80).optional(),
+  donationOptionName: z.string().trim().min(1).max(140).optional(),
+  donationLevelId: z.string().trim().min(1).max(80).optional(),
+  donationLevelTitle: z.string().trim().min(1).max(140).optional(),
+  donationLevelAmountLabel: z.string().trim().min(1).max(80).optional()
 });
 
 const adminDonationListQuerySchema = z.object({
@@ -26,6 +148,74 @@ const adminFundraisingAttendeesParamsSchema = z.object({
 const adminFundraisingDeleteOrdersParamsSchema = z.object({
   performanceId: z.string().trim().min(1)
 });
+
+function isMissingContentPageTableError(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2021';
+}
+
+async function loadDonationCatalogStore(): Promise<{
+  options: z.infer<typeof donationOptionCatalogSchema>[];
+  isCustomized: boolean;
+  updatedAt: string | null;
+}> {
+  const row = await prisma.contentPage.findUnique({
+    where: {
+      scope_slug: {
+        scope: DONATION_CATALOG_SCOPE,
+        slug: DONATION_CATALOG_SLUG
+      }
+    }
+  });
+
+  if (!row) {
+    return {
+      options: defaultFundraisingDonationOptions,
+      isCustomized: false,
+      updatedAt: null
+    };
+  }
+
+  const parsed = donationCatalogSchema.safeParse(row.content);
+  if (!parsed.success) {
+    return {
+      options: defaultFundraisingDonationOptions,
+      isCustomized: false,
+      updatedAt: row.updatedAt.toISOString()
+    };
+  }
+
+  return {
+    options: parsed.data.options,
+    isCustomized: true,
+    updatedAt: row.updatedAt.toISOString()
+  };
+}
+
+async function saveDonationCatalogStore(
+  options: z.infer<typeof donationOptionCatalogSchema>[],
+  adminId?: string | null
+) {
+  return prisma.contentPage.upsert({
+    where: {
+      scope_slug: {
+        scope: DONATION_CATALOG_SCOPE,
+        slug: DONATION_CATALOG_SLUG
+      }
+    },
+    update: {
+      title: 'Fundraising Donation Options',
+      content: { options } as unknown as Prisma.InputJsonValue,
+      updatedByAdminId: adminId ?? null
+    },
+    create: {
+      scope: DONATION_CATALOG_SCOPE,
+      slug: DONATION_CATALOG_SLUG,
+      title: 'Fundraising Donation Options',
+      content: { options } as unknown as Prisma.InputJsonValue,
+      updatedByAdminId: adminId ?? null
+    }
+  });
+}
 
 function isSeatEffectivelyAvailable(seat: {
   status: string;
@@ -48,6 +238,73 @@ function isSeatEffectivelyAvailable(seat: {
 export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
   const adminActor = (request: { user: { username?: string } }) => request.user.username || 'admin';
 
+  app.get('/api/fundraising/donation-options', async (_request, reply) => {
+    try {
+      const payload = await loadDonationCatalogStore();
+      reply.send({ options: payload.options });
+    } catch (err) {
+      if (isMissingContentPageTableError(err)) {
+        reply.send({ options: defaultFundraisingDonationOptions });
+        return;
+      }
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch donation options');
+    }
+  });
+
+  app.get('/api/admin/fundraising/donation-options', { preHandler: app.authenticateAdmin }, async (_request, reply) => {
+    try {
+      const payload = await loadDonationCatalogStore();
+      reply.send(payload);
+    } catch (err) {
+      if (isMissingContentPageTableError(err)) {
+        reply.send({
+          options: defaultFundraisingDonationOptions,
+          isCustomized: false,
+          updatedAt: null
+        });
+        return;
+      }
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch donation option admin data');
+    }
+  });
+
+  app.put('/api/admin/fundraising/donation-options', { preHandler: app.requireAdminRole('ADMIN') }, async (request, reply) => {
+    const parsed = donationCatalogSchema.safeParse(request.body || {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.flatten() });
+    }
+
+    try {
+      const saved = await saveDonationCatalogStore(parsed.data.options, request.adminUser?.id ?? null);
+      const levelCount = parsed.data.options.reduce((sum, option) => sum + option.levels.length, 0);
+
+      await logAudit({
+        actor: request.user?.username || request.adminUser?.username || 'admin',
+        actorAdminId: request.adminUser?.id || null,
+        action: 'FUNDRAISING_DONATION_OPTIONS_UPDATED',
+        entityType: 'ContentPage',
+        entityId: saved.id,
+        metadata: {
+          optionCount: parsed.data.options.length,
+          levelCount
+        }
+      });
+
+      return reply.send({
+        options: parsed.data.options,
+        isCustomized: true,
+        updatedAt: saved.updatedAt.toISOString()
+      });
+    } catch (err) {
+      if (isMissingContentPageTableError(err)) {
+        return reply
+          .status(503)
+          .send({ error: 'Donation option storage is not ready yet. Apply the latest database migration and restart the backend.' });
+      }
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to save donation options');
+    }
+  });
+
   app.post(
     '/api/fundraising/donations/intent',
     {
@@ -68,18 +325,29 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
         const amountCents = parsed.data.amountCents;
         const donorName = parsed.data.donorName.trim();
         const donorEmail = parsed.data.donorEmail.trim().toLowerCase();
+        const metadata: Record<string, string> = {
+          source: 'fundraising_donation',
+          amountCents: String(amountCents),
+          donorName,
+          donorEmail
+        };
+
+        if (parsed.data.donationOptionId) metadata.donationOptionId = parsed.data.donationOptionId;
+        if (parsed.data.donationOptionName) metadata.donationOptionName = parsed.data.donationOptionName;
+        if (parsed.data.donationLevelId) metadata.donationLevelId = parsed.data.donationLevelId;
+        if (parsed.data.donationLevelTitle) metadata.donationLevelTitle = parsed.data.donationLevelTitle;
+        if (parsed.data.donationLevelAmountLabel) metadata.donationLevelAmountLabel = parsed.data.donationLevelAmountLabel;
+
+        const donationDescriptor = parsed.data.donationOptionName
+          ? `${parsed.data.donationOptionName}: ${donorName}`
+          : donorName;
         const paymentIntent = await stripe.paymentIntents.create({
           amount: amountCents,
           currency: 'usd',
           automatic_payment_methods: { enabled: true },
           receipt_email: donorEmail,
-          description: `Penncrest Theater donation (${donorName})`,
-          metadata: {
-            source: 'fundraising_donation',
-            amountCents: String(amountCents),
-            donorName,
-            donorEmail
-          }
+          description: `Penncrest Theater donation (${donationDescriptor})`,
+          metadata
         });
 
         if (!paymentIntent.client_secret) {
@@ -151,6 +419,9 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
           status: intent.status,
           donorName: intent.metadata?.donorName || 'Supporter',
           donorEmail: intent.metadata?.donorEmail || intent.receipt_email || '',
+          donationOptionName: intent.metadata?.donationOptionName || null,
+          donationLevelTitle: intent.metadata?.donationLevelTitle || null,
+          donationLevelAmountLabel: intent.metadata?.donationLevelAmountLabel || null,
           receiptEmail: intent.receipt_email || null,
           createdAt: new Date(intent.created * 1000).toISOString(),
           thankYouEmailSent: intent.metadata?.thankYouEmailSent === 'true'

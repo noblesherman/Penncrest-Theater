@@ -32,6 +32,7 @@ import { Link } from 'react-router-dom';
 import { adminFetch } from '../../lib/adminAuth';
 import { apiFetch } from '../../lib/api';
 import { uploadAdminImage } from '../../lib/adminUploads';
+import { fundraisingDonationOptions, type FundraisingDonationOption } from '../../lib/fundraisingContent';
 import EventRegistrationFormBuilderModal from './forms/EventRegistrationFormBuilderModal';
 
 type AdminFundraiseTab = 'events' | 'sponsors' | 'attendees' | 'donations';
@@ -105,6 +106,9 @@ type AdminFundraisingDonation = {
   status: string;
   donorName: string;
   donorEmail: string;
+  donationOptionName: string | null;
+  donationLevelTitle: string | null;
+  donationLevelAmountLabel: string | null;
   receiptEmail: string | null;
   createdAt: string;
   thankYouEmailSent: boolean;
@@ -119,6 +123,12 @@ type AdminFundraisingDonationSummary = {
 type AdminFundraisingDonationFeed = {
   donations: AdminFundraisingDonation[];
   summary?: AdminFundraisingDonationSummary;
+};
+
+type DonationOptionsAdminPayload = {
+  options: FundraisingDonationOption[];
+  isCustomized?: boolean;
+  updatedAt?: string | null;
 };
 
 type AdminFundraisingAttendeeOrderSeat = {
@@ -166,7 +176,6 @@ type AdminFundraisingAttendeeFeed = {
 const inputClass =
   'w-full rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 placeholder:text-stone-300 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100 transition';
 const labelClass = 'block text-xs font-bold uppercase tracking-widest text-stone-400 mb-2';
-const DONATION_PRESET_AMOUNTS_CENTS = [500, 1000, 2000, 3000];
 const FALLBACK_STRIPE_PUBLISHABLE_KEY = (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '').trim();
 const GENERAL_ADMISSION_CAPACITY_MIN = 1;
 const GENERAL_ADMISSION_CAPACITY_MAX = 5000;
@@ -279,6 +288,45 @@ function slugifyForFilename(value: string): string {
     .replace(/^-+|-+$/g, '') || 'event';
 }
 
+function buildDonationOptionId(seed?: string): string {
+  const normalized = (seed || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  if (normalized) return normalized.slice(0, 80);
+  return `donation-option-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function buildDonationLevelId(seed?: string): string {
+  const normalized = (seed || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  if (normalized) return normalized.slice(0, 80);
+  return `donation-level-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function createDonationLevelDraft(): FundraisingDonationOption['levels'][number] {
+  return {
+    id: buildDonationLevelId(),
+    amountLabel: '$50',
+    title: 'New Level',
+    detail: 'Describe what this donation level supports.',
+    suggestedAmountCents: 5000
+  };
+}
+
+function createDonationOptionDraft(): FundraisingDonationOption {
+  return {
+    id: buildDonationOptionId(),
+    name: 'New Donation Option',
+    description: 'Describe where this donation path directs support.',
+    levels: [createDonationLevelDraft()]
+  };
+}
+
 function AdminDonationPaymentForm({
   amountCents,
   donorName,
@@ -383,13 +431,21 @@ export default function AdminFundraisePage() {
   const [donationSummary, setDonationSummary] = useState<AdminFundraisingDonationSummary | null>(null);
   const [donationsLoading, setDonationsLoading] = useState(true);
   const [donationsError, setDonationsError] = useState<string | null>(null);
+  const [donationOptions, setDonationOptions] = useState<FundraisingDonationOption[]>(fundraisingDonationOptions);
+  const [donationOptionsLoading, setDonationOptionsLoading] = useState(true);
+  const [donationOptionsSaving, setDonationOptionsSaving] = useState(false);
+  const [donationOptionsError, setDonationOptionsError] = useState<string | null>(null);
+  const [donationOptionsCustomized, setDonationOptionsCustomized] = useState(false);
+  const [donationOptionsUpdatedAt, setDonationOptionsUpdatedAt] = useState<string | null>(null);
   const [attendeeRows, setAttendeeRows] = useState<AdminFundraisingAttendeeOrder[]>([]);
   const [attendeeSummary, setAttendeeSummary] = useState<{ orderCount: number; ticketCount: number; responseCount: number } | null>(null);
   const [attendeesLoading, setAttendeesLoading] = useState(false);
   const [attendeesError, setAttendeesError] = useState<string | null>(null);
   const [purgingOrders, setPurgingOrders] = useState(false);
   const [expandedAttendeeOrderId, setExpandedAttendeeOrderId] = useState<string | null>(null);
-  const [selectedDonationAmountCents, setSelectedDonationAmountCents] = useState<number | null>(DONATION_PRESET_AMOUNTS_CENTS[0]);
+  const [selectedDonationOptionId, setSelectedDonationOptionId] = useState<string>(fundraisingDonationOptions[0]?.id || '');
+  const [selectedDonationLevelId, setSelectedDonationLevelId] = useState<string | null>(null);
+  const [selectedDonationAmountCents, setSelectedDonationAmountCents] = useState<number | null>(null);
   const [customDonationAmount, setCustomDonationAmount] = useState('');
   const [donorName, setDonorName] = useState('');
   const [donorEmail, setDonorEmail] = useState('');
@@ -402,6 +458,15 @@ export default function AdminFundraisePage() {
   const tiers = useMemo(() => parseTiers(form.tiersText), [form.tiersText]);
   const selectedEvent = useMemo(() => events.find((event) => event.id === selectedEventId) ?? null, [events, selectedEventId]);
   const builderEvent = useMemo(() => events.find((event) => event.id === builderEventId) ?? null, [builderEventId, events]);
+  const selectedDonationOption = useMemo(
+    () => donationOptions.find((option) => option.id === selectedDonationOptionId) || donationOptions[0] || null,
+    [donationOptions, selectedDonationOptionId]
+  );
+  const selectedDonationLevels = selectedDonationOption?.levels || [];
+  const selectedDonationLevel = useMemo(
+    () => selectedDonationLevels.find((level) => level.id === selectedDonationLevelId) || null,
+    [selectedDonationLevels, selectedDonationLevelId]
+  );
   const donationStripePromise = useMemo(() => {
     if (!activeDonationIntent?.publishableKey) return null;
     return loadStripe(activeDonationIntent.publishableKey);
@@ -413,8 +478,7 @@ export default function AdminFundraisePage() {
       appearance: { theme: 'stripe' }
     };
   }, [activeDonationIntent?.clientSecret]);
-  const isOtherDonationSelected =
-    selectedDonationAmountCents === null || !DONATION_PRESET_AMOUNTS_CENTS.includes(selectedDonationAmountCents);
+  const isOtherDonationSelected = selectedDonationLevelId === null;
 
   async function loadEvents() {
     setLoading(true);
@@ -463,6 +527,31 @@ export default function AdminFundraisePage() {
       setDonationsError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load donations');
     } finally {
       setDonationsLoading(false);
+    }
+  }
+
+  async function loadDonationOptions() {
+    setDonationOptionsLoading(true);
+    setDonationOptionsError(null);
+    try {
+      const data = await adminFetch<DonationOptionsAdminPayload>('/api/admin/fundraising/donation-options');
+      const options = Array.isArray(data.options) && data.options.length > 0 ? data.options : fundraisingDonationOptions;
+      setDonationOptions(options);
+      setDonationOptionsCustomized(Boolean(data.isCustomized));
+      setDonationOptionsUpdatedAt(data.updatedAt || null);
+      setSelectedDonationOptionId((current) => (options.some((option) => option.id === current) ? current : options[0]?.id || ''));
+    } catch (err) {
+      setDonationOptionsError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to load donation options');
+      setDonationOptions(fundraisingDonationOptions);
+      setDonationOptionsCustomized(false);
+      setDonationOptionsUpdatedAt(null);
+      setSelectedDonationOptionId((current) =>
+        fundraisingDonationOptions.some((option) => option.id === current)
+          ? current
+          : fundraisingDonationOptions[0]?.id || ''
+      );
+    } finally {
+      setDonationOptionsLoading(false);
     }
   }
 
@@ -634,6 +723,7 @@ export default function AdminFundraisePage() {
     void loadEvents();
     void loadSponsors();
     void loadDonations();
+    void loadDonationOptions();
   }, []);
 
   useEffect(() => {
@@ -645,6 +735,26 @@ export default function AdminFundraisePage() {
     }
     void loadAttendees(selectedEventId);
   }, [selectedEventId, tab]);
+
+  useEffect(() => {
+    if (donationOptions.length === 0) return;
+    if (!donationOptions.some((option) => option.id === selectedDonationOptionId)) {
+      setSelectedDonationOptionId(donationOptions[0]?.id || '');
+      setSelectedDonationLevelId(null);
+      setSelectedDonationAmountCents(null);
+      setActiveDonationIntent(null);
+    }
+  }, [donationOptions, selectedDonationOptionId]);
+
+  useEffect(() => {
+    if (!selectedDonationOption) return;
+    if (!selectedDonationLevelId) return;
+    if (!selectedDonationOption.levels.some((level) => level.id === selectedDonationLevelId)) {
+      setSelectedDonationLevelId(null);
+      setSelectedDonationAmountCents(null);
+      setActiveDonationIntent(null);
+    }
+  }, [selectedDonationLevelId, selectedDonationOption]);
 
   const goTo = (next: number) => {
     setDir(next > step ? 1 : -1);
@@ -981,7 +1091,159 @@ export default function AdminFundraisePage() {
     }
   }
 
-  async function requestDonationIntent(amountCents: number) {
+  function addDonationOption() {
+    const created = createDonationOptionDraft();
+    setDonationOptions((prev) => [...prev, created]);
+    setSelectedDonationOptionId(created.id);
+    setSelectedDonationLevelId(null);
+    setSelectedDonationAmountCents(null);
+    setActiveDonationIntent(null);
+    setDonationOptionsError(null);
+  }
+
+  function removeDonationOption(optionId: string) {
+    setDonationOptions((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((option) => option.id !== optionId);
+    });
+    setSelectedDonationLevelId(null);
+    setSelectedDonationAmountCents(null);
+    setActiveDonationIntent(null);
+    setDonationOptionsError(null);
+  }
+
+  function updateDonationOptionField(
+    optionId: string,
+    field: 'name' | 'description',
+    value: string
+  ) {
+    setDonationOptions((prev) =>
+      prev.map((option) => (option.id === optionId ? { ...option, [field]: value } : option))
+    );
+    setDonationOptionsError(null);
+  }
+
+  function addDonationLevel(optionId: string) {
+    const created = createDonationLevelDraft();
+    setDonationOptions((prev) =>
+      prev.map((option) =>
+        option.id === optionId
+          ? {
+              ...option,
+              levels: [...option.levels, created]
+            }
+          : option
+      )
+    );
+    setSelectedDonationOptionId(optionId);
+    setSelectedDonationLevelId(created.id);
+    setSelectedDonationAmountCents(created.suggestedAmountCents);
+    setActiveDonationIntent(null);
+    setDonationOptionsError(null);
+  }
+
+  function removeDonationLevel(optionId: string, levelId: string) {
+    setDonationOptions((prev) =>
+      prev.map((option) => {
+        if (option.id !== optionId || option.levels.length <= 1) return option;
+        return {
+          ...option,
+          levels: option.levels.filter((level) => level.id !== levelId)
+        };
+      })
+    );
+    if (selectedDonationLevelId === levelId) {
+      setSelectedDonationLevelId(null);
+      setSelectedDonationAmountCents(null);
+      setActiveDonationIntent(null);
+    }
+    setDonationOptionsError(null);
+  }
+
+  function updateDonationLevelField(
+    optionId: string,
+    levelId: string,
+    field: 'amountLabel' | 'title' | 'detail' | 'suggestedAmountCents',
+    value: string
+  ) {
+    setDonationOptions((prev) =>
+      prev.map((option) => {
+        if (option.id !== optionId) return option;
+        return {
+          ...option,
+          levels: option.levels.map((level) => {
+            if (level.id !== levelId) return level;
+            if (field === 'suggestedAmountCents') {
+              const next = Number.parseInt(value, 10);
+              return {
+                ...level,
+                suggestedAmountCents: Number.isFinite(next) ? Math.max(100, next) : level.suggestedAmountCents
+              };
+            }
+            return {
+              ...level,
+              [field]: value
+            };
+          })
+        };
+      })
+    );
+    setDonationOptionsError(null);
+  }
+
+  async function saveDonationOptions() {
+    if (donationOptions.length === 0) {
+      setDonationOptionsError('Add at least one donation option.');
+      return;
+    }
+
+    const normalizedOptions = donationOptions.map((option, optionIndex) => ({
+      ...option,
+      id: buildDonationOptionId(option.id || option.name || `option-${optionIndex + 1}`),
+      name: option.name.trim(),
+      description: option.description.trim(),
+      levels: option.levels.map((level, levelIndex) => ({
+        ...level,
+        id: buildDonationLevelId(level.id || level.title || `level-${levelIndex + 1}`),
+        amountLabel: level.amountLabel.trim(),
+        title: level.title.trim(),
+        detail: level.detail.trim(),
+        suggestedAmountCents: Math.max(100, Math.round(level.suggestedAmountCents))
+      }))
+    }));
+
+    const hasInvalidOption = normalizedOptions.some(
+      (option) => !option.name || option.levels.length === 0 || option.levels.some((level) => !level.amountLabel || !level.title || !level.detail)
+    );
+    if (hasInvalidOption) {
+      setDonationOptionsError('Each option needs a name and at least one complete level.');
+      return;
+    }
+
+    setDonationOptionsSaving(true);
+    setDonationOptionsError(null);
+    try {
+      const saved = await adminFetch<DonationOptionsAdminPayload>('/api/admin/fundraising/donation-options', {
+        method: 'PUT',
+        body: JSON.stringify({
+          options: normalizedOptions
+        })
+      });
+      const options = Array.isArray(saved.options) && saved.options.length > 0 ? saved.options : normalizedOptions;
+      setDonationOptions(options);
+      setDonationOptionsCustomized(Boolean(saved.isCustomized ?? true));
+      setDonationOptionsUpdatedAt(saved.updatedAt || new Date().toISOString());
+      setSelectedDonationOptionId((current) => (options.some((option) => option.id === current) ? current : options[0]?.id || ''));
+      setNotice('Donation options saved.');
+      setActiveDonationIntent(null);
+    } catch (err) {
+      setDonationOptionsError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to save donation options');
+    } finally {
+      setDonationOptionsSaving(false);
+    }
+  }
+
+  async function requestDonationIntent(amountCents: number, level: FundraisingDonationOption['levels'][number] | null) {
     const normalizedDonorName = donorName.trim();
     const normalizedDonorEmail = donorEmail.trim().toLowerCase();
     if (!normalizedDonorName) {
@@ -992,11 +1254,16 @@ export default function AdminFundraisePage() {
       setDonationError('Please enter a valid donor email for Stripe receipt + thank-you email.');
       return;
     }
+    if (!selectedDonationOption) {
+      setDonationError('Donation options are still loading. Try again in a moment.');
+      return;
+    }
 
     setDonationIntentLoading(true);
     setDonationError(null);
     setDonationSuccessMessage(null);
     setSelectedDonationAmountCents(amountCents);
+    setSelectedDonationLevelId(level?.id || null);
 
     try {
       const response = await apiFetch<DonationIntentResponse>('/api/fundraising/donations/intent', {
@@ -1004,7 +1271,12 @@ export default function AdminFundraisePage() {
         body: JSON.stringify({
           amountCents,
           donorName: normalizedDonorName,
-          donorEmail: normalizedDonorEmail
+          donorEmail: normalizedDonorEmail,
+          donationOptionId: selectedDonationOption.id,
+          donationOptionName: selectedDonationOption.name,
+          donationLevelId: level?.id,
+          donationLevelTitle: level?.title,
+          donationLevelAmountLabel: level?.amountLabel
         })
       });
 
@@ -1029,6 +1301,7 @@ export default function AdminFundraisePage() {
 
   function handleOtherDonationSelect() {
     setSelectedDonationAmountCents(null);
+    setSelectedDonationLevelId(null);
     setActiveDonationIntent(null);
     setDonationError(null);
     setDonationSuccessMessage(null);
@@ -1041,7 +1314,7 @@ export default function AdminFundraisePage() {
       setDonationError('Enter a valid donation amount of at least $1.00.');
       return;
     }
-    void requestDonationIntent(amountCents);
+    void requestDonationIntent(amountCents, null);
   }
 
   const primaryActionLabel =
@@ -1470,6 +1743,7 @@ export default function AdminFundraisePage() {
                 return;
               }
               void loadDonations();
+              void loadDonationOptions();
             }}
             className="flex w-full items-center justify-center gap-2 rounded-full bg-red-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-red-100 transition hover:bg-red-800 sm:w-auto"
           >
@@ -1490,6 +1764,9 @@ export default function AdminFundraisePage() {
       ) : null}
       {donationsError ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{donationsError}</div>
+      ) : null}
+      {donationOptionsError ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{donationOptionsError}</div>
       ) : null}
       {attendeesError ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{attendeesError}</div>
@@ -1969,147 +2246,326 @@ export default function AdminFundraisePage() {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-5">
-          <section className="xl:col-span-3 rounded-2xl border border-stone-200 bg-white p-5">
+        <div className="space-y-5">
+          <section className="rounded-2xl border border-stone-200 bg-white p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-bold text-stone-900">Process Donation</h2>
+                <h2 className="text-lg font-bold text-stone-900">Donation Options & Levels</h2>
                 <p className="mt-1 text-sm text-stone-600">
-                  Enter donor details, pick an amount, then run the card directly in this tab.
+                  Manage the public donation choices and impact levels shown on the Fundraising page.
+                </p>
+                <p className="mt-2 text-xs text-stone-500">
+                  {donationOptionsCustomized ? 'Custom configuration saved' : 'Using default configuration'}
+                  {donationOptionsUpdatedAt ? ` · Updated ${new Date(donationOptionsUpdatedAt).toLocaleString()}` : ''}
                 </p>
               </div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-red-700">
-                <CreditCard className="h-3.5 w-3.5" />
-                Secure Card Form
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={addDonationOption}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Option
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveDonationOptions()}
+                  disabled={donationOptionsSaving || donationOptionsLoading}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-red-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Save className="h-4 w-4" />
+                  {donationOptionsSaving ? 'Saving…' : 'Save Donation Setup'}
+                </button>
               </div>
             </div>
 
-            <div className="mt-5 space-y-5">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <label className="space-y-2">
-                  <span className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Donor Name</span>
-                  <div className="relative">
-                    <UserRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-                    <input
-                      type="text"
-                      value={donorName}
-                      onChange={(event) => setDonorName(event.target.value)}
-                      placeholder="Full name"
-                      className="w-full rounded-xl border border-stone-300 bg-white py-2.5 pl-10 pr-3 text-sm text-stone-900 outline-none transition focus:border-red-500"
-                    />
-                  </div>
-                </label>
-                <label className="space-y-2">
-                  <span className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Donor Email</span>
-                  <div className="relative">
-                    <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-                    <input
-                      type="email"
-                      value={donorEmail}
-                      onChange={(event) => setDonorEmail(event.target.value)}
-                      placeholder="name@email.com"
-                      className="w-full rounded-xl border border-stone-300 bg-white py-2.5 pl-10 pr-3 text-sm text-stone-900 outline-none transition focus:border-red-500"
-                    />
-                  </div>
-                </label>
+            {donationOptionsLoading ? (
+              <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50 px-4 py-8 text-center text-sm text-stone-500">
+                Loading donation options...
+              </div>
+            ) : (
+              <div className="mt-4 space-y-4">
+                {donationOptions.map((option) => (
+                  <article key={option.id} className="rounded-2xl border border-stone-200 bg-stone-50/40 p-4">
+                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                      <label className="space-y-1">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Option Name</span>
+                        <input
+                          value={option.name}
+                          onChange={(event) => updateDonationOptionField(option.id, 'name', event.target.value)}
+                          className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                        />
+                      </label>
+                      <label className="space-y-1 lg:col-span-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Option Description</span>
+                        <div className="flex gap-2">
+                          <input
+                            value={option.description}
+                            onChange={(event) => updateDonationOptionField(option.id, 'description', event.target.value)}
+                            className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeDonationOption(option.id)}
+                            disabled={donationOptions.length <= 1}
+                            className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Remove
+                          </button>
+                        </div>
+                      </label>
+                    </div>
+
+                    <div className="mt-3 space-y-3">
+                      {option.levels.map((level) => (
+                        <div key={level.id} className="rounded-xl border border-stone-200 bg-white p-3">
+                          <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+                            <label className="space-y-1">
+                              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Amount Label</span>
+                              <input
+                                value={level.amountLabel}
+                                onChange={(event) =>
+                                  updateDonationLevelField(option.id, level.id, 'amountLabel', event.target.value)
+                                }
+                                className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                              />
+                            </label>
+                            <label className="space-y-1">
+                              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Level Title</span>
+                              <input
+                                value={level.title}
+                                onChange={(event) =>
+                                  updateDonationLevelField(option.id, level.id, 'title', event.target.value)
+                                }
+                                className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                              />
+                            </label>
+                            <label className="space-y-1">
+                              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Suggested Cents</span>
+                              <input
+                                type="number"
+                                min={100}
+                                step={100}
+                                value={level.suggestedAmountCents}
+                                onChange={(event) =>
+                                  updateDonationLevelField(option.id, level.id, 'suggestedAmountCents', event.target.value)
+                                }
+                                className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                              />
+                            </label>
+                            <div className="flex items-end">
+                              <button
+                                type="button"
+                                onClick={() => removeDonationLevel(option.id, level.id)}
+                                disabled={option.levels.length <= 1}
+                                className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                Remove Level
+                              </button>
+                            </div>
+                          </div>
+                          <label className="mt-3 block space-y-1">
+                            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Level Detail</span>
+                            <textarea
+                              value={level.detail}
+                              onChange={(event) => updateDonationLevelField(option.id, level.id, 'detail', event.target.value)}
+                              rows={2}
+                              className="w-full resize-none rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                            />
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => addDonationLevel(option.id)}
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-700 transition hover:bg-stone-50"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add Level
+                    </button>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-5">
+            <section className="xl:col-span-3 rounded-2xl border border-stone-200 bg-white p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-bold text-stone-900">Process Donation</h2>
+                  <p className="mt-1 text-sm text-stone-600">
+                    Charge cards with the same donation categories and levels configured above.
+                  </p>
+                </div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-red-700">
+                  <CreditCard className="h-3.5 w-3.5" />
+                  Secure Card Form
+                </div>
               </div>
 
-              <div className="space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Donation Amount</p>
-                <div className="flex flex-wrap gap-2">
-                  {DONATION_PRESET_AMOUNTS_CENTS.map((amountCents) => {
-                    const isSelected = selectedDonationAmountCents === amountCents;
-                    return (
+              <div className="mt-5 space-y-5">
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Donation Option</span>
+                  <div className="flex flex-wrap gap-2">
+                    {donationOptions.map((option) => (
                       <button
-                        key={amountCents}
+                        key={option.id}
                         type="button"
-                        onClick={() => void requestDonationIntent(amountCents)}
+                        onClick={() => {
+                          setSelectedDonationOptionId(option.id);
+                          setSelectedDonationLevelId(null);
+                          setSelectedDonationAmountCents(null);
+                          setActiveDonationIntent(null);
+                          setDonationError(null);
+                        }}
                         className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                          isSelected
+                          selectedDonationOption?.id === option.id
                             ? 'border-red-700 bg-red-700 text-white'
                             : 'border-stone-300 bg-white text-stone-700 hover:border-red-500 hover:text-red-700'
                         }`}
                       >
-                        {formatUsd(amountCents)}
+                        {option.name}
                       </button>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    onClick={handleOtherDonationSelect}
-                    className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                      isOtherDonationSelected
-                        ? 'border-red-700 bg-red-700 text-white'
-                        : 'border-stone-300 bg-white text-stone-700 hover:border-red-500 hover:text-red-700'
-                    }`}
-                  >
-                    Other
-                  </button>
-                </div>
-
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <div className="relative flex-1">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-stone-500">$</span>
-                    <input
-                      ref={customAmountInputRef}
-                      type="text"
-                      inputMode="decimal"
-                      value={customDonationAmount}
-                      onChange={(event) => setCustomDonationAmount(event.target.value)}
-                      placeholder="Custom amount"
-                      className="w-full rounded-xl border border-stone-300 bg-white py-2.5 pl-8 pr-3 text-sm text-stone-900 outline-none transition focus:border-red-500"
-                    />
+                    ))}
                   </div>
-                  <button
-                    type="button"
-                    onClick={applyCustomDonationAmount}
-                    className="rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:border-red-500 hover:text-red-700"
-                  >
-                    Use Amount
-                  </button>
+                  <p className="text-xs text-stone-500">{selectedDonationOption?.description || ''}</p>
                 </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Donor Name</span>
+                    <div className="relative">
+                      <UserRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+                      <input
+                        type="text"
+                        value={donorName}
+                        onChange={(event) => setDonorName(event.target.value)}
+                        placeholder="Full name"
+                        className="w-full rounded-xl border border-stone-300 bg-white py-2.5 pl-10 pr-3 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                      />
+                    </div>
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Donor Email</span>
+                    <div className="relative">
+                      <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+                      <input
+                        type="email"
+                        value={donorEmail}
+                        onChange={(event) => setDonorEmail(event.target.value)}
+                        placeholder="name@email.com"
+                        className="w-full rounded-xl border border-stone-300 bg-white py-2.5 pl-10 pr-3 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                      />
+                    </div>
+                  </label>
+                </div>
+
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Donation Amount</p>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedDonationLevels.map((level) => {
+                      const isSelected = selectedDonationLevelId === level.id && selectedDonationAmountCents === level.suggestedAmountCents;
+                      return (
+                        <button
+                          key={level.id}
+                          type="button"
+                          onClick={() => void requestDonationIntent(level.suggestedAmountCents, level)}
+                          className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                            isSelected
+                              ? 'border-red-700 bg-red-700 text-white'
+                              : 'border-stone-300 bg-white text-stone-700 hover:border-red-500 hover:text-red-700'
+                          }`}
+                        >
+                          {level.amountLabel}
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={handleOtherDonationSelect}
+                      className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                        isOtherDonationSelected
+                          ? 'border-red-700 bg-red-700 text-white'
+                          : 'border-stone-300 bg-white text-stone-700 hover:border-red-500 hover:text-red-700'
+                      }`}
+                    >
+                      Other
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <div className="relative flex-1">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-stone-500">$</span>
+                      <input
+                        ref={customAmountInputRef}
+                        type="text"
+                        inputMode="decimal"
+                        value={customDonationAmount}
+                        onChange={(event) => {
+                          setCustomDonationAmount(event.target.value);
+                          setSelectedDonationLevelId(null);
+                        }}
+                        placeholder="Custom amount"
+                        className="w-full rounded-xl border border-stone-300 bg-white py-2.5 pl-8 pr-3 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={applyCustomDonationAmount}
+                      className="rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:border-red-500 hover:text-red-700"
+                    >
+                      Use Amount
+                    </button>
+                  </div>
+                </div>
+
+                {donationIntentLoading ? (
+                  <div className="inline-flex items-center gap-2 text-sm text-stone-600">
+                    <Loader2 className="h-4 w-4 animate-spin text-red-700" />
+                    Loading secure card form...
+                  </div>
+                ) : null}
+
+                {donationSuccessMessage ? (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                    {donationSuccessMessage}
+                  </div>
+                ) : null}
+
+                {donationError ? (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{donationError}</div>
+                ) : null}
+
+                {activeDonationIntent && donationStripePromise && donationStripeOptions && !donationIntentLoading ? (
+                  <div className="rounded-2xl border border-stone-200 bg-stone-50 p-3 sm:p-4">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">
+                      Charge {formatUsd(activeDonationIntent.amountCents)}
+                      {selectedDonationLevel ? ` · ${selectedDonationLevel.title}` : ''}
+                    </p>
+                    <Elements stripe={donationStripePromise} options={donationStripeOptions} key={activeDonationIntent.paymentIntentId}>
+                      <AdminDonationPaymentForm
+                        amountCents={activeDonationIntent.amountCents}
+                        donorName={donorName.trim()}
+                        donorEmail={donorEmail.trim().toLowerCase()}
+                        onSuccess={() => {
+                          setDonationSuccessMessage(`Donation of ${formatUsd(activeDonationIntent.amountCents)} was processed.`);
+                          setActiveDonationIntent(null);
+                          setDonationError(null);
+                          void loadDonations();
+                        }}
+                        onError={setDonationError}
+                      />
+                    </Elements>
+                  </div>
+                ) : null}
               </div>
-
-              {donationIntentLoading ? (
-                <div className="inline-flex items-center gap-2 text-sm text-stone-600">
-                  <Loader2 className="h-4 w-4 animate-spin text-red-700" />
-                  Loading secure card form...
-                </div>
-              ) : null}
-
-              {donationSuccessMessage ? (
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                  {donationSuccessMessage}
-                </div>
-              ) : null}
-
-              {donationError ? (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{donationError}</div>
-              ) : null}
-
-              {activeDonationIntent && donationStripePromise && donationStripeOptions && !donationIntentLoading ? (
-                <div className="rounded-2xl border border-stone-200 bg-stone-50 p-3 sm:p-4">
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">
-                    Charge {formatUsd(activeDonationIntent.amountCents)}
-                  </p>
-                  <Elements stripe={donationStripePromise} options={donationStripeOptions} key={activeDonationIntent.paymentIntentId}>
-                    <AdminDonationPaymentForm
-                      amountCents={activeDonationIntent.amountCents}
-                      donorName={donorName.trim()}
-                      donorEmail={donorEmail.trim().toLowerCase()}
-                      onSuccess={() => {
-                        setDonationSuccessMessage(`Donation of ${formatUsd(activeDonationIntent.amountCents)} was processed.`);
-                        setActiveDonationIntent(null);
-                        setDonationError(null);
-                        void loadDonations();
-                      }}
-                      onError={setDonationError}
-                    />
-                  </Elements>
-                </div>
-              ) : null}
-            </div>
-          </section>
+            </section>
 
           <aside className="xl:col-span-2 rounded-2xl border border-stone-200 bg-white p-5">
             <div className="flex items-start justify-between gap-3">
@@ -2169,6 +2625,13 @@ export default function AdminFundraisePage() {
                           <div>
                             <p className="text-sm font-semibold text-stone-900">{donation.donorName || 'Supporter'}</p>
                             <p className="text-xs text-stone-500">{donation.donorEmail || donation.receiptEmail || 'No email'}</p>
+                            {donation.donationOptionName || donation.donationLevelTitle ? (
+                              <p className="mt-1 text-[11px] text-stone-500">
+                                {[donation.donationOptionName, donation.donationLevelTitle, donation.donationLevelAmountLabel]
+                                  .filter(Boolean)
+                                  .join(' · ')}
+                              </p>
+                            ) : null}
                           </div>
                           <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusTone}`}>
                             {formatDonationStatus(donation.status)}
@@ -2187,9 +2650,10 @@ export default function AdminFundraisePage() {
                 </div>
               )}
             </div>
-          </aside>
-        </div>
-      )}
+	          </aside>
+	        </div>
+	      </div>
+	      )}
 
       <EventRegistrationFormBuilderModal
         open={showFormBuilder}
