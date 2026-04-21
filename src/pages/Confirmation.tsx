@@ -142,7 +142,7 @@ export default function Confirmation() {
 
     void Promise.all(
       missingTickets.map(async (ticket) => {
-        const imageUrl = await toQrCodeDataUrl(ticket.qrPayload as string, 240);
+        const imageUrl = await toQrCodeDataUrl(ticket.qrPayload as string, 320);
         return [ticket.key, imageUrl] as const;
       })
     )
@@ -245,101 +245,122 @@ export default function Confirmation() {
             </div>
 
             <div className="bg-stone-50 rounded-2xl p-6 mb-8 border border-stone-100">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="mb-4 flex items-center justify-between">
                 <h3 className="font-bold text-stone-900 uppercase tracking-wider text-sm">Tickets</h3>
-                <div className="flex items-center gap-4">
-                  <div className="text-sm font-bold text-stone-700">Total {totalLabel}</div>
-                  {totalTickets > 0 && (
-                    <div className="text-xs font-semibold text-stone-500">
-                      {activeTicketIndex + 1} / {totalTickets}
-                    </div>
-                  )}
-                </div>
+                <div className="text-sm font-bold text-stone-700">Total {totalLabel}</div>
               </div>
 
-              <div className="mb-3 flex items-center justify-between">
+              <div className="relative">
                 <button
                   type="button"
                   onClick={() => goToTicket(activeTicketIndex - 1)}
                   disabled={activeTicketIndex <= 0 || totalTickets <= 1}
-                  className="inline-flex items-center gap-1 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 disabled:opacity-40"
+                  className="absolute left-1 top-1/2 z-10 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-stone-300 bg-white/95 text-stone-700 shadow-sm transition hover:bg-white disabled:opacity-35 sm:left-2"
                   aria-label="Previous ticket"
                 >
                   <ChevronLeft className="h-4 w-4" />
-                  Previous
                 </button>
                 <button
                   type="button"
                   onClick={() => goToTicket(activeTicketIndex + 1)}
                   disabled={activeTicketIndex >= totalTickets - 1 || totalTickets <= 1}
-                  className="inline-flex items-center gap-1 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 disabled:opacity-40"
+                  className="absolute right-1 top-1/2 z-10 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-stone-300 bg-white/95 text-stone-700 shadow-sm transition hover:bg-white disabled:opacity-35 sm:right-2"
                   aria-label="Next ticket"
                 >
-                  Next
                   <ChevronRight className="h-4 w-4" />
                 </button>
+
+                <div
+                  ref={carouselRef}
+                  onScroll={(event) => {
+                    const container = event.currentTarget;
+                    if (!container.clientWidth || totalTickets === 0) return;
+                    const index = Math.round(container.scrollLeft / container.clientWidth);
+                    setActiveTicketIndex(Math.max(0, Math.min(totalTickets - 1, index)));
+                  }}
+                  className="flex h-[74vh] min-h-[560px] max-h-[780px] snap-x snap-mandatory overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  aria-label="Order ticket wallet"
+                >
+                  {orderData.tickets.map((ticket, index) => {
+                    const seatLabel =
+                      ticket.isGeneralAdmission || orderData.performance.isGeneralAdmission
+                        ? `General Admission Ticket ${ticket.number || index + 1}`
+                        : `${ticket.sectionName} - Row ${ticket.row} Seat ${ticket.number}`;
+                    const ticketKey = getTicketKey(ticket, index);
+                    const qrImageUrl = qrByTicketKey[ticketKey];
+
+                    return (
+                      <article key={ticketKey} className="min-w-full snap-start px-8 py-1 sm:px-10">
+                        <div className="flex h-full flex-col rounded-3xl border border-stone-200 bg-white p-6">
+                          <div className="space-y-2">
+                            <div className="text-4xl font-black leading-tight text-stone-900">{seatLabel}</div>
+                            {ticket.ticketType && <div className="text-lg text-stone-600">Type: {ticket.ticketType}</div>}
+                            {ticket.attendeeName && <div className="text-base text-stone-600">Attendee: {ticket.attendeeName}</div>}
+                            {ticket.isComplimentary && <div className="text-sm font-semibold text-green-700">Complimentary</div>}
+                            {ticket.checkedInAt && (
+                              <div className="mt-2 inline-flex flex-col rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                                <span className="font-semibold uppercase tracking-wide">Checked In</span>
+                                <span>{format(new Date(ticket.checkedInAt), 'MMM d, yyyy @ h:mm a')}</span>
+                                {ticket.checkedInBy && <span>By {ticket.checkedInBy}</span>}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex flex-1 items-center justify-center py-6">
+                            {qrImageUrl ? (
+                              <img
+                                src={qrImageUrl}
+                                alt="Ticket QR"
+                                className="w-full max-w-[420px] rounded-2xl border border-stone-200"
+                              />
+                            ) : (
+                              <div className="flex aspect-square w-full max-w-[420px] items-center justify-center rounded-2xl border border-stone-200 bg-stone-50 text-sm text-stone-400">
+                                {ticket.qrPayload ? 'Generating QR…' : 'QR pending'}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="space-y-2">
+                            <div className="text-center text-xs text-stone-400">Present this QR at the door</div>
+                            {ticket.publicId && !finalizationFailed && (
+                              <div className="text-center">
+                                <Link to={`/tickets/${ticket.publicId}`} className="inline-flex items-center gap-1 text-sm font-bold text-yellow-700 hover:text-yellow-900">
+                                  <Ticket className="w-4 h-4" /> Open Single Ticket
+                                </Link>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
               </div>
 
-              <div
-                ref={carouselRef}
-                onScroll={(event) => {
-                  const container = event.currentTarget;
-                  if (!container.clientWidth || totalTickets === 0) return;
-                  const index = Math.round(container.scrollLeft / container.clientWidth);
-                  setActiveTicketIndex(Math.max(0, Math.min(totalTickets - 1, index)));
-                }}
-                className="flex snap-x snap-mandatory overflow-x-auto scroll-smooth"
-                aria-label="Order ticket wallet"
-              >
-                {orderData.tickets.map((ticket, index) => {
-                  const seatLabel =
-                    ticket.isGeneralAdmission || orderData.performance.isGeneralAdmission
-                      ? `General Admission Ticket ${ticket.number || index + 1}`
-                      : `${ticket.sectionName} - Row ${ticket.row} Seat ${ticket.number}`;
-                  const ticketKey = getTicketKey(ticket, index);
-                  const qrImageUrl = qrByTicketKey[ticketKey];
+              {totalTickets > 1 && (
+                <div className="mt-4 flex justify-center gap-2">
+                  {orderData.tickets.map((ticket, index) => {
+                    const ticketKey = getTicketKey(ticket, index);
+                    const isActive = activeTicketIndex === index;
+                    return (
+                      <button
+                        key={`${ticketKey}-dot`}
+                        type="button"
+                        onClick={() => goToTicket(index)}
+                        className={`h-2 rounded-full transition-all ${isActive ? 'w-6 bg-stone-900' : 'w-2 bg-stone-300 hover:bg-stone-400'}`}
+                        aria-label={`Go to ticket ${index + 1}`}
+                        aria-current={isActive ? 'true' : undefined}
+                      />
+                    );
+                  })}
+                </div>
+              )}
 
-                  return (
-                    <article key={ticketKey} className="min-w-full snap-start">
-                      <div className="flex min-h-[360px] flex-col gap-4 rounded-2xl border border-stone-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex-1 space-y-2">
-                          <div className="font-bold text-stone-900">{seatLabel}</div>
-                          {ticket.ticketType && <div className="text-xs text-stone-500">Type: {ticket.ticketType}</div>}
-                          {ticket.attendeeName && <div className="text-xs text-stone-500">Attendee: {ticket.attendeeName}</div>}
-                          {ticket.isComplimentary && <div className="text-xs font-semibold text-green-700">Complimentary</div>}
-                          {ticket.checkedInAt && (
-                            <div className="mt-2 inline-flex flex-col rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                              <span className="font-semibold uppercase tracking-wide">Checked In</span>
-                              <span>{format(new Date(ticket.checkedInAt), 'MMM d, yyyy @ h:mm a')}</span>
-                              {ticket.checkedInBy && <span>By {ticket.checkedInBy}</span>}
-                            </div>
-                          )}
-                          {ticket.publicId && !finalizationFailed && (
-                            <Link to={`/tickets/${ticket.publicId}`} className="inline-flex items-center gap-1 pt-1 text-sm font-bold text-yellow-700 hover:text-yellow-900">
-                              <Ticket className="w-4 h-4" /> Open Single Ticket
-                            </Link>
-                          )}
-                        </div>
-
-                        <div className="mx-auto flex flex-col items-center">
-                          {qrImageUrl ? (
-                            <img
-                              src={qrImageUrl}
-                              alt="Ticket QR"
-                              className="h-52 w-52 rounded-xl border border-stone-200 sm:h-56 sm:w-56"
-                            />
-                          ) : (
-                            <div className="flex h-52 w-52 items-center justify-center rounded-xl border border-stone-200 bg-stone-50 text-sm text-stone-400 sm:h-56 sm:w-56">
-                              {ticket.qrPayload ? 'Generating QR…' : 'QR pending'}
-                            </div>
-                          )}
-                          <div className="mt-2 text-[11px] text-stone-400">Present this QR at the door</div>
-                        </div>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
+              {totalTickets > 0 && (
+                <div className="mt-3 text-center text-xs font-medium text-stone-500">
+                  Ticket {activeTicketIndex + 1} of {totalTickets}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
