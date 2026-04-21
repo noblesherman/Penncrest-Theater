@@ -1,4 +1,5 @@
 const DEFAULT_FRIENDLY_FALLBACK = 'Something went a little off-script. Please try again in just a moment, thanks!';
+const RETRY_SUFFIX = ' Please try again in just a moment, thanks!';
 
 function normalizeMessage(input: string): string {
   return input.replace(/\s+/g, ' ').trim();
@@ -15,9 +16,73 @@ function ensureEndingPunctuation(text: string): string {
   return `${text}.`;
 }
 
+function stripRetrySuffix(text: string): string {
+  return text
+    .replace(/\s*please\s+try\s+again(?:\s+in\s+just\s+a\s+moment)?(?:,\s*thanks)?!?$/i, '')
+    .replace(/\s*thanks\s+for\s+your\s+patience!?$/i, '')
+    .trim();
+}
+
+function shouldSuggestRetry(message: string): boolean {
+  const normalized = normalizeMessage(message).toLowerCase();
+
+  if (!normalized) return false;
+
+  if (
+    /no remaining complimentary student tickets/.test(normalized) ||
+    /no complimentary student tickets (are currently )?available/.test(normalized) ||
+    /student code is not approved/.test(normalized) ||
+    /limit reached/.test(normalized) ||
+    /is required/.test(normalized) ||
+    /is inactive/.test(normalized) ||
+    /not enabled/.test(normalized) ||
+    /not available for this performance/.test(normalized) ||
+    /online sales are closed/.test(normalized) ||
+    /online sales are not live/.test(normalized) ||
+    /invalid authentication code/.test(normalized) ||
+    /authentication code required/.test(normalized)
+  ) {
+    return false;
+  }
+
+  if (
+    /just yet/.test(normalized) ||
+    /small backstage snag/.test(normalized) ||
+    /missed its cue/.test(normalized) ||
+    /longer than expected backstage/.test(normalized) ||
+    /network right now/.test(normalized) ||
+    /internal server error/.test(normalized) ||
+    /timed out/.test(normalized)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 function toFriendlyCore(rawMessage: string): string {
   const message = normalizeMessage(rawMessage);
   if (!message) return DEFAULT_FRIENDLY_FALLBACK;
+
+  if (/^no remaining complimentary student tickets$/i.test(message)) {
+    return 'All student complimentary tickets for this performance have already been claimed';
+  }
+
+  if (/^no complimentary student tickets (are currently )?available(?: for checkout| for this checkout)?$/i.test(message)) {
+    return 'Student complimentary tickets are currently all spoken for on this performance';
+  }
+
+  if (/^authentication code required$/i.test(message)) {
+    return 'Please enter the 6-digit code from your authenticator app';
+  }
+
+  if (/^invalid authentication code$/i.test(message)) {
+    return "That 6-digit authenticator code didn't match";
+  }
+
+  if (/^two-factor authentication is not configured correctly$/i.test(message)) {
+    return 'Two-factor setup is incomplete for this account. Please contact a theater admin';
+  }
 
   if (/^failed to\s+/i.test(message)) {
     const remainder = message.replace(/^failed to\s+/i, '');
@@ -68,13 +133,17 @@ export function toTheaterFriendlyErrorMessage(input: unknown, fallback = DEFAULT
   const core = toFriendlyCore(input);
   if (!core) return fallback;
 
-  const punctuated = ensureEndingPunctuation(core);
+  const punctuated = ensureEndingPunctuation(stripRetrySuffix(core));
   if (/thanks|thank you/i.test(punctuated)) {
     return punctuated;
   }
-  if (/please\s+try\s+again/i.test(punctuated)) {
-    return `${punctuated} Thanks for your patience!`;
+  if (/please\s+try\s+again|refresh and try again|reselect/i.test(punctuated)) {
+    return punctuated;
   }
 
-  return `${punctuated} Please try again in just a moment, thanks!`;
+  if (shouldSuggestRetry(punctuated)) {
+    return `${punctuated}${RETRY_SUFFIX}`;
+  }
+
+  return punctuated;
 }

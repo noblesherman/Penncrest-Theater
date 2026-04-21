@@ -166,12 +166,12 @@ export default function Shows() {
 
                       <Link
                         to={`/shows/${show.id}#about-show`}
-                        className="mt-4 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-red-600"
+                        className="mt-4 inline-flex self-center items-center justify-center gap-2 text-xs font-medium uppercase tracking-[0.13em] text-stone-500 transition-colors hover:text-stone-700"
                         style={{ fontFamily: 'system-ui, sans-serif' }}
                       >
                         <Ticket className="w-3.5 h-3.5" />
                         View Details
-                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                        <ArrowRight className="w-3.5 h-3.5 opacity-70 group-hover:translate-x-1 transition-transform" />
                       </Link>
                     </div>
                   </article>
