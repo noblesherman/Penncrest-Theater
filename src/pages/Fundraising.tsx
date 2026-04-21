@@ -454,275 +454,281 @@ export default function Fundraising() {
           </div>
         )}
 
-        {/* ── GET INVOLVED ── */}
-        <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 max-sm:py-12">
+
+        {/* ── DONATE ── */}
+        <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8 max-sm:py-12">
 
           {/* Section heading */}
-          <div className="mb-10 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-800">Get Involved</p>
-              <h2 className="serif mt-1.5 text-3xl font-bold text-stone-900 sm:text-4xl">Make an Impact</h2>
-            </div>
-          </div>
-
-          <div className="mb-6 rounded-3xl border border-stone-200 bg-stone-50 p-4 sm:p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Choose Your Donation Path</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {donationOptions.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedDonationOptionId(option.id);
-                    setSelectedDonationLevelId(null);
-                    setSelectedDonationAmountCents(null);
-                    setActiveDonationIntent(null);
-                    setDonationError(null);
-                    setDonationSuccessMessage(null);
-                  }}
-                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                    selectedDonationOption?.id === option.id
-                      ? 'border-red-700 bg-red-700 text-white'
-                      : 'border-stone-300 bg-white text-stone-700 hover:border-red-700 hover:bg-red-50 hover:text-red-700'
-                  }`}
-                >
-                  {option.name}
-                </button>
-              ))}
-            </div>
-            <p className="mt-3 text-sm text-stone-600">
-              {selectedDonationOption?.description || 'Select a donation option to view available levels.'}
+          <div className="mb-12 max-w-xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-red-700 mb-2">Make an Impact</p>
+            <h2 className="serif text-4xl font-bold text-stone-900 sm:text-5xl leading-tight">
+              Every gift brings <em className="not-italic text-red-800">students</em> to the spotlight.
+            </h2>
+            <p className="mt-4 text-stone-500 text-sm leading-relaxed max-w-sm">
+              Choose how you'd like to support Penncrest Theater — whether it's a one-time gift or a named sponsorship.
             </p>
           </div>
 
+          {/* Donation path tabs */}
+          <div className="flex flex-wrap gap-2 mb-8">
+            {donationOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => {
+                  setSelectedDonationOptionId(option.id);
+                  setSelectedDonationLevelId(null);
+                  setSelectedDonationAmountCents(null);
+                  setActiveDonationIntent(null);
+                  setDonationError(null);
+                  setDonationSuccessMessage(null);
+                }}
+                className={`rounded-full border px-5 py-2.5 text-sm font-semibold transition ${
+                  selectedDonationOption?.id === option.id
+                    ? 'border-red-700 bg-red-700 text-white shadow-md shadow-red-200'
+                    : 'border-stone-200 bg-white text-stone-600 hover:border-red-300 hover:text-red-700'
+                }`}
+              >
+                {option.name}
+              </button>
+            ))}
+          </div>
+          {selectedDonationOption?.description && (
+            <p className="mb-10 text-sm text-stone-500 -mt-4">{selectedDonationOption.description}</p>
+          )}
+
           <motion.div
             key={selectedDonationOption?.id || 'donation'}
-            initial={{ opacity: 0, y: 12 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25 }}
+            className="grid grid-cols-1 gap-8 lg:grid-cols-3"
           >
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-              <div className="lg:col-span-3">
-                <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8 max-sm:p-5">
-                  <div className="mb-6 flex items-center justify-between max-sm:flex-col max-sm:items-start max-sm:gap-3">
-                    <div>
-                      <h3 className="serif text-xl font-bold text-stone-900">Leave a Donation</h3>
-                      <p className="mt-1 text-sm text-stone-500">
-                        Donate toward {selectedDonationOption?.name || 'the theater program'} and help students grow in confidence on stage.
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1.5 rounded-full border border-stone-100 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-500">
-                      <CreditCard className="h-3 w-3" />
-                      Secure
-                    </div>
-                  </div>
 
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <input
-                      type="text"
-                      value={donorName}
-                      onChange={(e) => setDonorName(e.target.value)}
-                      placeholder="Your full name"
-                      className={INPUT_FIELD_CLASS}
-                    />
-                    <input
-                      type="email"
-                      value={donorEmail}
-                      onChange={(e) => setDonorEmail(e.target.value)}
-                      placeholder="Email for receipt"
-                      className={INPUT_FIELD_CLASS}
-                    />
-                  </div>
-                  <p className="mt-2 text-xs text-stone-400">We'll send your thank-you note and receipt here.</p>
-                  <div className="mt-4 rounded-2xl border border-stone-200 bg-stone-50 p-3.5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Recognition Preference</p>
-                    <div className="mt-2 inline-flex rounded-xl border border-stone-200 bg-white p-1 max-sm:flex max-sm:w-full">
-                      <button
-                        type="button"
-                        onClick={() => setDonorRecognitionPreference('known')}
-                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition max-sm:flex-1 ${
-                          donorRecognitionPreference === 'known'
-                            ? 'bg-red-700 text-white'
-                            : 'text-stone-600 hover:text-stone-900'
-                        }`}
-                      >
-                        Known
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDonorRecognitionPreference('anonymous')}
-                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition max-sm:flex-1 ${
-                          donorRecognitionPreference === 'anonymous'
-                            ? 'bg-red-700 text-white'
-                            : 'text-stone-600 hover:text-stone-900'
-                        }`}
-                      >
-                        Anonymous
-                      </button>
-                    </div>
-                    <p className="mt-2 text-xs text-stone-500">
-                      If you choose Known, your name may appear in places like press releases, playbills, or donor acknowledgments.
-                    </p>
-                  </div>
+            {/* ── LEFT: Donor info + amount picker ── */}
+            <div className="lg:col-span-2 space-y-6">
 
-                  <div className="my-5 h-px bg-stone-200" />
-
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Choose Amount</p>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedDonationLevels.map((level) => (
-                      <button
-                        key={level.id}
-                        type="button"
-                        onClick={() => void requestDonationIntent(level.suggestedAmountCents, level)}
-                        className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                          selectedDonationLevelId === level.id && selectedDonationAmountCents === level.suggestedAmountCents
-                            ? 'border-red-700 bg-red-700 text-white'
-                            : 'border-stone-300 bg-white text-stone-700 hover:border-red-700 hover:bg-red-50 hover:text-red-700'
-                        }`}
-                      >
-                        {level.amountLabel}
-                      </button>
-                    ))}
+              {/* Donor info card */}
+              <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+                <h3 className="serif text-lg font-bold text-stone-900 mb-1">Your Information</h3>
+                <p className="text-xs text-stone-400 mb-5">We'll send your receipt and thank-you note here.</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <input
+                    type="text"
+                    value={donorName}
+                    onChange={(e) => setDonorName(e.target.value)}
+                    placeholder="Full name"
+                    className={INPUT_FIELD_CLASS}
+                  />
+                  <input
+                    type="email"
+                    value={donorEmail}
+                    onChange={(e) => setDonorEmail(e.target.value)}
+                    placeholder="Email for receipt"
+                    className={INPUT_FIELD_CLASS}
+                  />
+                </div>
+                <div className="mt-4 flex items-center gap-3 flex-wrap">
+                  <span className="text-xs font-semibold text-stone-500 uppercase tracking-wide">Recognition:</span>
+                  <div className="flex rounded-xl border border-stone-200 bg-stone-50 p-0.5 gap-0.5">
                     <button
                       type="button"
-                      onClick={handleOtherDonationSelect}
-                      className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                        isOtherDonationSelected
-                          ? 'border-red-700 bg-red-700 text-white'
-                          : 'border-stone-300 bg-white text-stone-700 hover:border-red-700 hover:bg-red-50 hover:text-red-700'
+                      onClick={() => setDonorRecognitionPreference('known')}
+                      className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition ${
+                        donorRecognitionPreference === 'known'
+                          ? 'bg-red-700 text-white shadow-sm'
+                          : 'text-stone-500 hover:text-stone-800'
                       }`}
                     >
-                      Custom
+                      List my name
                     </button>
-                  </div>
-
-                  <div className="mt-3 flex gap-2 max-sm:flex-col">
-                    <div className="relative flex-1">
-                      <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-stone-400">$</span>
-                      <input
-                        ref={customAmountInputRef}
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="Other amount"
-                        value={customDonationAmount}
-                        onChange={(e) => {
-                          setCustomDonationAmount(e.target.value);
-                          setSelectedDonationLevelId(null);
-                        }}
-                        className={`${INPUT_FIELD_CLASS} pl-8`}
-                      />
-                    </div>
                     <button
                       type="button"
-                      onClick={applyCustomDonationAmount}
-                      className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:border-red-700 hover:bg-red-50 hover:text-red-700 max-sm:w-full"
+                      onClick={() => setDonorRecognitionPreference('anonymous')}
+                      className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition ${
+                        donorRecognitionPreference === 'anonymous'
+                          ? 'bg-red-700 text-white shadow-sm'
+                          : 'text-stone-500 hover:text-stone-800'
+                      }`}
                     >
-                      Apply
+                      Stay anonymous
                     </button>
                   </div>
-
-                  {donationIntentLoading && (
-                    <div className="mt-5 inline-flex items-center gap-2 text-sm text-stone-500">
-                      <Loader2 className="h-4 w-4 animate-spin text-red-700" />
-                      Loading secure payment form…
-                    </div>
-                  )}
-
-                  {donationSuccessMessage && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.97 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="mt-5 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4"
-                    >
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 flex-none text-emerald-600" />
-                      <p className="text-sm font-semibold text-emerald-800">{donationSuccessMessage}</p>
-                    </motion.div>
-                  )}
-
-                  {donationError && (
-                    <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                      {donationError}
-                    </div>
-                  )}
-
-                  {activeDonationIntent && donationStripePromise && donationStripeOptions && !donationIntentLoading && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="mt-6 rounded-2xl border border-stone-100 bg-stone-50 p-4 sm:p-5"
-                    >
-                      <p className="mb-4 text-xs font-semibold uppercase tracking-[0.13em] text-stone-500">
-                        Paying {formatUsd(activeDonationIntent.amountCents)}
-                        {selectedDonationLevel ? ` · ${selectedDonationLevel.title}` : ''}
-                      </p>
-                      <Elements
-                        stripe={donationStripePromise}
-                        options={donationStripeOptions}
-                        key={activeDonationIntent.paymentIntentId}
-                      >
-                        <DonationPaymentForm
-                          amountCents={activeDonationIntent.amountCents}
-                          donorName={donorName.trim()}
-                          donorEmail={donorEmail.trim().toLowerCase()}
-                          onSuccess={() => {
-                            setLastDonationAmountCents(activeDonationIntent.amountCents);
-                            setShowDonationCelebration(true);
-                            setDonationSuccessMessage(`Thank you! Your ${formatUsd(activeDonationIntent.amountCents)} donation was received.`);
-                            setActiveDonationIntent(null);
-                            setDonationError(null);
-                          }}
-                          onError={setDonationError}
-                        />
-                      </Elements>
-                    </motion.div>
-                  )}
+                  <p className="text-xs text-stone-400 hidden sm:block">
+                    {donorRecognitionPreference === 'known'
+                      ? 'Your name may appear in playbills and acknowledgments.'
+                      : 'Your name will be kept private.'}
+                  </p>
                 </div>
               </div>
 
-              <div className="lg:col-span-2 space-y-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400 lg:mt-0 mt-2">
-                  {selectedDonationOption?.name || 'Donation'} Levels
-                </p>
-                {selectedDonationLevels.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-5 text-sm text-stone-500">
-                    No donation levels are configured yet for this option.
-                  </div>
-                ) : (
-                  selectedDonationLevels.map((card, i) => (
-                    <motion.article
-                      key={card.id}
-                      initial={{ opacity: 0, x: 12 }}
-                      whileInView={{ opacity: 1, x: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ duration: 0.35, delay: i * 0.08 }}
-                      className={`rounded-2xl border bg-white p-5 transition hover:shadow-sm ${
-                        selectedDonationLevelId === card.id
-                          ? 'border-red-300 shadow-sm shadow-red-100'
-                          : 'border-stone-200 hover:border-stone-300'
+              {/* Amount picker card */}
+              <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+                <h3 className="serif text-lg font-bold text-stone-900 mb-1">Choose an Amount</h3>
+                <p className="text-xs text-stone-400 mb-5">Select a suggested level or enter your own amount.</p>
+
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {selectedDonationLevels.map((level) => (
+                    <button
+                      key={level.id}
+                      type="button"
+                      onClick={() => void requestDonationIntent(level.suggestedAmountCents, level)}
+                      className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                        selectedDonationLevelId === level.id && selectedDonationAmountCents === level.suggestedAmountCents
+                          ? 'border-red-700 bg-red-700 text-white shadow-md shadow-red-100'
+                          : 'border-stone-200 bg-stone-50 text-stone-700 hover:border-red-300 hover:bg-red-50 hover:text-red-700'
                       }`}
                     >
-                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-red-700">{card.amountLabel}</p>
-                      <h3 className="serif mt-1 text-lg font-bold text-stone-900">{card.title}</h3>
-                      <p className="mt-2 text-sm leading-relaxed text-stone-500">{card.detail}</p>
-                    </motion.article>
-                  ))
+                      {level.amountLabel}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={handleOtherDonationSelect}
+                    className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                      isOtherDonationSelected
+                        ? 'border-red-700 bg-red-700 text-white shadow-md shadow-red-100'
+                        : 'border-stone-200 bg-stone-50 text-stone-700 hover:border-red-300 hover:bg-red-50 hover:text-red-700'
+                    }`}
+                  >
+                    Custom
+                  </button>
+                </div>
+
+                <div className="flex gap-2 max-sm:flex-col">
+                  <div className="relative flex-1">
+                    <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-stone-400">$</span>
+                    <input
+                      ref={customAmountInputRef}
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="Other amount"
+                      value={customDonationAmount}
+                      onChange={(e) => {
+                        setCustomDonationAmount(e.target.value);
+                        setSelectedDonationLevelId(null);
+                      }}
+                      className={`${INPUT_FIELD_CLASS} pl-8`}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={applyCustomDonationAmount}
+                    className="rounded-xl border border-stone-200 bg-stone-50 px-5 py-2.5 text-sm font-semibold text-stone-700 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700 max-sm:w-full"
+                  >
+                    Apply
+                  </button>
+                </div>
+
+                {/* Error / success */}
+                {donationError && (
+                  <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {donationError}
+                  </div>
+                )}
+                {donationSuccessMessage && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.97 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="mt-4 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4"
+                  >
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 flex-none text-emerald-600" />
+                    <p className="text-sm font-semibold text-emerald-800">{donationSuccessMessage}</p>
+                  </motion.div>
+                )}
+
+                {/* Stripe payment form */}
+                {donationIntentLoading && (
+                  <div className="mt-6 flex items-center gap-2 text-sm text-stone-500">
+                    <Loader2 className="h-4 w-4 animate-spin text-red-700" />
+                    Loading secure payment form…
+                  </div>
+                )}
+
+                {activeDonationIntent && donationStripePromise && donationStripeOptions && !donationIntentLoading && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-6 rounded-xl border border-stone-100 bg-stone-50 p-5"
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.13em] text-stone-500">
+                        Paying {formatUsd(activeDonationIntent.amountCents)}
+                        {selectedDonationLevel ? ` · ${selectedDonationLevel.title}` : ''}
+                      </p>
+                      <div className="flex items-center gap-1 text-xs text-stone-400">
+                        <CreditCard className="h-3 w-3" />
+                        Secure
+                      </div>
+                    </div>
+                    <Elements
+                      stripe={donationStripePromise}
+                      options={donationStripeOptions}
+                      key={activeDonationIntent.paymentIntentId}
+                    >
+                      <DonationPaymentForm
+                        amountCents={activeDonationIntent.amountCents}
+                        donorName={donorName.trim()}
+                        donorEmail={donorEmail.trim().toLowerCase()}
+                        onSuccess={() => {
+                          setLastDonationAmountCents(activeDonationIntent.amountCents);
+                          setShowDonationCelebration(true);
+                          setDonationSuccessMessage(`Thank you! Your ${formatUsd(activeDonationIntent.amountCents)} donation was received.`);
+                          setActiveDonationIntent(null);
+                          setDonationError(null);
+                        }}
+                        onError={setDonationError}
+                      />
+                    </Elements>
+                  </motion.div>
                 )}
               </div>
             </div>
+
+            {/* ── RIGHT: Donation levels sidebar ── */}
+            <div className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400 mb-1">
+                {selectedDonationOption?.name || 'Donation'} Levels
+              </p>
+              {selectedDonationLevels.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-5 text-sm text-stone-500">
+                  No donation levels configured yet.
+                </div>
+              ) : (
+                selectedDonationLevels.map((card, i) => (
+                  <motion.article
+                    key={card.id}
+                    initial={{ opacity: 0, x: 10 }}
+                    whileInView={{ opacity: 1, x: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.3, delay: i * 0.07 }}
+                    onClick={() => void requestDonationIntent(card.suggestedAmountCents, card)}
+                    className={`rounded-2xl border bg-white p-5 cursor-pointer transition hover:shadow-sm ${
+                      selectedDonationLevelId === card.id
+                        ? 'border-red-300 shadow-sm shadow-red-100 ring-1 ring-red-200'
+                        : 'border-stone-200 hover:border-stone-300'
+                    }`}
+                  >
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-red-700">{card.amountLabel}</p>
+                    <h3 className="serif mt-1 text-base font-bold text-stone-900">{card.title}</h3>
+                    <p className="mt-1.5 text-sm leading-relaxed text-stone-500">{card.detail}</p>
+                  </motion.article>
+                ))
+              )}
+            </div>
           </motion.div>
 
+          {/* ── SPONSORS GRID ── */}
           {displayedSponsors.length > 0 && (
-            <div className="mt-10">
-              <p className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">Current Sponsors</p>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="mt-16 pt-10 border-t border-stone-100">
+              <p className="mb-6 text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Current Sponsors</p>
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
                 {displayedSponsors.map((sponsor) => (
                   <article key={sponsor.id} className="overflow-hidden rounded-2xl border border-stone-200 bg-white transition hover:shadow-md">
                     <div className="relative">
                       <img src={sponsor.imageUrl} alt={`${sponsor.name} spotlight`} className="h-44 w-full object-cover" />
                       <div
-                        className={`absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.1em] ${
-                          sponsorTierBadgeClass(sponsor.tier)
-                        }`}
+                        className={`absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.1em] ${sponsorTierBadgeClass(sponsor.tier)}`}
                       >
                         {sponsor.tier}
                       </div>
@@ -746,7 +752,3 @@ export default function Fundraising() {
             </div>
           )}
         </section>
-      </div>
-    </>
-  );
-}

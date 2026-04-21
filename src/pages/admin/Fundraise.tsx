@@ -21,6 +21,7 @@ import {
   MapPin,
   Plus,
   RefreshCcw,
+  Search,
   Save,
   Settings,
   Trash2,
@@ -131,6 +132,8 @@ type DonationOptionsAdminPayload = {
   isCustomized?: boolean;
   updatedAt?: string | null;
 };
+
+type DonationStatusFilter = 'all' | 'succeeded' | 'processing' | 'other';
 
 type AdminFundraisingAttendeeOrderSeat = {
   seatId: string | null;
@@ -455,6 +458,8 @@ export default function AdminFundraisePage() {
   const [donationIntentLoading, setDonationIntentLoading] = useState(false);
   const [donationError, setDonationError] = useState<string | null>(null);
   const [donationSuccessMessage, setDonationSuccessMessage] = useState<string | null>(null);
+  const [donationSearchQuery, setDonationSearchQuery] = useState('');
+  const [donationStatusFilter, setDonationStatusFilter] = useState<DonationStatusFilter>('all');
   const customAmountInputRef = useRef<HTMLInputElement | null>(null);
 
   const tiers = useMemo(() => parseTiers(form.tiersText), [form.tiersText]);
@@ -469,6 +474,78 @@ export default function AdminFundraisePage() {
     () => selectedDonationLevels.find((level) => level.id === selectedDonationLevelId) || null,
     [selectedDonationLevels, selectedDonationLevelId]
   );
+  const donationOptionStats = useMemo(() => {
+    const levelCount = donationOptions.reduce((sum, option) => sum + option.levels.length, 0);
+    const suggestedTotalCents = donationOptions.reduce(
+      (sum, option) => sum + option.levels.reduce((levelSum, level) => levelSum + level.suggestedAmountCents, 0),
+      0
+    );
+    return {
+      optionCount: donationOptions.length,
+      levelCount,
+      suggestedTotalCents
+    };
+  }, [donationOptions]);
+  const donationRecognitionTotals = useMemo(() => {
+    return donations.reduce(
+      (totals, donation) => {
+        if (donation.donorRecognitionPreference === 'anonymous') {
+          totals.anonymous += 1;
+        } else {
+          totals.known += 1;
+        }
+        return totals;
+      },
+      { known: 0, anonymous: 0 }
+    );
+  }, [donations]);
+  const donationStatusCounts = useMemo(() => {
+    return donations.reduce(
+      (totals, donation) => {
+        totals.all += 1;
+        if (donation.status === 'succeeded') {
+          totals.succeeded += 1;
+        } else if (donation.status === 'processing') {
+          totals.processing += 1;
+        } else {
+          totals.other += 1;
+        }
+        return totals;
+      },
+      { all: 0, succeeded: 0, processing: 0, other: 0 } as Record<DonationStatusFilter, number>
+    );
+  }, [donations]);
+  const filteredDonations = useMemo(() => {
+    const query = donationSearchQuery.trim().toLowerCase();
+    return donations.filter((donation) => {
+      const statusMatch =
+        donationStatusFilter === 'all'
+          ? true
+          : donationStatusFilter === 'other'
+            ? donation.status !== 'succeeded' && donation.status !== 'processing'
+            : donation.status === donationStatusFilter;
+
+      if (!statusMatch) {
+        return false;
+      }
+      if (!query) {
+        return true;
+      }
+
+      const searchableFields = [
+        donation.donorName,
+        donation.donorEmail,
+        donation.receiptEmail,
+        donation.paymentIntentId,
+        donation.donationOptionName,
+        donation.donationLevelTitle
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return searchableFields.includes(query);
+    });
+  }, [donationSearchQuery, donationStatusFilter, donations]);
   const donationStripePromise = useMemo(() => {
     if (!activeDonationIntent?.publishableKey) return null;
     return loadStripe(activeDonationIntent.publishableKey);
@@ -2249,17 +2326,52 @@ export default function AdminFundraisePage() {
           )}
         </div>
       ) : (
-        <div className="space-y-5">
+        <div className="space-y-6">
+          <section className="overflow-hidden rounded-2xl border border-red-100 bg-gradient-to-br from-red-50 via-white to-amber-50 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-stone-900">Donation Console</h2>
+                <p className="mt-1 max-w-2xl text-sm text-stone-700">
+                  Configure donation paths, process secure payments, and monitor recent transactions from one workspace.
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-600">
+                  <span className="rounded-full border border-stone-200 bg-white/80 px-2.5 py-1">
+                    {donationOptionsCustomized ? 'Custom setup active' : 'Using default setup'}
+                  </span>
+                  {donationOptionsUpdatedAt ? (
+                    <span className="rounded-full border border-stone-200 bg-white/80 px-2.5 py-1">
+                      Updated {new Date(donationOptionsUpdatedAt).toLocaleString()}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+              <div className="grid min-w-[240px] grid-cols-2 gap-2">
+                <div className="rounded-xl border border-red-100 bg-white/80 px-3 py-2">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Options</p>
+                  <p className="mt-1 text-lg font-bold text-stone-900">{donationOptionStats.optionCount}</p>
+                </div>
+                <div className="rounded-xl border border-red-100 bg-white/80 px-3 py-2">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Levels</p>
+                  <p className="mt-1 text-lg font-bold text-stone-900">{donationOptionStats.levelCount}</p>
+                </div>
+                <div className="rounded-xl border border-red-100 bg-white/80 px-3 py-2">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Suggested</p>
+                  <p className="mt-1 text-lg font-bold text-stone-900">{formatUsd(donationOptionStats.suggestedTotalCents)}</p>
+                </div>
+                <div className="rounded-xl border border-red-100 bg-white/80 px-3 py-2">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Anonymous</p>
+                  <p className="mt-1 text-lg font-bold text-stone-900">{donationRecognitionTotals.anonymous}</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <section className="rounded-2xl border border-stone-200 bg-white p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-bold text-stone-900">Donation Options & Levels</h2>
+                <h3 className="text-lg font-bold text-stone-900">Donation Options & Levels</h3>
                 <p className="mt-1 text-sm text-stone-600">
-                  Manage the public donation choices and impact levels shown on the Fundraising page.
-                </p>
-                <p className="mt-2 text-xs text-stone-500">
-                  {donationOptionsCustomized ? 'Custom configuration saved' : 'Using default configuration'}
-                  {donationOptionsUpdatedAt ? ` · Updated ${new Date(donationOptionsUpdatedAt).toLocaleString()}` : ''}
+                  Everything in this section controls the public donation page paths and impact messaging.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -2289,110 +2401,127 @@ export default function AdminFundraisePage() {
               </div>
             ) : (
               <div className="mt-4 space-y-4">
-                {donationOptions.map((option) => (
-                  <article key={option.id} className="rounded-2xl border border-stone-200 bg-stone-50/40 p-4">
-                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-                      <label className="space-y-1">
-                        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Option Name</span>
-                        <input
-                          value={option.name}
-                          onChange={(event) => updateDonationOptionField(option.id, 'name', event.target.value)}
-                          className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-red-500"
-                        />
-                      </label>
-                      <label className="space-y-1 lg:col-span-2">
-                        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Option Description</span>
-                        <div className="flex gap-2">
+                {donationOptions.map((option, optionIndex) => {
+                  const optionSuggestedCents = option.levels.reduce((sum, level) => sum + level.suggestedAmountCents, 0);
+                  return (
+                    <article key={option.id} className="rounded-2xl border border-stone-200 bg-stone-50/40 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="inline-flex items-center rounded-full border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-600">
+                          Option {optionIndex + 1}
+                        </span>
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">
+                          <span className="rounded-full border border-stone-200 bg-white px-2.5 py-1">{option.levels.length} levels</span>
+                          <span className="rounded-full border border-stone-200 bg-white px-2.5 py-1">
+                            Suggested total {formatUsd(optionSuggestedCents)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
+                        <label className="space-y-1">
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Option Name</span>
                           <input
-                            value={option.description}
-                            onChange={(event) => updateDonationOptionField(option.id, 'description', event.target.value)}
+                            value={option.name}
+                            onChange={(event) => updateDonationOptionField(option.id, 'name', event.target.value)}
                             className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-red-500"
                           />
-                          <button
-                            type="button"
-                            onClick={() => removeDonationOption(option.id)}
-                            disabled={donationOptions.length <= 1}
-                            className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            Remove
-                          </button>
-                        </div>
-                      </label>
-                    </div>
+                        </label>
+                        <label className="space-y-1 lg:col-span-2">
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Option Description</span>
+                          <div className="flex gap-2">
+                            <input
+                              value={option.description}
+                              onChange={(event) => updateDonationOptionField(option.id, 'description', event.target.value)}
+                              className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeDonationOption(option.id)}
+                              disabled={donationOptions.length <= 1}
+                              className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Remove
+                            </button>
+                          </div>
+                        </label>
+                      </div>
 
-                    <div className="mt-3 space-y-3">
-                      {option.levels.map((level) => (
-                        <div key={level.id} className="rounded-xl border border-stone-200 bg-white p-3">
-                          <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
-                            <label className="space-y-1">
-                              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Amount Label</span>
-                              <input
-                                value={level.amountLabel}
-                                onChange={(event) =>
-                                  updateDonationLevelField(option.id, level.id, 'amountLabel', event.target.value)
-                                }
-                                className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-red-500"
-                              />
-                            </label>
-                            <label className="space-y-1">
-                              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Level Title</span>
-                              <input
-                                value={level.title}
-                                onChange={(event) =>
-                                  updateDonationLevelField(option.id, level.id, 'title', event.target.value)
-                                }
-                                className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-red-500"
-                              />
-                            </label>
-                            <label className="space-y-1">
-                              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Suggested Cents</span>
-                              <input
-                                type="number"
-                                min={100}
-                                step={100}
-                                value={level.suggestedAmountCents}
-                                onChange={(event) =>
-                                  updateDonationLevelField(option.id, level.id, 'suggestedAmountCents', event.target.value)
-                                }
-                                className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-red-500"
-                              />
-                            </label>
-                            <div className="flex items-end">
+                      <div className="mt-3 space-y-3">
+                        {option.levels.map((level, levelIndex) => (
+                          <div key={level.id} className="rounded-xl border border-stone-200 bg-white p-3">
+                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Level {levelIndex + 1}</p>
                               <button
                                 type="button"
                                 onClick={() => removeDonationLevel(option.id, level.id)}
                                 disabled={option.levels.length <= 1}
-                                className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                                 Remove Level
                               </button>
                             </div>
-                          </div>
-                          <label className="mt-3 block space-y-1">
-                            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Level Detail</span>
-                            <textarea
-                              value={level.detail}
-                              onChange={(event) => updateDonationLevelField(option.id, level.id, 'detail', event.target.value)}
-                              rows={2}
-                              className="w-full resize-none rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-red-500"
-                            />
-                          </label>
-                        </div>
-                      ))}
-                    </div>
 
-                    <button
-                      type="button"
-                      onClick={() => addDonationLevel(option.id)}
-                      className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-700 transition hover:bg-stone-50"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Add Level
-                    </button>
-                  </article>
-                ))}
+                            <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                              <label className="space-y-1">
+                                <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Amount Label</span>
+                                <input
+                                  value={level.amountLabel}
+                                  onChange={(event) =>
+                                    updateDonationLevelField(option.id, level.id, 'amountLabel', event.target.value)
+                                  }
+                                  className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                                />
+                              </label>
+                              <label className="space-y-1">
+                                <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Level Title</span>
+                                <input
+                                  value={level.title}
+                                  onChange={(event) =>
+                                    updateDonationLevelField(option.id, level.id, 'title', event.target.value)
+                                  }
+                                  className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                                />
+                              </label>
+                              <label className="space-y-1">
+                                <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Suggested Cents</span>
+                                <input
+                                  type="number"
+                                  min={100}
+                                  step={100}
+                                  value={level.suggestedAmountCents}
+                                  onChange={(event) =>
+                                    updateDonationLevelField(option.id, level.id, 'suggestedAmountCents', event.target.value)
+                                  }
+                                  className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                                />
+                              </label>
+                            </div>
+                            <label className="mt-3 block space-y-1">
+                              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Level Detail</span>
+                              <textarea
+                                value={level.detail}
+                                onChange={(event) => updateDonationLevelField(option.id, level.id, 'detail', event.target.value)}
+                                rows={2}
+                                className="w-full resize-none rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                              />
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => addDonationLevel(option.id)}
+                        className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-700 transition hover:bg-stone-50"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Add Level
+                      </button>
+                    </article>
+                  );
+                })}
               </div>
             )}
           </section>
@@ -2401,21 +2530,21 @@ export default function AdminFundraisePage() {
             <section className="xl:col-span-3 rounded-2xl border border-stone-200 bg-white p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-bold text-stone-900">Process Donation</h2>
+                  <h3 className="text-lg font-bold text-stone-900">Process Donation</h3>
                   <p className="mt-1 text-sm text-stone-600">
-                    Charge cards with the same donation categories and levels configured above.
+                    Charge cards using the configured options and levels. Donor recognition preference is saved with each payment.
                   </p>
                 </div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-red-700">
                   <CreditCard className="h-3.5 w-3.5" />
-                  Secure Card Form
+                  Stripe Secure Form
                 </div>
               </div>
 
-              <div className="mt-5 space-y-5">
-                <div className="space-y-2">
-                  <span className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Donation Option</span>
-                  <div className="flex flex-wrap gap-2">
+              <div className="mt-5 space-y-4">
+                <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">1. Choose Donation Path</p>
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {donationOptions.map((option) => (
                       <button
                         key={option.id}
@@ -2426,114 +2555,119 @@ export default function AdminFundraisePage() {
                           setSelectedDonationAmountCents(null);
                           setActiveDonationIntent(null);
                           setDonationError(null);
+                          setDonationSuccessMessage(null);
                         }}
-                        className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                        className={`rounded-xl border p-3 text-left transition ${
                           selectedDonationOption?.id === option.id
-                            ? 'border-red-700 bg-red-700 text-white'
-                            : 'border-stone-300 bg-white text-stone-700 hover:border-red-500 hover:text-red-700'
+                            ? 'border-red-500 bg-white shadow-sm'
+                            : 'border-stone-200 bg-white hover:border-red-300'
                         }`}
                       >
-                        {option.name}
+                        <p className="text-sm font-semibold text-stone-900">{option.name}</p>
+                        <p className="mt-1 text-xs text-stone-600">{option.description}</p>
                       </button>
                     ))}
                   </div>
-                  <p className="text-xs text-stone-500">{selectedDonationOption?.description || ''}</p>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <label className="space-y-2">
-                    <span className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Donor Name</span>
-                    <div className="relative">
-                      <UserRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-                      <input
-                        type="text"
-                        value={donorName}
-                        onChange={(event) => setDonorName(event.target.value)}
-                        placeholder="Full name"
-                        className="w-full rounded-xl border border-stone-300 bg-white py-2.5 pl-10 pr-3 text-sm text-stone-900 outline-none transition focus:border-red-500"
-                      />
-                    </div>
-                  </label>
-                  <label className="space-y-2">
-                    <span className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Donor Email</span>
-                    <div className="relative">
-                      <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-                      <input
-                        type="email"
-                        value={donorEmail}
-                        onChange={(event) => setDonorEmail(event.target.value)}
-                        placeholder="name@email.com"
-                        className="w-full rounded-xl border border-stone-300 bg-white py-2.5 pl-10 pr-3 text-sm text-stone-900 outline-none transition focus:border-red-500"
-                      />
-                    </div>
-                  </label>
-                </div>
+                <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">2. Donor Information</p>
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <label className="space-y-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Donor Name</span>
+                      <div className="relative">
+                        <UserRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+                        <input
+                          type="text"
+                          value={donorName}
+                          onChange={(event) => setDonorName(event.target.value)}
+                          placeholder="Full name"
+                          className="w-full rounded-xl border border-stone-300 bg-white py-2.5 pl-10 pr-3 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                        />
+                      </div>
+                    </label>
+                    <label className="space-y-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Donor Email</span>
+                      <div className="relative">
+                        <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+                        <input
+                          type="email"
+                          value={donorEmail}
+                          onChange={(event) => setDonorEmail(event.target.value)}
+                          placeholder="name@email.com"
+                          className="w-full rounded-xl border border-stone-300 bg-white py-2.5 pl-10 pr-3 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                        />
+                      </div>
+                    </label>
+                  </div>
 
-                <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Recognition Preference</p>
-                  <div className="mt-2 inline-flex rounded-xl border border-stone-200 bg-white p-1">
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <button
                       type="button"
                       onClick={() => setDonorRecognitionPreference('known')}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                      className={`rounded-xl border px-3 py-2.5 text-left transition ${
                         donorRecognitionPreference === 'known'
-                          ? 'bg-red-700 text-white'
-                          : 'text-stone-600 hover:text-stone-900'
+                          ? 'border-red-500 bg-white shadow-sm'
+                          : 'border-stone-200 bg-white hover:border-red-300'
                       }`}
                     >
-                      Known
+                      <p className="text-sm font-semibold text-stone-900">Known</p>
+                      <p className="mt-1 text-xs text-stone-600">May be recognized in playbills, acknowledgments, or press releases.</p>
                     </button>
                     <button
                       type="button"
                       onClick={() => setDonorRecognitionPreference('anonymous')}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                      className={`rounded-xl border px-3 py-2.5 text-left transition ${
                         donorRecognitionPreference === 'anonymous'
-                          ? 'bg-red-700 text-white'
-                          : 'text-stone-600 hover:text-stone-900'
+                          ? 'border-red-500 bg-white shadow-sm'
+                          : 'border-stone-200 bg-white hover:border-red-300'
                       }`}
                     >
-                      Anonymous
+                      <p className="text-sm font-semibold text-stone-900">Anonymous</p>
+                      <p className="mt-1 text-xs text-stone-600">Name will be withheld from recognition materials.</p>
                     </button>
                   </div>
-                  <p className="mt-2 text-xs text-stone-500">
-                    Known donors may be included in recognition like playbills, acknowledgments, or press releases.
-                  </p>
                 </div>
 
-                <div className="space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">Donation Amount</p>
-                  <div className="flex flex-wrap gap-2">
+                <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">3. Select Amount & Charge</p>
+                  <p className="mt-1 text-xs text-stone-600">{selectedDonationOption?.description || ''}</p>
+
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {selectedDonationLevels.map((level) => {
-                      const isSelected = selectedDonationLevelId === level.id && selectedDonationAmountCents === level.suggestedAmountCents;
+                      const isSelected =
+                        selectedDonationLevelId === level.id && selectedDonationAmountCents === level.suggestedAmountCents;
                       return (
                         <button
                           key={level.id}
                           type="button"
                           onClick={() => void requestDonationIntent(level.suggestedAmountCents, level)}
-                          className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                            isSelected
-                              ? 'border-red-700 bg-red-700 text-white'
-                              : 'border-stone-300 bg-white text-stone-700 hover:border-red-500 hover:text-red-700'
+                          className={`rounded-xl border px-3 py-3 text-left transition ${
+                            isSelected ? 'border-red-500 bg-white shadow-sm' : 'border-stone-200 bg-white hover:border-red-300'
                           }`}
                         >
-                          {level.amountLabel}
+                          <p className="text-base font-bold text-stone-900">{level.amountLabel}</p>
+                          <p className="text-sm font-semibold text-stone-800">{level.title}</p>
+                          <p className="mt-1 text-xs text-stone-600">{level.detail}</p>
                         </button>
                       );
                     })}
                     <button
                       type="button"
                       onClick={handleOtherDonationSelect}
-                      className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                      className={`rounded-xl border px-3 py-3 text-left transition ${
                         isOtherDonationSelected
-                          ? 'border-red-700 bg-red-700 text-white'
-                          : 'border-stone-300 bg-white text-stone-700 hover:border-red-500 hover:text-red-700'
+                          ? 'border-red-500 bg-white shadow-sm'
+                          : 'border-stone-200 bg-white hover:border-red-300'
                       }`}
                     >
-                      Other
+                      <p className="text-base font-bold text-stone-900">Other</p>
+                      <p className="text-sm font-semibold text-stone-800">Custom Amount</p>
+                      <p className="mt-1 text-xs text-stone-600">Enter any amount of at least $1.00.</p>
                     </button>
                   </div>
 
-                  <div className="flex flex-col gap-2 sm:flex-row">
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                     <div className="relative flex-1">
                       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-stone-500">$</span>
                       <input
@@ -2557,140 +2691,200 @@ export default function AdminFundraisePage() {
                       Use Amount
                     </button>
                   </div>
+
+                  {donationIntentLoading ? (
+                    <div className="mt-3 inline-flex items-center gap-2 text-sm text-stone-600">
+                      <Loader2 className="h-4 w-4 animate-spin text-red-700" />
+                      Loading secure card form...
+                    </div>
+                  ) : null}
+
+                  {donationSuccessMessage ? (
+                    <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                      {donationSuccessMessage}
+                    </div>
+                  ) : null}
+
+                  {donationError ? (
+                    <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{donationError}</div>
+                  ) : null}
+
+                  {activeDonationIntent && donationStripePromise && donationStripeOptions && !donationIntentLoading ? (
+                    <div className="mt-3 rounded-2xl border border-stone-200 bg-white p-3 sm:p-4">
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">
+                        Charge {formatUsd(activeDonationIntent.amountCents)}
+                        {selectedDonationLevel ? ` · ${selectedDonationLevel.title}` : ''}
+                      </p>
+                      <Elements stripe={donationStripePromise} options={donationStripeOptions} key={activeDonationIntent.paymentIntentId}>
+                        <AdminDonationPaymentForm
+                          amountCents={activeDonationIntent.amountCents}
+                          donorName={donorName.trim()}
+                          donorEmail={donorEmail.trim().toLowerCase()}
+                          onSuccess={() => {
+                            setDonationSuccessMessage(`Donation of ${formatUsd(activeDonationIntent.amountCents)} was processed.`);
+                            setActiveDonationIntent(null);
+                            setDonationError(null);
+                            void loadDonations();
+                          }}
+                          onError={setDonationError}
+                        />
+                      </Elements>
+                    </div>
+                  ) : null}
                 </div>
-
-                {donationIntentLoading ? (
-                  <div className="inline-flex items-center gap-2 text-sm text-stone-600">
-                    <Loader2 className="h-4 w-4 animate-spin text-red-700" />
-                    Loading secure card form...
-                  </div>
-                ) : null}
-
-                {donationSuccessMessage ? (
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                    {donationSuccessMessage}
-                  </div>
-                ) : null}
-
-                {donationError ? (
-                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{donationError}</div>
-                ) : null}
-
-                {activeDonationIntent && donationStripePromise && donationStripeOptions && !donationIntentLoading ? (
-                  <div className="rounded-2xl border border-stone-200 bg-stone-50 p-3 sm:p-4">
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">
-                      Charge {formatUsd(activeDonationIntent.amountCents)}
-                      {selectedDonationLevel ? ` · ${selectedDonationLevel.title}` : ''}
-                    </p>
-                    <Elements stripe={donationStripePromise} options={donationStripeOptions} key={activeDonationIntent.paymentIntentId}>
-                      <AdminDonationPaymentForm
-                        amountCents={activeDonationIntent.amountCents}
-                        donorName={donorName.trim()}
-                        donorEmail={donorEmail.trim().toLowerCase()}
-                        onSuccess={() => {
-                          setDonationSuccessMessage(`Donation of ${formatUsd(activeDonationIntent.amountCents)} was processed.`);
-                          setActiveDonationIntent(null);
-                          setDonationError(null);
-                          void loadDonations();
-                        }}
-                        onError={setDonationError}
-                      />
-                    </Elements>
-                  </div>
-                ) : null}
               </div>
             </section>
 
-          <aside className="xl:col-span-2 rounded-2xl border border-stone-200 bg-white p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-bold text-stone-900">Recent Donations</h2>
-                <p className="mt-1 text-sm text-stone-600">Latest Stripe donation payments tagged from fundraising checkout.</p>
+            <aside className="xl:col-span-2 rounded-2xl border border-stone-200 bg-white p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-stone-900">Recent Donations</h3>
+                  <p className="mt-1 text-sm text-stone-600">Track donor activity, recognition preference, and payment status in real time.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void loadDonations()}
+                  className="inline-flex items-center gap-1 rounded-lg border border-stone-300 px-2.5 py-1 text-xs font-semibold text-stone-700 transition hover:bg-stone-50"
+                >
+                  <RefreshCcw className={`h-3.5 w-3.5 ${donationsLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => void loadDonations()}
-                className="inline-flex items-center gap-1 rounded-lg border border-stone-300 px-2.5 py-1 text-xs font-semibold text-stone-700 transition hover:bg-stone-50"
-              >
-                <RefreshCcw className={`h-3.5 w-3.5 ${donationsLoading ? 'animate-spin' : ''}`} />
-                Refresh
-              </button>
-            </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3 xl:grid-cols-1">
-              <div className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
-                <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Donations</p>
-                <p className="mt-1 text-lg font-bold text-stone-900">{donationSummary?.count ?? donations.length}</p>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <div className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Donations</p>
+                  <p className="mt-1 text-lg font-bold text-stone-900">{donationSummary?.count ?? donations.length}</p>
+                </div>
+                <div className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Succeeded</p>
+                  <p className="mt-1 text-lg font-bold text-stone-900">
+                    {donationSummary?.succeededCount ?? donations.filter((item) => item.status === 'succeeded').length}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Gross</p>
+                  <p className="mt-1 text-lg font-bold text-stone-900">{formatUsd(donationSummary?.grossSucceededCents ?? 0)}</p>
+                </div>
+                <div className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Known</p>
+                  <p className="mt-1 text-lg font-bold text-stone-900">{donationRecognitionTotals.known}</p>
+                </div>
               </div>
-              <div className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
-                <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Succeeded</p>
-                <p className="mt-1 text-lg font-bold text-stone-900">
-                  {donationSummary?.succeededCount ?? donations.filter((item) => item.status === 'succeeded').length}
+
+              <div className="mt-4 space-y-3">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+                  <input
+                    type="text"
+                    value={donationSearchQuery}
+                    onChange={(event) => setDonationSearchQuery(event.target.value)}
+                    placeholder="Search donor, email, option, or payment id"
+                    className="w-full rounded-xl border border-stone-300 bg-white py-2.5 pl-10 pr-3 text-sm text-stone-900 outline-none transition focus:border-red-500"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: 'all', label: 'All' },
+                    { id: 'succeeded', label: 'Succeeded' },
+                    { id: 'processing', label: 'Processing' },
+                    { id: 'other', label: 'Other' }
+                  ].map((filter) => (
+                    <button
+                      key={filter.id}
+                      type="button"
+                      onClick={() => setDonationStatusFilter(filter.id as DonationStatusFilter)}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                        donationStatusFilter === filter.id
+                          ? 'border-red-600 bg-red-600 text-white'
+                          : 'border-stone-300 bg-white text-stone-700 hover:border-red-400 hover:text-red-700'
+                      }`}
+                    >
+                      {filter.label} ({donationStatusCounts[filter.id as DonationStatusFilter]})
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-stone-500">
+                  Showing {filteredDonations.length} of {donations.length} donation{donations.length === 1 ? '' : 's'}.
                 </p>
               </div>
-              <div className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
-                <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Gross</p>
-                <p className="mt-1 text-lg font-bold text-stone-900">{formatUsd(donationSummary?.grossSucceededCents ?? 0)}</p>
-              </div>
-            </div>
 
-            <div className="mt-4 space-y-2">
-              {donationsLoading ? (
-                <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-8 text-center text-sm text-stone-500">
-                  Loading donations...
-                </div>
-              ) : donations.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-stone-200 px-4 py-8 text-center text-sm text-stone-500">
-                  No donations found yet.
-                </div>
-              ) : (
-                <div className="max-h-[520px] space-y-2 overflow-y-auto pr-1">
-                  {donations.map((donation) => {
-                    const statusTone =
-                      donation.status === 'succeeded'
-                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                        : donation.status === 'processing'
-                          ? 'border-amber-200 bg-amber-50 text-amber-700'
-                          : 'border-stone-200 bg-stone-100 text-stone-700';
+              <div className="mt-4 space-y-2">
+                {donationsLoading ? (
+                  <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-8 text-center text-sm text-stone-500">
+                    Loading donations...
+                  </div>
+                ) : donations.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-stone-200 px-4 py-8 text-center text-sm text-stone-500">
+                    No donations found yet.
+                  </div>
+                ) : filteredDonations.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-stone-200 px-4 py-8 text-center text-sm text-stone-500">
+                    No donations match your current filters.
+                  </div>
+                ) : (
+                  <div className="max-h-[560px] space-y-2 overflow-y-auto pr-1">
+                    {filteredDonations.map((donation) => {
+                      const statusTone =
+                        donation.status === 'succeeded'
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : donation.status === 'processing'
+                            ? 'border-amber-200 bg-amber-50 text-amber-700'
+                            : 'border-stone-200 bg-stone-100 text-stone-700';
+                      const cardTone =
+                        donation.status === 'succeeded'
+                          ? 'border-l-emerald-500'
+                          : donation.status === 'processing'
+                            ? 'border-l-amber-500'
+                            : 'border-l-stone-300';
 
-                    return (
-                      <article key={donation.paymentIntentId} className="rounded-xl border border-stone-200 p-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="text-sm font-semibold text-stone-900">{donation.donorName || 'Supporter'}</p>
-                            <p className="text-xs text-stone-500">{donation.donorEmail || donation.receiptEmail || 'No email'}</p>
-                            <p className="mt-1 text-[11px] text-stone-500">
-                              {donation.donorRecognitionPreference === 'anonymous' ? 'Anonymous preference' : 'Known preference'}
-                            </p>
-                            {donation.donationOptionName || donation.donationLevelTitle ? (
-                              <p className="mt-1 text-[11px] text-stone-500">
-                                {[donation.donationOptionName, donation.donationLevelTitle, donation.donationLevelAmountLabel]
-                                  .filter(Boolean)
-                                  .join(' · ')}
-                              </p>
+                      return (
+                        <article key={donation.paymentIntentId} className={`rounded-xl border border-stone-200 border-l-4 bg-white p-3 ${cardTone}`}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-stone-900">{donation.donorName || 'Supporter'}</p>
+                              <p className="truncate text-xs text-stone-500">{donation.donorEmail || donation.receiptEmail || 'No email'}</p>
+                            </div>
+                            <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusTone}`}>
+                              {formatDonationStatus(donation.status)}
+                            </span>
+                          </div>
+
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-stone-200 bg-stone-50 px-2 py-0.5 text-[11px] font-semibold text-stone-700">
+                              {donation.donorRecognitionPreference === 'anonymous' ? 'Anonymous' : 'Known'}
+                            </span>
+                            {donation.donationOptionName ? (
+                              <span className="rounded-full border border-stone-200 bg-stone-50 px-2 py-0.5 text-[11px] font-semibold text-stone-700">
+                                {donation.donationOptionName}
+                              </span>
                             ) : null}
                           </div>
-                          <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusTone}`}>
-                            {formatDonationStatus(donation.status)}
-                          </span>
-                        </div>
-                        <div className="mt-2 flex items-center justify-between gap-2 text-sm">
-                          <span className="font-semibold text-stone-900">{formatMoney(donation.amountCents, donation.currency)}</span>
-                          <span className="text-xs text-stone-500">{new Date(donation.createdAt).toLocaleString()}</span>
-                        </div>
-                        <p className="mt-2 text-[11px] text-stone-500">
-                          {donation.thankYouEmailSent ? 'Thank-you email sent' : 'Thank-you email pending'} · {donation.paymentIntentId}
-                        </p>
-                      </article>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-	          </aside>
-	        </div>
-	      </div>
-	      )}
+
+                          {donation.donationLevelTitle || donation.donationLevelAmountLabel ? (
+                            <p className="mt-2 text-[11px] text-stone-500">
+                              {[donation.donationLevelAmountLabel, donation.donationLevelTitle].filter(Boolean).join(' · ')}
+                            </p>
+                          ) : null}
+
+                          <div className="mt-2 flex items-center justify-between gap-2 text-sm">
+                            <span className="font-semibold text-stone-900">{formatMoney(donation.amountCents, donation.currency)}</span>
+                            <span className="text-xs text-stone-500">{new Date(donation.createdAt).toLocaleString()}</span>
+                          </div>
+
+                          <p className="mt-2 truncate text-[11px] text-stone-500">
+                            {donation.thankYouEmailSent ? 'Thank-you email sent' : 'Thank-you email pending'} · {donation.paymentIntentId}
+                          </p>
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </aside>
+          </div>
+        </div>
+      )}
 
       <EventRegistrationFormBuilderModal
         open={showFormBuilder}
