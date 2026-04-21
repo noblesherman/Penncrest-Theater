@@ -20,6 +20,10 @@ type NativeDeviceControlModule = {
     osVersion: string;
     deviceName?: string;
   }>;
+  getBatteryStatus?: () => Promise<{
+    level: number;
+    isCharging: boolean;
+  }>;
 };
 
 const nativeModule = NativeModules.DeviceControlModule as NativeDeviceControlModule | undefined;
@@ -110,4 +114,32 @@ export async function getDeviceInfo(): Promise<{
   }
 
   return nativeModule.getDeviceInfo();
+}
+
+export async function getBatteryStatus(): Promise<{
+  level: number | null;
+  isCharging: boolean;
+} | null> {
+  if (Platform.OS !== 'android') {
+    return null;
+  }
+
+  if (!nativeModule?.getBatteryStatus) {
+    return null;
+  }
+
+  try {
+    const data = await nativeModule.getBatteryStatus();
+    const normalizedLevel =
+      Number.isFinite(data.level) && data.level >= 0
+        ? Math.max(0, Math.min(100, Math.round(data.level)))
+        : null;
+
+    return {
+      level: normalizedLevel,
+      isCharging: Boolean(data.isCharging)
+    };
+  } catch {
+    return null;
+  }
 }

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import AboutPageRenderer from '../components/about/AboutPageRenderer';
 import { apiFetch } from '../lib/api';
 import type { AboutPageContent, AboutPageSlug } from '../lib/aboutContent';
+import { resolveCanonicalFrontendOrigin } from '../lib/seo';
 
 import AboutSubpageTransition from '../components/about/AboutSubpageTransition';
 
@@ -12,6 +13,10 @@ export default function AboutContentPage({ slug }: { slug: AboutPageSlug }) {
   const [usingLivePreview, setUsingLivePreview] = useState(false);
   const [showTransition, setShowTransition] = useState(false);
   const location = useLocation();
+  const previewMessageOrigin = useMemo(
+    () => resolveCanonicalFrontendOrigin(undefined, { preferWindowOriginForLocalDev: true }),
+    []
+  );
 
   useEffect(() => {
     setUsingLivePreview(false);
@@ -24,7 +29,9 @@ export default function AboutContentPage({ slug }: { slug: AboutPageSlug }) {
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
+      if (window.parent === window) return;
+      if (event.source !== window.parent) return;
+      if (event.origin !== previewMessageOrigin) return;
       const data = event.data as {
         type?: unknown;
         slug?: unknown;
@@ -41,7 +48,7 @@ export default function AboutContentPage({ slug }: { slug: AboutPageSlug }) {
 
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [slug]);
+  }, [slug, previewMessageOrigin]);
 
   useEffect(() => {
     let active = true;

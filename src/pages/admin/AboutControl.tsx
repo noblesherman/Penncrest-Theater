@@ -22,6 +22,7 @@ import {
   type AboutSection, type AboutSplitFeatureSection, type AboutStorySection,
   type AboutTestimonialSection,
 } from '../../lib/aboutContent';
+import { resolveCanonicalFrontendOrigin, toCanonicalFrontendUrl } from '../../lib/seo';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -75,6 +76,19 @@ const ADDABLE_SECTION_TYPES = Object.keys(SECTION_TYPE_LABELS) as Array<keyof ty
 
 function publicPathForSlug(slug: string): string {
   return STARTER_PUBLIC_PATHS[slug] ?? `/${slug}`;
+}
+
+function canMessageMobilePreviewFrame(frame: HTMLIFrameElement | null, expectedOrigin: string): boolean {
+  const frameWindow = frame?.contentWindow;
+  if (!frameWindow) {
+    return false;
+  }
+
+  try {
+    return frameWindow.location.origin === expectedOrigin;
+  } catch {
+    return false;
+  }
 }
 
 function labelFromSlug(slug: string): string {
@@ -876,6 +890,8 @@ export default function AdminAboutControlPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewViewport, setPreviewViewport] = useState<'desktop' | 'tablet' | 'mobile'>('mobile');
   const [showCalendarInstructions, setShowCalendarInstructions] = useState(false);
+  const [mobilePreviewFrameStatus, setMobilePreviewFrameStatus] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
+  const [mobilePreviewFrameError, setMobilePreviewFrameError] = useState<string | null>(null);
   const mobilePreviewIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // Track which slugs are currently being auto-saved so we don't double-fire
@@ -1427,6 +1443,14 @@ export default function AdminAboutControlPage() {
         ? 'mx-auto w-full max-w-[900px]'
         : 'w-full';
   const isMobilePreview = previewViewport === 'mobile';
+  const previewFrameOrigin = useMemo(
+    () => resolveCanonicalFrontendOrigin(undefined, { preferWindowOriginForLocalDev: true }),
+    []
+  );
+  const mobilePreviewSrc = useMemo(
+    () => toCanonicalFrontendUrl(publicPathForSlug(slug), undefined, { preferWindowOriginForLocalDev: true }),
+    [slug]
+  );
   const iphoneFrameWidth = 413;
   const iphoneFrameHeight = 872;
   const iphoneFrameScale = 0.78;
@@ -1484,23 +1508,66 @@ export default function AdminAboutControlPage() {
     return JSON.stringify(catalogState.local) !== JSON.stringify(catalogState.published);
   }, [catalogState]);
 
-  const pushMobilePreviewToFrame = () => {
-    if (!isMobilePreview || !previewPage) return;
-    const win = mobilePreviewIframeRef.current?.contentWindow;
-    if (!win) return;
+  const pushMobilePreviewToFrame = (): boolean => {
+    if (!isMobilePreview || !previewPage) return false;
+    const frame = mobilePreviewIframeRef.current;
+    if (!canMessageMobilePreviewFrame(frame, previewFrameOrigin)) {
+      return false;
+    }
+
+    const win = frame?.contentWindow;
+    if (!win) {
+      return false;
+    }
+
     win.postMessage(
       {
         type: 'ADMIN_ABOUT_PREVIEW',
         slug,
         page: previewPage,
       },
-      window.location.origin
+      previewFrameOrigin
     );
+    return true;
+  };
+
+  const onMobilePreviewFrameLoad = () => {
+    if (!isMobilePreview) return;
+
+    if (!canMessageMobilePreviewFrame(mobilePreviewIframeRef.current, previewFrameOrigin)) {
+      setMobilePreviewFrameStatus('failed');
+      setMobilePreviewFrameError(`Live preview frame did not load ${previewFrameOrigin}.`);
+      return;
+    }
+
+    setMobilePreviewFrameStatus('ready');
+    setMobilePreviewFrameError(null);
+  };
+
+  const onMobilePreviewFrameError = () => {
+    setMobilePreviewFrameStatus('failed');
+    setMobilePreviewFrameError('Live preview frame failed to load.');
   };
 
   useEffect(() => {
-    pushMobilePreviewToFrame();
-  }, [isMobilePreview, slug, previewPage]);
+    if (!showPreview || !isMobilePreview) {
+      setMobilePreviewFrameStatus('idle');
+      setMobilePreviewFrameError(null);
+      return;
+    }
+
+    setMobilePreviewFrameStatus('loading');
+    setMobilePreviewFrameError(null);
+  }, [showPreview, isMobilePreview, mobilePreviewSrc]);
+
+  useEffect(() => {
+    if (mobilePreviewFrameStatus !== 'ready') return;
+    const delivered = pushMobilePreviewToFrame();
+    if (!delivered) {
+      setMobilePreviewFrameStatus('failed');
+      setMobilePreviewFrameError('Live preview sync skipped because frame origin was unavailable.');
+    }
+  }, [mobilePreviewFrameStatus, isMobilePreview, slug, previewPage, previewFrameOrigin]);
 
   // ── Loading / error state ─────────────────────────────────────────────────
 
@@ -2219,29 +2286,35 @@ export default function AdminAboutControlPage() {
                   <div className={`${previewViewportClass} transition-all duration-200`}>
                     {previewPage && (
                       isMobilePreview ? (
-                        <div className="relative mx-auto" style={{ width: iphoneScaledWidth, height: iphoneScaledHeight }}>
-                          <div
-                            className="absolute left-0 top-0 origin-top-left rounded-[52px] bg-zinc-900 p-[10px] shadow-2xl ring-1 ring-zinc-700/60"
-                            style={{
-                              width: iphoneFrameWidth,
-                              height: iphoneFrameHeight,
-                              transform: `scale(${iphoneFrameScale})`
-                            }}
-                          >
-                            <div className="absolute inset-[10px] overflow-hidden rounded-[42px] bg-white">
-                              <div className="pointer-events-none absolute left-1/2 top-2 z-20 h-8 w-[126px] -translate-x-1/2 rounded-[18px] bg-zinc-900" />
-                              <iframe
-                                key={slug}
-                                ref={mobilePreviewIframeRef}
-                                title="iPhone 15 Pro Preview"
-                                src={publicPathForSlug(slug)}
-                                onLoad={pushMobilePreviewToFrame}
-                                className="block h-[852px] w-[393px] border-0"
-                              />
-                              <div className="pointer-events-none absolute bottom-2 left-1/2 z-20 h-1.5 w-32 -translate-x-1/2 rounded-full bg-zinc-900/90" />
+                        <>
+                          <div className="relative mx-auto" style={{ width: iphoneScaledWidth, height: iphoneScaledHeight }}>
+                            <div
+                              className="absolute left-0 top-0 origin-top-left rounded-[52px] bg-zinc-900 p-[10px] shadow-2xl ring-1 ring-zinc-700/60"
+                              style={{
+                                width: iphoneFrameWidth,
+                                height: iphoneFrameHeight,
+                                transform: `scale(${iphoneFrameScale})`
+                              }}
+                            >
+                              <div className="absolute inset-[10px] overflow-hidden rounded-[42px] bg-white">
+                                <div className="pointer-events-none absolute left-1/2 top-2 z-20 h-8 w-[126px] -translate-x-1/2 rounded-[18px] bg-zinc-900" />
+                                <iframe
+                                  key={slug}
+                                  ref={mobilePreviewIframeRef}
+                                  title="iPhone 15 Pro Preview"
+                                  src={mobilePreviewSrc}
+                                  onLoad={onMobilePreviewFrameLoad}
+                                  onError={onMobilePreviewFrameError}
+                                  className="block h-[852px] w-[393px] border-0"
+                                />
+                                <div className="pointer-events-none absolute bottom-2 left-1/2 z-20 h-1.5 w-32 -translate-x-1/2 rounded-full bg-zinc-900/90" />
+                              </div>
                             </div>
                           </div>
-                        </div>
+                          {mobilePreviewFrameError && (
+                            <p className="mt-3 text-xs font-medium text-rose-600">{mobilePreviewFrameError}</p>
+                          )}
+                        </>
                       ) : (
                         <AboutPageRenderer page={previewPage} preview previewMode="admin" />
                       )

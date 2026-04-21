@@ -7,6 +7,7 @@ import { DeviceRuntimeProvider } from './src/device/DeviceRuntimeProvider';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { stripePaymentSheet } from './src/payments/stripePaymentSheet';
 import { TerminalProvider } from './src/terminal/terminal';
+import BatteryOverlay from './src/components/BatteryOverlay';
 
 export default function App() {
   useEffect(() => {
@@ -39,6 +40,7 @@ export default function App() {
         <DeviceRuntimeProvider>
           <TerminalProvider>
             <AppNavigator />
+            <BatteryOverlay />
             <StatusBar style="dark" />
           </TerminalProvider>
         </DeviceRuntimeProvider>

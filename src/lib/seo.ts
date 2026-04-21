@@ -15,6 +15,10 @@ type BreadcrumbItem = {
   path: string;
 };
 
+type SiteUrlResolutionOptions = {
+  preferWindowOriginForLocalDev?: boolean;
+};
+
 export function normalizeSiteUrl(url: string | null | undefined): string {
   if (typeof url !== 'string') {
     return '';
@@ -67,6 +71,56 @@ export function resolveSiteUrl(explicitSiteUrl?: string): string {
   }
 
   return fallbackUrl;
+}
+
+function isLocalDevHostname(hostname: string): boolean {
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '0.0.0.0' ||
+    hostname === '[::1]' ||
+    hostname.endsWith('.trycloudflare.com')
+  );
+}
+
+export function resolveCanonicalFrontendOrigin(
+  explicitSiteUrl?: string,
+  options?: SiteUrlResolutionOptions
+): string {
+  const preferWindowOriginForLocalDev = options?.preferWindowOriginForLocalDev ?? true;
+
+  if (preferWindowOriginForLocalDev && typeof window !== 'undefined' && window.location.origin) {
+    try {
+      const parsedWindowOrigin = new URL(window.location.origin);
+      if (isLocalDevHostname(parsedWindowOrigin.hostname)) {
+        return parsedWindowOrigin.origin;
+      }
+    } catch {
+    }
+  }
+
+  try {
+    return new URL(resolveSiteUrl(explicitSiteUrl)).origin;
+  } catch {
+    if (typeof window !== 'undefined' && window.location.origin) {
+      return window.location.origin;
+    }
+
+    return new URL(SITE_FALLBACK_URL).origin;
+  }
+}
+
+export function toCanonicalFrontendUrl(
+  pathOrUrl: string,
+  explicitSiteUrl?: string,
+  options?: SiteUrlResolutionOptions
+): string {
+  if (/^https?:\/\//i.test(pathOrUrl)) {
+    return pathOrUrl;
+  }
+
+  const origin = resolveCanonicalFrontendOrigin(explicitSiteUrl, options);
+  return new URL(pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`, `${origin}/`).toString();
 }
 
 export function toAbsoluteUrl(pathOrUrl: string, explicitSiteUrl?: string): string {

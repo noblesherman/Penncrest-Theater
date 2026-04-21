@@ -39,7 +39,7 @@ Important:
 - Hardware requirement: iPhone with Stripe Terminal/Tap to Pay setup for live terminal testing.
 
 ## Privacy Policy URL
-https://penncresttheater.com
+https://www.penncresttheater.com
 
 ## Support URL
 mailto:boxoffice@penncresttheater.org

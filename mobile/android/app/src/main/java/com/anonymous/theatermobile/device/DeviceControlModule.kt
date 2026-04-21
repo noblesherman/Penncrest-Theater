@@ -6,7 +6,9 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
+import android.os.BatteryManager
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
@@ -183,6 +185,31 @@ class DeviceControlModule(private val appContext: ReactApplicationContext) : Rea
     }
 
     promise.resolve(map)
+  }
+
+  @ReactMethod
+  fun getBatteryStatus(promise: Promise) {
+    try {
+      val batteryIntent = appContext.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+      val levelRaw = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+      val scaleRaw = batteryIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+      val status = batteryIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+      val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+
+      val levelPercent = if (levelRaw >= 0 && scaleRaw > 0) {
+        ((levelRaw * 100f) / scaleRaw).toInt()
+      } else {
+        -1
+      }
+
+      val payload = Arguments.createMap().apply {
+        putInt("level", levelPercent)
+        putBoolean("isCharging", isCharging)
+      }
+      promise.resolve(payload)
+    } catch (error: Exception) {
+      promise.reject("BATTERY_STATUS_FAILED", error)
+    }
   }
 
   @ReactMethod
