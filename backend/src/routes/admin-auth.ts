@@ -9,15 +9,21 @@ import { buildOtpAuthUrl, formatTotpSecret, generateTotpSecret, verifyTotpCode }
 const loginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
-  otpCode: z.string().optional()
+  otpCode: z.string().optional(),
+  rememberMe: z.boolean().optional()
 });
 
 const completeTwoFactorSetupSchema = z.object({
   setupToken: z.string().min(1),
-  otpCode: z.string().min(1)
+  otpCode: z.string().min(1),
+  rememberMe: z.boolean().optional()
 });
 
-async function signAdminToken(reply: FastifyReply, admin: NonNullable<Awaited<ReturnType<typeof prisma.adminUser.findUnique>>>) {
+async function signAdminToken(
+  reply: FastifyReply,
+  admin: NonNullable<Awaited<ReturnType<typeof prisma.adminUser.findUnique>>>,
+  options?: { rememberMe?: boolean }
+) {
   return reply.jwtSign(
     {
       role: 'admin',
@@ -25,7 +31,7 @@ async function signAdminToken(reply: FastifyReply, admin: NonNullable<Awaited<Re
       adminRole: admin.role,
       username: admin.username
     },
-    { expiresIn: '8h' }
+    { expiresIn: options?.rememberMe ? '30d' : '8h' }
   );
 }
 
@@ -47,7 +53,7 @@ export const adminAuthRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const username = normalizeAdminUsername(parsed.data.username);
-      const { password, otpCode } = parsed.data;
+      const { password, otpCode, rememberMe } = parsed.data;
 
       let admin = await prisma.adminUser.findUnique({
         where: { username }
@@ -123,7 +129,7 @@ export const adminAuthRoutes: FastifyPluginAsync = async (app) => {
         data: { lastLoginAt: new Date() }
       });
 
-      const token = await signAdminToken(reply, admin);
+      const token = await signAdminToken(reply, admin, { rememberMe });
 
       return reply.send({
         token,
@@ -186,7 +192,7 @@ export const adminAuthRoutes: FastifyPluginAsync = async (app) => {
         }
       });
 
-      const token = await signAdminToken(reply, admin);
+      const token = await signAdminToken(reply, admin, { rememberMe: parsed.data.rememberMe });
 
       return reply.send({
         token,

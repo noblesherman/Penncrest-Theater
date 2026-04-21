@@ -114,6 +114,7 @@ export default function AdminLoginPage() {
   const [error,       setError]       = useState<string | null>(null);
   const [loading,     setLoading]     = useState(false);
   const [phase,       setPhase]       = useState<'credentials' | '2fa' | 'setup'>('credentials');
+  const [rememberMe,  setRememberMe]  = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -148,7 +149,7 @@ export default function AdminLoginPage() {
       const res = await fetch(apiUrl('/api/admin/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, otpCode: otpCode.trim() || undefined }),
+        body: JSON.stringify({ username, password, otpCode: otpCode.trim() || undefined, rememberMe }),
       });
       const result = (await res.json()) as LoginResponse & { error?: string };
 
@@ -162,7 +163,7 @@ export default function AdminLoginPage() {
         if (result.admin?.name) {
           queueAdminPostLoginGreeting(result.admin.name);
         }
-        setAdminToken(result.token);
+        setAdminToken(result.token, { persistent: rememberMe });
         navigate(getPostLoginRoute(), { replace: true });
         return;
       }
@@ -183,12 +184,12 @@ export default function AdminLoginPage() {
     setLoading(true); setError(null);
     try {
       const result = await apiFetch<{ token: string; admin?: LoginAdmin }>('/api/admin/2fa/setup/complete', {
-        method: 'POST', body: JSON.stringify({ setupToken, otpCode: otpCode.trim() }),
+        method: 'POST', body: JSON.stringify({ setupToken, otpCode: otpCode.trim(), rememberMe }),
       });
       if (result.admin?.name) {
         queueAdminPostLoginGreeting(result.admin.name);
       }
-      setAdminToken(result.token);
+      setAdminToken(result.token, { persistent: rememberMe });
       navigate(getPostLoginRoute(), { replace: true });
     } catch (err) { setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to finish two-factor setup'); }
     finally { setLoading(false); }
@@ -283,6 +284,15 @@ export default function AdminLoginPage() {
                     <input value={password} onChange={e => setPassword(e.target.value)}
                       type="password" placeholder="••••••••" required autoComplete="current-password" className={inp} />
                   </div>
+                  <label className="inline-flex select-none items-center gap-2.5 text-xs text-stone-500">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-stone-300 accent-red-700"
+                    />
+                    Remember this machine for 30 days
+                  </label>
                 </motion.div>
               )}
 

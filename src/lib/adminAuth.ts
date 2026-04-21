@@ -1,6 +1,7 @@
 import { apiFetch } from './api';
 
-const ADMIN_TOKEN_KEY = 'theater_admin_token';
+const ADMIN_SESSION_TOKEN_KEY = 'theater_admin_token';
+const ADMIN_PERSISTENT_TOKEN_KEY = 'theater_admin_token_persistent';
 
 function readAdminTokenStorage(): Storage | null {
   if (typeof window === 'undefined') return null;
@@ -33,26 +34,42 @@ const roleRank: Record<AdminRole, number> = {
 };
 
 export function getAdminToken(): string | null {
-  const token = readAdminTokenStorage()?.getItem(ADMIN_TOKEN_KEY);
-  if (token) return token;
+  const sessionToken = readAdminTokenStorage()?.getItem(ADMIN_SESSION_TOKEN_KEY);
+  if (sessionToken) return sessionToken;
 
-  const legacyToken = readLegacyAdminTokenStorage()?.getItem(ADMIN_TOKEN_KEY) || null;
+  const localStorage = readLegacyAdminTokenStorage();
+  const persistentToken = localStorage?.getItem(ADMIN_PERSISTENT_TOKEN_KEY) || null;
+  if (persistentToken) return persistentToken;
+
+  const legacyToken = localStorage?.getItem(ADMIN_SESSION_TOKEN_KEY) || null;
   if (legacyToken) {
-    readAdminTokenStorage()?.setItem(ADMIN_TOKEN_KEY, legacyToken);
-    readLegacyAdminTokenStorage()?.removeItem(ADMIN_TOKEN_KEY);
+    localStorage?.setItem(ADMIN_PERSISTENT_TOKEN_KEY, legacyToken);
+    localStorage?.removeItem(ADMIN_SESSION_TOKEN_KEY);
   }
 
   return legacyToken;
 }
 
-export function setAdminToken(token: string): void {
-  readAdminTokenStorage()?.setItem(ADMIN_TOKEN_KEY, token);
-  readLegacyAdminTokenStorage()?.removeItem(ADMIN_TOKEN_KEY);
+export function setAdminToken(token: string, options?: { persistent?: boolean }): void {
+  const sessionStorage = readAdminTokenStorage();
+  const localStorage = readLegacyAdminTokenStorage();
+
+  if (options?.persistent) {
+    localStorage?.setItem(ADMIN_PERSISTENT_TOKEN_KEY, token);
+    sessionStorage?.removeItem(ADMIN_SESSION_TOKEN_KEY);
+    localStorage?.removeItem(ADMIN_SESSION_TOKEN_KEY);
+    return;
+  }
+
+  sessionStorage?.setItem(ADMIN_SESSION_TOKEN_KEY, token);
+  localStorage?.removeItem(ADMIN_PERSISTENT_TOKEN_KEY);
+  localStorage?.removeItem(ADMIN_SESSION_TOKEN_KEY);
 }
 
 export function clearAdminToken(): void {
-  readAdminTokenStorage()?.removeItem(ADMIN_TOKEN_KEY);
-  readLegacyAdminTokenStorage()?.removeItem(ADMIN_TOKEN_KEY);
+  readAdminTokenStorage()?.removeItem(ADMIN_SESSION_TOKEN_KEY);
+  readLegacyAdminTokenStorage()?.removeItem(ADMIN_PERSISTENT_TOKEN_KEY);
+  readLegacyAdminTokenStorage()?.removeItem(ADMIN_SESSION_TOKEN_KEY);
 }
 
 export async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
