@@ -6,7 +6,7 @@ import { useAdminSession } from './useAdminSession';
 type OrderDetail = {
   id: string;
   status: string;
-  source: 'ONLINE' | 'DOOR' | 'COMP' | 'STAFF_FREE' | 'FAMILY_FREE' | 'STUDENT_COMP';
+  source: 'ONLINE' | 'DOOR' | 'COMP' | 'STAFF_FREE' | 'STAFF_COMP' | 'FAMILY_FREE' | 'STUDENT_COMP';
   inPersonPaymentMethod?: 'STRIPE' | 'CASH' | null;
   stripeSessionId?: string | null;
   stripePaymentIntentId?: string | null;
@@ -163,6 +163,7 @@ const SOURCE_LABELS: Record<string, string> = {
   DOOR:         'At the Door',
   COMP:         'Complimentary',
   STAFF_FREE:   'Staff',
+  STAFF_COMP:   'Staff',
   FAMILY_FREE:  'Family',
   STUDENT_COMP: 'Student Comp',
 };
@@ -358,8 +359,14 @@ export default function AdminOrderDetailPage() {
     data.source === 'ONLINE' &&
     data.status === 'PENDING' &&
     data.tickets.length === 0;
+  const canDeleteNoChargeCompOrder =
+    data.amountTotal <= 0 &&
+    !data.stripeSessionId &&
+    !data.stripePaymentIntentId &&
+    ['COMP', 'STAFF_FREE', 'STAFF_COMP', 'FAMILY_FREE', 'STUDENT_COMP'].includes(data.source);
   const canDeleteOrder =
-    hasAdminRole(admin.role, 'ADMIN') && (data.status === 'CANCELED' || canDeleteWalkInCashOrder || canDeletePendingOnlineOrder);
+    hasAdminRole(admin.role, 'ADMIN') &&
+    (data.status === 'CANCELED' || canDeleteWalkInCashOrder || canDeletePendingOnlineOrder || canDeleteNoChargeCompOrder);
 
   const statusStyle = STATUS_STYLES[data.status] ?? 'bg-stone-100 text-stone-500 ring-1 ring-stone-200';
   const formattedTotal = `$${(data.amountTotal / 100).toFixed(2)}`;
@@ -795,7 +802,7 @@ export default function AdminOrderDetailPage() {
 
         {hasAdminRole(admin.role, 'ADMIN') && !canDeleteOrder && (
           <p className="mt-4 text-xs text-stone-400">
-            Only canceled orders, walk-in cash orders, or pending online orders with no issued tickets can be permanently deleted.
+            Only canceled orders, walk-in cash orders, no-charge complimentary orders, or pending online orders with no issued tickets can be permanently deleted.
           </p>
         )}
 

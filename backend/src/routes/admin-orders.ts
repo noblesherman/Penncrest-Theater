@@ -2313,10 +2313,16 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
           order.status === 'PENDING' &&
           order._count.tickets === 0;
 
-        if (order.status !== 'CANCELED' && !canDeleteWalkInCashOrder && !canDeletePendingOnlineOrder) {
+        const canDeleteNoChargeCompOrder =
+          order.amountTotal <= 0 &&
+          !order.stripeSessionId &&
+          !order.stripePaymentIntentId &&
+          ['COMP', 'STAFF_FREE', 'STAFF_COMP', 'FAMILY_FREE', 'STUDENT_COMP'].includes(order.source);
+
+        if (order.status !== 'CANCELED' && !canDeleteWalkInCashOrder && !canDeletePendingOnlineOrder && !canDeleteNoChargeCompOrder) {
           throw new HttpError(
             400,
-            'Only canceled orders, walk-in cash orders, or pending online orders with no issued tickets can be permanently deleted'
+            'Only canceled orders, walk-in cash orders, no-charge complimentary orders, or pending online orders with no issued tickets can be permanently deleted'
           );
         }
 
