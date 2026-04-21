@@ -5,20 +5,22 @@ import { AnimatePresence, motion } from 'motion/react';
 import {
   CheckCircle2,
   CreditCard,
-  HandCoins,
   Heart,
   Loader2,
   ArrowRight,
-  Star
+  ArrowUpRight,
+  Sparkles,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
   fundraisingDonationOptions,
   fundraisingSponsors,
   type FundraisingDonationOption,
-  type FundraisingDonationOptionLevel
+  type FundraisingDonationOptionLevel,
 } from '../lib/fundraisingContent';
 import { apiFetch } from '../lib/api';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type LiveFundraisingSponsor = {
   id: string;
@@ -49,19 +51,24 @@ type DonationOptionsResponse = {
   options: FundraisingDonationOption[];
 };
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const FALLBACK_STRIPE_PUBLISHABLE_KEY = (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '').trim();
-const DONATION_HEART_PARTICLES = [
-  { left: '8%', sizeRem: 1.2, delay: '0s', duration: '4.9s' },
-  { left: '16%', sizeRem: 1.8, delay: '0.35s', duration: '5.8s' },
-  { left: '24%', sizeRem: 1.4, delay: '0.8s', duration: '5.2s' },
-  { left: '34%', sizeRem: 2.2, delay: '1.1s', duration: '6.1s' },
-  { left: '45%', sizeRem: 1.3, delay: '0.2s', duration: '5.3s' },
-  { left: '55%', sizeRem: 1.9, delay: '1.4s', duration: '5.9s' },
-  { left: '64%', sizeRem: 1.5, delay: '0.6s', duration: '5.1s' },
-  { left: '73%', sizeRem: 2.1, delay: '1.2s', duration: '6.2s' },
-  { left: '83%', sizeRem: 1.4, delay: '0.9s', duration: '5.5s' },
-  { left: '92%', sizeRem: 1.7, delay: '0.45s', duration: '5.7s' }
+
+const HEART_PARTICLES = [
+  { left: '8%',  size: 1.2, delay: '0s',    dur: '4.9s' },
+  { left: '16%', size: 1.8, delay: '0.35s', dur: '5.8s' },
+  { left: '24%', size: 1.4, delay: '0.8s',  dur: '5.2s' },
+  { left: '34%', size: 2.2, delay: '1.1s',  dur: '6.1s' },
+  { left: '45%', size: 1.3, delay: '0.2s',  dur: '5.3s' },
+  { left: '55%', size: 1.9, delay: '1.4s',  dur: '5.9s' },
+  { left: '64%', size: 1.5, delay: '0.6s',  dur: '5.1s' },
+  { left: '73%', size: 2.1, delay: '1.2s',  dur: '6.2s' },
+  { left: '83%', size: 1.4, delay: '0.9s',  dur: '5.5s' },
+  { left: '92%', size: 1.7, delay: '0.45s', dur: '5.7s' },
 ] as const;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatUsd(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -77,23 +84,23 @@ function parseDonationInputToCents(value: string): number | null {
   return cents;
 }
 
-const PRIMARY_BUTTON_CLASS =
-  'inline-flex items-center justify-center gap-2 rounded-full bg-red-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60';
-const INPUT_FIELD_CLASS =
-  'w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm font-medium text-stone-900 placeholder:text-stone-400 focus:border-red-700 focus:outline-none focus:ring-2 focus:ring-red-100';
-
-function sponsorTierBadgeClass(tier: LiveFundraisingSponsor['tier']): string {
-  if (tier === 'Center Stage') return 'bg-red-700 text-white';
-  if (tier === 'Orchestra') return 'bg-amber-100 text-amber-900';
-  if (tier === 'Mezzanine') return 'bg-stone-200 text-stone-700';
-  return 'bg-orange-100 text-orange-900';
+function tierAccent(tier: LiveFundraisingSponsor['tier']): string {
+  if (tier === 'Center Stage') return 'bg-red-800 text-white';
+  if (tier === 'Orchestra')    return 'bg-amber-100 text-amber-800';
+  if (tier === 'Mezzanine')    return 'bg-stone-200 text-stone-700';
+  return 'bg-orange-100 text-orange-800';
 }
 
+// ─── Stripe payment form sub-component ───────────────────────────────────────
+
 function DonationPaymentForm({
-  amountCents, donorName, donorEmail, onSuccess, onError
+  amountCents, donorName, donorEmail, onSuccess, onError,
 }: {
-  amountCents: number; donorName: string; donorEmail: string;
-  onSuccess: () => void; onError: (message: string | null) => void;
+  amountCents: number;
+  donorName: string;
+  donorEmail: string;
+  onSuccess: () => void;
+  onError: (message: string | null) => void;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -102,36 +109,48 @@ function DonationPaymentForm({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     onError(null);
-    if (!stripe || !elements) { onError('Payment form is still loading. Please try again.'); return; }
+    if (!stripe || !elements) {
+      onError('Payment form is still loading. Please try again.');
+      return;
+    }
     setSubmitting(true);
     const result = await stripe.confirmPayment({
       elements,
       confirmParams: { payment_method_data: { billing_details: { name: donorName, email: donorEmail } } },
-      redirect: 'if_required'
+      redirect: 'if_required',
     });
     setSubmitting(false);
     if (result.error) { onError(result.error.message || 'Payment could not be completed.'); return; }
     const status = result.paymentIntent?.status;
-    if (status === 'succeeded' || status === 'processing' || status === 'requires_capture') { onSuccess(); return; }
-    onError(`Payment did not complete. Current status: ${status || 'unknown'}.`);
+    if (status === 'succeeded' || status === 'processing' || status === 'requires_capture') {
+      onSuccess();
+      return;
+    }
+    onError(`Payment did not complete. Status: ${status || 'unknown'}.`);
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="rounded-2xl border border-stone-200 bg-white p-4">
+      <div className="rounded-xl border border-stone-200 bg-white p-4">
         <PaymentElement />
       </div>
       <button
         type="submit"
         disabled={submitting || !stripe || !elements}
-        className={`${PRIMARY_BUTTON_CLASS} w-full`}
+        className="donate-btn w-full"
       >
-        {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+        {submitting ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <CreditCard className="h-4 w-4" />
+        )}
         Donate {formatUsd(amountCents)}
       </button>
     </form>
   );
 }
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function Fundraising() {
   const [liveSponsors, setLiveSponsors] = useState<LiveFundraisingSponsor[]>([]);
@@ -152,51 +171,62 @@ export default function Fundraising() {
   const [lastDonationAmountCents, setLastDonationAmountCents] = useState<number | null>(null);
   const customAmountInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Load sponsors
   useEffect(() => {
     apiFetch<LiveFundraisingSponsor[]>('/api/fundraising/sponsors')
-      .then((items) => { if (Array.isArray(items)) { setLiveSponsors(items); setSponsorLoadFailed(false); } })
+      .then((items) => {
+        if (Array.isArray(items)) { setLiveSponsors(items); setSponsorLoadFailed(false); }
+      })
       .catch(() => { setLiveSponsors([]); setSponsorLoadFailed(true); });
   }, []);
 
+  // Load donation options
   useEffect(() => {
     apiFetch<DonationOptionsResponse>('/api/fundraising/donation-options')
       .then((payload) => {
         const options = Array.isArray(payload?.options) ? payload.options : [];
         if (options.length === 0) return;
         setDonationOptions(options);
-        setSelectedDonationOptionId((current) => (options.some((option) => option.id === current) ? current : options[0].id));
+        setSelectedDonationOptionId((current) =>
+          options.some((o) => o.id === current) ? current : options[0].id
+        );
       })
       .catch(() => {
         setDonationOptions(fundraisingDonationOptions);
         setSelectedDonationOptionId((current) =>
-          fundraisingDonationOptions.some((option) => option.id === current)
+          fundraisingDonationOptions.some((o) => o.id === current)
             ? current
             : fundraisingDonationOptions[0]?.id || ''
         );
       });
   }, []);
 
+  // Auto-dismiss celebration
   useEffect(() => {
     if (!showDonationCelebration) return;
-    const timeout = window.setTimeout(() => setShowDonationCelebration(false), 6200);
-    return () => window.clearTimeout(timeout);
+    const t = window.setTimeout(() => setShowDonationCelebration(false), 6200);
+    return () => window.clearTimeout(t);
   }, [showDonationCelebration]);
 
-  const displayedSponsors = liveSponsors.length > 0 ? liveSponsors : sponsorLoadFailed ? fundraisingSponsors : [];
+  const displayedSponsors = liveSponsors.length > 0
+    ? liveSponsors
+    : sponsorLoadFailed ? fundraisingSponsors : [];
+
   const selectedDonationOption = useMemo(
-    () => donationOptions.find((option) => option.id === selectedDonationOptionId) ?? donationOptions[0] ?? null,
+    () => donationOptions.find((o) => o.id === selectedDonationOptionId) ?? donationOptions[0] ?? null,
     [donationOptions, selectedDonationOptionId]
   );
   const selectedDonationLevels = selectedDonationOption?.levels || [];
   const selectedDonationLevel = useMemo(
-    () => selectedDonationLevels.find((level) => level.id === selectedDonationLevelId) || null,
+    () => selectedDonationLevels.find((l) => l.id === selectedDonationLevelId) || null,
     [selectedDonationLevels, selectedDonationLevelId]
   );
   const isOtherDonationSelected = selectedDonationLevelId === null;
 
+  // Reset level if option changes and level no longer exists
   useEffect(() => {
     if (!selectedDonationOption) return;
-    if (selectedDonationLevelId && !selectedDonationOption.levels.some((level) => level.id === selectedDonationLevelId)) {
+    if (selectedDonationLevelId && !selectedDonationOption.levels.some((l) => l.id === selectedDonationLevelId)) {
       setSelectedDonationLevelId(null);
       setSelectedDonationAmountCents(null);
       setActiveDonationIntent(null);
@@ -214,15 +244,16 @@ export default function Fundraising() {
   }, [activeDonationIntent?.clientSecret]);
 
   const requestDonationIntent = async (amountCents: number, level: FundraisingDonationOptionLevel | null) => {
-    const normalizedDonorName = donorName.trim();
-    const normalizedDonorEmail = donorEmail.trim().toLowerCase();
-    if (!normalizedDonorName) { setDonationError('Please enter your name before donating.'); return; }
-    if (!normalizedDonorEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedDonorEmail)) {
+    const name = donorName.trim();
+    const email = donorEmail.trim().toLowerCase();
+    if (!name) { setDonationError('Please enter your name before donating.'); return; }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setDonationError('Please enter a valid email address for your receipt.'); return;
     }
     const activeOption = selectedDonationOption;
     if (!activeOption) { setDonationError('Donation options are still loading. Please try again.'); return; }
-    setDonationSuccessMessage(null); setDonationError(null);
+    setDonationSuccessMessage(null);
+    setDonationError(null);
     setSelectedDonationAmountCents(amountCents);
     setSelectedDonationLevelId(level?.id || null);
     setDonationIntentLoading(true);
@@ -230,20 +261,20 @@ export default function Fundraising() {
       const response = await apiFetch<DonationIntentResponse>('/api/fundraising/donations/intent', {
         method: 'POST',
         body: JSON.stringify({
-          amountCents,
-          donorName: normalizedDonorName,
-          donorEmail: normalizedDonorEmail,
-          donorRecognitionPreference,
-          donationOptionId: activeOption.id,
-          donationOptionName: activeOption.name,
-          donationLevelId: level?.id,
-          donationLevelTitle: level?.title,
-          donationLevelAmountLabel: level?.amountLabel
-        })
+          amountCents, donorName: name, donorEmail: email, donorRecognitionPreference,
+          donationOptionId: activeOption.id, donationOptionName: activeOption.name,
+          donationLevelId: level?.id, donationLevelTitle: level?.title,
+          donationLevelAmountLabel: level?.amountLabel,
+        }),
       });
       const publishableKey = (response.publishableKey || FALLBACK_STRIPE_PUBLISHABLE_KEY || '').trim();
       if (!publishableKey) throw new Error('Stripe publishable key is missing.');
-      setActiveDonationIntent({ paymentIntentId: response.paymentIntentId, clientSecret: response.clientSecret, publishableKey, amountCents: response.amountCents });
+      setActiveDonationIntent({
+        paymentIntentId: response.paymentIntentId,
+        clientSecret: response.clientSecret,
+        publishableKey,
+        amountCents: response.amountCents,
+      });
     } catch (err) {
       setActiveDonationIntent(null);
       setDonationError(err instanceof Error ? err.message : 'We could not start donation checkout.');
@@ -253,9 +284,11 @@ export default function Fundraising() {
   };
 
   const handleOtherDonationSelect = () => {
-    setSelectedDonationAmountCents(null); setActiveDonationIntent(null);
+    setSelectedDonationAmountCents(null);
+    setActiveDonationIntent(null);
     setSelectedDonationLevelId(null);
-    setDonationError(null); setDonationSuccessMessage(null);
+    setDonationError(null);
+    setDonationSuccessMessage(null);
     requestAnimationFrame(() => customAmountInputRef.current?.focus());
   };
 
@@ -268,45 +301,110 @@ export default function Fundraising() {
   return (
     <>
       <style>{`
-        .serif { font-family: Georgia, serif; }
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Lato:wght@300;400;700&display=swap');
 
-        .donation-celebration-backdrop {
-          background: radial-gradient(circle at 20% 20%, rgba(185, 28, 28, 0.3) 0%, rgba(127, 29, 29, 0.22) 30%, rgba(12, 10, 9, 0.82) 100%);
-          backdrop-filter: blur(4px);
+        .fund-root { font-family: 'Lato', sans-serif; background: #faf9f7; color: #1c1917; }
+        .fund-serif { font-family: 'Playfair Display', Georgia, serif; }
+
+        /* Buttons */
+        .donate-btn {
+          display: inline-flex; align-items: center; justify-content: center;
+          gap: 0.5rem; padding: 0.75rem 1.5rem; border-radius: 9999px;
+          background: #991b1b; color: #fff; font-weight: 700; font-size: 0.875rem;
+          letter-spacing: 0.02em; transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+          border: none; cursor: pointer;
         }
-        .donation-celebration-heart {
-          position: absolute;
-          bottom: -56px;
-          color: rgba(254, 226, 226, 0.94);
-          text-shadow: 0 10px 24px rgba(153, 27, 27, 0.45);
-          animation: donation-heart-rise linear infinite;
-          user-select: none;
+        .donate-btn:hover:not(:disabled) { background: #7f1d1d; box-shadow: 0 4px 20px rgba(153,27,27,0.35); transform: translateY(-1px); }
+        .donate-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+        .pill-btn {
+          display: inline-flex; align-items: center; gap: 0.4rem;
+          padding: 0.5rem 1.125rem; border-radius: 9999px;
+          border: 1.5px solid #d6d3d1; background: #fff; color: #57534e;
+          font-size: 0.8125rem; font-weight: 700; letter-spacing: 0.01em;
+          transition: all 0.18s; cursor: pointer;
         }
-        .donation-celebration-heart.alt {
-          color: rgba(254, 202, 202, 0.9);
-          animation-name: donation-heart-rise-alt;
+        .pill-btn:hover { border-color: #991b1b; color: #991b1b; background: #fff5f5; }
+        .pill-btn.active { border-color: #991b1b; background: #991b1b; color: #fff; }
+
+        .fund-input {
+          width: 100%; border-radius: 0.75rem; border: 1.5px solid #e7e5e4;
+          background: #fff; padding: 0.65rem 1rem; font-size: 0.875rem; font-weight: 400;
+          font-family: 'Lato', sans-serif; color: #1c1917; transition: border 0.18s, box-shadow 0.18s;
+          outline: none;
         }
-        .donation-heart-icon {
-          animation: donation-heart-beat 1.2s ease-in-out infinite;
+        .fund-input::placeholder { color: #a8a29e; }
+        .fund-input:focus { border-color: #991b1b; box-shadow: 0 0 0 3px rgba(153,27,27,0.1); }
+
+        /* Hero */
+        .hero-bg {
+          background: linear-gradient(160deg, #1c0a0a 0%, #3b0d0d 45%, #1c1917 100%);
+          position: relative; overflow: hidden;
         }
-        @keyframes donation-heart-rise {
-          0% { transform: translate3d(0, 0, 0) scale(0.65) rotate(0deg); opacity: 0; }
-          12% { opacity: 0.95; }
-          100% { transform: translate3d(0, -86vh, 0) scale(1.2) rotate(10deg); opacity: 0; }
+        .hero-bg::before {
+          content: ''; position: absolute; inset: 0;
+          background-image: radial-gradient(circle at 70% 40%, rgba(220,38,38,0.12) 0%, transparent 55%),
+                            radial-gradient(circle at 20% 80%, rgba(120,53,15,0.15) 0%, transparent 50%);
+          pointer-events: none;
         }
-        @keyframes donation-heart-rise-alt {
-          0% { transform: translate3d(0, 0, 0) scale(0.7) rotate(-8deg); opacity: 0; }
-          15% { opacity: 0.95; }
-          100% { transform: translate3d(0, -82vh, 0) scale(1.25) rotate(-18deg); opacity: 0; }
+        .hero-rule { width: 3rem; height: 2px; background: #dc2626; margin-bottom: 1.5rem; }
+
+        /* Curtain divider */
+        .curtain-divider {
+          position: relative; height: 3px;
+          background: linear-gradient(90deg, transparent, #991b1b 30%, #dc2626 50%, #991b1b 70%, transparent);
         }
-        @keyframes donation-heart-beat {
+
+        /* Sponsor ticker */
+        .ticker-track { display: flex; gap: 1.5rem; align-items: center; }
+
+        /* Level card */
+        .level-card {
+          border-radius: 1rem; border: 1.5px solid #e7e5e4; background: #fff;
+          padding: 1.25rem 1.5rem; cursor: pointer;
+          transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+        }
+        .level-card:hover { border-color: #fca5a5; box-shadow: 0 4px 16px rgba(153,27,27,0.08); transform: translateY(-1px); }
+        .level-card.selected { border-color: #991b1b; box-shadow: 0 0 0 3px rgba(153,27,27,0.12), 0 4px 16px rgba(153,27,27,0.1); }
+
+        /* Celebration overlay */
+        .celebration-bg {
+          background: radial-gradient(circle at 20% 25%, rgba(185,28,28,0.28) 0%, rgba(127,29,29,0.18) 35%, rgba(12,10,9,0.85) 100%);
+          backdrop-filter: blur(6px);
+        }
+        .heart-particle {
+          position: absolute; bottom: -56px; color: rgba(254,226,226,0.92);
+          animation: heart-rise linear infinite; user-select: none; pointer-events: none;
+        }
+        .heart-particle.alt {
+          color: rgba(252,165,165,0.88);
+          animation-name: heart-rise-alt;
+        }
+        .heart-beat { animation: heart-beat 1.2s ease-in-out infinite; }
+        @keyframes heart-rise {
+          0%   { transform: translate3d(0,0,0) scale(0.6) rotate(0deg); opacity: 0; }
+          12%  { opacity: 0.95; }
+          100% { transform: translate3d(0,-88vh,0) scale(1.2) rotate(12deg); opacity: 0; }
+        }
+        @keyframes heart-rise-alt {
+          0%   { transform: translate3d(0,0,0) scale(0.65) rotate(-8deg); opacity: 0; }
+          15%  { opacity: 0.95; }
+          100% { transform: translate3d(0,-84vh,0) scale(1.25) rotate(-18deg); opacity: 0; }
+        }
+        @keyframes heart-beat {
           0%, 100% { transform: scale(1); }
-          35% { transform: scale(1.12); }
-          65% { transform: scale(0.96); }
+          35%  { transform: scale(1.14); }
+          65%  { transform: scale(0.96); }
         }
+
+        /* No scrollbar utility */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
 
-      <div className="bg-white font-sans text-stone-900">
+      <div className="fund-root">
+
+        {/* ── CELEBRATION OVERLAY ─────────────────────────────────────────── */}
         <AnimatePresence>
           {showDonationCelebration && (
             <motion.div
@@ -318,48 +416,35 @@ export default function Fundraising() {
               aria-modal="true"
               aria-label="Donation thank you"
             >
-              <div className="donation-celebration-backdrop absolute inset-0" />
-
+              <div className="celebration-bg absolute inset-0" />
               <div className="pointer-events-none absolute inset-0 overflow-hidden">
-                {DONATION_HEART_PARTICLES.map((heart, index) => (
+                {HEART_PARTICLES.map((h, i) => (
                   <span
-                    key={`${heart.left}-${heart.delay}`}
-                    className={`donation-celebration-heart ${index % 2 === 0 ? 'alt' : ''}`}
-                    style={{
-                      left: heart.left,
-                      fontSize: `${heart.sizeRem}rem`,
-                      animationDelay: heart.delay,
-                      animationDuration: heart.duration
-                    }}
+                    key={`${h.left}-${h.delay}`}
+                    className={`heart-particle ${i % 2 === 0 ? 'alt' : ''}`}
+                    style={{ left: h.left, fontSize: `${h.size}rem`, animationDelay: h.delay, animationDuration: h.dur }}
                     aria-hidden="true"
-                  >
-                    ♥
-                  </span>
+                  >♥</span>
                 ))}
               </div>
-
               <motion.div
-                initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                initial={{ opacity: 0, y: 24, scale: 0.94 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 12, scale: 0.97 }}
-                transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-                className="relative w-full max-w-md rounded-3xl border border-red-100 bg-white/95 p-7 text-center shadow-2xl max-sm:rounded-2xl max-sm:p-5"
+                transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                className="relative w-full max-w-sm rounded-3xl border border-red-100 bg-white p-8 text-center shadow-2xl"
               >
-                <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-red-700">
-                  <Heart className="donation-heart-icon h-7 w-7 fill-current" />
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100 text-red-700">
+                  <Heart className="heart-beat h-8 w-8 fill-current" />
                 </div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-red-700">Donation Received</p>
-                <h3 className="serif mt-1 text-3xl font-bold text-stone-900">Thank You!</h3>
-                <p className="mt-3 text-sm leading-relaxed text-stone-600">
+                <p style={{ fontFamily: "'Lato', sans-serif", letterSpacing: '0.18em' }} className="text-xs font-bold uppercase text-red-700">Donation Received</p>
+                <h3 className="fund-serif mt-2 text-3xl font-bold text-stone-900">Thank You!</h3>
+                <p className="mt-3 text-sm leading-relaxed text-stone-500">
                   {lastDonationAmountCents
                     ? `Your ${formatUsd(lastDonationAmountCents)} gift helps Penncrest Theater students shine on stage.`
                     : 'Your gift helps Penncrest Theater students shine on stage.'}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setShowDonationCelebration(false)}
-                  className={`${PRIMARY_BUTTON_CLASS} mt-5`}
-                >
+                <button type="button" onClick={() => setShowDonationCelebration(false)} className="donate-btn mt-6">
                   Continue
                 </button>
               </motion.div>
@@ -367,298 +452,282 @@ export default function Fundraising() {
           )}
         </AnimatePresence>
 
-        {/* ── HERO ── */}
-        <section className="border-b border-stone-100 bg-stone-50 pb-16 pt-14 sm:pt-20 max-sm:pb-12 max-sm:pt-10">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-
-            {/* Eyebrow */}
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4 }}
-              className="mb-6 flex items-center gap-2.5"
-            >
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-800">
-                <HandCoins className="h-3 w-3 text-white" />
-              </div>
-              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-red-800">
-                Fundraising
-              </span>
-            </motion.div>
-
-            <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-              <motion.h1
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.45, delay: 0.05 }}
-                className="serif text-5xl font-bold tracking-tight text-stone-900 sm:text-6xl lg:text-7xl max-sm:text-4xl max-sm:leading-tight"
-              >
+        {/* ── HERO ─────────────────────────────────────────────────────────── */}
+        <section className="hero-bg px-4 pb-20 pt-16 sm:px-6 lg:px-8 sm:pb-28 sm:pt-24">
+          <div className="mx-auto max-w-7xl">
+            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.55 }}>
+              <div className="hero-rule" />
+              <p style={{ letterSpacing: '0.22em', color: '#fca5a5' }} className="mb-4 text-xs font-bold uppercase">
+                Penncrest Theater · Fundraising
+              </p>
+              <h1 className="fund-serif text-5xl font-black leading-none text-white sm:text-7xl lg:text-8xl">
                 Support<br />
-                <em className="text-red-800 not-italic">the Stage</em>
-              </motion.h1>
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.45, delay: 0.15 }}
-                className="max-w-sm text-sm leading-relaxed text-stone-500 sm:text-right sm:text-base max-sm:max-w-none"
-              >
-                Give directly through donations or sponsorships. For event listings, see Community Events below.
-              </motion.p>
-            </div>
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.45, delay: 0.2 }}
-              className="rounded-2xl border border-red-100 bg-red-50 px-6 py-7 sm:px-8 sm:py-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
-            >
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] font-semibold text-red-600 mb-2">Community Events</p>
-                <h2 className="serif text-2xl font-bold text-stone-900 sm:text-3xl">
-                  See current community events
-                </h2>
+                <em style={{ color: '#f87171' }} className="not-italic">the Stage.</em>
+              </h1>
+              <p className="mt-6 max-w-md text-sm leading-relaxed" style={{ color: '#d6d3d1' }}>
+                Your generosity puts students in the spotlight. From costumes to set design, every gift makes
+                Penncrest Theater possible.
+              </p>
+              <div className="mt-8 flex flex-wrap items-center gap-3">
+                <a href="#donate" className="donate-btn">
+                  Donate Now <ArrowRight className="h-4 w-4" />
+                </a>
+                <Link
+                  to="/shows/community-events"
+                  style={{ color: '#fca5a5', borderColor: 'rgba(252,165,165,0.35)', background: 'rgba(255,255,255,0.06)' }}
+                  className="inline-flex items-center gap-2 rounded-full border px-5 py-3 text-sm font-bold transition hover:bg-white/10"
+                >
+                  Community Events <ArrowUpRight className="h-3.5 w-3.5" />
+                </Link>
               </div>
-              <Link
-                to="/shows/community-events"
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-red-700 text-white px-6 py-3 font-semibold hover:bg-red-800 transition-colors"
-              >
-                View Community Events
-                <ArrowRight className="w-4 h-4" />
-              </Link>
             </motion.div>
           </div>
         </section>
 
-        {/* ── SPONSOR TICKER ── */}
+        <div className="curtain-divider" />
+
+        {/* ── SPONSOR STRIP ─────────────────────────────────────────────────── */}
         {displayedSponsors.length > 0 && (
-          <div className="border-y border-stone-100 bg-white py-4">
-            <div className="mx-auto flex max-w-7xl items-center gap-5 overflow-x-auto px-4 sm:px-6 lg:px-8 no-scrollbar max-sm:gap-3 max-sm:px-3">
-              <div className="flex flex-none items-center gap-2">
-                <Star className="h-3.5 w-3.5 text-amber-500" />
-                <span className="text-xs font-semibold uppercase tracking-[0.15em] text-stone-500 whitespace-nowrap">
+          <div style={{ background: '#fff', borderBottom: '1px solid #f5f5f4' }} className="py-4">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+              <div className="no-scrollbar flex items-center gap-4 overflow-x-auto">
+                <span style={{ letterSpacing: '0.16em', color: '#a8a29e', whiteSpace: 'nowrap' }}
+                  className="flex-none text-xs font-bold uppercase">
                   Our Sponsors
                 </span>
+                <div style={{ width: 1, height: '1.25rem', background: '#e7e5e4' }} className="flex-none" />
+                {displayedSponsors.map((sponsor) => (
+                  <a
+                    key={sponsor.id}
+                    href={sponsor.websiteUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ border: '1px solid #f5f5f4' }}
+                    className="flex-none rounded-xl bg-stone-50 px-4 py-2 transition hover:bg-white hover:shadow-sm"
+                  >
+                    <img
+                      src={sponsor.logoUrl}
+                      alt={sponsor.name}
+                      className="h-6 w-auto min-w-[72px] object-contain opacity-60 transition hover:opacity-100"
+                    />
+                  </a>
+                ))}
               </div>
-              <div className="mx-3 h-4 w-px bg-stone-200 flex-none" />
-              {displayedSponsors.map((sponsor) => (
-                <a
-                  key={sponsor.id}
-                  href={sponsor.websiteUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex-none rounded-xl border border-stone-100 bg-stone-50 px-4 py-2 transition hover:border-stone-200 hover:bg-white hover:shadow-sm"
-                >
-                  <img src={sponsor.logoUrl} alt={sponsor.name} className="h-6 w-auto min-w-[80px] object-contain opacity-70 hover:opacity-100 transition-opacity" />
-                </a>
-              ))}
             </div>
           </div>
         )}
 
+        {/* ── DONATE SECTION ─────────────────────────────────────────────────── */}
+        <section id="donate" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8 max-sm:py-12">
 
-        {/* ── DONATE ── */}
-        <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8 max-sm:py-12">
-
-          {/* Section heading */}
-          <div className="mb-12 max-w-xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-red-700 mb-2">Make an Impact</p>
-            <h2 className="serif text-4xl font-bold text-stone-900 sm:text-5xl leading-tight">
-              Every gift brings <em className="not-italic text-red-800">students</em> to the spotlight.
-            </h2>
-            <p className="mt-4 text-stone-500 text-sm leading-relaxed max-w-sm">
-              Choose how you'd like to support Penncrest Theater — whether it's a one-time gift or a named sponsorship.
+          {/* Heading */}
+          <div className="mb-12">
+            <p style={{ letterSpacing: '0.2em', color: '#dc2626' }} className="mb-2 text-xs font-bold uppercase">
+              Make a Donation
             </p>
+            <h2 className="fund-serif text-4xl font-black text-stone-900 sm:text-5xl leading-tight">
+              Choose how you'd<br className="hidden sm:block" /> like to give.
+            </h2>
           </div>
 
-          {/* Donation path tabs */}
-          <div className="flex flex-wrap gap-2 mb-8">
-            {donationOptions.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                onClick={() => {
-                  setSelectedDonationOptionId(option.id);
-                  setSelectedDonationLevelId(null);
-                  setSelectedDonationAmountCents(null);
-                  setActiveDonationIntent(null);
-                  setDonationError(null);
-                  setDonationSuccessMessage(null);
-                }}
-                className={`rounded-full border px-5 py-2.5 text-sm font-semibold transition ${
-                  selectedDonationOption?.id === option.id
-                    ? 'border-red-700 bg-red-700 text-white shadow-md shadow-red-200'
-                    : 'border-stone-200 bg-white text-stone-600 hover:border-red-300 hover:text-red-700'
-                }`}
-              >
-                {option.name}
-              </button>
-            ))}
-          </div>
+          {/* Donation path selector */}
+          {donationOptions.length > 1 && (
+            <div className="mb-8 flex flex-wrap gap-2">
+              {donationOptions.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedDonationOptionId(option.id);
+                    setSelectedDonationLevelId(null);
+                    setSelectedDonationAmountCents(null);
+                    setActiveDonationIntent(null);
+                    setDonationError(null);
+                    setDonationSuccessMessage(null);
+                  }}
+                  className={`pill-btn ${selectedDonationOption?.id === option.id ? 'active' : ''}`}
+                >
+                  {option.name}
+                </button>
+              ))}
+            </div>
+          )}
           {selectedDonationOption?.description && (
-            <p className="mb-10 text-sm text-stone-500 -mt-4">{selectedDonationOption.description}</p>
+            <p className="mb-10 -mt-2 text-sm text-stone-500 max-w-lg">{selectedDonationOption.description}</p>
           )}
 
           <motion.div
             key={selectedDonationOption?.id || 'donation'}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25 }}
-            className="grid grid-cols-1 gap-8 lg:grid-cols-3"
+            transition={{ duration: 0.22 }}
           >
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
 
-            {/* ── LEFT: Donor info + amount picker ── */}
-            <div className="lg:col-span-2 space-y-6">
+              {/* ── FORM COLUMN ── */}
+              <div className="lg:col-span-7 space-y-5">
 
-              {/* Donor info card */}
-              <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
-                <h3 className="serif text-lg font-bold text-stone-900 mb-1">Your Information</h3>
-                <p className="text-xs text-stone-400 mb-5">We'll send your receipt and thank-you note here.</p>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <input
-                    type="text"
-                    value={donorName}
-                    onChange={(e) => setDonorName(e.target.value)}
-                    placeholder="Full name"
-                    className={INPUT_FIELD_CLASS}
-                  />
-                  <input
-                    type="email"
-                    value={donorEmail}
-                    onChange={(e) => setDonorEmail(e.target.value)}
-                    placeholder="Email for receipt"
-                    className={INPUT_FIELD_CLASS}
-                  />
-                </div>
-                <div className="mt-4 flex items-center gap-3 flex-wrap">
-                  <span className="text-xs font-semibold text-stone-500 uppercase tracking-wide">Recognition:</span>
-                  <div className="flex rounded-xl border border-stone-200 bg-stone-50 p-0.5 gap-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setDonorRecognitionPreference('known')}
-                      className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition ${
-                        donorRecognitionPreference === 'known'
-                          ? 'bg-red-700 text-white shadow-sm'
-                          : 'text-stone-500 hover:text-stone-800'
-                      }`}
-                    >
-                      List my name
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDonorRecognitionPreference('anonymous')}
-                      className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition ${
-                        donorRecognitionPreference === 'anonymous'
-                          ? 'bg-red-700 text-white shadow-sm'
-                          : 'text-stone-500 hover:text-stone-800'
-                      }`}
-                    >
-                      Stay anonymous
-                    </button>
+                {/* Step 1 – Your info */}
+                <div style={{ border: '1.5px solid #e7e5e4', borderRadius: '1.25rem', background: '#fff' }} className="p-6 sm:p-7">
+                  <div className="mb-5 flex items-start gap-3">
+                    <div style={{ background: '#991b1b', borderRadius: '50%', width: 28, height: 28, flexShrink: 0 }}
+                      className="flex items-center justify-center text-white text-xs font-black mt-0.5">1</div>
+                    <div>
+                      <h3 className="fund-serif text-lg font-bold text-stone-900">Your Information</h3>
+                      <p className="text-xs text-stone-400 mt-0.5">We'll send your receipt and thank-you note here.</p>
+                    </div>
                   </div>
-                  <p className="text-xs text-stone-400 hidden sm:block">
-                    {donorRecognitionPreference === 'known'
-                      ? 'Your name may appear in playbills and acknowledgments.'
-                      : 'Your name will be kept private.'}
-                  </p>
-                </div>
-              </div>
 
-              {/* Amount picker card */}
-              <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
-                <h3 className="serif text-lg font-bold text-stone-900 mb-1">Choose an Amount</h3>
-                <p className="text-xs text-stone-400 mb-5">Select a suggested level or enter your own amount.</p>
-
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {selectedDonationLevels.map((level) => (
-                    <button
-                      key={level.id}
-                      type="button"
-                      onClick={() => void requestDonationIntent(level.suggestedAmountCents, level)}
-                      className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                        selectedDonationLevelId === level.id && selectedDonationAmountCents === level.suggestedAmountCents
-                          ? 'border-red-700 bg-red-700 text-white shadow-md shadow-red-100'
-                          : 'border-stone-200 bg-stone-50 text-stone-700 hover:border-red-300 hover:bg-red-50 hover:text-red-700'
-                      }`}
-                    >
-                      {level.amountLabel}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={handleOtherDonationSelect}
-                    className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                      isOtherDonationSelected
-                        ? 'border-red-700 bg-red-700 text-white shadow-md shadow-red-100'
-                        : 'border-stone-200 bg-stone-50 text-stone-700 hover:border-red-300 hover:bg-red-50 hover:text-red-700'
-                    }`}
-                  >
-                    Custom
-                  </button>
-                </div>
-
-                <div className="flex gap-2 max-sm:flex-col">
-                  <div className="relative flex-1">
-                    <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-stone-400">$</span>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <input
-                      ref={customAmountInputRef}
                       type="text"
-                      inputMode="decimal"
-                      placeholder="Other amount"
-                      value={customDonationAmount}
-                      onChange={(e) => {
-                        setCustomDonationAmount(e.target.value);
-                        setSelectedDonationLevelId(null);
-                      }}
-                      className={`${INPUT_FIELD_CLASS} pl-8`}
+                      value={donorName}
+                      onChange={(e) => setDonorName(e.target.value)}
+                      placeholder="Full name"
+                      className="fund-input"
+                    />
+                    <input
+                      type="email"
+                      value={donorEmail}
+                      onChange={(e) => setDonorEmail(e.target.value)}
+                      placeholder="Email for receipt"
+                      className="fund-input"
                     />
                   </div>
-                  <button
-                    type="button"
-                    onClick={applyCustomDonationAmount}
-                    className="rounded-xl border border-stone-200 bg-stone-50 px-5 py-2.5 text-sm font-semibold text-stone-700 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700 max-sm:w-full"
-                  >
-                    Apply
-                  </button>
+
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wide text-stone-400">Recognition:</span>
+                    <div style={{ background: '#f5f5f4', borderRadius: '9999px', padding: '3px', display: 'inline-flex', gap: 2 }}>
+                      {(['known', 'anonymous'] as const).map((pref) => (
+                        <button
+                          key={pref}
+                          type="button"
+                          onClick={() => setDonorRecognitionPreference(pref)}
+                          style={{
+                            borderRadius: '9999px', padding: '0.3rem 0.875rem',
+                            fontSize: '0.75rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+                            transition: 'all 0.18s',
+                            background: donorRecognitionPreference === pref ? '#991b1b' : 'transparent',
+                            color: donorRecognitionPreference === pref ? '#fff' : '#78716c',
+                          }}
+                        >
+                          {pref === 'known' ? 'List my name' : 'Stay anonymous'}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-stone-400">
+                      {donorRecognitionPreference === 'known'
+                        ? 'You may appear in playbills & donor acknowledgments.'
+                        : 'Your name will be kept private.'}
+                    </p>
+                  </div>
                 </div>
 
-                {/* Error / success */}
-                {donationError && (
-                  <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    {donationError}
+                {/* Step 2 – Choose amount */}
+                <div style={{ border: '1.5px solid #e7e5e4', borderRadius: '1.25rem', background: '#fff' }} className="p-6 sm:p-7">
+                  <div className="mb-5 flex items-start gap-3">
+                    <div style={{ background: '#991b1b', borderRadius: '50%', width: 28, height: 28, flexShrink: 0 }}
+                      className="flex items-center justify-center text-white text-xs font-black mt-0.5">2</div>
+                    <div>
+                      <h3 className="fund-serif text-lg font-bold text-stone-900">Choose an Amount</h3>
+                      <p className="text-xs text-stone-400 mt-0.5">Select a suggested level or enter a custom amount.</p>
+                    </div>
                   </div>
-                )}
-                {donationSuccessMessage && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.97 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="mt-4 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4"
-                  >
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 flex-none text-emerald-600" />
-                    <p className="text-sm font-semibold text-emerald-800">{donationSuccessMessage}</p>
-                  </motion.div>
-                )}
 
-                {/* Stripe payment form */}
-                {donationIntentLoading && (
-                  <div className="mt-6 flex items-center gap-2 text-sm text-stone-500">
-                    <Loader2 className="h-4 w-4 animate-spin text-red-700" />
-                    Loading secure payment form…
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {selectedDonationLevels.map((level) => (
+                      <button
+                        key={level.id}
+                        type="button"
+                        onClick={() => void requestDonationIntent(level.suggestedAmountCents, level)}
+                        className={`pill-btn ${selectedDonationLevelId === level.id && selectedDonationAmountCents === level.suggestedAmountCents ? 'active' : ''}`}
+                      >
+                        {level.amountLabel}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={handleOtherDonationSelect}
+                      className={`pill-btn ${isOtherDonationSelected ? 'active' : ''}`}
+                    >
+                      Custom
+                    </button>
                   </div>
-                )}
 
+                  <div className="flex gap-2 max-sm:flex-col">
+                    <div className="relative flex-1">
+                      <span style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)', fontSize: '0.875rem', fontWeight: 700, color: '#a8a29e', pointerEvents: 'none' }}>$</span>
+                      <input
+                        ref={customAmountInputRef}
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="Other amount"
+                        value={customDonationAmount}
+                        onChange={(e) => { setCustomDonationAmount(e.target.value); setSelectedDonationLevelId(null); }}
+                        style={{ paddingLeft: '2rem' }}
+                        className="fund-input"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={applyCustomDonationAmount}
+                      style={{ borderRadius: '0.75rem', border: '1.5px solid #e7e5e4', background: '#faf9f7', padding: '0.65rem 1.25rem', fontSize: '0.875rem', fontWeight: 700, color: '#57534e', cursor: 'pointer', transition: 'all 0.18s', whiteSpace: 'nowrap' }}
+                      className="max-sm:w-full hover:border-red-300 hover:text-red-700 hover:bg-red-50"
+                    >
+                      Apply
+                    </button>
+                  </div>
+
+                  {/* Error */}
+                  {donationError && (
+                    <div style={{ marginTop: '1rem', borderRadius: '0.75rem', border: '1px solid #fecaca', background: '#fff5f5', padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#991b1b' }}>
+                      {donationError}
+                    </div>
+                  )}
+
+                  {/* Success */}
+                  {donationSuccessMessage && !showDonationCelebration && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.97 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      style={{ marginTop: '1rem', borderRadius: '0.75rem', border: '1px solid #bbf7d0', background: '#f0fdf4', padding: '0.75rem 1rem', display: 'flex', gap: '0.625rem', alignItems: 'flex-start' }}
+                    >
+                      <CheckCircle2 style={{ marginTop: 2, flexShrink: 0, color: '#16a34a', width: 16, height: 16 }} />
+                      <p style={{ fontSize: '0.875rem', fontWeight: 700, color: '#15803d' }}>{donationSuccessMessage}</p>
+                    </motion.div>
+                  )}
+
+                  {/* Loading */}
+                  {donationIntentLoading && (
+                    <div style={{ marginTop: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: '#78716c' }}>
+                      <Loader2 style={{ width: 16, height: 16, color: '#991b1b', animation: 'spin 1s linear infinite' }} />
+                      Loading secure payment form…
+                    </div>
+                  )}
+                </div>
+
+                {/* Step 3 – Payment */}
                 {activeDonationIntent && donationStripePromise && donationStripeOptions && !donationIntentLoading && (
                   <motion.div
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="mt-6 rounded-xl border border-stone-100 bg-stone-50 p-5"
+                    style={{ border: '1.5px solid #fecaca', borderRadius: '1.25rem', background: '#fff' }}
+                    className="p-6 sm:p-7"
                   >
-                    <div className="flex items-center justify-between mb-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.13em] text-stone-500">
-                        Paying {formatUsd(activeDonationIntent.amountCents)}
-                        {selectedDonationLevel ? ` · ${selectedDonationLevel.title}` : ''}
-                      </p>
-                      <div className="flex items-center gap-1 text-xs text-stone-400">
-                        <CreditCard className="h-3 w-3" />
-                        Secure
+                    <div className="mb-5 flex items-start gap-3">
+                      <div style={{ background: '#991b1b', borderRadius: '50%', width: 28, height: 28, flexShrink: 0 }}
+                        className="flex items-center justify-center text-white text-xs font-black mt-0.5">3</div>
+                      <div className="flex-1 flex items-start justify-between gap-2">
+                        <div>
+                          <h3 className="fund-serif text-lg font-bold text-stone-900">Complete Payment</h3>
+                          <p className="text-xs text-stone-400 mt-0.5">
+                            Donating {formatUsd(activeDonationIntent.amountCents)}
+                            {selectedDonationLevel ? ` · ${selectedDonationLevel.title}` : ''}
+                          </p>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', fontWeight: 700, color: '#a8a29e', letterSpacing: '0.1em', textTransform: 'uppercase', whiteSpace: 'nowrap', marginTop: 4 }}>
+                          <CreditCard style={{ width: 12, height: 12 }} /> Secure
+                        </div>
                       </div>
                     </div>
                     <Elements
@@ -683,72 +752,108 @@ export default function Fundraising() {
                   </motion.div>
                 )}
               </div>
-            </div>
 
-            {/* ── RIGHT: Donation levels sidebar ── */}
-            <div className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400 mb-1">
-                {selectedDonationOption?.name || 'Donation'} Levels
-              </p>
-              {selectedDonationLevels.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-5 text-sm text-stone-500">
-                  No donation levels configured yet.
+              {/* ── LEVELS SIDEBAR ── */}
+              <div className="lg:col-span-5 space-y-3">
+                <p style={{ letterSpacing: '0.16em', color: '#a8a29e' }} className="text-xs font-bold uppercase mb-1">
+                  {selectedDonationOption?.name || 'Donation'} Levels
+                </p>
+                {selectedDonationLevels.length === 0 ? (
+                  <div style={{ borderRadius: '1rem', border: '1.5px dashed #e7e5e4', background: '#faf9f7', padding: '1.25rem', fontSize: '0.875rem', color: '#a8a29e' }}>
+                    No levels configured for this option yet.
+                  </div>
+                ) : (
+                  selectedDonationLevels.map((card, i) => (
+                    <motion.article
+                      key={card.id}
+                      initial={{ opacity: 0, x: 12 }}
+                      whileInView={{ opacity: 1, x: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ duration: 0.3, delay: i * 0.07 }}
+                      onClick={() => void requestDonationIntent(card.suggestedAmountCents, card)}
+                      className={`level-card ${selectedDonationLevelId === card.id ? 'selected' : ''}`}
+                    >
+                      <p style={{ fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#dc2626', marginBottom: '0.25rem' }}>
+                        {card.amountLabel}
+                      </p>
+                      <h3 className="fund-serif" style={{ fontSize: '1rem', fontWeight: 700, color: '#1c1917', marginBottom: '0.375rem' }}>
+                        {card.title}
+                      </h3>
+                      <p style={{ fontSize: '0.8125rem', lineHeight: 1.65, color: '#78716c' }}>{card.detail}</p>
+                    </motion.article>
+                  ))
+                )}
+
+                {/* Impact note */}
+                <div style={{ borderRadius: '1rem', background: 'linear-gradient(135deg, #fef2f2, #fff5f5)', border: '1.5px solid #fecaca', padding: '1.25rem 1.5rem', marginTop: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <Sparkles style={{ width: 14, height: 14, color: '#dc2626' }} />
+                    <span style={{ fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.16em', textTransform: 'uppercase', color: '#dc2626' }}>Your Impact</span>
+                  </div>
+                  <p style={{ fontSize: '0.8125rem', lineHeight: 1.7, color: '#78716c' }}>
+                    Every gift — large or small — directly funds costumes, set construction, lighting, sound,
+                    and the unforgettable experiences that shape Penncrest students for life.
+                  </p>
                 </div>
-              ) : (
-                selectedDonationLevels.map((card, i) => (
-                  <motion.article
-                    key={card.id}
-                    initial={{ opacity: 0, x: 10 }}
-                    whileInView={{ opacity: 1, x: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.3, delay: i * 0.07 }}
-                    onClick={() => void requestDonationIntent(card.suggestedAmountCents, card)}
-                    className={`rounded-2xl border bg-white p-5 cursor-pointer transition hover:shadow-sm ${
-                      selectedDonationLevelId === card.id
-                        ? 'border-red-300 shadow-sm shadow-red-100 ring-1 ring-red-200'
-                        : 'border-stone-200 hover:border-stone-300'
-                    }`}
-                  >
-                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-red-700">{card.amountLabel}</p>
-                    <h3 className="serif mt-1 text-base font-bold text-stone-900">{card.title}</h3>
-                    <p className="mt-1.5 text-sm leading-relaxed text-stone-500">{card.detail}</p>
-                  </motion.article>
-                ))
-              )}
+              </div>
+
             </div>
           </motion.div>
-
-          {/* ── SPONSORS GRID ── */}
-          {displayedSponsors.length > 0 && (
-            <div className="mt-16 pt-10 border-t border-stone-100">
-              <p className="mb-6 text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Current Sponsors</p>
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-                {displayedSponsors.map((sponsor) => (
-                  <article key={sponsor.id} className="overflow-hidden rounded-2xl border border-stone-200 bg-white transition hover:shadow-md">
-                    <div className="relative">
-                      <img src={sponsor.imageUrl} alt={`${sponsor.name} spotlight`} className="h-44 w-full object-cover" />
-                      <div
-                        className={`absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.1em] ${sponsorTierBadgeClass(sponsor.tier)}`}
-                      >
-                        {sponsor.tier}
-                      </div>
-                    </div>
-                    <div className="p-5">
-                      <img src={sponsor.logoUrl} alt={sponsor.name} className="h-9 w-auto object-contain" />
-                      <p className="mt-3 text-sm leading-relaxed text-stone-500">{sponsor.spotlight}</p>
-                      <a
-                        href={sponsor.websiteUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-red-700 transition hover:text-red-900"
-                      >
-                        Visit Website
-                        <ArrowRight className="h-3.5 w-3.5" />
-                      </a>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
-          )}
         </section>
+
+        {/* ── SPONSORS GRID ──────────────────────────────────────────────────── */}
+        {displayedSponsors.length > 0 && (
+          <section style={{ background: '#faf9f7', borderTop: '1.5px solid #f5f5f4' }} className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+            <div className="mb-8">
+              <p style={{ letterSpacing: '0.2em', color: '#a8a29e' }} className="mb-2 text-xs font-bold uppercase">
+                Community Partners
+              </p>
+              <h2 className="fund-serif text-3xl font-black text-stone-900">Our Sponsors</h2>
+            </div>
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+              {displayedSponsors.map((sponsor) => (
+                <article
+                  key={sponsor.id}
+                  style={{ borderRadius: '1.25rem', border: '1.5px solid #e7e5e4', background: '#fff', overflow: 'hidden', transition: 'box-shadow 0.2s' }}
+                  className="hover:shadow-lg"
+                >
+                  <div className="relative">
+                    <img
+                      src={sponsor.imageUrl}
+                      alt={`${sponsor.name} spotlight`}
+                      style={{ width: '100%', height: '11rem', objectFit: 'cover', display: 'block' }}
+                    />
+                    <div
+                      className={`absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-black uppercase tracking-wide ${tierAccent(sponsor.tier)}`}
+                      style={{ letterSpacing: '0.1em' }}
+                    >
+                      {sponsor.tier}
+                    </div>
+                  </div>
+                  <div style={{ padding: '1.25rem 1.5rem' }}>
+                    <img
+                      src={sponsor.logoUrl}
+                      alt={sponsor.name}
+                      style={{ height: '2.25rem', width: 'auto', objectFit: 'contain', marginBottom: '0.75rem' }}
+                    />
+                    <p style={{ fontSize: '0.8125rem', lineHeight: 1.7, color: '#78716c' }}>{sponsor.spotlight}</p>
+                    <a
+                      href={sponsor.websiteUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ marginTop: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.8125rem', fontWeight: 700, color: '#991b1b', transition: 'color 0.15s' }}
+                      className="hover:text-red-900"
+                    >
+                      Visit Website <ArrowUpRight style={{ width: 13, height: 13 }} />
+                    </a>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+      </div>
+    </>
+  );
+}
