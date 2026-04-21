@@ -301,20 +301,18 @@ export default function Fundraising() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Lato:wght@300;400;700&display=swap');
-
-        .fund-root { font-family: 'Lato', sans-serif; background: #faf9f7; color: #1c1917; }
-        .fund-serif { font-family: 'Playfair Display', Georgia, serif; }
+        .fund-root { font-family: var(--font-sans); background: #fafaf9; color: #1c1917; }
+        .fund-serif { font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif; }
 
         /* Buttons */
         .donate-btn {
           display: inline-flex; align-items: center; justify-content: center;
           gap: 0.5rem; padding: 0.75rem 1.5rem; border-radius: 9999px;
-          background: #991b1b; color: #fff; font-weight: 700; font-size: 0.875rem;
+          background: #b91c1c; color: #fff; font-weight: 700; font-size: 0.875rem;
           letter-spacing: 0.02em; transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
           border: none; cursor: pointer;
         }
-        .donate-btn:hover:not(:disabled) { background: #7f1d1d; box-shadow: 0 4px 20px rgba(153,27,27,0.35); transform: translateY(-1px); }
+        .donate-btn:hover:not(:disabled) { background: #991b1b; box-shadow: 0 4px 20px rgba(185, 28, 28, 0.3); transform: translateY(-1px); }
         .donate-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
         .pill-btn {
@@ -324,21 +322,21 @@ export default function Fundraising() {
           font-size: 0.8125rem; font-weight: 700; letter-spacing: 0.01em;
           transition: all 0.18s; cursor: pointer;
         }
-        .pill-btn:hover { border-color: #991b1b; color: #991b1b; background: #fff5f5; }
-        .pill-btn.active { border-color: #991b1b; background: #991b1b; color: #fff; }
+        .pill-btn:hover { border-color: #b91c1c; color: #b91c1c; background: #fef2f2; }
+        .pill-btn.active { border-color: #b91c1c; background: #b91c1c; color: #fff; }
 
         .fund-input {
           width: 100%; border-radius: 0.75rem; border: 1.5px solid #e7e5e4;
           background: #fff; padding: 0.65rem 1rem; font-size: 0.875rem; font-weight: 400;
-          font-family: 'Lato', sans-serif; color: #1c1917; transition: border 0.18s, box-shadow 0.18s;
+          font-family: var(--font-sans); color: #1c1917; transition: border 0.18s, box-shadow 0.18s;
           outline: none;
         }
         .fund-input::placeholder { color: #a8a29e; }
-        .fund-input:focus { border-color: #991b1b; box-shadow: 0 0 0 3px rgba(153,27,27,0.1); }
+        .fund-input:focus { border-color: #b91c1c; box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.12); }
 
         /* Hero */
         .hero-bg {
-          background: linear-gradient(160deg, #1c0a0a 0%, #3b0d0d 45%, #1c1917 100%);
+          background: linear-gradient(160deg, #292524 0%, #7f1d1d 45%, #1c1917 100%);
           position: relative; overflow: hidden;
         }
         .hero-bg::before {
@@ -352,7 +350,7 @@ export default function Fundraising() {
         /* Curtain divider */
         .curtain-divider {
           position: relative; height: 3px;
-          background: linear-gradient(90deg, transparent, #991b1b 30%, #dc2626 50%, #991b1b 70%, transparent);
+          background: linear-gradient(90deg, transparent, #b91c1c 30%, #ef4444 50%, #b91c1c 70%, transparent);
         }
 
         /* Sponsor ticker */
@@ -364,8 +362,8 @@ export default function Fundraising() {
           padding: 1.25rem 1.5rem; cursor: pointer;
           transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
         }
-        .level-card:hover { border-color: #fca5a5; box-shadow: 0 4px 16px rgba(153,27,27,0.08); transform: translateY(-1px); }
-        .level-card.selected { border-color: #991b1b; box-shadow: 0 0 0 3px rgba(153,27,27,0.12), 0 4px 16px rgba(153,27,27,0.1); }
+        .level-card:hover { border-color: #fca5a5; box-shadow: 0 4px 16px rgba(185, 28, 28, 0.1); transform: translateY(-1px); }
+        .level-card.selected { border-color: #b91c1c; box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.14), 0 4px 16px rgba(185, 28, 28, 0.12); }
 
         /* Celebration overlay */
         .celebration-bg {
@@ -437,7 +435,7 @@ export default function Fundraising() {
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100 text-red-700">
                   <Heart className="heart-beat h-8 w-8 fill-current" />
                 </div>
-                <p style={{ fontFamily: "'Lato', sans-serif", letterSpacing: '0.18em' }} className="text-xs font-bold uppercase text-red-700">Donation Received</p>
+                <p style={{ fontFamily: 'var(--font-sans)', letterSpacing: '0.18em' }} className="text-xs font-bold uppercase text-red-700">Donation Received</p>
                 <h3 className="fund-serif mt-2 text-3xl font-bold text-stone-900">Thank You!</h3>
                 <p className="mt-3 text-sm leading-relaxed text-stone-500">
                   {lastDonationAmountCents
@@ -570,7 +568,7 @@ export default function Fundraising() {
                 {/* Step 1 – Your info */}
                 <div style={{ border: '1.5px solid #e7e5e4', borderRadius: '1.25rem', background: '#fff' }} className="p-6 sm:p-7">
                   <div className="mb-5 flex items-start gap-3">
-                    <div style={{ background: '#991b1b', borderRadius: '50%', width: 28, height: 28, flexShrink: 0 }}
+                    <div style={{ background: '#b91c1c', borderRadius: '50%', width: 28, height: 28, flexShrink: 0 }}
                       className="flex items-center justify-center text-white text-xs font-black mt-0.5">1</div>
                     <div>
                       <h3 className="fund-serif text-lg font-bold text-stone-900">Your Information</h3>
@@ -607,7 +605,7 @@ export default function Fundraising() {
                             borderRadius: '9999px', padding: '0.3rem 0.875rem',
                             fontSize: '0.75rem', fontWeight: 700, border: 'none', cursor: 'pointer',
                             transition: 'all 0.18s',
-                            background: donorRecognitionPreference === pref ? '#991b1b' : 'transparent',
+                            background: donorRecognitionPreference === pref ? '#b91c1c' : 'transparent',
                             color: donorRecognitionPreference === pref ? '#fff' : '#78716c',
                           }}
                         >
@@ -626,7 +624,7 @@ export default function Fundraising() {
                 {/* Step 2 – Choose amount */}
                 <div style={{ border: '1.5px solid #e7e5e4', borderRadius: '1.25rem', background: '#fff' }} className="p-6 sm:p-7">
                   <div className="mb-5 flex items-start gap-3">
-                    <div style={{ background: '#991b1b', borderRadius: '50%', width: 28, height: 28, flexShrink: 0 }}
+                    <div style={{ background: '#b91c1c', borderRadius: '50%', width: 28, height: 28, flexShrink: 0 }}
                       className="flex items-center justify-center text-white text-xs font-black mt-0.5">2</div>
                     <div>
                       <h3 className="fund-serif text-lg font-bold text-stone-900">Choose an Amount</h3>
@@ -680,7 +678,7 @@ export default function Fundraising() {
 
                   {/* Error */}
                   {donationError && (
-                    <div style={{ marginTop: '1rem', borderRadius: '0.75rem', border: '1px solid #fecaca', background: '#fff5f5', padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#991b1b' }}>
+                    <div style={{ marginTop: '1rem', borderRadius: '0.75rem', border: '1px solid #fecaca', background: '#fef2f2', padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#b91c1c' }}>
                       {donationError}
                     </div>
                   )}
@@ -700,7 +698,7 @@ export default function Fundraising() {
                   {/* Loading */}
                   {donationIntentLoading && (
                     <div style={{ marginTop: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: '#78716c' }}>
-                      <Loader2 style={{ width: 16, height: 16, color: '#991b1b', animation: 'spin 1s linear infinite' }} />
+                      <Loader2 style={{ width: 16, height: 16, color: '#b91c1c', animation: 'spin 1s linear infinite' }} />
                       Loading secure payment form…
                     </div>
                   )}
@@ -715,7 +713,7 @@ export default function Fundraising() {
                     className="p-6 sm:p-7"
                   >
                     <div className="mb-5 flex items-start gap-3">
-                      <div style={{ background: '#991b1b', borderRadius: '50%', width: 28, height: 28, flexShrink: 0 }}
+                      <div style={{ background: '#b91c1c', borderRadius: '50%', width: 28, height: 28, flexShrink: 0 }}
                         className="flex items-center justify-center text-white text-xs font-black mt-0.5">3</div>
                       <div className="flex-1 flex items-start justify-between gap-2">
                         <div>
@@ -841,7 +839,7 @@ export default function Fundraising() {
                       href={sponsor.websiteUrl}
                       target="_blank"
                       rel="noreferrer"
-                      style={{ marginTop: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.8125rem', fontWeight: 700, color: '#991b1b', transition: 'color 0.15s' }}
+                      style={{ marginTop: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.8125rem', fontWeight: 700, color: '#b91c1c', transition: 'color 0.15s' }}
                       className="hover:text-red-900"
                     >
                       Visit Website <ArrowUpRight style={{ width: 13, height: 13 }} />
