@@ -479,7 +479,7 @@ const styles: Record<string, React.CSSProperties> = {
   carouselWrap: {
     position: 'relative',
     width: '100%',
-    maxWidth: 420,
+    maxWidth: 400,
     marginTop: 28,
   },
   navArrow: {
@@ -524,7 +524,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   ticketCard: {
     position: 'relative',
-    width: '100%',
+    width: '92%',
+    maxWidth: 360,
+    margin: '0 auto',
     background: '#fff',
     borderRadius: 20,
     boxShadow: '0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06)',
@@ -688,13 +690,13 @@ const styles: Record<string, React.CSSProperties> = {
   },
   qrImg: {
     width: '100%',
-    maxWidth: 220,
+    maxWidth: 200,
     borderRadius: 12,
     display: 'block',
   },
   qrPlaceholder: {
     width: '100%',
-    maxWidth: 220,
+    maxWidth: 200,
     aspectRatio: '1',
     borderRadius: 12,
     background: STONE_100,
