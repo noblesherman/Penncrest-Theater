@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `backend/src/types/fastify.d.ts`
+- What this is: Backend type augmentation module.
+- What it does: Extends framework typings used project-wide.
+- Connections: Read at compile time by TypeScript to type decorated fields.
+- Main content type: Types only (no runtime behavior).
+- Safe edits here: Additive declarations.
+- Be careful with: Removing/renaming declarations that many files depend on.
+- Useful context: When TS can’t find custom request/server fields, check here first.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 import 'fastify';
 import type { AdminRole, AdminUser, ManagedDevice, TripAccount, User } from '@prisma/client';
 

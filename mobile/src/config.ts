@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `mobile/src/config.ts`
+- What this is: Mobile shared support module.
+- What it does: Provides app-wide config/auth/error/recovery behavior.
+- Connections: Used by screens, API clients, and runtime helpers across mobile.
+- Main content type: Shared behavior/config.
+- Safe edits here: Text constants and additive helper behavior.
+- Be careful with: Persisted-key or shared-contract changes.
+- Useful context: Cross-screen inconsistencies often trace back to this support layer.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 const PRODUCTION_API_BASE_URL = 'https://api.penncresttheater.com';
 const PRODUCTION_WEB_BASE_URL = 'https://www.penncresttheater.com';
 

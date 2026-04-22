@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `mobile/src/device/deviceApi.ts`
+- What this is: Mobile device/runtime control module.
+- What it does: Handles managed-device commands, storage, update checks, and native bridge behavior.
+- Connections: Used by startup/maintenance/terminal flows.
+- Main content type: Runtime control logic rather than UI.
+- Safe edits here: Diagnostics comments and careful additive safeguards.
+- Be careful with: Command handling/state persistence changes that can lock or destabilize flows.
+- Useful context: This area is naturally fragile; test real-device paths when behavior changes.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 import { apiRequest } from '../api/client';
 
 export type DeviceUpdateState = 'IDLE' | 'DOWNLOADING' | 'VERIFYING' | 'INSTALLING' | 'INSTALLED' | 'FAILED';

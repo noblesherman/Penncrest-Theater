@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `mobile/src/lib/theaterErrorTone.ts`
+- What this is: Mobile shared support module.
+- What it does: Provides app-wide config/auth/error/recovery behavior.
+- Connections: Used by screens, API clients, and runtime helpers across mobile.
+- Main content type: Shared behavior/config.
+- Safe edits here: Text constants and additive helper behavior.
+- Be careful with: Persisted-key or shared-contract changes.
+- Useful context: Cross-screen inconsistencies often trace back to this support layer.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 const DEFAULT_FRIENDLY_FALLBACK = 'Something went a little off-script. Please try again in just a moment, thanks!';
 
 function normalizeMessage(input: string): string {

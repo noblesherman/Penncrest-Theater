@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `mobile/src/navigation/AppNavigator.tsx`
+- What this is: Mobile navigation contract module.
+- What it does: Defines stack route typing and screen registration wiring.
+- Connections: Central navigation layer consumed by all screens.
+- Main content type: Navigation config + types.
+- Safe edits here: Additive route docs and route additions with matching screen updates.
+- Be careful with: Renaming route keys used throughout the app.
+- Useful context: If navigation calls fail or mismatch params, inspect this layer first.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useState } from 'react';

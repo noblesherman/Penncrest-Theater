@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `src/pages/admin/forms/SeniorSendoffFormsPanel.tsx`
+- What this is: Admin form-management sub-panel.
+- What it does: Handles form builder/editor UI logic used in the admin dashboard.
+- Connections: Nested under admin pages; talks to admin form endpoints and shared form helpers.
+- Main content type: Layout + state logic + admin-visible text.
+- Safe edits here: Copy labels/help text and small UI layout changes.
+- Be careful with: Payload shape changes, question IDs, and validation assumptions.
+- Useful context: If form editing or publishing breaks, this layer is usually part of the chain.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Archive, ChevronLeft, ChevronRight, Copy, Download, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
 import { adminFetch } from '../../../lib/adminAuth';

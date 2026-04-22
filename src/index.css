@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `src/index.css`
+- What this is: Global web stylesheet entry.
+- What it does: Sets baseline styles and shared visual tokens/utilities.
+- Connections: Imported at app startup and applied across all web routes.
+- Main content type: Styling only.
+- Safe edits here: Typography/colors/spacing token tuning.
+- Be careful with: Global resets/selectors that can unintentionally affect every page.
+- Useful context: Use this when you want a consistent style change across the whole site.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 @import "tailwindcss";
 
 html {

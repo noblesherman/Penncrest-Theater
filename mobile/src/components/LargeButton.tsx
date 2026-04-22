@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `mobile/src/components/LargeButton.tsx`
+- What this is: Shared React Native component.
+- What it does: Provides reusable UI pieces used across multiple screens.
+- Connections: Imported by screen modules and sometimes runtime/device context.
+- Main content type: Presentation with light interaction behavior.
+- Safe edits here: Styling and microcopy changes preserving component contracts.
+- Be careful with: Prop/state contract edits that affect many screens.
+- Useful context: Use this layer for consistent visual updates across the mobile app.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 import { ActivityIndicator, Pressable, StyleSheet, Text, ViewStyle } from 'react-native';
 
 type Props = {

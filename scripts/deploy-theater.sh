@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+# Handoff note for Mr. Smith:
+# - File: `scripts/deploy-theater.sh`
+# - What this is: Operational shell script.
+# - What it does: Automates deploy/tunnel/backup/restore runbook tasks.
+# - Connections: Executed from terminal or automation; touches infra/data paths directly.
+# - Main content type: Ops orchestration logic.
+# - Safe edits here: User-facing messages and safe default notes.
+# - Be careful with: Env vars, target hosts/paths, and potentially destructive commands.
+# - Useful context: Treat as code-runbook: verify target environment every run.
+# - Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

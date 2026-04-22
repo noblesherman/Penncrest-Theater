@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `backend/src/services/order-assignment 2.ts`
+- What this is: Backend domain service module.
+- What it does: Implements core business logic used by routes, jobs, and workers.
+- Connections: Called by route handlers and often integrates with Stripe + Prisma.
+- Main content type: High-impact business logic and side effects.
+- Safe edits here: Comments and conservative observability text updates.
+- Be careful with: Side-effect ordering, idempotency, and money/ticket flow behavior.
+- Useful context: When route shape looks right but outcomes are wrong, this layer is usually the cause.
+- Practical note: This filename looks like a duplicate snapshot (`... 2.*`), so confirm which twin is truly wired before touching logic.
+*/
+
 import crypto from 'node:crypto';
 import { InPersonPaymentMethod, OrderSource, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';

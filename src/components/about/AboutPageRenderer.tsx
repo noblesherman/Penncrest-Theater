@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `src/components/about/AboutPageRenderer.tsx`
+- What this is: Shared About-section component.
+- What it does: Renders/transitions About subpages and shared About UX behavior.
+- Connections: Used by About route files and fed by About content utilities.
+- Main content type: Shared layout behavior rather than single-page copy.
+- Safe edits here: Visual polish and non-breaking text updates.
+- Be careful with: Slug/data-shape assumptions reused across multiple About pages.
+- Useful context: If multiple About pages glitch together, check this shared layer first.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 import { motion } from 'motion/react';
 import { ArrowRight, CalendarDays, Mail } from 'lucide-react';
 import { Link } from 'react-router-dom';

@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `src/pages/Booking 2.tsx`
+- What this is: Public web route page.
+- What it does: Renders a full user-facing page for the theater site.
+- Connections: Registered in `src/App.tsx` and backed by shared components/helpers in `src/components` + `src/lib`.
+- Main content type: Page layout + visible text + route-level logic.
+- Safe edits here: Wording, headings, section order, and styling tweaks.
+- Be careful with: Form payloads, URL param handling, and API response assumptions.
+- Useful context: This folder is one of the most common edit points for visible site content.
+- Practical note: This filename looks like a duplicate snapshot (`... 2.*`), so confirm which twin is truly wired before touching logic.
+*/
+
 import { useEffect, useMemo, useState, useRef, useCallback, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';

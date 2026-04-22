@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `backend/src/routes/orders 2.ts`
+- What this is: Fastify route module.
+- What it does: Defines HTTP endpoints and route-level request handling for one domain area.
+- Connections: Registered by backend server bootstrap; calls services/lib helpers and Prisma.
+- Main content type: HTTP logic + auth guards + response shaping.
+- Safe edits here: Response wording and non-breaking diagnostics.
+- Be careful with: Auth hooks, schema contracts, and transactional behavior.
+- Useful context: If frontend/mobile API calls fail after changes, contract drift often starts here.
+- Practical note: This filename looks like a duplicate snapshot (`... 2.*`), so confirm which twin is truly wired before touching logic.
+*/
+
 import { FastifyPluginAsync } from 'fastify';
 import Stripe from 'stripe';
 import { z } from 'zod';

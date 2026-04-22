@@ -1,3 +1,13 @@
+# Handoff note for Mr. Smith:
+# - File: `deploy/systemd/theater-db-backup.timer`
+# - What this is: Systemd unit config for automated operations.
+# - What it does: Controls backup service execution/schedule at the host level.
+# - Connections: Works with shell backup scripts and server environment paths.
+# - Main content type: Deployment/runtime scheduling config.
+# - Safe edits here: Description text and clearly intentional schedule comments.
+# - Be careful with: Unit names, ExecStart path, and schedule timing fields.
+# - Useful context: If backup automation stops running, this is one of the first places to inspect.
+# - Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
 [Unit]
 Description=Run Penncrest Theater PostgreSQL backup daily
 

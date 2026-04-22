@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `backend/src/scripts/reset-system-keep-users.ts`
+- What this is: Backend maintenance script.
+- What it does: Executes one-off operational tasks against backend data/services.
+- Connections: Run manually outside the normal HTTP request path.
+- Main content type: Direct side-effect logic.
+- Safe edits here: Dry-run messaging and safety comments.
+- Be careful with: Bulk change filters and environment targeting.
+- Useful context: Treat this as a power tool: verify scope/environment before running.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 import '../lib/load-env.js';
 import { prisma } from '../lib/prisma.js';
 

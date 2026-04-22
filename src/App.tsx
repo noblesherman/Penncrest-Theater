@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `src/App.tsx`
+- What this is: Main web app route composition file.
+- What it does: Defines top-level routing and wrapper structure for the web app.
+- Connections: Pulls page modules together and applies app-wide wrappers.
+- Main content type: Routing/layout orchestration.
+- Safe edits here: Route comments and careful route additions.
+- Be careful with: Existing paths/wrapper order that deep links and guards depend on.
+- Useful context: Common edit point when adding features that need new routes.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Navigate, Outlet, Route, Routes, useLocation, useOutletContext } from 'react-router-dom';
 import CurtainIntro from './components/CurtainIntro';

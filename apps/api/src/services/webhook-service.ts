@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `apps/api/src/services/webhook-service.ts`
+- What this is: Express service handler module (secondary API app).
+- What it does: Contains request business logic used by route handlers.
+- Connections: Invoked from routes and tied to Prisma/Stripe helpers.
+- Main content type: Business logic with DB/payment side effects.
+- Safe edits here: Comments and non-breaking readability improvements.
+- Be careful with: Idempotency and write-order changes in checkout/payment flows.
+- Useful context: If this app is still live anywhere, keep behavior changes tightly controlled.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { stripe } from '../server.js';

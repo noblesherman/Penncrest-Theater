@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `mobile/src/screens/styles.ts`
+- What this is: React Native screen module.
+- What it does: Implements one full mobile screen and its workflow logic.
+- Connections: Registered through navigator and connected to mobile api/device/payment helpers.
+- Main content type: Screen layout + user flow logic + visible operator text.
+- Safe edits here: UI copy tweaks and presentational layout polish.
+- Be careful with: Navigation params, async state flow, and payment/scan side effects.
+- Useful context: If terminal workflows feel off, these screen files are key investigation points.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 import { StyleSheet } from 'react-native';
 
 export const screenStyles = StyleSheet.create({

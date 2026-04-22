@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `scripts/load/k6-prod-flash-sale.js`
+- What this is: Load/performance test script.
+- What it does: Generates synthetic traffic to test behavior under stress.
+- Connections: Targets API endpoints used by ticketing/fundraising flows.
+- Main content type: Traffic simulation logic.
+- Safe edits here: Scenario labels and threshold notes.
+- Be careful with: Pointing tests at the wrong environment or credentials.
+- Useful context: Use this before high-volume events to sanity-check capacity.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 import http from 'k6/http';
 import { check, fail, sleep } from 'k6';
 import exec from 'k6/execution';

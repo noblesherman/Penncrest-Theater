@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `backend/src/tests/trip-payments.integration.test.ts`
+- What this is: Backend test module.
+- What it does: Covers integration/smoke behavior for key backend workflows.
+- Connections: Exercises route + service behavior to catch regressions early.
+- Main content type: Test setup and assertions.
+- Safe edits here: Assertion message clarity and docs comments.
+- Be careful with: Changing expectations without confirming intended behavior.
+- Useful context: Useful for understanding what the system is supposed to do right now.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

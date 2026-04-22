@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `backend/src/services/checkout-queue-worker.ts`
+- What this is: Backend domain service module.
+- What it does: Implements core business logic used by routes, jobs, and workers.
+- Connections: Called by route handlers and often integrates with Stripe + Prisma.
+- Main content type: High-impact business logic and side effects.
+- Safe edits here: Comments and conservative observability text updates.
+- Be careful with: Side-effect ordering, idempotency, and money/ticket flow behavior.
+- Useful context: When route shape looks right but outcomes are wrong, this layer is usually the cause.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 import type { FastifyBaseLogger } from 'fastify';
 import type { CheckoutQueueItem } from '@prisma/client';
 import { env } from '../lib/env.js';

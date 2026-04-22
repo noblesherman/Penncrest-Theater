@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `mobile/src/terminal/terminal.tsx`
+- What this is: Mobile payment/terminal integration module.
+- What it does: Coordinates Tap to Pay / payment-sheet / terminal-specific operations.
+- Connections: Connected to sell-ticket screens and backend payment endpoints.
+- Main content type: Payment lifecycle logic and provider integration.
+- Safe edits here: Status wording and non-breaking diagnostics.
+- Be careful with: Retry/state-machine assumptions in money-moving flows.
+- Useful context: If payment behavior drifts, trace ordering here before changing UI.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 import type { PropsWithChildren } from 'react';
 import { useCallback } from 'react';
 import { Platform } from 'react-native';

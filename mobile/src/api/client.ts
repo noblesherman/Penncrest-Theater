@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `mobile/src/api/client.ts`
+- What this is: Mobile API client module.
+- What it does: Wraps HTTP requests and response handling for app workflows.
+- Connections: Called by auth, screens, and device/payment flows.
+- Main content type: Network/data mapping logic.
+- Safe edits here: Additive helpers and non-breaking error-message improvements.
+- Be careful with: Endpoint path or response-shape changes.
+- Useful context: If multiple screens break after backend edits, compare contracts here first.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 import { API_BASE_URL } from '../config';
 import { toTheaterFriendlyErrorMessage } from '../lib/theaterErrorTone';
 

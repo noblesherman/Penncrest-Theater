@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `src/hooks/useCashierDefaultPerformance.ts`
+- What this is: Custom React hook.
+- What it does: Encapsulates reusable state/effect behavior for web UI.
+- Connections: Consumed by pages/components to avoid duplicated effect logic.
+- Main content type: Stateful behavior and side-effect control.
+- Safe edits here: Readability comments and conservative non-breaking tweaks.
+- Be careful with: Effect timing/subscriptions that can create subtle UI regressions.
+- Useful context: If multiple screens show the same behavior bug, inspect this hook.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 const CASHIER_DEFAULT_PERFORMANCE_STORAGE_KEY = 'theater_cashier_default_performance_v1';
 
 export function readCashierDefaultPerformanceId(): string {

@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `backend/src/routes/admin-auth.ts`
+- What this is: Fastify route module.
+- What it does: Defines HTTP endpoints and route-level request handling for one domain area.
+- Connections: Registered by backend server bootstrap; calls services/lib helpers and Prisma.
+- Main content type: HTTP logic + auth guards + response shaping.
+- Safe edits here: Response wording and non-breaking diagnostics.
+- Be careful with: Auth hooks, schema contracts, and transactional behavior.
+- Useful context: If frontend/mobile API calls fail after changes, contract drift often starts here.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 import { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { ensureBootstrapSuperAdmin, normalizeAdminUsername, serializeAdminUser } from '../lib/admin-users.js';
@@ -84,15 +97,44 @@ export const adminAuthRoutes: FastifyPluginAsync = async (app) => {
       const isAdminWithOptionalTwoFactor = admin.role === 'ADMIN' && admin.twoFactorEnabled;
       const requiresTwoFactorCheck = isSuperAdmin || isAdminWithOptionalTwoFactor;
 
-      if (isSuperAdmin && (!admin.twoFactorEnabled || !admin.twoFactorSecretEncrypted)) {
-        const twoFactorSetupSecret = generateTotpSecret();
+      if (isSuperAdmin && !admin.twoFactorEnabled) {
+        let twoFactorSetupSecret: string;
+
+        if (admin.twoFactorSecretEncrypted) {
+          twoFactorSetupSecret = decryptSecret(admin.twoFactorSecretEncrypted);
+        } else {
+          const candidateSecret = generateTotpSecret();
+          const candidateSecretEncrypted = encryptSecret(candidateSecret);
+
+          // Create a single pending setup secret and reuse it across retries.
+          await prisma.adminUser.updateMany({
+            where: {
+              id: admin.id,
+              twoFactorSecretEncrypted: null
+            },
+            data: {
+              twoFactorSecretEncrypted: candidateSecretEncrypted
+            }
+          });
+
+          const refreshedAdmin = await prisma.adminUser.findUnique({
+            where: { id: admin.id }
+          });
+
+          if (!refreshedAdmin?.twoFactorSecretEncrypted) {
+            return reply.status(500).send({ error: 'Two-factor authentication setup could not be started' });
+          }
+
+          admin = refreshedAdmin;
+          twoFactorSetupSecret = decryptSecret(refreshedAdmin.twoFactorSecretEncrypted);
+        }
+
         const setupToken = await app.jwt.sign(
           {
             role: 'admin_setup',
             purpose: 'admin-2fa-setup',
             adminId: admin.id,
-            username: admin.username,
-            twoFactorSetupSecret
+            username: admin.username
           },
           { expiresIn: '15m' }
         );
@@ -108,6 +150,10 @@ export const adminAuthRoutes: FastifyPluginAsync = async (app) => {
           }),
           admin: serializeAdminUser(admin)
         });
+      }
+
+      if (isSuperAdmin && !admin.twoFactorSecretEncrypted) {
+        return reply.status(500).send({ error: 'Two-factor authentication is not configured correctly' });
       }
 
       if (requiresTwoFactorCheck) {
@@ -160,15 +206,10 @@ export const adminAuthRoutes: FastifyPluginAsync = async (app) => {
         purpose: 'admin-2fa-setup';
         adminId: string;
         username: string;
-        twoFactorSetupSecret: string;
       }>(parsed.data.setupToken);
 
-      if (payload.role !== 'admin_setup' || payload.purpose !== 'admin-2fa-setup' || !payload.adminId || !payload.twoFactorSetupSecret) {
+      if (payload.role !== 'admin_setup' || payload.purpose !== 'admin-2fa-setup' || !payload.adminId) {
         return reply.status(401).send({ error: 'Invalid setup token' });
-      }
-
-      if (!verifyTotpCode({ secret: payload.twoFactorSetupSecret, code: parsed.data.otpCode })) {
-        return reply.status(400).send({ error: 'Invalid authentication code' });
       }
 
       let admin = await prisma.adminUser.findUnique({
@@ -183,11 +224,19 @@ export const adminAuthRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(403).send({ error: 'Two-factor authentication is not enabled for box office accounts' });
       }
 
+      if (!admin.twoFactorSecretEncrypted) {
+        return reply.status(400).send({ error: 'Two-factor setup has expired. Sign in again to restart setup.' });
+      }
+
+      const secret = decryptSecret(admin.twoFactorSecretEncrypted);
+      if (!verifyTotpCode({ secret, code: parsed.data.otpCode })) {
+        return reply.status(400).send({ error: 'Invalid authentication code' });
+      }
+
       admin = await prisma.adminUser.update({
         where: { id: admin.id },
         data: {
           twoFactorEnabled: true,
-          twoFactorSecretEncrypted: encryptSecret(payload.twoFactorSetupSecret),
           lastLoginAt: new Date()
         }
       });

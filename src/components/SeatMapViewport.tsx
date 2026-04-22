@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `src/components/SeatMapViewport.tsx`
+- What this is: Shared web component.
+- What it does: Provides reusable UI/interaction pieces used by multiple routes.
+- Connections: Imported across page files and often paired with `src/lib` helpers.
+- Main content type: Shared layout/behavior, sometimes with visible microcopy.
+- Safe edits here: Styling and copy tweaks that preserve props/contracts.
+- Be careful with: Prop/type changes that ripple into many callers.
+- Useful context: When several pages break in the same way, start by checking shared components.
+- Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
+*/
+
 import { CSSProperties, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Minus, Plus, RefreshCw } from 'lucide-react';
 import { TransformComponent, TransformWrapper, ReactZoomPanPinchContentRef } from 'react-zoom-pan-pinch';

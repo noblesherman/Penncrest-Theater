@@ -1,3 +1,16 @@
+/*
+Handoff note for Mr. Smith:
+- File: `src/pages/admin/ScannerLive 2.tsx`
+- What this is: Admin route page.
+- What it does: Runs one full admin screen with data loading and operator actions.
+- Connections: Wired from `src/App.tsx`; depends on admin auth helpers and backend admin routes.
+- Main content type: Business logic + admin UI + visible wording.
+- Safe edits here: Table labels, section copy, and presentational layout.
+- Be careful with: Request/response contracts, auth checks, and state transitions tied to backend behavior.
+- Useful context: Operationally sensitive area: UI polish is safe, contract changes need extra care.
+- Practical note: This filename looks like a duplicate snapshot (`... 2.*`), so confirm which twin is truly wired before touching logic.
+*/
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { adminFetch } from '../../lib/adminAuth';
