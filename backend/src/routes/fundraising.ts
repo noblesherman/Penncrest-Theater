@@ -7,6 +7,7 @@ import { env } from '../lib/env.js';
 import { handleRouteError } from '../lib/route-error.js';
 import { stripe } from '../lib/stripe.js';
 import { logAudit } from '../lib/audit-log.js';
+import { HttpError } from '../lib/http-error.js';
 import { reconcileDonationThankYouEmail } from '../services/donation-thank-you-service.js';
 import { releasePendingStudentCreditForOrderTx } from '../services/student-ticket-credit-service.js';
 
@@ -131,7 +132,7 @@ const donationIntentSchema = z.object({
   donorName: z.string().trim().min(1).max(120),
   donorEmail: z.string().trim().email().max(320),
   donorRecognitionPreference: z.enum(['known', 'anonymous']).optional(),
-  donationOptionId: z.string().trim().min(1).max(80).optional(),
+  donationOptionId: z.string().trim().min(1).max(80),
   donationOptionName: z.string().trim().min(1).max(140).optional(),
   donationLevelId: z.string().trim().min(1).max(80).optional(),
   donationLevelTitle: z.string().trim().min(1).max(140).optional(),
@@ -216,6 +217,60 @@ async function saveDonationCatalogStore(
       updatedByAdminId: adminId ?? null
     }
   });
+}
+
+type DonationSelectionMetadata = {
+  donationOptionId: string;
+  donationOptionName: string;
+  donationLevelId: string;
+  donationLevelTitle: string;
+  donationLevelAmountLabel: string;
+  donationSelectionType: 'level' | 'custom';
+  donationBucketKey: string;
+  donationBucketLabel: string;
+};
+
+function resolveDonationSelectionMetadata(params: {
+  options: z.infer<typeof donationOptionCatalogSchema>[];
+  donationOptionId: string;
+  donationLevelId?: string;
+}): DonationSelectionMetadata {
+  const option = params.options.find((row) => row.id === params.donationOptionId);
+  if (!option) {
+    throw new HttpError(400, 'Selected donation path is no longer available. Refresh and choose again.');
+  }
+
+  if (!params.donationLevelId) {
+    const donationLevelId = 'custom';
+    const donationLevelTitle = 'Custom Amount';
+    const donationLevelAmountLabel = 'Custom';
+    return {
+      donationOptionId: option.id,
+      donationOptionName: option.name,
+      donationLevelId,
+      donationLevelTitle,
+      donationLevelAmountLabel,
+      donationSelectionType: 'custom',
+      donationBucketKey: `${option.id}:${donationLevelId}`,
+      donationBucketLabel: `${option.name} - ${donationLevelTitle}`
+    };
+  }
+
+  const level = option.levels.find((row) => row.id === params.donationLevelId);
+  if (!level) {
+    throw new HttpError(400, 'Selected donation level is no longer available for this donation path.');
+  }
+
+  return {
+    donationOptionId: option.id,
+    donationOptionName: option.name,
+    donationLevelId: level.id,
+    donationLevelTitle: level.title,
+    donationLevelAmountLabel: level.amountLabel,
+    donationSelectionType: 'level',
+    donationBucketKey: `${option.id}:${level.id}`,
+    donationBucketLabel: `${option.name} - ${level.title}`
+  };
 }
 
 function isSeatEffectivelyAvailable(seat: {
@@ -327,24 +382,31 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
         const donorName = parsed.data.donorName.trim();
         const donorEmail = parsed.data.donorEmail.trim().toLowerCase();
         const donorRecognitionPreference = parsed.data.donorRecognitionPreference || 'known';
+        const catalogStore = await loadDonationCatalogStore();
+        const selection = resolveDonationSelectionMetadata({
+          options: catalogStore.options,
+          donationOptionId: parsed.data.donationOptionId,
+          donationLevelId: parsed.data.donationLevelId
+        });
+
         const metadata: Record<string, string> = {
           source: 'fundraising_donation',
           amountCents: String(amountCents),
           donorName,
           donorEmail,
-          donorRecognitionPreference
+          donorRecognitionPreference,
+          donationOptionId: selection.donationOptionId,
+          donationOptionName: selection.donationOptionName,
+          donationLevelId: selection.donationLevelId,
+          donationLevelTitle: selection.donationLevelTitle,
+          donationLevelAmountLabel: selection.donationLevelAmountLabel,
+          donationSelectionType: selection.donationSelectionType,
+          donationBucketKey: selection.donationBucketKey,
+          donationBucketLabel: selection.donationBucketLabel
         };
 
-        if (parsed.data.donationOptionId) metadata.donationOptionId = parsed.data.donationOptionId;
-        if (parsed.data.donationOptionName) metadata.donationOptionName = parsed.data.donationOptionName;
-        if (parsed.data.donationLevelId) metadata.donationLevelId = parsed.data.donationLevelId;
-        if (parsed.data.donationLevelTitle) metadata.donationLevelTitle = parsed.data.donationLevelTitle;
-        if (parsed.data.donationLevelAmountLabel) metadata.donationLevelAmountLabel = parsed.data.donationLevelAmountLabel;
-
         const donorDescriptor = donorRecognitionPreference === 'anonymous' ? 'Anonymous Donor' : donorName;
-        const donationDescriptor = parsed.data.donationOptionName
-          ? `${parsed.data.donationOptionName}: ${donorDescriptor}`
-          : donorDescriptor;
+        const donationDescriptor = `${selection.donationBucketLabel}: ${donorDescriptor}`;
         const paymentIntent = await stripe.paymentIntents.create({
           amount: amountCents,
           currency: 'usd',
@@ -386,12 +448,12 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
       const requestedLimit = parsed.data.limit;
       const intents = await stripe.paymentIntents.list({ limit: 100 });
       const donationIntents = intents.data
-        .filter((intent) => intent.metadata?.source === 'fundraising_donation')
+        .filter((intent) => intent.metadata?.source === 'fundraising_donation' && intent.status === 'succeeded')
         .slice(0, requestedLimit);
 
       const reconciledIntents = await Promise.all(
         donationIntents.map(async (intent) => {
-          if (intent.status !== 'succeeded' || intent.metadata?.thankYouEmailSent === 'true') {
+          if (intent.metadata?.thankYouEmailSent === 'true') {
             return intent;
           }
 
@@ -425,9 +487,14 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
           donorEmail: intent.metadata?.donorEmail || intent.receipt_email || '',
           donorRecognitionPreference:
             intent.metadata?.donorRecognitionPreference === 'anonymous' ? 'anonymous' : 'known',
+          donationOptionId: intent.metadata?.donationOptionId || null,
           donationOptionName: intent.metadata?.donationOptionName || null,
+          donationLevelId: intent.metadata?.donationLevelId || null,
           donationLevelTitle: intent.metadata?.donationLevelTitle || null,
           donationLevelAmountLabel: intent.metadata?.donationLevelAmountLabel || null,
+          donationSelectionType: intent.metadata?.donationSelectionType || null,
+          donationBucketKey: intent.metadata?.donationBucketKey || null,
+          donationBucketLabel: intent.metadata?.donationBucketLabel || null,
           receiptEmail: intent.receipt_email || null,
           createdAt: new Date(intent.created * 1000).toISOString(),
           thankYouEmailSent: intent.metadata?.thankYouEmailSent === 'true'
@@ -435,13 +502,37 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
 
       const succeeded = donations.filter((donation) => donation.status === 'succeeded');
       const grossSucceededCents = succeeded.reduce((sum, donation) => sum + donation.amountCents, 0);
+      const bucketTotalsMap = new Map<string, {
+        bucketKey: string;
+        bucketLabel: string;
+        count: number;
+        grossSucceededCents: number;
+      }>();
+      succeeded.forEach((donation) => {
+        const fallbackBucketLabel = [donation.donationOptionName || 'Unassigned', donation.donationLevelTitle || 'Custom Amount'].join(' - ');
+        const bucketLabel = donation.donationBucketLabel || fallbackBucketLabel;
+        const bucketKey = donation.donationBucketKey || `${donation.donationOptionId || 'unknown'}:${donation.donationLevelId || 'custom'}`;
+        const current = bucketTotalsMap.get(bucketKey) || {
+          bucketKey,
+          bucketLabel,
+          count: 0,
+          grossSucceededCents: 0
+        };
+        current.count += 1;
+        current.grossSucceededCents += donation.amountCents;
+        bucketTotalsMap.set(bucketKey, current);
+      });
+      const bucketTotals = Array.from(bucketTotalsMap.values()).sort(
+        (a, b) => b.grossSucceededCents - a.grossSucceededCents || a.bucketLabel.localeCompare(b.bucketLabel)
+      );
 
       return reply.send({
         donations,
         summary: {
           count: donations.length,
           succeededCount: succeeded.length,
-          grossSucceededCents
+          grossSucceededCents,
+          bucketTotals
         }
       });
     } catch (err) {

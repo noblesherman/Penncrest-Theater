@@ -93,6 +93,22 @@ type FinanceOrderRow = {
   netCents: number;
 };
 
+type FinanceDonationRow = {
+  paymentIntentId: string;
+  latestChargeId: string | null;
+  createdAt: string;
+  status: string;
+  currency: string;
+  grossCents: number;
+  refundCents: number;
+  netCents: number;
+  donorName: string;
+  donorEmail: string;
+  donationOptionName: string;
+  donationLevelTitle: string;
+  destinationPile: string;
+};
+
 type FinanceBreakdownRow = {
   key: string;
   label: string;
@@ -113,16 +129,21 @@ type FinanceReportData = {
   performanceLabel: string;
   totals: {
     orderCount: number;
+    donationCount: number;
     ticketCount: number;
     grossCents: number;
     refundCents: number;
     netCents: number;
     cashNetCents: number;
     cardNetCents: number;
+    donationGrossCents: number;
+    donationRefundCents: number;
+    donationNetCents: number;
   };
   paymentBreakdown: FinanceBreakdownRow[];
   sourceBreakdown: FinanceBreakdownRow[];
   orders: FinanceOrderRow[];
+  donations: FinanceDonationRow[];
 };
 
 type PdfDocumentCtor = new (options?: Record<string, unknown>) => any;
@@ -396,6 +417,73 @@ function labelForPaymentMethod(order: {
   return 'Card';
 }
 
+function buildDonationDestinationParts(
+  optionNameRaw?: string | null,
+  levelTitleRaw?: string | null,
+  bucketLabelRaw?: string | null
+): {
+  donationOptionName: string;
+  donationLevelTitle: string;
+  destinationPile: string;
+} {
+  const donationOptionName = optionNameRaw?.trim() || 'Unassigned';
+  const donationLevelTitle = levelTitleRaw?.trim() || '';
+  const destinationPile = bucketLabelRaw?.trim() || (donationLevelTitle ? `${donationOptionName} - ${donationLevelTitle}` : donationOptionName);
+  return { donationOptionName, donationLevelTitle, destinationPile };
+}
+
+async function fetchDonationFinanceRows(params: {
+  startDate: string;
+  endDate: string;
+}): Promise<FinanceDonationRow[]> {
+  const intervalStart = Math.floor(parseUtcDayStart(params.startDate).getTime() / 1000);
+  const intervalEndExclusive = Math.floor(parseUtcNextDayStart(params.endDate).getTime() / 1000);
+
+  const paymentIntents = await stripe.paymentIntents
+    .list({
+      limit: 100,
+      created: {
+        gte: intervalStart,
+        lt: intervalEndExclusive
+      },
+      expand: ['data.latest_charge']
+    })
+    .autoPagingToArray({ limit: 10_000 });
+
+  return paymentIntents
+    .filter((intent) => intent.metadata?.source === 'fundraising_donation')
+    .filter((intent) => intent.status === 'succeeded')
+    .map((intent) => {
+      const latestCharge = typeof intent.latest_charge === 'string' ? null : intent.latest_charge;
+      const latestChargeId = extractExpandableId(intent.latest_charge);
+      const grossCents = Math.max(0, intent.amount || 0);
+      const refundCents = Math.max(0, latestCharge?.amount_refunded || 0);
+      const netCents = Math.max(0, grossCents - refundCents);
+      const destination = buildDonationDestinationParts(
+        intent.metadata?.donationOptionName,
+        intent.metadata?.donationLevelTitle,
+        intent.metadata?.donationBucketLabel
+      );
+
+      return {
+        paymentIntentId: intent.id,
+        latestChargeId,
+        createdAt: new Date(intent.created * 1000).toISOString(),
+        status: intent.status,
+        currency: (intent.currency || 'usd').toUpperCase(),
+        grossCents,
+        refundCents,
+        netCents,
+        donorName: intent.metadata?.donorName || 'Supporter',
+        donorEmail: intent.metadata?.donorEmail || intent.receipt_email || '',
+        donationOptionName: destination.donationOptionName,
+        donationLevelTitle: destination.donationLevelTitle,
+        destinationPile: destination.destinationPile
+      };
+    })
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
 function mergeIntoBreakdown(
   map: Map<string, FinanceBreakdownRow>,
   key: string,
@@ -472,9 +560,10 @@ async function buildFinanceReportData(params: {
   const paymentBreakdownMap = new Map<string, FinanceBreakdownRow>();
   const sourceBreakdownMap = new Map<string, FinanceBreakdownRow>();
   const orderRows: FinanceOrderRow[] = [];
+  const donationRows: FinanceDonationRow[] = [];
 
-  let grossCents = 0;
-  let refundCents = 0;
+  let orderGrossCents = 0;
+  let orderRefundCents = 0;
   let ticketCount = 0;
   let cashNetCents = 0;
   let cardNetCents = 0;
@@ -485,8 +574,8 @@ async function buildFinanceReportData(params: {
     const orderTicketCount = order.orderSeats.length;
     const paymentMethodLabel = labelForPaymentMethod(order);
 
-    grossCents += order.amountTotal;
-    refundCents += refundAmountCents;
+    orderGrossCents += order.amountTotal;
+    orderRefundCents += refundAmountCents;
     ticketCount += orderTicketCount;
 
     if (paymentMethodLabel === 'Cash') {
@@ -536,6 +625,37 @@ async function buildFinanceReportData(params: {
     performanceLabel = performance.title || performance.show.title;
   }
 
+  if (!params.performanceId) {
+    const donations = await fetchDonationFinanceRows({
+      startDate: params.startDate,
+      endDate: params.endDate
+    });
+    donationRows.push(...donations);
+
+    donations.forEach((donation) => {
+      cardNetCents += donation.netCents;
+      mergeIntoBreakdown(paymentBreakdownMap, 'Card', 'Card', {
+        ticketCount: 0,
+        grossCents: donation.grossCents,
+        refundCents: donation.refundCents,
+        netCents: donation.netCents
+      });
+      mergeIntoBreakdown(sourceBreakdownMap, 'DONATION', 'Donation', {
+        ticketCount: 0,
+        grossCents: donation.grossCents,
+        refundCents: donation.refundCents,
+        netCents: donation.netCents
+      });
+    });
+  }
+
+  const donationGrossCents = donationRows.reduce((sum, donation) => sum + donation.grossCents, 0);
+  const donationRefundCents = donationRows.reduce((sum, donation) => sum + donation.refundCents, 0);
+  const donationNetCents = donationRows.reduce((sum, donation) => sum + donation.netCents, 0);
+  const grossCents = orderGrossCents + donationGrossCents;
+  const refundCents = orderRefundCents + donationRefundCents;
+  const netCents = grossCents - refundCents;
+
   return {
     stripeReportsUrl: getStripeReportsUrl(),
     generatedAtIso: new Date().toISOString(),
@@ -546,16 +666,21 @@ async function buildFinanceReportData(params: {
     performanceLabel,
     totals: {
       orderCount: orders.length,
+      donationCount: donationRows.length,
       ticketCount,
       grossCents,
       refundCents,
-      netCents: grossCents - refundCents,
+      netCents,
       cashNetCents,
-      cardNetCents
+      cardNetCents,
+      donationGrossCents,
+      donationRefundCents,
+      donationNetCents
     },
     paymentBreakdown: [...paymentBreakdownMap.values()].sort((a, b) => b.netCents - a.netCents),
     sourceBreakdown: [...sourceBreakdownMap.values()].sort((a, b) => b.netCents - a.netCents),
-    orders: orderRows
+    orders: orderRows,
+    donations: donationRows
   };
 }
 
@@ -727,7 +852,8 @@ async function renderFinanceReportPdf(data: FinanceReportData): Promise<Buffer> 
         STAFF_FREE: 'Staff Free',
         STAFF_COMP: 'Staff Comp',
         FAMILY_FREE: 'Family Free',
-        STUDENT_COMP: 'Student Comp'
+        STUDENT_COMP: 'Student Comp',
+        DONATION: 'Donation'
       };
       return mapping[normalized] || source.replace(/_/g, ' ');
     };
@@ -771,7 +897,14 @@ async function renderFinanceReportPdf(data: FinanceReportData): Promise<Buffer> 
       metric('Cash Net', centsToDollars(data.totals.cashNetCents), left + 16, rowB);
       metric('Card Net', centsToDollars(data.totals.cardNetCents), left + 146, rowB);
       metric('Tickets', String(data.totals.ticketCount), left + 286, rowB);
-      metric('Comp Included', data.includeCompOrders ? 'Yes' : 'No', left + 428, rowB);
+      metric('Donations Net', centsToDollars(data.totals.donationNetCents), left + 428, rowB);
+      doc
+        .font('Helvetica')
+        .fontSize(7.8)
+        .fillColor('#94a3b8')
+        .text(`Comp Included: ${data.includeCompOrders ? 'Yes' : 'No'}`, left + 428, rowB + 32, {
+          width: 120
+        });
 
       y = panelTop + panelHeight + 18;
     };
@@ -830,6 +963,29 @@ async function renderFinanceReportPdf(data: FinanceReportData): Promise<Buffer> 
       drawOrderDetailHeader();
     };
 
+    const drawDonationDetailHeader = () => {
+      drawCell({ text: 'Date', x: left, yPos: y, width: 72, font: 'Helvetica-Bold', fontSize: 8.4, color: '#64748b' });
+      drawCell({ text: 'Donation ID', x: left + 76, yPos: y, width: 90, font: 'Helvetica-Bold', fontSize: 8.4, color: '#64748b' });
+      drawCell({ text: 'Destination', x: left + 170, yPos: y, width: 160, font: 'Helvetica-Bold', fontSize: 8.4, color: '#64748b' });
+      drawCell({ text: 'Donor', x: left + 334, yPos: y, width: 110, font: 'Helvetica-Bold', fontSize: 8.4, color: '#64748b' });
+      drawCell({ text: 'Status', x: left + 448, yPos: y, width: 48, font: 'Helvetica-Bold', fontSize: 8.4, color: '#64748b' });
+      drawCell({ text: 'Net', x: left + 500, yPos: y, width: 70, align: 'right', font: 'Helvetica-Bold', fontSize: 8.4, color: '#64748b' });
+      y += 11;
+      doc.moveTo(left, y).lineTo(right, y).lineWidth(0.8).strokeColor('#e5e7eb').stroke();
+      y += 7;
+    };
+
+    const drawDonationSectionTitle = (continued: boolean) => {
+      ensureSpace(40);
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(11.5)
+        .fillColor('#111827')
+        .text(continued ? 'Donation Detail (continued)' : 'Donation Detail', left, y);
+      y += 16;
+      drawDonationDetailHeader();
+    };
+
     drawLetterhead();
     y = 162;
     drawSummaryPanel();
@@ -860,6 +1016,32 @@ async function renderFinanceReportPdf(data: FinanceReportData): Promise<Buffer> 
       drawCell({ text: order.performanceTitle, x: left + 520, yPos: y, width: 50, fontSize: 8.1 });
       y += orderRowHeight;
     });
+
+    if (data.donations.length > 0) {
+      y += 14;
+      drawDonationSectionTitle(false);
+
+      data.donations.forEach((donation, index) => {
+        if (y + orderRowHeight > pageBottom) {
+          doc.addPage();
+          drawLetterhead();
+          y = 162;
+          drawDonationSectionTitle(true);
+        }
+
+        if (index % 2 === 0) {
+          doc.rect(left, y - 1.5, right - left, orderRowHeight).fill('#fcfcfd');
+        }
+
+        drawCell({ text: formatCompactDateTime(donation.createdAt), x: left, yPos: y, width: 72, fontSize: 8.1 });
+        drawCell({ text: donation.paymentIntentId.slice(0, 15), x: left + 76, yPos: y, width: 90, fontSize: 8.1 });
+        drawCell({ text: donation.destinationPile, x: left + 170, yPos: y, width: 160, fontSize: 8.1 });
+        drawCell({ text: donation.donorName || donation.donorEmail || 'Supporter', x: left + 334, yPos: y, width: 110, fontSize: 8.1 });
+        drawCell({ text: donation.status, x: left + 448, yPos: y, width: 48, fontSize: 8.1 });
+        drawCell({ text: centsToDollars(donation.netCents), x: left + 500, yPos: y, width: 70, align: 'right', font: 'Helvetica-Bold', fontSize: 8.1 });
+        y += orderRowHeight;
+      });
+    }
 
     doc.end();
   });
@@ -912,7 +1094,7 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         performanceId: parsed.data.performanceId,
         includeCompOrders: parsed.data.includeCompOrders === '1' || parsed.data.includeCompOrders === 'true'
       });
-      const { orders: _orders, ...summary } = data;
+      const { orders: _orders, donations: _donations, ...summary } = data;
       reply.send(summary);
     } catch (err) {
       handleRouteError(reply, err, 'We hit a small backstage snag while trying to fetch finance summary');
@@ -972,7 +1154,13 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         'ticket_count',
         'gross_usd',
         'refund_usd',
-        'net_usd'
+        'net_usd',
+        'record_type',
+        'donation_destination',
+        'donation_option',
+        'donation_level',
+        'donor_name',
+        'donor_email'
       ]));
 
       for (const order of data.orders) {
@@ -995,7 +1183,36 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
           order.ticketCount,
           toUsd(order.grossCents),
           toUsd(order.refundCents),
-          toUsd(order.netCents)
+          toUsd(order.netCents),
+          'order',
+          '',
+          '',
+          '',
+          '',
+          ''
+        ]));
+      }
+
+      for (const donation of data.donations) {
+        lines.push(csvRow([
+          donation.paymentIntentId,
+          donation.createdAt,
+          'Fundraising Donation',
+          donation.destinationPile,
+          'DONATION',
+          'Card',
+          'card',
+          donation.status,
+          0,
+          toUsd(donation.grossCents),
+          toUsd(donation.refundCents),
+          toUsd(donation.netCents),
+          'donation',
+          donation.destinationPile,
+          donation.donationOptionName,
+          donation.donationLevelTitle,
+          donation.donorName,
+          donation.donorEmail
         ]));
       }
 
@@ -1038,6 +1255,17 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         ['charge', 'refund', 'payment', 'payment_refund', 'stripe_fee', 'tax_fee'].includes(row.type)
       );
 
+      const donationRows = await fetchDonationFinanceRows({
+        startDate: parsed.data.startDate,
+        endDate: parsed.data.endDate
+      });
+      const donationByPaymentIntentId = new Map(donationRows.map((row) => [row.paymentIntentId, row]));
+      const donationByChargeId = new Map(
+        donationRows
+          .filter((row) => Boolean(row.latestChargeId))
+          .map((row) => [row.latestChargeId as string, row])
+      );
+
       const lines: string[] = [];
       lines.push(csvRow([
         'id',
@@ -1051,10 +1279,23 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         'fee_amount',
         'net_amount',
         'source',
-        'status'
+        'status',
+        'is_fundraising_donation',
+        'donation_destination',
+        'donation_option',
+        'donation_level',
+        'donor_name',
+        'donor_email',
+        'donation_payment_intent_id'
       ]));
 
       for (const row of relevantRows) {
+        const sourceId = typeof row.source === 'string' ? row.source : row.source?.id || '';
+        const donation =
+          (sourceId.startsWith('pi_') ? donationByPaymentIntentId.get(sourceId) : null) ||
+          (sourceId.startsWith('ch_') ? donationByChargeId.get(sourceId) : null) ||
+          null;
+
         lines.push(csvRow([
           row.id,
           new Date(row.created * 1000).toISOString(),
@@ -1066,8 +1307,15 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
           toUsd(row.amount),
           toUsd(row.fee),
           toUsd(row.net),
-          typeof row.source === 'string' ? row.source : row.source?.id || '',
-          row.status
+          sourceId,
+          row.status,
+          donation ? 'yes' : 'no',
+          donation?.destinationPile || '',
+          donation?.donationOptionName || '',
+          donation?.donationLevelTitle || '',
+          donation?.donorName || '',
+          donation?.donorEmail || '',
+          donation?.paymentIntentId || ''
         ]));
       }
 

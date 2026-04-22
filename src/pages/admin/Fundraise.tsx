@@ -273,6 +273,17 @@ function formatDonationStatus(status: string): string {
   }
 }
 
+function getDonationDestinationParts(donation: Pick<AdminFundraisingDonation, 'donationOptionName' | 'donationLevelTitle'>): {
+  optionName: string;
+  levelTitle: string;
+  pileName: string;
+} {
+  const optionName = donation.donationOptionName?.trim() || 'Unassigned';
+  const levelTitle = donation.donationLevelTitle?.trim() || '';
+  const pileName = levelTitle ? `${optionName} - ${levelTitle}` : optionName;
+  return { optionName, levelTitle, pileName };
+}
+
 function csvEscape(value: unknown): string {
   const text = value === null || value === undefined ? '' : String(value);
   if (/[",\n]/.test(text)) {
@@ -515,6 +526,18 @@ export default function AdminFundraisePage() {
       { all: 0, succeeded: 0, processing: 0, other: 0 } as Record<DonationStatusFilter, number>
     );
   }, [donations]);
+  const donationDestinationTotals = useMemo(() => {
+    const buckets = new Map<string, { pileName: string; amountCents: number; count: number }>();
+    donations.forEach((donation) => {
+      if (donation.status !== 'succeeded') return;
+      const { pileName } = getDonationDestinationParts(donation);
+      const current = buckets.get(pileName) || { pileName, amountCents: 0, count: 0 };
+      current.amountCents += donation.amountCents;
+      current.count += 1;
+      buckets.set(pileName, current);
+    });
+    return Array.from(buckets.values()).sort((a, b) => b.amountCents - a.amountCents || a.pileName.localeCompare(b.pileName));
+  }, [donations]);
   const filteredDonations = useMemo(() => {
     const query = donationSearchQuery.trim().toLowerCase();
     return donations.filter((donation) => {
@@ -751,6 +774,69 @@ export default function AdminFundraisePage() {
     URL.revokeObjectURL(url);
 
     setNotice('Attendee CSV export downloaded.');
+  }
+
+  function exportDonationsCsv() {
+    if (filteredDonations.length === 0) {
+      setNotice('No donations available to export for the current filters.');
+      return;
+    }
+
+    const rows: Array<Array<unknown>> = [
+      [
+        'payment_intent_id',
+        'created_at',
+        'status',
+        'amount',
+        'amount_cents',
+        'currency',
+        'donor_name',
+        'donor_email',
+        'receipt_email',
+        'recognition_preference',
+        'donation_option_name',
+        'donation_level_title',
+        'donation_level_amount_label',
+        'destination_pile',
+        'thank_you_email_sent'
+      ]
+    ];
+
+    filteredDonations.forEach((donation) => {
+      const destination = getDonationDestinationParts(donation);
+      rows.push([
+        donation.paymentIntentId,
+        donation.createdAt,
+        donation.status,
+        formatMoney(donation.amountCents, donation.currency),
+        donation.amountCents,
+        donation.currency.toUpperCase(),
+        donation.donorName || 'Supporter',
+        donation.donorEmail || '',
+        donation.receiptEmail || '',
+        donation.donorRecognitionPreference,
+        destination.optionName,
+        destination.levelTitle,
+        donation.donationLevelAmountLabel || '',
+        destination.pileName,
+        donation.thankYouEmailSent ? 'yes' : 'no'
+      ]);
+    });
+
+    const csv = buildCsv(rows);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const stamp = new Date().toISOString().slice(0, 10);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `fundraising-donations-${stamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setNotice(`Donation CSV export downloaded (${filteredDonations.length} row${filteredDonations.length === 1 ? '' : 's'}).`);
   }
 
   async function purgeFundraisingEventOrders() {
@@ -2741,14 +2827,24 @@ export default function AdminFundraisePage() {
                   <h3 className="text-lg font-bold text-stone-900">Recent Donations</h3>
                   <p className="mt-1 text-sm text-stone-600">Track donor activity, recognition preference, and payment status in real time.</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void loadDonations()}
-                  className="inline-flex items-center gap-1 rounded-lg border border-stone-300 px-2.5 py-1 text-xs font-semibold text-stone-700 transition hover:bg-stone-50"
-                >
-                  <RefreshCcw className={`h-3.5 w-3.5 ${donationsLoading ? 'animate-spin' : ''}`} />
-                  Refresh
-                </button>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void loadDonations()}
+                    className="inline-flex items-center gap-1 rounded-lg border border-stone-300 px-2.5 py-1 text-xs font-semibold text-stone-700 transition hover:bg-stone-50"
+                  >
+                    <RefreshCcw className={`h-3.5 w-3.5 ${donationsLoading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </button>
+                  <button
+                    type="button"
+                    onClick={exportDonationsCsv}
+                    disabled={donationsLoading || filteredDonations.length === 0}
+                    className="inline-flex items-center gap-1 rounded-lg border border-stone-300 px-2.5 py-1 text-xs font-semibold text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Download CSV
+                  </button>
+                </div>
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-2">
@@ -2770,6 +2866,29 @@ export default function AdminFundraisePage() {
                   <p className="text-[11px] uppercase tracking-[0.12em] text-stone-500">Known</p>
                   <p className="mt-1 text-lg font-bold text-stone-900">{donationRecognitionTotals.known}</p>
                 </div>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Donated By Destination</p>
+                  <p className="text-[11px] text-stone-500">Succeeded only</p>
+                </div>
+                {donationDestinationTotals.length === 0 ? (
+                  <p className="mt-2 text-xs text-stone-500">No succeeded donations yet.</p>
+                ) : (
+                  <div className="mt-2 max-h-40 space-y-1.5 overflow-y-auto pr-1">
+                    {donationDestinationTotals.map((entry) => (
+                      <div key={entry.pileName} className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-2.5 py-2">
+                        <p className="truncate text-xs font-semibold text-stone-700" title={entry.pileName}>
+                          {entry.pileName}
+                        </p>
+                        <p className="whitespace-nowrap text-xs font-semibold text-stone-900">
+                          {formatUsd(entry.amountCents)} ({entry.count})
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="mt-4 space-y-3">

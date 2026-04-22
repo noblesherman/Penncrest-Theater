@@ -29,12 +29,16 @@ type FinanceSummary = {
   performanceLabel: string;
   totals: {
     orderCount: number;
+    donationCount: number;
     ticketCount: number;
     grossCents: number;
     refundCents: number;
     netCents: number;
     cashNetCents: number;
     cardNetCents: number;
+    donationGrossCents: number;
+    donationRefundCents: number;
+    donationNetCents: number;
   };
   paymentBreakdown: FinanceBreakdownRow[];
   sourceBreakdown: FinanceBreakdownRow[];
@@ -1140,7 +1144,7 @@ export default function AdminFinancePage() {
               Finance
             </h1>
             <p style={{ marginTop: 6, fontSize: 13, color: '#9ca3af', margin: '6px 0 0' }}>
-              Stripe reporting shortcut &amp; branded finance PDF — cash, card, and refunds in one place.
+              Stripe reporting shortcut &amp; branded finance PDF — ticket sales plus fundraising donations in one place.
             </p>
           </div>
 
@@ -1540,7 +1544,7 @@ export default function AdminFinancePage() {
               </span>
             </div>
             <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 16, lineHeight: 1.5, fontFamily: "var(--font-sans)" }}>
-              Download your Penncrest finance PDF or local CSV (with card vs cash split, refunds, and totals) for the selected range.
+              Download your Penncrest finance PDF or local CSV (with sales, donations, refunds, and destination tracking) for the selected range.
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               <button
@@ -1610,6 +1614,8 @@ export default function AdminFinancePage() {
                 <StatCard label="Gross Revenue" value={cents(summary.totals.grossCents)} />
                 <StatCard label="Cash Net" value={cents(summary.totals.cashNetCents)} />
                 <StatCard label="Card Net" value={cents(summary.totals.cardNetCents)} />
+                <StatCard label="Donations Net" value={cents(summary.totals.donationNetCents)} />
+                <StatCard label="Donation Count" value={String(summary.totals.donationCount)} />
               </div>
 
               {/* Breakdown tables */}
