@@ -2577,51 +2577,55 @@ export default function AdminFundraisePage() {
                             : 'border-l-stone-300';
 
                       return (
-                        <motion.article
+                        <motion.div
                           key={donation.paymentIntentId}
                           layout
                           initial={{ opacity: 0, y: 10, scale: 0.98 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: -10, scale: 0.98 }}
                           transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                          className={`rounded-xl border border-stone-200 border-l-4 bg-white p-3 ${cardTone}`}
                         >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-stone-900">{donation.donorName || 'Supporter'}</p>
-                              <p className="truncate text-xs text-stone-500">{donation.donorEmail || donation.receiptEmail || 'No email'}</p>
-                            </div>
-                            <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusTone}`}>
-                              {formatDonationStatus(donation.status)}
-                            </span>
-                          </div>
-
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <span className="rounded-full border border-stone-200 bg-stone-50 px-2 py-0.5 text-[11px] font-semibold text-stone-700">
-                              {donation.donorRecognitionPreference === 'anonymous' ? 'Anonymous' : 'Known'}
-                            </span>
-                            {donation.donationOptionName ? (
-                              <span className="rounded-full border border-stone-200 bg-stone-50 px-2 py-0.5 text-[11px] font-semibold text-stone-700">
-                                {donation.donationOptionName}
+                          <Link
+                            to={`/admin/fundraise/donations/${encodeURIComponent(donation.paymentIntentId)}`}
+                            className={`block rounded-xl border border-stone-200 border-l-4 bg-white p-3 transition hover:-translate-y-0.5 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-red-300 ${cardTone}`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-stone-900">{donation.donorName || 'Supporter'}</p>
+                                <p className="truncate text-xs text-stone-500">{donation.donorEmail || donation.receiptEmail || 'No email'}</p>
+                              </div>
+                              <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusTone}`}>
+                                {formatDonationStatus(donation.status)}
                               </span>
+                            </div>
+
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <span className="rounded-full border border-stone-200 bg-stone-50 px-2 py-0.5 text-[11px] font-semibold text-stone-700">
+                                {donation.donorRecognitionPreference === 'anonymous' ? 'Anonymous' : 'Known'}
+                              </span>
+                              {donation.donationOptionName ? (
+                                <span className="rounded-full border border-stone-200 bg-stone-50 px-2 py-0.5 text-[11px] font-semibold text-stone-700">
+                                  {donation.donationOptionName}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            {donation.donationLevelTitle || donation.donationLevelAmountLabel ? (
+                              <p className="mt-2 text-[11px] text-stone-500">
+                                {[donation.donationLevelAmountLabel, donation.donationLevelTitle].filter(Boolean).join(' · ')}
+                              </p>
                             ) : null}
-                          </div>
 
-                          {donation.donationLevelTitle || donation.donationLevelAmountLabel ? (
-                            <p className="mt-2 text-[11px] text-stone-500">
-                              {[donation.donationLevelAmountLabel, donation.donationLevelTitle].filter(Boolean).join(' · ')}
+                            <div className="mt-2 flex items-center justify-between gap-2 text-sm">
+                              <span className="font-semibold text-stone-900">{formatMoney(donation.amountCents, donation.currency)}</span>
+                              <span className="text-xs text-stone-500">{new Date(donation.createdAt).toLocaleString()}</span>
+                            </div>
+
+                            <p className="mt-2 truncate text-[11px] text-stone-500">
+                              {donation.thankYouEmailSent ? 'Thank-you email sent' : 'Thank-you email pending'} · {donation.paymentIntentId}
                             </p>
-                          ) : null}
-
-                          <div className="mt-2 flex items-center justify-between gap-2 text-sm">
-                            <span className="font-semibold text-stone-900">{formatMoney(donation.amountCents, donation.currency)}</span>
-                            <span className="text-xs text-stone-500">{new Date(donation.createdAt).toLocaleString()}</span>
-                          </div>
-
-                          <p className="mt-2 truncate text-[11px] text-stone-500">
-                            {donation.thankYouEmailSent ? 'Thank-you email sent' : 'Thank-you email pending'} · {donation.paymentIntentId}
-                          </p>
-                        </motion.article>
+                          </Link>
+                        </motion.div>
                       );
                     })}
                   </AnimatePresence>
@@ -2631,11 +2635,14 @@ export default function AdminFundraisePage() {
           </section>
 
           <section className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
-            <motion.button
+            <button
               type="button"
               onClick={() => setDonationEditorOpen((current) => !current)}
-              whileHover={{ backgroundColor: 'rgba(250, 250, 249, 1)' }}
-              className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
+              aria-expanded={donationEditorOpen}
+              aria-controls="donation-editor-panel"
+              className={`flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition-colors ${
+                donationEditorOpen ? 'bg-stone-50' : 'bg-white hover:bg-stone-50'
+              }`}
             >
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">Folded Section</p>
@@ -2648,11 +2655,12 @@ export default function AdminFundraisePage() {
                 </span>
                 <ChevronRight className={`h-5 w-5 text-stone-400 transition-transform ${donationEditorOpen ? 'rotate-90' : ''}`} />
               </div>
-            </motion.button>
+            </button>
 
             <AnimatePresence initial={false}>
               {donationEditorOpen ? (
                 <motion.div
+                  id="donation-editor-panel"
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
@@ -2828,11 +2836,14 @@ export default function AdminFundraisePage() {
           </section>
 
           <section className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
-            <motion.button
+            <button
               type="button"
               onClick={() => setDonationProcessOpen((current) => !current)}
-              whileHover={{ backgroundColor: 'rgba(250, 250, 249, 1)' }}
-              className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
+              aria-expanded={donationProcessOpen}
+              aria-controls="donation-process-panel"
+              className={`flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition-colors ${
+                donationProcessOpen ? 'bg-stone-50' : 'bg-white hover:bg-stone-50'
+              }`}
             >
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">Folded Section</p>
@@ -2846,11 +2857,12 @@ export default function AdminFundraisePage() {
                 </span>
                 <ChevronRight className={`h-5 w-5 text-stone-400 transition-transform ${donationProcessOpen ? 'rotate-90' : ''}`} />
               </div>
-            </motion.button>
+            </button>
 
             <AnimatePresence initial={false}>
               {donationProcessOpen ? (
                 <motion.div
+                  id="donation-process-panel"
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}

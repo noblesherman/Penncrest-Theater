@@ -50,6 +50,7 @@ const AdminStudentCreditsPage = lazy(() => import('./pages/admin/StudentCredits'
 const AdminUsersPage = lazy(() => import('./pages/admin/Users'));
 const AdminAboutControlPage = lazy(() => import('./pages/admin/AboutControl'));
 const AdminFundraisePage = lazy(() => import('./pages/admin/Fundraise'));
+const AdminFundraiseDonationDetailPage = lazy(() => import('./pages/admin/FundraiseDonationDetail'));
 const AdminFundraiseCheckInPage = lazy(() => import('./pages/admin/FundraiseCheckIn'));
 const AdminTripsPage = lazy(() => import('./pages/admin/Trips'));
 const AdminDrivePage = lazy(() => import('./pages/admin/Drive'));
@@ -112,6 +113,7 @@ export default function App() {
                   <Route path="users" element={<AdminUsersPage />} />
                   <Route path="about" element={<AdminAboutControlPage />} />
                   <Route path="fundraise" element={<AdminFundraisePage />} />
+                  <Route path="fundraise/donations/:paymentIntentId" element={<AdminFundraiseDonationDetailPage />} />
                   <Route path="fundraise/check-in" element={<AdminFundraiseCheckInPage />} />
                   <Route path="trips" element={<AdminTripsPage />} />
                   <Route path="drive" element={<AdminDrivePage />} />
