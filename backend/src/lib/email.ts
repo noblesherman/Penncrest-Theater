@@ -74,6 +74,22 @@ type SystemAlertEmailPayload = {
   html?: string;
 };
 
+export type AudienceBroadcastEmailPayload = {
+  toEmail: string;
+  recipientName?: string | null;
+  subject: string;
+  previewText?: string | null;
+  headline: string;
+  body: string;
+  callToActionLabel?: string | null;
+  callToActionUrl?: string | null;
+  audienceLabel: string;
+  audienceStartsAtIso?: string | null;
+  audienceVenue?: string | null;
+  includeEventDetails?: boolean;
+  signature?: string | null;
+};
+
 type EmailLogoAttachment = {
   filename: string;
   content: Buffer;
@@ -82,6 +98,7 @@ type EmailLogoAttachment = {
 };
 
 const BRAND_NAME = 'Penncrest Theater';
+const NO_REPLY_FROM = 'Penncrest Theater <no-reply@penncresttheater.com>';
 const LOGO_CID = 'penncrest-theater-logo';
 let cachedLogoAttachment: EmailLogoAttachment | null | undefined;
 
@@ -796,6 +813,210 @@ export async function sendTripLoginCodeEmail(payload: TripLoginCodeEmailPayload)
     subject: 'Your Penncrest Theater trip sign-in code',
     text,
     html
+  });
+}
+
+function paragraphsFromBody(body: string): string[] {
+  return body
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function paragraphToHtml(text: string): string {
+  return escapeHtml(text).replace(/\n/g, '<br />');
+}
+
+export async function sendAudienceBroadcastEmail(payload: AudienceBroadcastEmailPayload): Promise<void> {
+  if (!transporter || !env.SMTP_FROM) {
+    console.warn('SMTP is not configured; skipping audience broadcast email send.');
+    return;
+  }
+
+  const recipient = payload.toEmail.trim().toLowerCase();
+  if (!recipient) {
+    return;
+  }
+
+  const safeRecipientName = escapeHtml(payload.recipientName?.trim() || 'there');
+  const safeAudienceLabel = escapeHtml(payload.audienceLabel.trim());
+  const safeHeadline = escapeHtml(payload.headline.trim());
+  const safeSubject = payload.subject.trim();
+  const safePreviewText = escapeHtml(payload.previewText?.trim() || '');
+  const safeVenue = payload.audienceVenue?.trim() ? escapeHtml(payload.audienceVenue.trim()) : null;
+  const startsAtLabel = payload.audienceStartsAtIso ? formatPerformanceDate(payload.audienceStartsAtIso) : null;
+  const safeStartsAt = startsAtLabel ? escapeHtml(startsAtLabel) : null;
+  const signatureText = payload.signature?.trim() || BRAND_NAME;
+  const safeSignature = escapeHtml(signatureText);
+  const includeEventDetails = payload.includeEventDetails !== false;
+  const logo = loadEmailLogoAttachment();
+  const logoSrc = logo ? `cid:${logo.cid}` : null;
+  const paragraphs = paragraphsFromBody(payload.body.trim());
+  const htmlParagraphs = paragraphs
+    .map(
+      (paragraph) => `
+        <p style="margin:0 0 14px 0;font-family:Arial,sans-serif;font-size:14px;line-height:1.8;color:#3d2020;">
+          ${paragraphToHtml(paragraph)}
+        </p>
+      `
+    )
+    .join('');
+  const ctaLabel = payload.callToActionLabel?.trim() || '';
+  const ctaUrl = payload.callToActionUrl?.trim() || '';
+  const hasCallToAction = Boolean(ctaLabel && ctaUrl);
+  const safeCtaLabel = hasCallToAction ? escapeHtml(ctaLabel) : '';
+  const safeCtaUrl = hasCallToAction ? escapeHtml(ctaUrl) : '';
+
+  const text = [
+    `Hi ${payload.recipientName?.trim() || 'there'},`,
+    '',
+    payload.headline.trim(),
+    '',
+    payload.body.trim(),
+    '',
+    includeEventDetails ? `Event: ${payload.audienceLabel}` : null,
+    includeEventDetails && startsAtLabel ? `When: ${startsAtLabel}` : null,
+    includeEventDetails && payload.audienceVenue ? `Where: ${payload.audienceVenue}` : null,
+    '',
+    hasCallToAction ? `${ctaLabel}: ${ctaUrl}` : null,
+    '',
+    signatureText
+  ]
+    .filter((line) => line !== null)
+    .join('\n');
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="supported-color-schemes" content="light dark" />
+  ${DARK_MODE_STYLES}
+</head>
+<body style="margin:0;padding:0;">
+  ${
+    safePreviewText
+      ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;">${safePreviewText}</div>`
+      : ''
+  }
+  <table class="email-outer" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:28px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;">
+          <tr>
+            <td style="background:linear-gradient(160deg,#1a0505 0%,#3d0a0a 60%,#5a1010 100%);border-radius:16px 16px 0 0;padding:30px 32px 26px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td valign="middle">
+                    <div style="font-family:Arial,sans-serif;font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:#c9a84c;margin-bottom:10px;">${BRAND_NAME}</div>
+                    <div style="font-family:Georgia,'Times New Roman',serif;font-size:28px;font-weight:700;color:#f5f0e8;line-height:1.2;margin-bottom:8px;">${safeAudienceLabel}</div>
+                    <div style="font-family:Arial,sans-serif;font-size:13px;color:rgba(245,217,139,0.85);line-height:1.65;">Message for ticket holders</div>
+                  </td>
+                  <td valign="middle" align="right" style="padding-left:16px;min-width:84px;">
+                    ${
+                      logoSrc
+                        ? `<img src="${logoSrc}" width="74" height="74" alt="${BRAND_NAME} logo" style="display:block;width:74px;height:74px;object-fit:contain;border-radius:12px;border:2px solid #c9a84c;background:#3d0a0a;padding:5px;box-sizing:border-box;" />`
+                        : `<table role="presentation" cellpadding="0" cellspacing="0" width="74" style="width:74px;height:74px;border-radius:12px;border:2px solid #c9a84c;background:#5a1010;"><tr><td width="74" height="74" align="center" valign="middle" style="width:74px;height:74px;text-align:center;vertical-align:middle;font-size:30px;font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;">&#127917;</td></tr></table>`
+                    }
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="height:3px;background:linear-gradient(90deg,#6b0f0f,#c9a84c,#6b0f0f);"></td>
+          </tr>
+          <tr>
+            <td class="email-body" style="background:#fffdf7;border:1px solid #e8dfc8;border-top:none;padding:28px 32px 12px;">
+              <p style="margin:0 0 10px 0;font-family:Georgia,'Times New Roman',serif;font-size:19px;color:#1a0a0a;line-height:1.4;">Hi ${safeRecipientName},</p>
+              <p style="margin:0 0 18px 0;font-family:Georgia,'Times New Roman',serif;font-size:23px;color:#8b1a1a;line-height:1.35;">${safeHeadline}</p>
+
+              ${htmlParagraphs}
+
+              ${
+                includeEventDetails && (safeStartsAt || safeVenue)
+                  ? `
+              <table class="detail-box" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #c9a84c;border-radius:12px;background:#fdf8ee;margin:14px 0 20px;">
+                <tr>
+                  <td style="padding:7px 18px;background:#c9a84c;border-radius:11px 11px 0 0;">
+                    <div style="font-family:Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3d1a00;">Event Details</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:16px 18px;font-family:Arial,sans-serif;font-size:13px;line-height:1;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                      ${
+                        safeStartsAt
+                          ? `
+                      <tr>
+                        <td class="detail-label" style="color:#8b6914;font-weight:700;width:90px;vertical-align:top;padding-bottom:${safeVenue ? '10px' : '0'};">When</td>
+                        <td class="detail-value" style="color:#1a0a0a;padding-bottom:${safeVenue ? '10px' : '0'};line-height:1.6;">${safeStartsAt}</td>
+                      </tr>`
+                          : ''
+                      }
+                      ${
+                        safeVenue
+                          ? `
+                      <tr>
+                        <td class="detail-label" style="color:#8b6914;font-weight:700;vertical-align:top;">Where</td>
+                        <td class="detail-value" style="color:#1a0a0a;line-height:1.6;">${safeVenue}</td>
+                      </tr>`
+                          : ''
+                      }
+                    </table>
+                  </td>
+                </tr>
+              </table>`
+                  : ''
+              }
+
+              ${
+                hasCallToAction
+                  ? `
+              <div style="margin:0 0 20px 0;">
+                <a href="${safeCtaUrl}" style="display:inline-block;background:#8b1a1a;color:#f5d98b;text-decoration:none;padding:11px 20px;border-radius:8px;font-size:13px;font-weight:700;font-family:Arial,sans-serif;border:1px solid #c9a84c;letter-spacing:0.3px;">${safeCtaLabel} &rarr;</a>
+                <div style="font-size:11px;color:#9b8365;line-height:1.6;margin-top:10px;word-break:break-all;font-family:Arial,sans-serif;">${safeCtaUrl}</div>
+              </div>`
+                  : ''
+              }
+
+              <p style="margin:0 0 18px 0;font-family:Arial,sans-serif;font-size:14px;color:#3d2020;">${safeSignature}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="height:3px;background:linear-gradient(90deg,#6b0f0f,#c9a84c,#6b0f0f);"></td>
+          </tr>
+          <tr>
+            <td style="background:linear-gradient(160deg,#1a0505 0%,#3d0a0a 100%);border-radius:0 0 16px 16px;padding:18px 32px;">
+              <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;line-height:1.7;color:rgba(245,240,232,0.80);">
+                This message was sent by ${BRAND_NAME}. Replies are not monitored.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  await transporter.sendMail({
+    from: NO_REPLY_FROM,
+    to: recipient,
+    subject: safeSubject,
+    text,
+    html,
+    attachments: logo
+      ? [
+          {
+            filename: logo.filename,
+            content: logo.content,
+            contentType: logo.contentType,
+            cid: logo.cid
+          }
+        ]
+      : undefined
   });
 }
 

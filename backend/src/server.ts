@@ -39,6 +39,7 @@ import { adminSeatRoutes } from './routes/admin-seats.js';
 import { adminOrderRoutes } from './routes/admin-orders.js';
 import { adminRosterRoutes } from './routes/admin-roster.js';
 import { adminAuditRoutes } from './routes/admin-audit.js';
+import { adminMessageRoutes } from './routes/admin-messages.js';
 import { showRoutes } from './routes/shows.js';
 import { programBioFormRoutes } from './routes/program-bio-forms.js';
 import { seniorSendoffFormRoutes } from './routes/senior-sendoff-forms.js';
@@ -154,6 +155,7 @@ export async function createServer() {
   await app.register(adminOrderRoutes);
   await app.register(adminRosterRoutes);
   await app.register(adminAuditRoutes);
+  await app.register(adminMessageRoutes);
   await app.register(adminStaffRoutes);
   await app.register(studentCreditRoutes);
   await app.register(adminCheckInRoutes);
