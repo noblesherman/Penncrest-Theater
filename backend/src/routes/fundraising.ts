@@ -1264,6 +1264,7 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
           description: event.show.description || '',
           posterUrl: event.show.posterUrl || '',
           startsAt: event.startsAt.toISOString(),
+          endsAt: event.endsAt?.toISOString() || null,
           onlineSalesStartsAt: event.onlineSalesStartsAt?.toISOString() || null,
           salesCutoffAt: event.salesCutoffAt?.toISOString() || null,
           salesOpen:

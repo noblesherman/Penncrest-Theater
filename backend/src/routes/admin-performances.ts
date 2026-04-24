@@ -59,6 +59,7 @@ const castMemberSchema = z
 const performanceScheduleSchema = z.object({
   title: z.string().min(1).optional(),
   startsAt: z.string().datetime(),
+  endsAt: z.string().datetime().nullable().optional(),
   onlineSalesStartsAt: z.string().datetime().nullable().optional(),
   salesCutoffAt: z.string().datetime().nullable().optional()
 });
@@ -71,6 +72,7 @@ const createPerformanceSchema = z.object({
   year: z.number().int().optional(),
   accentColor: z.string().optional(),
   startsAt: z.string().datetime().optional(),
+  endsAt: z.string().datetime().nullable().optional(),
   onlineSalesStartsAt: z.string().datetime().nullable().optional(),
   salesCutoffAt: z.string().datetime().nullable().optional(),
   isPublished: z.boolean().optional(),
@@ -612,6 +614,7 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
             showYear: performance.show.year,
             showAccentColor: performance.show.accentColor,
             startsAt: performance.startsAt,
+            endsAt: performance.endsAt,
             onlineSalesStartsAt: performance.onlineSalesStartsAt,
             salesCutoffAt: performance.salesCutoffAt,
             isPublished: performance.isPublished,
@@ -727,6 +730,7 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
               showYear: performance.show.year,
               showAccentColor: performance.show.accentColor,
               startsAt: performance.startsAt,
+              endsAt: null,
               onlineSalesStartsAt: null,
               salesCutoffAt: performance.salesCutoffAt,
               isPublished: true,
@@ -784,6 +788,7 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
               {
                 title: parsed.data.title,
                 startsAt: parsed.data.startsAt,
+                endsAt: parsed.data.endsAt ?? null,
                 onlineSalesStartsAt: parsed.data.onlineSalesStartsAt ?? null,
                 salesCutoffAt: parsed.data.salesCutoffAt ?? null
               }
@@ -831,6 +836,7 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
               showId: show.id,
               title: scheduleEntry.title || payload.title,
               startsAt: new Date(scheduleEntry.startsAt),
+              endsAt: scheduleEntry.endsAt ? new Date(scheduleEntry.endsAt) : null,
               onlineSalesStartsAt: scheduleEntry.onlineSalesStartsAt
                 ? new Date(scheduleEntry.onlineSalesStartsAt)
                 : payload.onlineSalesStartsAt
@@ -962,6 +968,12 @@ export const adminPerformanceRoutes: FastifyPluginAsync = async (app) => {
           data: {
             title: payload.title,
             startsAt: payload.startsAt ? new Date(payload.startsAt) : undefined,
+            endsAt:
+              payload.endsAt === undefined
+                ? undefined
+                : payload.endsAt
+                  ? new Date(payload.endsAt)
+                  : null,
             onlineSalesStartsAt:
               payload.onlineSalesStartsAt === undefined
                 ? undefined

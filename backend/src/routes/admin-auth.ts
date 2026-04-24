@@ -93,20 +93,13 @@ export const adminAuthRoutes: FastifyPluginAsync = async (app) => {
         });
       }
 
-      const isSuperAdmin = admin.role === 'SUPER_ADMIN';
-      const isAdminWithOptionalTwoFactor = admin.role === 'ADMIN' && admin.twoFactorEnabled;
-      const requiresTwoFactorCheck = isSuperAdmin || isAdminWithOptionalTwoFactor;
+      const requiresTwoFactorCheck = admin.role !== 'BOX_OFFICE' && admin.twoFactorEnabled;
 
-      if (isSuperAdmin && !admin.twoFactorEnabled) {
-        let twoFactorSetupSecret: string;
-
-        if (admin.twoFactorSecretEncrypted) {
-          twoFactorSetupSecret = decryptSecret(admin.twoFactorSecretEncrypted);
-        } else {
+      if (requiresTwoFactorCheck) {
+        if (!admin.twoFactorSecretEncrypted) {
           const candidateSecret = generateTotpSecret();
           const candidateSecretEncrypted = encryptSecret(candidateSecret);
 
-          // Create a single pending setup secret and reuse it across retries.
           await prisma.adminUser.updateMany({
             where: {
               id: admin.id,
@@ -126,39 +119,28 @@ export const adminAuthRoutes: FastifyPluginAsync = async (app) => {
           }
 
           admin = refreshedAdmin;
-          twoFactorSetupSecret = decryptSecret(refreshedAdmin.twoFactorSecretEncrypted);
-        }
+          const setupSecret = decryptSecret(refreshedAdmin.twoFactorSecretEncrypted);
+          const setupToken = await app.jwt.sign(
+            {
+              role: 'admin_setup',
+              purpose: 'admin-2fa-setup',
+              adminId: admin.id,
+              username: admin.username
+            },
+            { expiresIn: '15m' }
+          );
 
-        const setupToken = await app.jwt.sign(
-          {
-            role: 'admin_setup',
-            purpose: 'admin-2fa-setup',
-            adminId: admin.id,
-            username: admin.username
-          },
-          { expiresIn: '15m' }
-        );
-
-        return reply.send({
-          twoFactorSetupRequired: true,
-          setupToken,
-          manualEntryKey: formatTotpSecret(twoFactorSetupSecret),
-          otpAuthUrl: buildOtpAuthUrl({
-            issuer: 'Penncrest Theater Admin',
-            accountName: admin.username,
-            secret: twoFactorSetupSecret
-          }),
-          admin: serializeAdminUser(admin)
-        });
-      }
-
-      if (isSuperAdmin && !admin.twoFactorSecretEncrypted) {
-        return reply.status(500).send({ error: 'Two-factor authentication is not configured correctly' });
-      }
-
-      if (requiresTwoFactorCheck) {
-        if (!admin.twoFactorSecretEncrypted) {
-          return reply.status(500).send({ error: 'Two-factor authentication is not configured correctly' });
+          return reply.send({
+            twoFactorSetupRequired: true,
+            setupToken,
+            manualEntryKey: formatTotpSecret(setupSecret),
+            otpAuthUrl: buildOtpAuthUrl({
+              issuer: 'Penncrest Theater Admin',
+              accountName: admin.username,
+              secret: setupSecret
+            }),
+            admin: serializeAdminUser(admin)
+          });
         }
 
         const secret = decryptSecret(admin.twoFactorSecretEncrypted);

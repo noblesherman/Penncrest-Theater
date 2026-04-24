@@ -57,6 +57,7 @@ type FundraiseEvent = {
   showDescription?: string | null;
   showPosterUrl?: string | null;
   startsAt: string;
+  endsAt: string | null;
   salesCutoffAt: string | null;
   seatSelectionEnabled: boolean;
   venue: string;
@@ -71,6 +72,7 @@ type EventForm = {
   description: string;
   posterUrl: string;
   startsAt: string;
+  endsAt: string;
   salesCutoffAt: string;
   venue: string;
   notes: string;
@@ -217,6 +219,7 @@ function createInitialForm(): EventForm {
     description: '',
     posterUrl: '',
     startsAt: '',
+    endsAt: '',
     salesCutoffAt: '',
     venue: 'Penncrest High School Auditorium',
     notes: '',
@@ -980,6 +983,7 @@ export default function AdminFundraisePage() {
       description: event.showDescription || '',
       posterUrl: event.showPosterUrl || '',
       startsAt: event.startsAt.slice(0, 16),
+      endsAt: event.endsAt ? event.endsAt.slice(0, 16) : '',
       salesCutoffAt: event.salesCutoffAt ? event.salesCutoffAt.slice(0, 16) : '',
       venue: event.venue,
       notes: event.notes || '',
@@ -1023,6 +1027,14 @@ export default function AdminFundraisePage() {
     if (!form.startsAt.trim()) {
       setError('Event date/time is required.');
       return;
+    }
+    if (form.endsAt) {
+      const startMs = Date.parse(form.startsAt);
+      const endMs = Date.parse(form.endsAt);
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+        setError('End date/time must be later than the start date/time.');
+        return;
+      }
     }
     if (tiers.length === 0) {
       setError('Add at least one pricing tier in Name:PriceCents format.');
@@ -1073,6 +1085,7 @@ export default function AdminFundraisePage() {
           body: JSON.stringify({
             ...payload,
             startsAt: new Date(form.startsAt).toISOString(),
+            endsAt: form.endsAt ? new Date(form.endsAt).toISOString() : null,
             salesCutoffAt: form.salesCutoffAt ? new Date(form.salesCutoffAt).toISOString() : null
           })
         });
@@ -1086,6 +1099,7 @@ export default function AdminFundraisePage() {
               {
                 title: form.title.trim(),
                 startsAt: new Date(form.startsAt).toISOString(),
+                endsAt: form.endsAt ? new Date(form.endsAt).toISOString() : null,
                 salesCutoffAt: form.salesCutoffAt ? new Date(form.salesCutoffAt).toISOString() : null
               }
             ]
@@ -1602,11 +1616,22 @@ export default function AdminFundraisePage() {
       <p className="text-sm leading-relaxed text-stone-400">Set the fundraiser date and optional sales cutoff.</p>
       <div className="rounded-xl border border-stone-100 bg-stone-50 p-4 space-y-3">
         <div>
-          <label className="mb-1 block text-xs text-stone-400">Date & time</label>
+          <label className="mb-1 block text-xs text-stone-400">Start date & time</label>
           <input
             type="datetime-local"
             value={form.startsAt}
             onChange={(event) => setForm((prev) => ({ ...prev, startsAt: event.target.value }))}
+            className={inputClass}
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-stone-400">
+            End date & time <span className="text-stone-300">(optional)</span>
+          </label>
+          <input
+            type="datetime-local"
+            value={form.endsAt}
+            onChange={(event) => setForm((prev) => ({ ...prev, endsAt: event.target.value }))}
             className={inputClass}
           />
         </div>
@@ -1707,10 +1732,14 @@ export default function AdminFundraisePage() {
           { label: 'Description', value: form.description || <span className="text-stone-300">None</span> },
           { label: 'Venue', value: form.venue || <span className="font-semibold text-red-400">Missing!</span> },
           {
-            label: 'Date',
+            label: 'Start',
             value: form.startsAt
               ? new Date(form.startsAt).toLocaleString()
               : <span className="font-semibold text-red-400">Missing!</span>
+          },
+          {
+            label: 'End',
+            value: form.endsAt ? new Date(form.endsAt).toLocaleString() : <span className="text-stone-300">None</span>
           },
           {
             label: 'Cutoff',
@@ -2073,6 +2102,7 @@ export default function AdminFundraisePage() {
                     <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-stone-400">
                       <Calendar className="h-3 w-3" />
                       {new Date(event.startsAt).toLocaleString()}
+                      {event.endsAt ? ` - ${new Date(event.endsAt).toLocaleString()}` : ''}
                       <span className="text-stone-200">·</span>
                       <MapPin className="h-3 w-3" />
                       {event.venue}

@@ -158,10 +158,30 @@ export default function AdminUsersPage() {
     setBusyId(id); setError(null); setNotice(null);
     try {
       await adminFetch(`/api/admin/users/${id}/reset-2fa`, { method: 'POST' });
-      setNotice('Two-factor authentication reset. The user will be prompted to set it up again on next login.');
+      setNotice('Two-factor authentication turned off.');
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to reset 2FA');
+    } finally { setBusyId(null); }
+  };
+
+  const toggleTwoFactor = async (user: AdminUserRow, nextEnabled: boolean) => {
+    if (user.role === 'BOX_OFFICE') return;
+    if (user.twoFactorEnabled === nextEnabled) return;
+    setBusyId(user.id); setError(null); setNotice(null);
+    try {
+      await adminFetch(`/api/admin/users/${user.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ twoFactorEnabled: nextEnabled }),
+      });
+      setNotice(
+        nextEnabled
+          ? 'Two-factor authentication turned on. The user will set it up on next login.'
+          : 'Two-factor authentication turned off.'
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to update 2FA');
     } finally { setBusyId(null); }
   };
 
@@ -270,21 +290,15 @@ export default function AdminUsersPage() {
             const twoFactorLabel =
               user.role === 'BOX_OFFICE'
                 ? '2FA Off (Role)'
-                : user.role === 'SUPER_ADMIN'
-                  ? user.twoFactorEnabled
-                    ? '2FA On'
-                    : '2FA Required'
-                  : user.twoFactorEnabled
-                    ? '2FA On'
-                    : '2FA Optional';
+                : user.twoFactorEnabled
+                  ? '2FA On'
+                  : '2FA Off';
             const twoFactorStyle =
               user.role === 'BOX_OFFICE'
                 ? 'bg-stone-100 text-stone-600 ring-stone-200'
                 : user.twoFactorEnabled
                   ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-                  : user.role === 'SUPER_ADMIN'
-                    ? 'bg-rose-50 text-rose-700 ring-rose-200'
-                    : 'bg-amber-50 text-amber-700 ring-amber-200';
+                  : 'bg-amber-50 text-amber-700 ring-amber-200';
 
             return (
               <div key={user.id} className="rounded-2xl border border-stone-100 bg-white shadow-sm">
@@ -350,6 +364,18 @@ export default function AdminUsersPage() {
                       />
                       Active account
                     </label>
+                    {user.role !== 'BOX_OFFICE' && (
+                      <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-stone-700 select-none">
+                        <input
+                          type="checkbox"
+                          checked={user.twoFactorEnabled}
+                          onChange={(e) => { void toggleTwoFactor(user, e.target.checked); }}
+                          disabled={isBusy}
+                          className="h-4 w-4 rounded border-stone-300 accent-amber-600 disabled:cursor-not-allowed disabled:opacity-70"
+                        />
+                        2FA enabled
+                      </label>
+                    )}
                     <input
                       value={draft.password}
                       onChange={(e) => updateDraft(user.id, { password: e.target.value })}

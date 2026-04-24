@@ -24,6 +24,7 @@ type LiveFundraisingEvent = {
   description: string;
   posterUrl: string;
   startsAt: string;
+  endsAt: string | null;
   salesOpen: boolean;
   venue: string;
   seatSelectionEnabled: boolean;
@@ -53,12 +54,20 @@ type DisplayEvent = {
   seatModeLabel?: string;
 };
 
-function formatEventDate(iso: string): { dateLabel: string; timeLabel: string } {
-  const date = new Date(iso);
+function formatEventDate(startIso: string, endIso?: string | null): { dateLabel: string; timeLabel: string } {
+  const date = new Date(startIso);
   if (Number.isNaN(date.getTime())) return { dateLabel: 'TBD', timeLabel: 'TBD' };
+
+  const endDate = endIso ? new Date(endIso) : null;
+  const hasValidEnd = Boolean(endDate && !Number.isNaN(endDate.getTime()));
+  const endLabel = hasValidEnd
+    ? endDate!.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+    : null;
   return {
     dateLabel: date.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }),
-    timeLabel: date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+    timeLabel: endLabel
+      ? `${date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })} - ${endLabel}`
+      : date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
   };
 }
 
@@ -82,7 +91,7 @@ export default function CommunityEvents() {
 
   const liveDisplayEvents = useMemo<DisplayEvent[]>(
     () => liveEvents.map((event) => {
-      const { dateLabel, timeLabel } = formatEventDate(event.startsAt);
+      const { dateLabel, timeLabel } = formatEventDate(event.startsAt, event.endsAt);
       return {
         id: event.id,
         title: event.title,

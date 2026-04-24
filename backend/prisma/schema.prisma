@@ -427,6 +427,7 @@ model Performance {
   show          Show          @relation(fields: [showId], references: [id], onDelete: Cascade)
   title         String?
   startsAt      DateTime
+  endsAt        DateTime?
   onlineSalesStartsAt DateTime?
   salesCutoffAt DateTime?
   isPublished   Boolean       @default(true)

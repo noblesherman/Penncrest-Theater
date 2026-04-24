@@ -1,0 +1,2 @@
+ALTER TABLE "Performance"
+ADD COLUMN "endsAt" TIMESTAMP(3);

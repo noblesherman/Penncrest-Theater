@@ -41,7 +41,8 @@ const updateAdminUserSchema = z
     username: usernameSchema.optional(),
     name: z.string().trim().min(1).max(120).optional(),
     role: z.enum(['BOX_OFFICE', 'ADMIN', 'SUPER_ADMIN']).optional(),
-    isActive: z.boolean().optional()
+    isActive: z.boolean().optional(),
+    twoFactorEnabled: z.boolean().optional()
   })
   .refine((value) => Object.values(value).some((entry) => entry !== undefined), 'Provide at least one field to update');
 
@@ -141,8 +142,14 @@ export const adminUserRoutes: FastifyPluginAsync = async (app) => {
     }
 
     try {
-      await assertSuperAdminSafety(params.id, parsed.data.role, parsed.data.isActive);
-      const clearsTwoFactorForBoxOffice = parsed.data.role === 'BOX_OFFICE';
+      const target = await assertSuperAdminSafety(params.id, parsed.data.role, parsed.data.isActive);
+      const nextRole = parsed.data.role ?? target.role;
+      const clearsTwoFactorForBoxOffice = nextRole === 'BOX_OFFICE';
+      const twoFactorToggleRequested = parsed.data.twoFactorEnabled !== undefined;
+
+      if (parsed.data.twoFactorEnabled === true && nextRole === 'BOX_OFFICE') {
+        throw new HttpError(400, 'Two-factor authentication cannot be enabled for box office accounts.');
+      }
 
       const updated = await prisma.adminUser.update({
         where: { id: params.id },
@@ -152,8 +159,12 @@ export const adminUserRoutes: FastifyPluginAsync = async (app) => {
           name: parsed.data.name?.trim(),
           role: parsed.data.role,
           isActive: parsed.data.isActive,
-          twoFactorEnabled: clearsTwoFactorForBoxOffice ? false : undefined,
-          twoFactorSecretEncrypted: clearsTwoFactorForBoxOffice ? null : undefined
+          twoFactorEnabled: clearsTwoFactorForBoxOffice
+            ? false
+            : parsed.data.twoFactorEnabled,
+          twoFactorSecretEncrypted: clearsTwoFactorForBoxOffice || twoFactorToggleRequested
+            ? null
+            : undefined
         }
       });
 

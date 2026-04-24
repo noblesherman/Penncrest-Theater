@@ -34,6 +34,7 @@ type LiveFundraisingEvent = {
   description: string;
   posterUrl: string;
   startsAt: string;
+  endsAt: string | null;
   salesCutoffAt: string | null;
   salesOpen: boolean;
   venue: string;
@@ -69,12 +70,19 @@ type RelatedEvent = {
   linkHref: string;
 };
 
-function formatEventDate(iso: string): { dateLabel: string; timeLabel: string } {
-  const date = new Date(iso);
+function formatEventDate(startIso: string, endIso?: string | null): { dateLabel: string; timeLabel: string } {
+  const date = new Date(startIso);
   if (Number.isNaN(date.getTime())) return { dateLabel: 'TBD', timeLabel: 'TBD' };
+  const endDate = endIso ? new Date(endIso) : null;
+  const hasValidEnd = Boolean(endDate && !Number.isNaN(endDate.getTime()));
+  const endTimeLabel = hasValidEnd
+    ? endDate!.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+    : null;
   return {
     dateLabel: date.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }),
-    timeLabel: date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
+    timeLabel: endTimeLabel
+      ? `${date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })} - ${endTimeLabel}`
+      : date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
   };
 }
 
@@ -166,7 +174,7 @@ export default function FundraisingEventDetail() {
 
   const event = useMemo<DetailEvent | null>(() => {
     if (liveEvent) {
-      const { dateLabel, timeLabel } = formatEventDate(liveEvent.startsAt);
+      const { dateLabel, timeLabel } = formatEventDate(liveEvent.startsAt, liveEvent.endsAt);
       const priceLabel = formatPriceLabel(liveEvent.minPrice, liveEvent.maxPrice);
       const cleanedNotes = sanitizeFundraiserNotes(liveEvent.notes || '');
       const summaryText = cleanedNotes || liveEvent.description || 'This fundraiser supports Penncrest Theater students and production programs.';
@@ -225,7 +233,7 @@ export default function FundraisingEventDetail() {
         id: item.id,
         title: item.title,
         imageUrl: item.posterUrl || 'https://picsum.photos/id/1074/1200/800',
-        dateLabel: formatEventDate(item.startsAt).dateLabel,
+        dateLabel: formatEventDate(item.startsAt, item.endsAt).dateLabel,
         linkHref: `/fundraising/events/${item.id}`,
       }));
     }
