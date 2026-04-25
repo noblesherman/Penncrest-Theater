@@ -13,6 +13,7 @@ Handoff note for Mr. Smith:
 
 import { type ReactNode, useEffect, useState } from 'react';
 import { adminFetch, formatAdminRole, type AdminRole } from '../../lib/adminAuth';
+import { useAdminSession } from './useAdminSession';
 
 type AdminUserRow = {
   id: string;
@@ -76,10 +77,12 @@ function SectionLabel({ children }: { children: ReactNode }) {
 }
 
 export default function AdminUsersPage() {
+  const { admin } = useAdminSession();
   const [rows, setRows] = useState<AdminUserRow[]>([]);
   const [drafts, setDrafts] = useState<Record<string, DraftRow>>({});
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -185,6 +188,28 @@ export default function AdminUsersPage() {
     } finally { setBusyId(null); }
   };
 
+  const deleteUser = async (user: AdminUserRow) => {
+    if (user.id === admin.id) {
+      setError('You cannot delete your own admin account while signed in.');
+      setNotice(null);
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${user.name || user.username}? This permanently removes the admin account.`
+    );
+    if (!confirmed) return;
+
+    setBusyId(user.id); setDeletingId(user.id); setError(null); setNotice(null);
+    try {
+      await adminFetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
+      setNotice('Admin user deleted.');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to delete admin user');
+    } finally { setBusyId(null); setDeletingId(null); }
+  };
+
   return (
     <div className="mx-auto max-w-2xl space-y-6 py-2">
 
@@ -287,6 +312,7 @@ export default function AdminUsersPage() {
             const draft = drafts[user.id];
             if (!draft) return null;
             const isBusy = busyId === user.id;
+            const isCurrentUser = user.id === admin.id;
             const twoFactorLabel =
               user.role === 'BOX_OFFICE'
                 ? '2FA Off (Role)'
@@ -410,6 +436,14 @@ export default function AdminUsersPage() {
                         Reset 2FA
                       </button>
                     )}
+                    <button
+                      onClick={() => { void deleteUser(user); }}
+                      disabled={isBusy || isCurrentUser}
+                      title={isCurrentUser ? 'You cannot delete your own signed-in account.' : undefined}
+                      className="w-full rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                    >
+                      {deletingId === user.id ? 'Deleting…' : 'Delete User'}
+                    </button>
                   </div>
                 </div>
               </div>

@@ -80,6 +80,37 @@ async function assertSuperAdminSafety(targetId: string, nextRole?: 'BOX_OFFICE' 
   return target;
 }
 
+async function assertAdminUserDeletionSafety(targetId: string, actorId?: string | null) {
+  const target = await prisma.adminUser.findUnique({
+    where: { id: targetId }
+  });
+
+  if (!target) {
+    throw new HttpError(404, 'User not found');
+  }
+
+  if (actorId && target.id === actorId) {
+    throw new HttpError(400, 'You cannot delete your own admin account while signed in.');
+  }
+
+  if (target.role !== 'SUPER_ADMIN' || !target.isActive) {
+    return target;
+  }
+
+  const activeSuperAdminCount = await prisma.adminUser.count({
+    where: {
+      role: 'SUPER_ADMIN',
+      isActive: true
+    }
+  });
+
+  if (activeSuperAdminCount <= 1) {
+    throw new HttpError(400, 'You must keep at least one active super admin.');
+  }
+
+  return target;
+}
+
 export const adminUserRoutes: FastifyPluginAsync = async (app) => {
   const adminActor = (request: { adminUser?: { username: string; id: string } }) => ({
     actor: request.adminUser?.username || 'super-admin',
@@ -250,6 +281,34 @@ export const adminUserRoutes: FastifyPluginAsync = async (app) => {
       reply.send({ success: true });
     } catch (err) {
       handleRouteError(reply, err, 'We hit a small backstage snag while trying to reset two-factor authentication');
+    }
+  });
+
+  app.delete('/api/admin/users/:id', { preHandler: app.requireAdminRole('SUPER_ADMIN') }, async (request, reply) => {
+    const params = request.params as { id: string };
+
+    try {
+      const target = await assertAdminUserDeletionSafety(params.id, request.adminUser?.id);
+
+      await prisma.adminUser.delete({
+        where: { id: target.id }
+      });
+
+      await logAudit({
+        ...adminActor(request),
+        action: 'ADMIN_USER_DELETED',
+        entityType: 'AdminUser',
+        entityId: target.id,
+        metadata: {
+          username: target.username,
+          role: target.role,
+          wasActive: target.isActive
+        }
+      });
+
+      reply.send({ success: true });
+    } catch (err) {
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to delete admin user');
     }
   });
 };
