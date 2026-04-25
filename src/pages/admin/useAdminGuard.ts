@@ -15,6 +15,7 @@ import type { AdminSession } from '../../lib/adminAuth';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clearAdminToken, ensureAdminSession, getAdminToken } from '../../lib/adminAuth';
+import { ApiError } from '../../lib/api';
 
 export function useAdminGuard() {
   const navigate = useNavigate();
@@ -33,8 +34,10 @@ export function useAdminGuard() {
         setAdmin(session);
         setLoading(false);
       })
-      .catch(() => {
-        clearAdminToken();
+      .catch((err) => {
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+          clearAdminToken();
+        }
         navigate('/admin/login', { replace: true });
       });
   }, [navigate]);

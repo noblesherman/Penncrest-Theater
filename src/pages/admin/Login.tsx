@@ -14,8 +14,8 @@ Handoff note for Mr. Smith:
 import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { apiFetch, apiUrl } from '../../lib/api';
-import { setAdminToken } from '../../lib/adminAuth';
+import { ApiError, apiFetch, apiUrl } from '../../lib/api';
+import { clearAdminToken, ensureAdminSession, getAdminToken, setAdminToken } from '../../lib/adminAuth';
 import { queueAdminPostLoginGreeting } from '../../lib/adminPostLoginGreeting';
 import { toQrCodeDataUrl } from '../../lib/qrCode';
 
@@ -128,6 +128,28 @@ export default function AdminLoginPage() {
   const [loading,     setLoading]     = useState(false);
   const [phase,       setPhase]       = useState<'credentials' | '2fa' | 'setup'>('credentials');
   const [rememberMe,  setRememberMe]  = useState(false);
+
+  useEffect(() => {
+    const token = getAdminToken();
+    if (!token) return;
+
+    let cancelled = false;
+    void ensureAdminSession()
+      .then(() => {
+        if (cancelled) return;
+        navigate(getPostLoginRoute(), { replace: true });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+          clearAdminToken();
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -304,7 +326,7 @@ export default function AdminLoginPage() {
                       onChange={(e) => setRememberMe(e.target.checked)}
                       className="h-3.5 w-3.5 rounded border-stone-300 accent-red-700"
                     />
-                    Remember this machine for 30 days
+                    Keep me signed in for 30 days after 2FA
                   </label>
                 </motion.div>
               )}
@@ -318,6 +340,11 @@ export default function AdminLoginPage() {
                   <div className="rounded-2xl border border-stone-100 bg-stone-50 px-4 py-4 text-center">
                     <p className="font-bold text-stone-900 mb-1 text-sm" style={{ fontFamily: 'var(--font-sans)' }}>Authenticator Required</p>
                     <p className="text-xs text-stone-400 leading-relaxed">Open your app and enter the 6-digit code for Penncrest Theater.</p>
+                    {rememberMe && (
+                      <p className="mt-2 text-[11px] font-semibold text-stone-500">
+                        This verified session will stay signed in for 30 days.
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400 mb-1.5">6-Digit Code</label>

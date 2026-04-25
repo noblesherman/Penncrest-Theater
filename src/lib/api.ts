@@ -39,6 +39,16 @@ function normalizeApiBaseUrl(url?: string): string {
 
 const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 export function apiUrl(path: string) {
   return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
 }
@@ -107,7 +117,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   const body = isJson ? await response.json() : null;
 
   if (!response.ok) {
-    throw new Error(extractApiErrorMessage(body, response.status));
+    throw new ApiError(extractApiErrorMessage(body, response.status), response.status);
   }
 
   return body as T;
