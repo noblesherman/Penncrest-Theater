@@ -21,7 +21,6 @@ import {
   ArrowRight,
   ChevronLeft,
   CreditCard,
-  Heart,
   Mail,
   Phone,
   Search,
@@ -2262,6 +2261,67 @@ export default function Booking() {
                     ))}
                   </div>
 
+                  {showDonationPanel && (
+                    <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-bold text-stone-900">Add a donation?</p>
+                          <p className="text-xs text-stone-500">Optional support for Penncrest Theater.</p>
+                        </div>
+                        {checkoutDonationAmount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleDonationModeChange(donationMode)}
+                            disabled={Boolean(pendingStripePayment)}
+                            className="shrink-0 text-xs font-bold text-stone-500 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {roundUpDonationAmount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleDonationModeChange('roundup')}
+                            disabled={Boolean(pendingStripePayment)}
+                            className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                              donationMode === 'roundup'
+                                ? 'border-red-300 bg-red-50 text-red-800'
+                                : 'border-stone-300 bg-white text-stone-700 hover:border-red-200'
+                            }`}
+                          >
+                            Round up +{formatCents(roundUpDonationAmount)}
+                          </button>
+                        )}
+
+                        <label
+                          className={`flex min-w-[150px] flex-1 items-center rounded-lg border bg-white px-3 py-2 transition-colors ${
+                            donationMode === 'custom' ? 'border-red-300 ring-2 ring-red-50' : 'border-stone-300'
+                          }`}
+                        >
+                          <span className="mr-1 text-xs font-bold text-stone-400">$</span>
+                          <input
+                            inputMode="decimal"
+                            value={customDonationAmount}
+                            onChange={(event) => handleCustomDonationAmountChange(event.target.value)}
+                            onFocus={() => {
+                              if (donationMode !== 'custom') handleDonationModeChange('custom');
+                            }}
+                            disabled={Boolean(pendingStripePayment)}
+                            placeholder="Custom"
+                            className="w-full bg-transparent text-sm font-semibold text-stone-900 outline-none placeholder:text-stone-400 disabled:cursor-not-allowed"
+                          />
+                        </label>
+                      </div>
+
+                      {donationValidationMessage && (
+                        <p className="mt-2 text-xs font-semibold text-red-700">{donationValidationMessage}</p>
+                      )}
+                    </div>
+                  )}
+
                   <div className="mt-5 space-y-2 border-t border-stone-200 pt-4">
                     <div className="flex items-center justify-between text-sm text-stone-600">
                       <span>Ticket subtotal</span>
@@ -2419,80 +2479,6 @@ export default function Booking() {
                         <p className="text-sm md:text-base text-stone-600 mt-2">
                           Everything looks good. Continue to payment to finish checkout.
                         </p>
-
-                        {showDonationPanel && (
-                          <div className="mt-6 rounded-2xl border border-red-100 bg-gradient-to-br from-red-50 via-white to-amber-50 p-4 shadow-sm">
-                            <div className="flex items-start gap-3">
-                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-red-700 shadow-sm ring-1 ring-red-100">
-                                <Heart className="h-5 w-5" />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <div>
-                                    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-red-700">Optional Donation</p>
-                                    <h3 className="mt-1 text-lg font-black text-stone-900">Support Penncrest Theater</h3>
-                                  </div>
-                                  {checkoutDonationAmount > 0 && (
-                                    <span className="rounded-full border border-red-100 bg-white px-3 py-1 text-sm font-bold text-red-700">
-                                      +{formatCents(checkoutDonationAmount)}
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="mt-2 text-sm text-stone-600">
-                                  Add a little extra to help with productions, events, and student theater opportunities.
-                                </p>
-
-                                <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDonationModeChange('roundup')}
-                                    disabled={Boolean(pendingStripePayment) || roundUpDonationAmount === 0}
-                                    className={`rounded-xl border px-4 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                                      donationMode === 'roundup'
-                                        ? 'border-red-300 bg-white text-red-800 shadow-sm'
-                                        : 'border-stone-200 bg-white/80 text-stone-700 hover:border-red-200 hover:bg-white'
-                                    }`}
-                                  >
-                                    <span className="block text-sm font-bold">Round up</span>
-                                    <span className="mt-0.5 block text-xs text-stone-500">
-                                      {roundUpDonationAmount > 0
-                                        ? `Add ${formatCents(roundUpDonationAmount)} to make it ${formatCents(totalAmount + roundUpDonationAmount)}.`
-                                        : 'Your ticket total is already a whole dollar.'}
-                                    </span>
-                                  </button>
-
-                                  <label
-                                    className={`rounded-xl border px-4 py-3 transition-colors ${
-                                      donationMode === 'custom'
-                                        ? 'border-red-300 bg-white shadow-sm'
-                                        : 'border-stone-200 bg-white/80 hover:border-red-200 hover:bg-white'
-                                    }`}
-                                  >
-                                    <span className="block text-sm font-bold text-stone-800">Custom amount</span>
-                                    <div className="mt-2 flex items-center rounded-lg border border-stone-300 bg-white px-3 py-2">
-                                      <span className="mr-1 text-sm font-bold text-stone-400">$</span>
-                                      <input
-                                        inputMode="decimal"
-                                        value={customDonationAmount}
-                                        onChange={(event) => handleCustomDonationAmountChange(event.target.value)}
-                                        onFocus={() => {
-                                          if (donationMode !== 'custom') handleDonationModeChange('custom');
-                                        }}
-                                        disabled={Boolean(pendingStripePayment)}
-                                        placeholder="Optional"
-                                        className="w-full bg-transparent text-sm font-bold text-stone-900 outline-none disabled:cursor-not-allowed"
-                                      />
-                                    </div>
-                                  </label>
-                                </div>
-
-                                {donationValidationMessage && (
-                                  <p className="mt-2 text-sm font-semibold text-red-700">{donationValidationMessage}</p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        )}
 
                         <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center">
                           <button
