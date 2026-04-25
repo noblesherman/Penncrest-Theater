@@ -26,6 +26,7 @@ type OrderDetail = {
   email: string;
   customerName: string;
   amountTotal: number;
+  donationAmountCents?: number;
   createdAt: string;
   performance: {
     id: string;
@@ -383,6 +384,8 @@ export default function AdminOrderDetailPage() {
 
   const statusStyle = STATUS_STYLES[data.status] ?? 'bg-stone-100 text-stone-500 ring-1 ring-stone-200';
   const formattedTotal = `$${(data.amountTotal / 100).toFixed(2)}`;
+  const donationAmountCents = data.donationAmountCents || 0;
+  const ticketSubtotalCents = Math.max(0, data.amountTotal - donationAmountCents);
   const shouldShowTransactionPanel =
     Boolean(transaction) || Boolean(transactionError) || transactionLoading ||
     Boolean(data.stripePaymentIntentId) || data.source === 'ONLINE' ||
@@ -453,6 +456,22 @@ export default function AdminOrderDetailPage() {
             <span className="text-sm font-bold text-stone-800">{formattedTotal}</span>
           </div>
         </div>
+        {donationAmountCents > 0 && (
+          <dl className="mt-4 grid gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-red-700">Tickets</dt>
+              <dd className="mt-1 font-bold text-stone-900">{formatCurrency(ticketSubtotalCents)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-red-700">Donation</dt>
+              <dd className="mt-1 font-bold text-red-800">{formatCurrency(donationAmountCents)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-red-700">Total</dt>
+              <dd className="mt-1 font-bold text-stone-900">{formattedTotal}</dd>
+            </div>
+          </dl>
+        )}
       </Card>
 
       {/* ── Refund status ── */}
@@ -551,6 +570,18 @@ export default function AdminOrderDetailPage() {
                         {formatCurrency(paymentIntent.amount, paymentIntent.currency)}
                       </dd>
                     </div>
+                    {donationAmountCents > 0 && (
+                      <>
+                        <div className="flex items-center justify-between gap-2">
+                          <dt className="text-stone-500">Ticket subtotal</dt>
+                          <dd className="text-stone-700">{formatCurrency(ticketSubtotalCents, paymentIntent.currency)}</dd>
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <dt className="text-stone-500">Checkout donation</dt>
+                          <dd className="font-semibold text-red-700">{formatCurrency(donationAmountCents, paymentIntent.currency)}</dd>
+                        </div>
+                      </>
+                    )}
                     <div className="flex items-center justify-between gap-2">
                       <dt className="text-stone-500">Stripe fees</dt>
                       <dd className="text-stone-600">

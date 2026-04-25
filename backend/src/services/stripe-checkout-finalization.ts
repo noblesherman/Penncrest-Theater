@@ -400,7 +400,8 @@ async function finalizePaidOrderTx(
     }
   }
 
-  const amountTotal = refreshedOrderSeats.reduce((sum, orderSeat) => sum + orderSeat.price, 0);
+  const ticketSubtotalCents = refreshedOrderSeats.reduce((sum, orderSeat) => sum + orderSeat.price, 0);
+  const amountTotal = ticketSubtotalCents + Math.max(0, order.donationAmountCents || 0);
   await createMissingTickets(tx, order, isGeneralAdmissionNoSeatLinks, orderedSeats, refreshedOrderSeats);
 
   await finalizeStudentCreditForOrderTx(tx, {

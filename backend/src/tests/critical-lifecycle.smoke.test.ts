@@ -178,6 +178,7 @@ async function runPaidCheckout(params: {
   clientToken: string;
   customerEmail: string;
   customerName: string;
+  donationAmountCents?: number;
 }): Promise<{
   orderId: string;
   clientSecret?: string;
@@ -194,7 +195,8 @@ async function runPaidCheckout(params: {
       clientToken: params.clientToken,
       customerEmail: params.customerEmail,
       customerName: params.customerName,
-      customerPhone: '610-555-0101'
+      customerPhone: '610-555-0101',
+      donationAmountCents: params.donationAmountCents
     }
   });
 
@@ -344,6 +346,8 @@ describe.sequential('critical lifecycle smoke', () => {
 
     expect(checkoutResult.clientSecret).toContain('pi_smoke_');
     expect(checkoutResult.orderId).toBeTruthy();
+    expect(stripeState.latestCheckoutAmount).toBe(2500);
+    expect(stripeState.latestPaymentIntent?.metadata?.donationAmountCents).toBe('0');
 
     const order = await prisma.order.findFirstOrThrow({
       where: {
@@ -352,6 +356,8 @@ describe.sequential('critical lifecycle smoke', () => {
     });
 
     expect(order.status).toBe('PENDING');
+    expect(order.amountTotal).toBe(2500);
+    expect(order.donationAmountCents).toBe(0);
     expect(order.checkoutAttemptState).toBe('AWAITING_PAYMENT');
     expect(order.checkoutAttemptExpiresAt).toBeTruthy();
     expect(order.accessToken).toBeTruthy();
@@ -412,6 +418,8 @@ describe.sequential('critical lifecycle smoke', () => {
     });
 
     expect(dedupedOrder.finalizationAttemptCount).toBe(1);
+    expect(dedupedOrder.amountTotal).toBe(2500);
+    expect(dedupedOrder.donationAmountCents).toBe(0);
     expect(await prisma.ticket.count({ where: { orderId: order.id } })).toBe(1);
 
     const confirmationResponse = await app.inject({
@@ -571,6 +579,124 @@ describe.sequential('critical lifecycle smoke', () => {
     expect(refundedOrder.stripeRefundStatus).toBe('succeeded');
     expect(refundedOrder.refundAmountCents).toBe(refundedOrder.amountTotal);
     expect(refundedSeat.status).toBe('AVAILABLE');
+  });
+
+  it('adds an optional checkout donation to Stripe amount and preserves it through finalization', async () => {
+    const buyerEmail = `donor_${Date.now()}@example.com`;
+    const clientToken = `client_${Date.now()}_donation`;
+    const { performance, seat } = await createPerformance('Donation Checkout', buyerEmail);
+
+    const holdResponse = await app.inject({
+      method: 'POST',
+      url: '/api/hold',
+      payload: {
+        performanceId: performance.id,
+        seatIds: [seat.id],
+        clientToken
+      }
+    });
+
+    expect(holdResponse.statusCode).toBe(200);
+    const holdBody = holdResponse.json();
+
+    const checkoutResult = await runPaidCheckout({
+      performanceId: performance.id,
+      seatIds: [seat.id],
+      holdToken: holdBody.holdToken,
+      clientToken,
+      customerEmail: buyerEmail,
+      customerName: 'Donation Buyer',
+      donationAmountCents: 175
+    });
+
+    expect(checkoutResult.orderId).toBeTruthy();
+    expect(stripeState.latestCheckoutAmount).toBe(2675);
+    expect(stripeState.latestPaymentIntent?.metadata?.ticketSubtotalCents).toBe('2500');
+    expect(stripeState.latestPaymentIntent?.metadata?.donationAmountCents).toBe('175');
+
+    const pendingOrder = await prisma.order.findUniqueOrThrow({
+      where: { id: checkoutResult.orderId }
+    });
+    expect(pendingOrder.amountTotal).toBe(2675);
+    expect(pendingOrder.donationAmountCents).toBe(175);
+
+    stripeState.nextWebhookEvent = {
+      id: 'evt_smoke_checkout_donation',
+      type: 'payment_intent.succeeded',
+      data: {
+        object: {
+          ...stripeState.latestPaymentIntent,
+          status: 'succeeded'
+        }
+      }
+    };
+
+    const webhookResponse = await app.inject({
+      method: 'POST',
+      url: '/api/webhooks/stripe',
+      headers: {
+        'stripe-signature': 'sig_donation',
+        'content-type': 'application/json'
+      },
+      payload: JSON.stringify({ ok: true })
+    });
+
+    expect(webhookResponse.statusCode).toBe(200);
+
+    const paidOrder = await prisma.order.findUniqueOrThrow({
+      where: { id: checkoutResult.orderId },
+      include: { orderSeats: true }
+    });
+    expect(paidOrder.status).toBe('PAID');
+    expect(paidOrder.orderSeats.reduce((sum, orderSeat) => sum + orderSeat.price, 0)).toBe(2500);
+    expect(paidOrder.amountTotal).toBe(2675);
+    expect(paidOrder.donationAmountCents).toBe(175);
+
+    const confirmationResponse = await app.inject({
+      method: 'GET',
+      url: `/api/orders/${paidOrder.id}?token=${encodeURIComponent(paidOrder.accessToken)}`
+    });
+
+    expect(confirmationResponse.statusCode).toBe(200);
+    const confirmationBody = confirmationResponse.json();
+    expect(confirmationBody.order.amountTotal).toBe(2675);
+    expect(confirmationBody.order.ticketSubtotalCents).toBe(2500);
+    expect(confirmationBody.order.donationAmountCents).toBe(175);
+  });
+
+  it('rejects invalid checkout donation amounts', async () => {
+    const buyerEmail = `invalid_donor_${Date.now()}@example.com`;
+    const clientToken = `client_${Date.now()}_bad_donation`;
+    const { performance, seat } = await createPerformance('Invalid Donation Checkout', buyerEmail);
+
+    const holdResponse = await app.inject({
+      method: 'POST',
+      url: '/api/hold',
+      payload: {
+        performanceId: performance.id,
+        seatIds: [seat.id],
+        clientToken
+      }
+    });
+
+    const holdBody = holdResponse.json();
+    const checkoutResponse = await app.inject({
+      method: 'POST',
+      url: '/api/checkout',
+      payload: {
+        performanceId: performance.id,
+        checkoutMode: 'PAID',
+        seatIds: [seat.id],
+        holdToken: holdBody.holdToken,
+        clientToken,
+        customerEmail: buyerEmail,
+        customerName: 'Invalid Donation Buyer',
+        customerPhone: '610-555-0101',
+        donationAmountCents: 100001
+      }
+    });
+
+    expect(checkoutResponse.statusCode).toBe(400);
   });
 
   it('expires stale pending checkout attempts and releases the hold', async () => {

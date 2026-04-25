@@ -37,5 +37,6 @@ export const checkoutRequestSchema = z.object({
   customerPhone: z.string().min(7).max(40),
   attendeeNames: z.record(z.string().min(1), z.string().min(1).max(80)).optional(),
   registrationSubmission: eventRegistrationSubmissionSchema.optional(),
+  donationAmountCents: z.number().int().min(0).max(100000).optional(),
   clientIpAddress: z.string().max(120).optional()
 });

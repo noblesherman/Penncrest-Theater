@@ -548,6 +548,7 @@ model Order {
   customerPhone         String?
   attendeeNamesJson     Json?
   amountTotal           Int
+  donationAmountCents   Int         @default(0)
   currency              String      @default("usd")
   status                OrderStatus @default(PENDING)
   checkoutAttemptState  CheckoutAttemptState @default(NONE)

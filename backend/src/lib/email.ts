@@ -846,6 +846,8 @@ export async function sendAudienceBroadcastEmail(payload: AudienceBroadcastEmail
   const safeVenue = payload.audienceVenue?.trim() ? escapeHtml(payload.audienceVenue.trim()) : null;
   const startsAtLabel = payload.audienceStartsAtIso ? formatPerformanceDate(payload.audienceStartsAtIso) : null;
   const safeStartsAt = startsAtLabel ? escapeHtml(startsAtLabel) : null;
+  const replyToAddress = env.AUDIENCE_MESSAGE_REPLY_TO?.trim() || '';
+  const safeReplyToAddress = replyToAddress ? escapeHtml(replyToAddress) : null;
   const signatureText = payload.signature?.trim() || BRAND_NAME;
   const safeSignature = escapeHtml(signatureText);
   const includeEventDetails = payload.includeEventDetails !== false;
@@ -990,7 +992,11 @@ export async function sendAudienceBroadcastEmail(payload: AudienceBroadcastEmail
           <tr>
             <td style="background:linear-gradient(160deg,#1a0505 0%,#3d0a0a 100%);border-radius:0 0 16px 16px;padding:18px 32px;">
               <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;line-height:1.7;color:rgba(245,240,232,0.80);">
-                This message was sent by ${BRAND_NAME}. Replies are not monitored.
+                ${
+                  safeReplyToAddress
+                    ? `This message was sent by ${BRAND_NAME}. Replies are routed to ${safeReplyToAddress}.`
+                    : `This message was sent by ${BRAND_NAME}. Replies are not monitored.`
+                }
               </p>
             </td>
           </tr>
@@ -1003,6 +1009,7 @@ export async function sendAudienceBroadcastEmail(payload: AudienceBroadcastEmail
 
   await transporter.sendMail({
     from: NO_REPLY_FROM,
+    replyTo: replyToAddress || undefined,
     to: recipient,
     subject: safeSubject,
     text,

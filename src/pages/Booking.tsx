@@ -21,6 +21,7 @@ import {
   ArrowRight,
   ChevronLeft,
   CreditCard,
+  Heart,
   Mail,
   Phone,
   Search,
@@ -144,6 +145,8 @@ type CheckoutQueueState = {
   refreshAfterMs: number;
 };
 
+type CheckoutDonationMode = 'none' | 'roundup' | 'custom';
+
 type PendingStripePayment = {
   clientSecret: string;
   publishableKey: string;
@@ -173,6 +176,18 @@ const CHECKOUT_QUEUE_VISIBILITY_THRESHOLD = 5;
 
 function getSeatPollDelayMs(): number {
   return SEAT_POLL_BASE_INTERVAL_MS + Math.floor(Math.random() * SEAT_POLL_JITTER_MS);
+}
+
+function formatCents(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function parseDonationInputToCents(value: string): number | null {
+  const normalized = value.trim().replace(/^\$/, '');
+  if (!normalized) return 0;
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount)) return null;
+  return Math.round(amount * 100);
 }
 
 
@@ -353,6 +368,8 @@ export default function Booking() {
   const [registrationForm, setRegistrationForm] = useState<Extract<EventRegistrationPublicFormResponse, { enabled: true }> | null>(null);
   const [registrationPayload, setRegistrationPayload] = useState<EventRegistrationSubmissionPayload | null>(null);
   const [registrationValid, setRegistrationValid] = useState(true);
+  const [donationMode, setDonationMode] = useState<CheckoutDonationMode>('none');
+  const [customDonationAmount, setCustomDonationAmount] = useState('');
 
   const fetchSeats = useCallback(async () => {
     if (!performanceId) return;
@@ -826,6 +843,12 @@ export default function Booking() {
       return;
     }
 
+    if (donationValidationMessage) {
+      setStepError(donationValidationMessage);
+      setCurrentStep(5);
+      return;
+    }
+
     setProcessing(true);
     setStepError(null);
     setPendingStripePayment(null);
@@ -879,7 +902,8 @@ export default function Booking() {
             customerName: effectiveCustomerName,
             customerPhone: effectiveCustomerPhone,
             teacherPromoCode: normalizedTeacherPromoCode,
-            registrationSubmission: registrationRequired ? registrationPayload : undefined
+            registrationSubmission: registrationRequired ? registrationPayload : undefined,
+            donationAmountCents: checkoutDonationAmount > 0 ? checkoutDonationAmount : undefined
           })
         });
       } else if (isStudentInShowCheckout) {
@@ -918,7 +942,8 @@ export default function Booking() {
             customerName: effectiveCustomerName,
             customerPhone: effectiveCustomerPhone,
             studentCode: normalizedStudentCode,
-            registrationSubmission: registrationRequired ? registrationPayload : undefined
+            registrationSubmission: registrationRequired ? registrationPayload : undefined,
+            donationAmountCents: checkoutDonationAmount > 0 ? checkoutDonationAmount : undefined
           })
         });
       } else {
@@ -950,7 +975,8 @@ export default function Booking() {
             customerEmail: effectiveCustomerEmail,
             customerName: effectiveCustomerName,
             customerPhone: effectiveCustomerPhone,
-            registrationSubmission: registrationRequired ? registrationPayload : undefined
+            registrationSubmission: registrationRequired ? registrationPayload : undefined,
+            donationAmountCents: checkoutDonationAmount > 0 ? checkoutDonationAmount : undefined
           })
         });
       }
@@ -1206,6 +1232,36 @@ export default function Booking() {
     () => selectedSeatsWithPricing.reduce((sum, item) => sum + item.unitPrice, 0),
     [selectedSeatsWithPricing]
   );
+  const roundUpDonationAmount = totalAmount > 0 ? (100 - (totalAmount % 100)) % 100 : 0;
+  const showDonationPanel = totalAmount > 0;
+  const customDonationAmountCents = useMemo(() => parseDonationInputToCents(customDonationAmount), [customDonationAmount]);
+  const donationValidationMessage = useMemo(() => {
+    if (donationMode !== 'custom' || !customDonationAmount.trim()) return null;
+    if (customDonationAmountCents === null || customDonationAmountCents < 100 || customDonationAmountCents > 100000) {
+      return 'Enter a custom donation between $1.00 and $1,000.00, or leave it blank.';
+    }
+    return null;
+  }, [customDonationAmount, customDonationAmountCents, donationMode]);
+  const checkoutDonationAmount = showDonationPanel
+    ? donationMode === 'roundup'
+      ? roundUpDonationAmount
+      : donationMode === 'custom' && customDonationAmountCents !== null
+        ? customDonationAmountCents
+        : 0
+    : 0;
+  const finalCheckoutAmount = totalAmount + checkoutDonationAmount;
+
+  useEffect(() => {
+    if (!showDonationPanel && donationMode !== 'none') {
+      setDonationMode('none');
+      setCustomDonationAmount('');
+      return;
+    }
+
+    if (donationMode === 'roundup' && roundUpDonationAmount === 0) {
+      setDonationMode('none');
+    }
+  }, [donationMode, roundUpDonationAmount, showDonationPanel]);
 
   const missingTicketTypeCount = useMemo(() => {
     if (ticketOptions.length === 0) return 0;
@@ -1304,6 +1360,21 @@ export default function Booking() {
     resetPendingPayment();
     setCheckoutQueue(null);
     setCurrentStep(registrationRequired ? 4 : 5);
+  };
+
+  const handleDonationModeChange = (mode: CheckoutDonationMode) => {
+    setStepError(null);
+    resetPendingPayment();
+    setCheckoutQueue(null);
+    setDonationMode((current) => (current === mode ? 'none' : mode));
+  };
+
+  const handleCustomDonationAmountChange = (value: string) => {
+    setStepError(null);
+    resetPendingPayment();
+    setCheckoutQueue(null);
+    setDonationMode('custom');
+    setCustomDonationAmount(value);
   };
 
   const checkoutSteps = useMemo(() => {
@@ -2191,9 +2262,21 @@ export default function Booking() {
                     ))}
                   </div>
 
-                  <div className="mt-5 border-t border-stone-200 pt-4 flex items-end justify-between">
-                    <div className="text-sm text-stone-500">Total</div>
-                    <div className="text-3xl font-bold text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
+                  <div className="mt-5 space-y-2 border-t border-stone-200 pt-4">
+                    <div className="flex items-center justify-between text-sm text-stone-600">
+                      <span>Ticket subtotal</span>
+                      <span className="font-semibold text-stone-900">{formatCents(totalAmount)}</span>
+                    </div>
+                    {checkoutDonationAmount > 0 && (
+                      <div className="flex items-center justify-between text-sm text-red-700">
+                        <span>Optional donation</span>
+                        <span className="font-semibold">{formatCents(checkoutDonationAmount)}</span>
+                      </div>
+                    )}
+                    <div className="flex items-end justify-between border-t border-stone-200 pt-3">
+                      <div className="text-sm font-semibold text-stone-500">Total</div>
+                      <div className="text-3xl font-bold text-stone-900">{formatCents(finalCheckoutAmount)}</div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2337,6 +2420,80 @@ export default function Booking() {
                           Everything looks good. Continue to payment to finish checkout.
                         </p>
 
+                        {showDonationPanel && (
+                          <div className="mt-6 rounded-2xl border border-red-100 bg-gradient-to-br from-red-50 via-white to-amber-50 p-4 shadow-sm">
+                            <div className="flex items-start gap-3">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-red-700 shadow-sm ring-1 ring-red-100">
+                                <Heart className="h-5 w-5" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div>
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-red-700">Optional Donation</p>
+                                    <h3 className="mt-1 text-lg font-black text-stone-900">Support Penncrest Theater</h3>
+                                  </div>
+                                  {checkoutDonationAmount > 0 && (
+                                    <span className="rounded-full border border-red-100 bg-white px-3 py-1 text-sm font-bold text-red-700">
+                                      +{formatCents(checkoutDonationAmount)}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="mt-2 text-sm text-stone-600">
+                                  Add a little extra to help with productions, events, and student theater opportunities.
+                                </p>
+
+                                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDonationModeChange('roundup')}
+                                    disabled={Boolean(pendingStripePayment) || roundUpDonationAmount === 0}
+                                    className={`rounded-xl border px-4 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                      donationMode === 'roundup'
+                                        ? 'border-red-300 bg-white text-red-800 shadow-sm'
+                                        : 'border-stone-200 bg-white/80 text-stone-700 hover:border-red-200 hover:bg-white'
+                                    }`}
+                                  >
+                                    <span className="block text-sm font-bold">Round up</span>
+                                    <span className="mt-0.5 block text-xs text-stone-500">
+                                      {roundUpDonationAmount > 0
+                                        ? `Add ${formatCents(roundUpDonationAmount)} to make it ${formatCents(totalAmount + roundUpDonationAmount)}.`
+                                        : 'Your ticket total is already a whole dollar.'}
+                                    </span>
+                                  </button>
+
+                                  <label
+                                    className={`rounded-xl border px-4 py-3 transition-colors ${
+                                      donationMode === 'custom'
+                                        ? 'border-red-300 bg-white shadow-sm'
+                                        : 'border-stone-200 bg-white/80 hover:border-red-200 hover:bg-white'
+                                    }`}
+                                  >
+                                    <span className="block text-sm font-bold text-stone-800">Custom amount</span>
+                                    <div className="mt-2 flex items-center rounded-lg border border-stone-300 bg-white px-3 py-2">
+                                      <span className="mr-1 text-sm font-bold text-stone-400">$</span>
+                                      <input
+                                        inputMode="decimal"
+                                        value={customDonationAmount}
+                                        onChange={(event) => handleCustomDonationAmountChange(event.target.value)}
+                                        onFocus={() => {
+                                          if (donationMode !== 'custom') handleDonationModeChange('custom');
+                                        }}
+                                        disabled={Boolean(pendingStripePayment)}
+                                        placeholder="Optional"
+                                        className="w-full bg-transparent text-sm font-bold text-stone-900 outline-none disabled:cursor-not-allowed"
+                                      />
+                                    </div>
+                                  </label>
+                                </div>
+
+                                {donationValidationMessage && (
+                                  <p className="mt-2 text-sm font-semibold text-red-700">{donationValidationMessage}</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
                         <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center">
                           <button
                             onClick={() => {
@@ -2419,9 +2576,21 @@ export default function Booking() {
                     ))}
                   </div>
 
-                  <div className="mt-5 border-t border-stone-200 pt-4 flex items-end justify-between">
-                    <div className="text-sm text-stone-500">Total</div>
-                    <div className="text-3xl font-bold text-stone-900">${(totalAmount / 100).toFixed(2)}</div>
+                  <div className="mt-5 space-y-2 border-t border-stone-200 pt-4">
+                    <div className="flex items-center justify-between text-sm text-stone-600">
+                      <span>Ticket subtotal</span>
+                      <span className="font-semibold text-stone-900">{formatCents(totalAmount)}</span>
+                    </div>
+                    {checkoutDonationAmount > 0 && (
+                      <div className="flex items-center justify-between text-sm text-red-700">
+                        <span>Optional donation</span>
+                        <span className="font-semibold">{formatCents(checkoutDonationAmount)}</span>
+                      </div>
+                    )}
+                    <div className="flex items-end justify-between border-t border-stone-200 pt-3">
+                      <div className="text-sm font-semibold text-stone-500">Total</div>
+                      <div className="text-3xl font-bold text-stone-900">{formatCents(finalCheckoutAmount)}</div>
+                    </div>
                   </div>
                 </div>
               </div>

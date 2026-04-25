@@ -82,6 +82,8 @@ function serializeOrder(order: any) {
       customerName: order.customerName,
       customerPhone: order.customerPhone,
       amountTotal: order.amountTotal,
+      donationAmountCents: order.donationAmountCents || 0,
+      ticketSubtotalCents: order.orderSeats.reduce((sum: number, orderSeat: any) => sum + orderSeat.price, 0),
       currency: order.currency,
       createdAt: order.createdAt,
       performanceId: order.performanceId,

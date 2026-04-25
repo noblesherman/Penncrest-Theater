@@ -27,6 +27,8 @@ type OrderResponse = {
     email: string;
     customerName: string;
     amountTotal: number;
+    donationAmountCents?: number;
+    ticketSubtotalCents?: number;
     currency: string;
     createdAt: string;
     refundStatus?: string | null;
@@ -164,6 +166,9 @@ export default function Confirmation() {
     if (!orderData) return '$0.00';
     return `$${(orderData.order.amountTotal / 100).toFixed(2)}`;
   }, [orderData]);
+  const donationAmountCents = orderData?.order.donationAmountCents || 0;
+  const ticketSubtotalCents =
+    orderData?.order.ticketSubtotalCents ?? Math.max(0, (orderData?.order.amountTotal || 0) - donationAmountCents);
 
   const goToTicket = (index: number) => {
     const container = carouselRef.current;
@@ -411,6 +416,13 @@ export default function Confirmation() {
         <span style={styles.summaryDot} />
         <span style={styles.summaryTotal}>{totalLabel}</span>
       </div>
+      {donationAmountCents > 0 && (
+        <div style={styles.summaryBreakdown}>
+          <span>Tickets ${(ticketSubtotalCents / 100).toFixed(2)}</span>
+          <span style={styles.summaryDot} />
+          <span>Donation ${(donationAmountCents / 100).toFixed(2)}</span>
+        </div>
+      )}
 
       {/* ── Footer actions ────────────────────────────────────── */}
       <div style={styles.actions}>
@@ -829,6 +841,14 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     color: STONE_900,
     fontVariantNumeric: 'tabular-nums',
+  },
+  summaryBreakdown: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 8,
+    fontSize: 12,
+    color: STONE_600,
   },
 
   /* Actions */

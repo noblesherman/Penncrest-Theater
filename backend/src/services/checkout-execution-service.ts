@@ -79,6 +79,7 @@ const TEACHER_TICKET_OPTION_ID = 'teacher-comp';
 const STUDENT_SHOW_TICKET_OPTION_ID = 'student-show-comp';
 const MAX_TEACHER_COMP_TICKETS = 2;
 const MAX_STUDENT_COMP_TICKETS = 2;
+const MAX_CHECKOUT_DONATION_CENTS = 100000;
 
 function toPrismaJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -129,6 +130,14 @@ function buildPaymentDescription(showTitle: string, assignments: SeatAssignment[
   return `${showTitle} tickets (${seatList}${remainder})`;
 }
 
+function normalizeCheckoutDonationAmount(value: number | undefined): number {
+  if (value === undefined || value === 0) return 0;
+  if (!Number.isInteger(value) || value < 100 || value > MAX_CHECKOUT_DONATION_CENTS) {
+    throw new HttpError(400, 'Optional donation must be between $1.00 and $1,000.00.');
+  }
+  return value;
+}
+
 export async function executeCheckoutRequest(payload: CheckoutRequestPayload): Promise<CheckoutExecutionResult> {
   const {
     performanceId,
@@ -146,6 +155,7 @@ export async function executeCheckoutRequest(payload: CheckoutRequestPayload): P
     customerPhone,
     attendeeNames,
     registrationSubmission,
+    donationAmountCents,
     clientIpAddress
   } = payload;
   const uniqueSeatIds = [...new Set(seatIds)];
@@ -473,10 +483,15 @@ export async function executeCheckoutRequest(payload: CheckoutRequestPayload): P
       });
     }
 
-    const amountTotal = seatAssignments.reduce((sum, assignment) => sum + assignment.finalPrice, 0);
+    const ticketSubtotalCents = seatAssignments.reduce((sum, assignment) => sum + assignment.finalPrice, 0);
+    const normalizedDonationAmountCents = normalizeCheckoutDonationAmount(donationAmountCents);
+    if (normalizedDonationAmountCents > 0 && ticketSubtotalCents <= 0) {
+      throw new HttpError(400, 'Optional donation can only be added to a paid checkout.');
+    }
+    const amountTotal = ticketSubtotalCents + normalizedDonationAmountCents;
     const isGeneralAdmissionNoSeatLinks = performance.seatSelectionEnabled === false;
 
-    if (amountTotal === 0) {
+    if (ticketSubtotalCents === 0) {
       const ticketTypeBySeatId = Object.fromEntries(
         seatAssignments.map((assignment) => [assignment.seat.id, assignment.ticketType || 'Complimentary'])
       );
@@ -537,6 +552,7 @@ export async function executeCheckoutRequest(payload: CheckoutRequestPayload): P
           customerPhone: normalizedCustomerPhone,
           attendeeNamesJson: attendeeNames ?? undefined,
           amountTotal,
+          donationAmountCents: normalizedDonationAmountCents,
           currency: 'usd',
           status: 'PENDING',
           checkoutAttemptState: 'CREATING_PAYMENT_INTENT',
@@ -597,7 +613,9 @@ export async function executeCheckoutRequest(payload: CheckoutRequestPayload): P
         clientToken,
         checkoutMode,
         seatCount: String(uniqueSeatIds.length),
-        studentCreditQuantity: String(studentComplimentaryQuantity)
+        studentCreditQuantity: String(studentComplimentaryQuantity),
+        ticketSubtotalCents: String(ticketSubtotalCents),
+        donationAmountCents: String(normalizedDonationAmountCents)
       }
     });
     createdPaymentIntentId = paymentIntent.id;
