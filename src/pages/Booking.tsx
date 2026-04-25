@@ -144,7 +144,13 @@ type CheckoutQueueState = {
   refreshAfterMs: number;
 };
 
-type CheckoutDonationMode = 'none' | 'roundup' | 'custom';
+type CheckoutDonationMode = 'none' | 'roundup' | 'preset-500' | 'preset-1000' | 'custom';
+
+type PresetDonation = {
+  id: CheckoutDonationMode;
+  label: string;
+  amountCents: number;
+};
 
 type PendingStripePayment = {
   clientSecret: string;
@@ -1231,8 +1237,24 @@ export default function Booking() {
     () => selectedSeatsWithPricing.reduce((sum, item) => sum + item.unitPrice, 0),
     [selectedSeatsWithPricing]
   );
-  const roundUpDonationAmount = totalAmount > 0 ? (100 - (totalAmount % 100)) % 100 : 0;
+  const nextWholeDollar = totalAmount > 0 ? Math.ceil(totalAmount / 100) * 100 : 0;
+  const roundUpDonationAmount = totalAmount > 0 ? Math.max(0, nextWholeDollar - totalAmount) : 0;
   const showDonationPanel = totalAmount > 0;
+  const presetDonations = useMemo<PresetDonation[]>(() => {
+    const presets: PresetDonation[] = [];
+    if (roundUpDonationAmount > 0) {
+      presets.push({
+        id: 'roundup',
+        label: `Round up to ${formatCents(nextWholeDollar)}`,
+        amountCents: roundUpDonationAmount
+      });
+    }
+    presets.push(
+      { id: 'preset-500', label: 'Add $5', amountCents: 500 },
+      { id: 'preset-1000', label: 'Add $10', amountCents: 1000 }
+    );
+    return presets;
+  }, [nextWholeDollar, roundUpDonationAmount]);
   const customDonationAmountCents = useMemo(() => parseDonationInputToCents(customDonationAmount), [customDonationAmount]);
   const donationValidationMessage = useMemo(() => {
     if (donationMode !== 'custom' || !customDonationAmount.trim()) return null;
@@ -1244,6 +1266,10 @@ export default function Booking() {
   const checkoutDonationAmount = showDonationPanel
     ? donationMode === 'roundup'
       ? roundUpDonationAmount
+      : donationMode === 'preset-500'
+        ? 500
+        : donationMode === 'preset-1000'
+          ? 1000
       : donationMode === 'custom' && customDonationAmountCents !== null
         ? customDonationAmountCents
         : 0
@@ -1365,6 +1391,9 @@ export default function Booking() {
     setStepError(null);
     resetPendingPayment();
     setCheckoutQueue(null);
+    if (mode !== 'custom') {
+      setCustomDonationAmount('');
+    }
     setDonationMode((current) => (current === mode ? 'none' : mode));
   };
 
@@ -2265,8 +2294,8 @@ export default function Booking() {
                     <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50 p-3">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <p className="text-sm font-bold text-stone-900">Add a donation?</p>
-                          <p className="text-xs text-stone-500">Optional support for Penncrest Theater.</p>
+                          <p className="text-sm font-bold text-stone-900">Support student theater</p>
+                          <p className="text-xs text-stone-500">Costumes, sets, workshops, and production needs.</p>
                         </div>
                         {checkoutDonationAmount > 0 && (
                           <button
@@ -2281,20 +2310,21 @@ export default function Booking() {
                       </div>
 
                       <div className="mt-3 flex flex-wrap items-center gap-2">
-                        {roundUpDonationAmount > 0 && (
+                        {presetDonations.map((preset) => (
                           <button
+                            key={preset.id}
                             type="button"
-                            onClick={() => handleDonationModeChange('roundup')}
+                            onClick={() => handleDonationModeChange(preset.id)}
                             disabled={Boolean(pendingStripePayment)}
                             className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                              donationMode === 'roundup'
+                              donationMode === preset.id
                                 ? 'border-red-300 bg-red-50 text-red-800'
                                 : 'border-stone-300 bg-white text-stone-700 hover:border-red-200'
                             }`}
                           >
-                            Round up +{formatCents(roundUpDonationAmount)}
+                            {preset.label}
                           </button>
-                        )}
+                        ))}
 
                         <label
                           className={`flex min-w-[150px] flex-1 items-center rounded-lg border bg-white px-3 py-2 transition-colors ${
