@@ -35,6 +35,7 @@ import {
   UserCheck,
   UsersRound,
   ChevronRight,
+  ChevronDown,
   PanelLeftClose,
   PanelLeftOpen
 } from 'lucide-react';
@@ -53,24 +54,27 @@ type NavItem = {
 };
 
 type NavSection = {
+  id: string;
   title: string;
+  collapsible?: boolean;
   items: NavItem[];
 };
 
 const navSections: NavSection[] = [
   {
-    title: 'Operations',
+    id: 'front-desk',
+    title: 'Front Desk',
     items: [
       { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, minRole: 'BOX_OFFICE' },
-      { to: '/admin/finance', label: 'Finance', icon: CircleDollarSign, minRole: 'ADMIN' },
-      { to: '/admin/scanner', label: 'Scanner', icon: ScanLine, minRole: 'BOX_OFFICE' },
       { to: '/admin/orders', label: 'Orders', icon: ReceiptText, minRole: 'BOX_OFFICE' },
-      { to: '/admin/messages', label: 'Messages', icon: Mail, minRole: 'ADMIN' },
-      { to: '/admin/fundraise/check-in', label: 'Fundraise Check-In', icon: HandCoins, minRole: 'BOX_OFFICE' }
+      { to: '/admin/scanner', label: 'Scanner', icon: ScanLine, minRole: 'BOX_OFFICE' },
+      { to: '/admin/messages', label: 'Messages', icon: Mail, minRole: 'ADMIN' }
     ]
   },
   {
-    title: 'Ticketing',
+    id: 'ticketing',
+    title: 'Ticket Setup',
+    collapsible: true,
     items: [
       { to: '/admin/performances', label: 'Performances', icon: CalendarClock, minRole: 'ADMIN' },
       { to: '/admin/seats', label: 'Seats', icon: Armchair, minRole: 'ADMIN' },
@@ -78,7 +82,19 @@ const navSections: NavSection[] = [
     ]
   },
   {
+    id: 'fundraising',
+    title: 'Fundraising',
+    collapsible: true,
+    items: [
+      { to: '/admin/fundraise/check-in', label: 'Check-In', icon: HandCoins, minRole: 'BOX_OFFICE' },
+      { to: '/admin/fundraise', label: 'Campaigns', icon: HandCoins, minRole: 'ADMIN' },
+      { to: '/admin/trips', label: 'Trip Payments', icon: Plane, minRole: 'ADMIN' }
+    ]
+  },
+  {
+    id: 'people',
     title: 'People',
+    collapsible: true,
     items: [
       { to: '/admin/roster', label: 'Roster', icon: UsersRound, minRole: 'ADMIN' },
       { to: '/admin/forms', label: 'Forms', icon: FileText, minRole: 'ADMIN' },
@@ -87,10 +103,11 @@ const navSections: NavSection[] = [
     ]
   },
   {
-    title: 'Admin',
+    id: 'back-office',
+    title: 'Back Office',
+    collapsible: true,
     items: [
-      { to: '/admin/fundraise', label: 'Fundraise', icon: HandCoins, minRole: 'ADMIN' },
-      { to: '/admin/trips', label: 'Trip Payments', icon: Plane, minRole: 'ADMIN' },
+      { to: '/admin/finance', label: 'Finance', icon: CircleDollarSign, minRole: 'ADMIN' },
       { to: '/admin/drive', label: 'Drive', icon: FolderOpen, minRole: 'ADMIN' },
       { to: '/admin/audit', label: 'Audit Log', icon: ScrollText, minRole: 'ADMIN' },
       { to: '/admin/about', label: 'About', icon: FilePenLine, minRole: 'SUPER_ADMIN' },
@@ -125,9 +142,12 @@ const routeAccessRules: Array<{ prefix: string; minRole: AdminRole }> = [
 ];
 
 const SIDEBAR_COLLAPSED_KEY = 'admin_sidebar_collapsed';
+const SIDEBAR_EXPANDED_SECTIONS_KEY = 'admin_sidebar_expanded_sections';
+const DEFAULT_EXPANDED_SECTION_IDS = ['front-desk'];
 
 function isLinkActive(pathname: string, to: string): boolean {
   if (pathname === to) return true;
+  if (to === '/admin/fundraise' && pathname.startsWith('/admin/fundraise/check-in')) return false;
   return pathname.startsWith(`${to}/`);
 }
 
@@ -149,6 +169,20 @@ export default function AdminLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1';
+  });
+  const [expandedSectionIds, setExpandedSectionIds] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return DEFAULT_EXPANDED_SECTION_IDS;
+    const stored = window.localStorage.getItem(SIDEBAR_EXPANDED_SECTIONS_KEY);
+    if (!stored) return DEFAULT_EXPANDED_SECTION_IDS;
+    try {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) {
+        return Array.from(new Set([...DEFAULT_EXPANDED_SECTION_IDS, ...parsed]));
+      }
+    } catch {
+      // Ignore invalid persisted sidebar state.
+    }
+    return DEFAULT_EXPANDED_SECTION_IDS;
   });
 
   useEffect(() => {
@@ -219,6 +253,11 @@ export default function AdminLayout() {
     window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed ? '1' : '0');
   }, [sidebarCollapsed]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(SIDEBAR_EXPANDED_SECTIONS_KEY, JSON.stringify(expandedSectionIds));
+  }, [expandedSectionIds]);
+
   const pathname = location.pathname;
   const isScannerLive = pathname === '/admin/scanner/live' || pathname.startsWith('/admin/scanner/live/');
   const isPaymentLineOverlay =
@@ -235,6 +274,13 @@ export default function AdminLayout() {
         }))
         .filter((section) => section.items.length > 0)
     : [];
+  const activeSection = visibleNavSections.find((section) =>
+    section.items.some((item) => isLinkActive(pathname, item.to))
+  );
+  const effectiveExpandedSectionIds = new Set([
+    ...expandedSectionIds,
+    ...(activeSection ? [activeSection.id] : [])
+  ]);
   const fallbackRoute = visibleNavSections.flatMap((section) => section.items)[0]?.to || '/admin/login';
   const outletContext: AdminLayoutContext | undefined = admin ? { admin } : undefined;
   const pageTitle = getPageTitle(pathname);
@@ -266,6 +312,16 @@ export default function AdminLayout() {
     .join('')
     .toUpperCase()
     .slice(0, 2);
+
+  function toggleNavSection(sectionId: string) {
+    setExpandedSectionIds((current) => {
+      if (sectionId === 'front-desk') return current;
+      if (current.includes(sectionId)) {
+        return current.filter((id) => id !== sectionId);
+      }
+      return [...current, sectionId];
+    });
+  }
 
   return (
     <div className="min-h-screen flex bg-[#f5f4f2] font-sans">
@@ -302,15 +358,34 @@ export default function AdminLayout() {
         </div>
 
         {/* Nav */}
-        <nav className={`no-scrollbar flex-1 py-4 space-y-5 overflow-y-auto ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
+        <nav className={`no-scrollbar flex-1 py-4 overflow-y-auto ${sidebarCollapsed ? 'space-y-4 px-2' : 'space-y-2 px-3'}`}>
           {visibleNavSections.map((section) => (
             <div key={section.title}>
               {sidebarCollapsed ? <div className="mx-2 mb-2 h-px bg-white/[0.06]" /> : (
-                <p className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
-                  {section.title}
-                </p>
+                section.collapsible ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleNavSection(section.id)}
+                    className="mb-1 flex w-full items-center rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-500 transition hover:bg-white/[0.04] hover:text-zinc-300"
+                    aria-expanded={effectiveExpandedSectionIds.has(section.id)}
+                  >
+                    <span>{section.title}</span>
+                    {effectiveExpandedSectionIds.has(section.id)
+                      ? <ChevronDown className="ml-auto h-3 w-3 text-zinc-600" />
+                      : <ChevronRight className="ml-auto h-3 w-3 text-zinc-600" />}
+                  </button>
+                ) : (
+                  <p className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
+                    {section.title}
+                  </p>
+                )
               )}
-              <div className="space-y-0.5">
+              <div
+                className={`
+                  space-y-0.5 overflow-hidden transition-all duration-200
+                  ${sidebarCollapsed || effectiveExpandedSectionIds.has(section.id) ? 'max-h-[360px] opacity-100' : 'max-h-0 opacity-0'}
+                `}
+              >
                 {section.items.map((item) => {
                   const Icon = item.icon;
                   const active = isLinkActive(pathname, item.to);
