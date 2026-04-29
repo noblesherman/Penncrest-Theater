@@ -185,6 +185,12 @@ const navSectionItemVariants = {
   }
 };
 
+type CollapsedSidebarTooltip = {
+  label: string;
+  top: number;
+  left: number;
+};
+
 function isLinkActive(pathname: string, to: string): boolean {
   if (pathname === to) return true;
   if (to === '/admin/fundraise' && pathname.startsWith('/admin/fundraise/check-in')) return false;
@@ -224,6 +230,7 @@ export default function AdminLayout() {
     }
     return DEFAULT_EXPANDED_SECTION_IDS;
   });
+  const [collapsedTooltip, setCollapsedTooltip] = useState<CollapsedSidebarTooltip | null>(null);
 
   useEffect(() => {
     if (!admin) return;
@@ -298,6 +305,12 @@ export default function AdminLayout() {
     window.localStorage.setItem(SIDEBAR_EXPANDED_SECTIONS_KEY, JSON.stringify(expandedSectionIds));
   }, [expandedSectionIds]);
 
+  useEffect(() => {
+    if (!sidebarCollapsed) {
+      setCollapsedTooltip(null);
+    }
+  }, [sidebarCollapsed]);
+
   const pathname = location.pathname;
   const isScannerLive = pathname === '/admin/scanner/live' || pathname.startsWith('/admin/scanner/live/');
   const isPaymentLineOverlay =
@@ -363,6 +376,21 @@ export default function AdminLayout() {
     });
   }
 
+  function showCollapsedTooltip(label: string, target: HTMLElement) {
+    if (!sidebarCollapsed) return;
+
+    const rect = target.getBoundingClientRect();
+    setCollapsedTooltip({
+      label,
+      top: rect.top + rect.height / 2,
+      left: rect.right + 10
+    });
+  }
+
+  function hideCollapsedTooltip() {
+    setCollapsedTooltip(null);
+  }
+
   return (
     <div className="min-h-screen flex bg-[#f5f4f2] font-sans">
 
@@ -377,7 +405,15 @@ export default function AdminLayout() {
 
         {/* Logo */}
         <div className={`pt-6 pb-5 border-b border-white/[0.06] ${sidebarCollapsed ? 'px-3' : 'px-5'}`}>
-          <Link to="/admin/dashboard" className={`flex items-center group ${sidebarCollapsed ? 'justify-center' : 'gap-2.5'}`}>
+          <Link
+            to="/admin/dashboard"
+            className={`flex items-center group ${sidebarCollapsed ? 'justify-center' : 'gap-2.5'}`}
+            aria-label={sidebarCollapsed ? 'Penncrest Theater' : undefined}
+            onMouseEnter={(event) => showCollapsedTooltip('Penncrest Theater', event.currentTarget)}
+            onMouseLeave={hideCollapsedTooltip}
+            onFocus={(event) => showCollapsedTooltip('Penncrest Theater', event.currentTarget)}
+            onBlur={hideCollapsedTooltip}
+          >
             <div className="h-7 w-7 rounded-md bg-rose-600 flex items-center justify-center shrink-0">
               <Ticket className="h-3.5 w-3.5 text-white" />
             </div>
@@ -447,8 +483,12 @@ export default function AdminLayout() {
                               className="origin-top"
                             >
                               <Link
-                                title={sidebarCollapsed ? item.label : undefined}
                                 to={item.to}
+                                aria-label={sidebarCollapsed ? item.label : undefined}
+                                onMouseEnter={(event) => showCollapsedTooltip(item.label, event.currentTarget)}
+                                onMouseLeave={hideCollapsedTooltip}
+                                onFocus={(event) => showCollapsedTooltip(item.label, event.currentTarget)}
+                                onBlur={hideCollapsedTooltip}
                                 className={`
                                   flex items-center rounded-md text-[13px] font-medium transition-all duration-150
                                   ${sidebarCollapsed ? 'justify-center px-0 py-2.5' : 'gap-2.5 px-2.5 py-2'}
@@ -478,7 +518,11 @@ export default function AdminLayout() {
         <div className={`py-4 border-t border-white/[0.06] ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
           <Link
             to="/admin/scanner/live"
-            title={sidebarCollapsed ? 'Full-Screen Scanner' : undefined}
+            aria-label={sidebarCollapsed ? 'Full-Screen Scanner' : undefined}
+            onMouseEnter={(event) => showCollapsedTooltip('Full-Screen Scanner', event.currentTarget)}
+            onMouseLeave={hideCollapsedTooltip}
+            onFocus={(event) => showCollapsedTooltip('Full-Screen Scanner', event.currentTarget)}
+            onBlur={hideCollapsedTooltip}
             className={`
               flex items-center rounded-md text-[13px] font-medium text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]
               transition-all mb-1 ${sidebarCollapsed ? 'justify-center px-0 py-2.5' : 'gap-2 px-2.5 py-2'}
@@ -506,14 +550,40 @@ export default function AdminLayout() {
                 clearAdminToken();
                 navigate('/admin/login', { replace: true });
               }}
+              onMouseEnter={(event) => showCollapsedTooltip('Log out', event.currentTarget)}
+              onMouseLeave={hideCollapsedTooltip}
+              onFocus={(event) => showCollapsedTooltip('Log out', event.currentTarget)}
+              onBlur={hideCollapsedTooltip}
               className="text-zinc-600 hover:text-rose-400 transition-colors p-1 rounded"
-              title="Log out"
+              aria-label="Log out"
             >
               <LogOut className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
       </aside>
+
+      <AnimatePresence>
+        {collapsedTooltip ? (
+          <motion.div
+            key={collapsedTooltip.label}
+            className="pointer-events-none fixed z-[80]"
+            style={{
+              top: collapsedTooltip.top,
+              left: collapsedTooltip.left
+            }}
+            initial={{ opacity: 0, x: -6, y: '-50%', scale: 0.96 }}
+            animate={{ opacity: 1, x: 0, y: '-50%', scale: 1 }}
+            exit={{ opacity: 0, x: -4, y: '-50%', scale: 0.98 }}
+            transition={{ duration: 0.16, ease: sidebarEase }}
+          >
+            <div className="relative rounded-md border border-white/[0.08] bg-zinc-900 px-2.5 py-1.5 text-[12px] font-semibold text-zinc-100 shadow-xl shadow-black/25">
+              <span className="absolute left-[-4px] top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 border-b border-l border-white/[0.08] bg-zinc-900" />
+              {collapsedTooltip.label}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       {/* ── Main ────────────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0">
