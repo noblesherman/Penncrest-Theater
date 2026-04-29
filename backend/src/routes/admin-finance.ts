@@ -101,6 +101,8 @@ type FinanceOrderRow = {
   paymentMethodLabel: string;
   orderStatus: string;
   ticketCount: number;
+  ticketTotalCents: number;
+  cashReceivedCents: number | null;
   grossCents: number;
   refundCents: number;
   netCents: number;
@@ -420,8 +422,10 @@ function labelForPaymentMethod(order: {
   source: string;
   inPersonPaymentMethod: string | null;
   amountTotal: number;
+  cashReceivedCents?: number | null;
 }): string {
-  if (order.amountTotal <= 0) {
+  const cashReceivedCents = Math.max(0, order.cashReceivedCents ?? 0);
+  if (order.amountTotal <= 0 && cashReceivedCents <= 0) {
     return 'Comp/No charge';
   }
   if (order.source === 'DOOR') {
@@ -583,11 +587,16 @@ async function buildFinanceReportData(params: {
 
   for (const order of orders) {
     const refundAmountCents = Math.max(0, order.refundAmountCents || 0);
-    const netCents = order.amountTotal - refundAmountCents;
     const orderTicketCount = order.orderSeats.length;
     const paymentMethodLabel = labelForPaymentMethod(order);
+    const cashReceivedCents =
+      paymentMethodLabel === 'Cash'
+        ? Math.max(0, order.cashReceivedCents ?? order.amountTotal)
+        : null;
+    const financialGrossCents = cashReceivedCents ?? order.amountTotal;
+    const netCents = financialGrossCents - refundAmountCents;
 
-    orderGrossCents += order.amountTotal;
+    orderGrossCents += financialGrossCents;
     orderRefundCents += refundAmountCents;
     ticketCount += orderTicketCount;
 
@@ -599,14 +608,14 @@ async function buildFinanceReportData(params: {
 
     mergeIntoBreakdown(paymentBreakdownMap, paymentMethodLabel, paymentMethodLabel, {
       ticketCount: orderTicketCount,
-      grossCents: order.amountTotal,
+      grossCents: financialGrossCents,
       refundCents: refundAmountCents,
       netCents
     });
 
     mergeIntoBreakdown(sourceBreakdownMap, order.source, order.source, {
       ticketCount: orderTicketCount,
-      grossCents: order.amountTotal,
+      grossCents: financialGrossCents,
       refundCents: refundAmountCents,
       netCents
     });
@@ -620,7 +629,9 @@ async function buildFinanceReportData(params: {
       paymentMethodLabel,
       orderStatus: order.status,
       ticketCount: orderTicketCount,
-      grossCents: order.amountTotal,
+      ticketTotalCents: order.amountTotal,
+      cashReceivedCents,
+      grossCents: financialGrossCents,
       refundCents: refundAmountCents,
       netCents
     });
@@ -1165,6 +1176,8 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
         'payment_group',
         'status',
         'ticket_count',
+        'ticket_total_usd',
+        'cash_received_usd',
         'gross_usd',
         'refund_usd',
         'net_usd',
@@ -1194,6 +1207,8 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
           paymentGroup,
           order.orderStatus,
           order.ticketCount,
+          toUsd(order.ticketTotalCents),
+          order.cashReceivedCents == null ? '' : toUsd(order.cashReceivedCents),
           toUsd(order.grossCents),
           toUsd(order.refundCents),
           toUsd(order.netCents),
@@ -1217,6 +1232,8 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
           'card',
           donation.status,
           0,
+          '',
+          '',
           toUsd(donation.grossCents),
           toUsd(donation.refundCents),
           toUsd(donation.netCents),

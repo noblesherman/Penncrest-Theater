@@ -98,6 +98,7 @@ type InPersonFinalizeSeatSummary = {
 };
 type InPersonSaleRecap = {
   expectedAmountCents: number;
+  cashReceivedCents?: number | null;
   paymentMethod: 'STRIPE' | 'CASH';
   seats: InPersonFinalizeSeatSummary[];
   expiresAtMs: number;
@@ -187,6 +188,19 @@ const FALLBACK_STRIPE_PUBLISHABLE_KEY = (import.meta.env.VITE_STRIPE_PUBLISHABLE
 
 function isTerminalDispatchFinalStatus(status: TerminalDispatch['status']): boolean {
   return status === 'SUCCEEDED' || status === 'FAILED' || status === 'EXPIRED' || status === 'CANCELED';
+}
+
+function formatCentsForInput(cents: number): string {
+  return (Math.max(0, cents) / 100).toFixed(2);
+}
+
+function parseDollarInputToCents(value: string): number | null {
+  const normalized = value.trim().replace(/^\$/, '').replace(/,/g, '');
+  if (!normalized) return null;
+  if (!/^\d+(\.\d{0,2})?$/.test(normalized)) return null;
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.round(parsed * 100);
 }
 
 function normalizeSeat(raw: any): Seat {
@@ -380,6 +394,8 @@ export default function AdminOrdersPage() {
   const [inPersonSubmitting, setInPersonSubmitting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'STRIPE' | 'CASH'>('STRIPE');
   const [stripeChargePath, setStripeChargePath] = useState<'TERMINAL' | 'MANUAL'>('TERMINAL');
+  const [cashReceivedInput, setCashReceivedInput] = useState('');
+  const [cashReceivedEdited, setCashReceivedEdited] = useState(false);
   const [receiptEmail, setReceiptEmail] = useState('');
   const [sendReceipt, setSendReceipt] = useState(false);
   const [studentCode, setStudentCode] = useState('');
@@ -715,6 +731,15 @@ export default function AdminOrdersPage() {
     }
 
     const effectivePaymentMethod: 'STRIPE' | 'CASH' = isComplimentaryDoorCheckout ? 'CASH' : paymentMethod;
+    const parsedCashReceivedCents = effectivePaymentMethod === 'CASH' ? parseDollarInputToCents(cashReceivedInput) : null;
+    const cashReceivedCents = effectivePaymentMethod === 'CASH'
+      ? parsedCashReceivedCents ?? (!cashReceivedEdited ? selectedTierSubtotalCents : null)
+      : undefined;
+    if (effectivePaymentMethod === 'CASH' && cashReceivedCents == null) {
+      setInPersonFlowError('Enter the cash amount received.');
+      return;
+    }
+
     if (effectivePaymentMethod === 'STRIPE') {
       if (stripeChargePath === 'MANUAL') {
         setInPersonSubmitting(true);
@@ -769,6 +794,7 @@ export default function AdminOrdersPage() {
     try {
       const result = await adminFetch<{
         expectedAmountCents: number;
+        cashReceivedCents?: number | null;
         paymentMethod: 'STRIPE' | 'CASH';
         seats: InPersonFinalizeSeatSummary[];
       }>('/api/admin/orders/in-person/finalize', {
@@ -777,6 +803,7 @@ export default function AdminOrdersPage() {
           performanceId: assignForm.performanceId,
           seatIds: selectionIds,
           ticketSelectionBySeatId, paymentMethod: effectivePaymentMethod,
+          cashReceivedCents: effectivePaymentMethod === 'CASH' ? cashReceivedCents : undefined,
           receiptEmail: normalizedReceiptEmail || undefined,
           sendReceipt, customerName: assignForm.customerName.trim() || undefined,
           studentCode: hasStudentInShowCompSelection ? normalizedStudentCode : undefined
@@ -784,14 +811,17 @@ export default function AdminOrdersPage() {
       });
       setSaleRecap({
         expectedAmountCents: result.expectedAmountCents,
+        cashReceivedCents: result.cashReceivedCents,
         paymentMethod: result.paymentMethod,
         seats: result.seats,
         expiresAtMs: Date.now() + 10000
       });
       setAssignForm(prev => ({ ...prev, customerName: '', customerEmail: '', seatIdsInput: '', gaQuantityInput: '1', ticketType: '' }));
       setTicketSelectionBySeatId({});
+      setCashReceivedInput('');
+      setCashReceivedEdited(false);
       setNotice(
-          `${result.paymentMethod === 'CASH' ? 'Cash' : 'Stripe'} sale completed — ${selectionIds.length} ${seatSelectionEnabled ? 'seat' : 'ticket'}${selectionIds.length === 1 ? '' : 's'} · $${(result.expectedAmountCents / 100).toFixed(2)}`
+          `${result.paymentMethod === 'CASH' ? 'Cash' : 'Stripe'} sale completed — ${selectionIds.length} ${seatSelectionEnabled ? 'seat' : 'ticket'}${selectionIds.length === 1 ? '' : 's'} · $${((result.cashReceivedCents ?? result.expectedAmountCents) / 100).toFixed(2)}`
       );
       startCashierLoop(assignForm.performanceId);
       void load();
@@ -896,7 +926,7 @@ export default function AdminOrdersPage() {
 
   const resetInPersonFlow = () => {
     setInPersonFlowError(null); setInPersonSubmitting(false);
-    setPaymentMethod('STRIPE'); setStripeChargePath('TERMINAL'); setReceiptEmail(''); setSendReceipt(false);
+    setPaymentMethod('STRIPE'); setStripeChargePath('TERMINAL'); setCashReceivedInput(''); setCashReceivedEdited(false); setReceiptEmail(''); setSendReceipt(false);
     setStudentCode('');
     setTerminalDevices([]);
     setLoadingTerminalDevices(false);
@@ -1522,6 +1552,13 @@ export default function AdminOrdersPage() {
 
   const isComplimentaryDoorCheckout = assignForm.source === 'DOOR' && selectedTierSubtotalCents === 0;
 
+  useEffect(() => {
+    if (!showWizard || assignForm.source !== 'DOOR' || paymentMethod !== 'CASH' || cashReceivedEdited) {
+      return;
+    }
+    setCashReceivedInput(formatCentsForInput(selectedTierSubtotalCents));
+  }, [assignForm.source, cashReceivedEdited, paymentMethod, selectedTierSubtotalCents, showWizard]);
+
   const selectedTierBreakdown = useMemo(() => {
     const counts = new Map<string, { name: string; priceCents: number; count: number }>();
     selectedSeatsWithPricing.forEach(item => {
@@ -1826,9 +1863,11 @@ export default function AdminOrdersPage() {
                   <button
                     type="button"
                     onClick={() => setAssignForm(prev => ({ ...prev, sendEmail: !prev.sendEmail }))}
+                    aria-pressed={assignForm.sendEmail}
+                    aria-label="Send comp tickets by email"
                     className={`relative h-6 w-11 flex-shrink-0 rounded-full transition-colors ${assignForm.sendEmail ? 'bg-rose-600' : 'bg-slate-200'}`}
                   >
-                    <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${assignForm.sendEmail ? 'translate-x-6' : 'translate-x-1'}`} />
+                    <span className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${assignForm.sendEmail ? 'translate-x-5' : 'translate-x-0'}`} />
                   </button>
                   <span className="text-sm font-semibold text-slate-700">Send comp tickets by email</span>
                 </label>
@@ -1935,6 +1974,47 @@ export default function AdminOrdersPage() {
                   </div>
                 )}
 
+                {paymentMethod === 'CASH' && (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                    <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                      <div>
+                        <FieldLabel>Cash received</FieldLabel>
+                        <div className="relative">
+                          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">$</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={cashReceivedInput}
+                            onChange={e => {
+                              setCashReceivedEdited(true);
+                              setCashReceivedInput(e.target.value.replace(/[^\d.,]/g, ''));
+                            }}
+                            onBlur={() => {
+                              const parsed = parseDollarInputToCents(cashReceivedInput);
+                              if (parsed != null) setCashReceivedInput(formatCentsForInput(parsed));
+                            }}
+                            placeholder={formatCentsForInput(selectedTierSubtotalCents)}
+                            className={baseInput + ' pl-8'}
+                          />
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCashReceivedEdited(false);
+                          setCashReceivedInput(formatCentsForInput(selectedTierSubtotalCents));
+                        }}
+                        className="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-white px-4 py-3 text-sm font-bold text-emerald-700 transition hover:bg-emerald-100"
+                      >
+                        Use ticket total
+                      </button>
+                    </div>
+                    <p className="mt-2 text-xs font-semibold text-emerald-800">
+                      Ticket total: ${(selectedTierSubtotalCents / 100).toFixed(2)}
+                    </p>
+                  </div>
+                )}
+
                 <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
                   {loadingCashTonight ? (
                     <span className="text-slate-400">Loading cash total…</span>
@@ -1968,9 +2048,11 @@ export default function AdminOrdersPage() {
                     <button
                       type="button"
                       onClick={() => setSendReceipt(p => !p)}
+                      aria-pressed={sendReceipt}
+                      aria-label="Send email receipt"
                       className={`relative h-6 w-11 flex-shrink-0 rounded-full transition-colors ${sendReceipt ? 'bg-rose-600' : 'bg-slate-200'}`}
                     >
-                      <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${sendReceipt ? 'translate-x-6' : 'translate-x-1'}`} />
+                      <span className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${sendReceipt ? 'translate-x-5' : 'translate-x-0'}`} />
                     </button>
                     <span className="text-sm font-semibold text-slate-700">Send email receipt</span>
                   </label>
@@ -2032,7 +2114,7 @@ export default function AdminOrdersPage() {
             onClick={openCashierFlow}
             className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900 sm:w-auto sm:whitespace-nowrap"
           >
-            <Plus className="h-4 w-4" /> Legacy Cashier Wizard
+            <Plus className="h-4 w-4" /> Checkout Wizard
           </motion.button>
         </div>
       </div>
@@ -2147,7 +2229,7 @@ export default function AdminOrdersPage() {
                       {saleRecap.seats.length} ticket{saleRecap.seats.length === 1 ? '' : 's'} sold
                     </h2>
                     <p className="mt-1 text-sm text-slate-500">
-                      {saleRecap.paymentMethod === 'CASH' ? 'Cash' : 'Card'} • ${(saleRecap.expectedAmountCents / 100).toFixed(2)}
+                      {saleRecap.paymentMethod === 'CASH' ? 'Cash' : 'Card'} • ${((saleRecap.cashReceivedCents ?? saleRecap.expectedAmountCents) / 100).toFixed(2)}
                     </p>
                   </div>
                   <button

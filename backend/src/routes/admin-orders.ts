@@ -76,6 +76,7 @@ const inPersonFinalizeSchema = z.object({
   paymentMethod: z.enum(['STRIPE', 'CASH']).default('STRIPE'),
   receiptEmail: z.string().email().optional(),
   sendReceipt: z.boolean().optional(),
+  cashReceivedCents: z.number().int().min(0).max(2_500_000).optional(),
   studentCode: z.string().min(1).optional(),
 });
 
@@ -179,6 +180,19 @@ function isMissingInPersonPaymentMethodColumnError(err: unknown): boolean {
 
   const haystack = `${err.message} ${JSON.stringify(err.meta || {})}`.toLowerCase();
   return haystack.includes('inpersonpaymentmethod');
+}
+
+function isMissingCashReceivedCentsColumnError(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) {
+    return false;
+  }
+
+  if (err.code !== 'P2022') {
+    return false;
+  }
+
+  const haystack = `${err.message} ${JSON.stringify(err.meta || {})}`.toLowerCase();
+  return haystack.includes('cashreceivedcents');
 }
 
 function parseAuditMetadata(value: unknown): Record<string, unknown> | null {
@@ -1609,7 +1623,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
       let trackingSource: 'order_column' | 'audit_log_fallback' = 'order_column';
 
       try {
-        const totals = await prisma.order.aggregate({
+        const cashOrders = await prisma.order.findMany({
           where: {
             status: 'PAID',
             source: 'DOOR',
@@ -1620,13 +1634,18 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
               lte: nightEnd
             }
           },
-          _sum: { amountTotal: true },
-          _count: { _all: true }
+          select: {
+            amountTotal: true,
+            cashReceivedCents: true
+          }
         });
-        totalCashCents = totals._sum.amountTotal || 0;
-        saleCount = totals._count._all || 0;
+        totalCashCents = cashOrders.reduce(
+          (sum, order) => sum + (order.cashReceivedCents ?? order.amountTotal),
+          0
+        );
+        saleCount = cashOrders.length;
       } catch (err) {
-        if (!isMissingInPersonPaymentMethodColumnError(err)) {
+        if (!isMissingInPersonPaymentMethodColumnError(err) && !isMissingCashReceivedCentsColumnError(err)) {
           throw err;
         }
 
@@ -2071,6 +2090,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
       const attemptId = `ips_${crypto.randomBytes(10).toString('hex')}`;
 
       const expectedAmountCents = quote.expectedAmountCents;
+      const cashReceivedCents = parsed.data.cashReceivedCents ?? expectedAmountCents;
 
       const normalizedSeatIds = quote.seatIds;
       const priceBySeatId = Object.fromEntries(quote.seats.map((seat) => [seat.id, seat.priceCents]));
@@ -2095,7 +2115,8 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
         allowHeldSeats: false,
         enforceSalesCutoff: false,
         sendEmail,
-        inPersonPaymentMethod: parsed.data.paymentMethod
+        inPersonPaymentMethod: parsed.data.paymentMethod,
+        cashReceivedCents
       });
 
       await logAudit({
@@ -2110,6 +2131,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
           seatIds: normalizedSeatIds,
           seatCount: quote.seatCount,
           expectedAmountCents,
+          cashReceivedCents,
           paymentMethod: parsed.data.paymentMethod,
           source: 'DOOR',
           sendReceipt: sendEmail,
@@ -2129,6 +2151,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
           seatIds: normalizedSeatIds,
           inPersonAttemptId: attemptId,
           expectedAmountCents,
+          cashReceivedCents,
           paymentMethod: parsed.data.paymentMethod,
           ticketSelectionBySeatId: parsed.data.ticketSelectionBySeatId
         }
@@ -2139,6 +2162,7 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
         status: created.status,
         source: created.source,
         expectedAmountCents,
+        cashReceivedCents,
         paymentMethod: parsed.data.paymentMethod,
         seats: quote.seats
       });

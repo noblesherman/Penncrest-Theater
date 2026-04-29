@@ -36,6 +36,7 @@ type AssignedOrderParams = {
   enforceSalesCutoff?: boolean;
   sendEmail?: boolean;
   inPersonPaymentMethod?: InPersonPaymentMethod | null;
+  cashReceivedCents?: number | null;
 };
 
 function dedupeSeatIds(seatIds: string[]): string[] {
@@ -54,6 +55,20 @@ async function hasInPersonPaymentMethodColumn(): Promise<boolean> {
   `;
 
   return Boolean(rows[0]?.inPersonPaymentMethodColumn);
+}
+
+async function hasCashReceivedCentsColumn(): Promise<boolean> {
+  const rows = await prisma.$queryRaw<Array<{ cashReceivedCentsColumn: boolean }>>`
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'Order'
+        AND column_name = 'cashReceivedCents'
+    ) AS "cashReceivedCentsColumn"
+  `;
+
+  return Boolean(rows[0]?.cashReceivedCentsColumn);
 }
 
 function sortSeats<T extends { sectionName: string; row: string; number: number }>(seats: T[]): T[] {
@@ -128,6 +143,7 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
   const allowHeldSeats = Boolean(params.allowHeldSeats);
   const enforceSalesCutoff = params.enforceSalesCutoff ?? false;
   const supportsInPersonPaymentMethod = await hasInPersonPaymentMethodColumn();
+  const supportsCashReceivedCents = await hasCashReceivedCentsColumn();
 
   const order = await prisma.$transaction(async (tx) => {
     if (params.source === 'DOOR' && !params.inPersonPaymentMethod) {
@@ -136,6 +152,10 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
 
     if (params.source !== 'DOOR' && params.inPersonPaymentMethod) {
       throw new HttpError(400, 'Payment method is only supported for in-person door sales');
+    }
+
+    if (params.cashReceivedCents != null && (params.source !== 'DOOR' || params.inPersonPaymentMethod !== 'CASH')) {
+      throw new HttpError(400, 'Cash received can only be set for cash door sales');
     }
 
     const performance = await tx.performance.findFirst({
@@ -254,6 +274,10 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
     });
 
     const amountTotal = seatAssignments.reduce((sum, assignment) => sum + assignment.price, 0);
+    const cashReceivedCents =
+      params.source === 'DOOR' && params.inPersonPaymentMethod === 'CASH'
+        ? Math.max(0, Math.round(params.cashReceivedCents ?? amountTotal))
+        : null;
 
     const createdOrder = await tx.order.create({
       data: {
@@ -264,6 +288,7 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
         customerPhone: phone,
         attendeeNamesJson: params.attendeeNames || undefined,
         amountTotal,
+        ...(supportsCashReceivedCents ? { cashReceivedCents } : {}),
         currency: 'usd',
         status: 'PAID',
         source: params.source,

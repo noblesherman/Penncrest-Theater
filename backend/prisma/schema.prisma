@@ -548,6 +548,7 @@ model Order {
   customerPhone         String?
   attendeeNamesJson     Json?
   amountTotal           Int
+  cashReceivedCents     Int?
   donationAmountCents   Int         @default(0)
   currency              String      @default("usd")
   status                OrderStatus @default(PENDING)
@@ -589,6 +590,7 @@ model Order {
   @@index([status])
   @@index([status, checkoutAttemptState, checkoutAttemptExpiresAt])
   @@index([source, inPersonPaymentMethod, createdAt])
+  @@index([cashReceivedCents])
   @@index([studentTicketCreditId])
   @@index([accessToken])
 }

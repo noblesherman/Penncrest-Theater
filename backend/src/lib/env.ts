@@ -94,6 +94,7 @@ const EnvSchema = z.object({
   SMTP_FROM: z.string().email().optional(),
   AUDIENCE_MESSAGE_REPLY_TO: z.string().email().optional(),
   INBOUND_EMAIL_WEBHOOK_SECRET: z.string().min(16).optional(),
+  EMAIL_PROVIDER_SIGNING_SECRET: z.string().trim().min(1).optional(),
 
   STAFF_CLAIM_CODE: z.string().optional(),
   STAFF_REDEEM_CODE_TTL_MINUTES: z.coerce.number().int().min(5).max(60 * 24 * 30).default(60 * 24 * 7),

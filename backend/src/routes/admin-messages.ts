@@ -12,6 +12,9 @@ Handoff note for Mr. Smith:
 */
 
 import { FastifyPluginAsync } from 'fastify';
+import type { IncomingHttpHeaders } from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
+import { Webhook } from 'svix';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { sendAudienceBroadcastEmail } from '../lib/email.js';
@@ -125,6 +128,37 @@ function firstHeaderValue(raw: string | string[] | undefined): string | null {
   return trimmed || null;
 }
 
+function constantTimeEqualString(a: string, b: string): boolean {
+  const aBuffer = Buffer.from(a, 'utf8');
+  const bBuffer = Buffer.from(b, 'utf8');
+  if (aBuffer.length !== bBuffer.length) return false;
+  return timingSafeEqual(aBuffer, bBuffer);
+}
+
+function getRawRequestBody(request: { rawBody?: unknown; body?: unknown }): Buffer | string {
+  const rawBody = request.rawBody;
+  if (Buffer.isBuffer(rawBody) || typeof rawBody === 'string') {
+    return rawBody;
+  }
+  return JSON.stringify(request.body ?? {});
+}
+
+function hasProviderSignatureHeaders(headers: IncomingHttpHeaders): boolean {
+  return Boolean(headers['svix-id'] || headers['svix-timestamp'] || headers['svix-signature']);
+}
+
+function readProviderSignatureHeaders(headers: IncomingHttpHeaders): {
+  id: string | null;
+  timestamp: string | null;
+  signature: string | null;
+} {
+  return {
+    id: firstHeaderValue(headers['svix-id']),
+    timestamp: firstHeaderValue(headers['svix-timestamp']),
+    signature: firstHeaderValue(headers['svix-signature'])
+  };
+}
+
 function safeSnippet(value: string | null, maxLen = 240): string | null {
   if (!value) return null;
   const normalized = value.replace(/\s+/g, ' ').trim();
@@ -149,15 +183,89 @@ function parseFailureList(value: unknown): Array<{ email: string; error: string 
 }
 
 export const adminMessageRoutes: FastifyPluginAsync = async (app) => {
-  app.post('/api/messages/inbound', async (request, reply) => {
+  app.post('/api/messages/inbound', { config: { rawBody: true } }, async (request, reply) => {
     try {
-      if (!env.INBOUND_EMAIL_WEBHOOK_SECRET) {
-        throw new HttpError(503, 'Inbound email webhook is not configured.');
-      }
-
       const parsedQuery = inboundMessageQuerySchema.safeParse(request.query ?? {});
       if (!parsedQuery.success) {
         throw new HttpError(400, 'Invalid inbound webhook query string.');
+      }
+
+      let authMethod: 'provider_signature' | 'shared_secret' = 'shared_secret';
+      if (hasProviderSignatureHeaders(request.headers)) {
+        const providerHeaders = readProviderSignatureHeaders(request.headers);
+        if (!providerHeaders.id || !providerHeaders.timestamp || !providerHeaders.signature) {
+          app.log.warn(
+            {
+              route: '/api/messages/inbound',
+              hasSvixId: Boolean(providerHeaders.id),
+              hasSvixTimestamp: Boolean(providerHeaders.timestamp),
+              hasSvixSignature: Boolean(providerHeaders.signature)
+            },
+            'Inbound email webhook provider signature headers are incomplete'
+          );
+          throw new HttpError(401, 'Invalid inbound webhook signature.');
+        }
+
+        if (!env.EMAIL_PROVIDER_SIGNING_SECRET) {
+          app.log.warn(
+            { route: '/api/messages/inbound' },
+            'Inbound email webhook provider signature present but EMAIL_PROVIDER_SIGNING_SECRET is not configured'
+          );
+          throw new HttpError(503, 'Inbound email provider signature verification is not configured.');
+        }
+
+        try {
+          const webhook = new Webhook(env.EMAIL_PROVIDER_SIGNING_SECRET);
+          webhook.verify(getRawRequestBody(request), {
+            'svix-id': providerHeaders.id,
+            'svix-timestamp': providerHeaders.timestamp,
+            'svix-signature': providerHeaders.signature
+          });
+          authMethod = 'provider_signature';
+        } catch (err) {
+          app.log.warn(
+            {
+              route: '/api/messages/inbound',
+              err: err instanceof Error ? err.message : 'Unknown signature verification error'
+            },
+            'Inbound email webhook provider signature is invalid'
+          );
+          throw new HttpError(401, 'Invalid inbound webhook signature.');
+        }
+      } else {
+        app.log.info(
+          { route: '/api/messages/inbound' },
+          'Inbound email webhook provider signature missing; falling back to shared secret'
+        );
+
+        if (!env.INBOUND_EMAIL_WEBHOOK_SECRET) {
+          throw new HttpError(503, 'Inbound email webhook is not configured.');
+        }
+
+        const authorization = firstHeaderValue(request.headers.authorization);
+        const authBearer = authorization?.toLowerCase().startsWith('bearer ')
+          ? authorization.slice(7).trim()
+          : null;
+        const providedSecret =
+          firstHeaderValue(request.headers['x-inbound-email-secret']) ||
+          firstHeaderValue(request.headers['x-webhook-secret']) ||
+          authBearer ||
+          parsedQuery.data.secret ||
+          null;
+
+        if (!providedSecret || !constantTimeEqualString(providedSecret, env.INBOUND_EMAIL_WEBHOOK_SECRET)) {
+          app.log.warn(
+            {
+              route: '/api/messages/inbound',
+              hasInboundSecret: Boolean(firstHeaderValue(request.headers['x-inbound-email-secret'])),
+              hasLegacyWebhookSecret: Boolean(firstHeaderValue(request.headers['x-webhook-secret'])),
+              hasAuthorizationBearer: Boolean(authBearer),
+              hasQuerySecret: Boolean(parsedQuery.data.secret)
+            },
+            'Inbound email webhook shared secret is missing or invalid'
+          );
+          throw new HttpError(401, 'Unauthorized inbound webhook request.');
+        }
       }
 
       const parsedBody = inboundMessageSchema.safeParse(request.body ?? {});
@@ -166,22 +274,17 @@ export const adminMessageRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const body = parsedBody.data;
-      const authorization = firstHeaderValue(request.headers.authorization);
-      const authBearer = authorization?.toLowerCase().startsWith('bearer ')
-        ? authorization.slice(7).trim()
-        : null;
-      const providedSecret =
-        firstHeaderValue(request.headers['x-inbound-email-secret']) ||
-        firstHeaderValue(request.headers['x-webhook-secret']) ||
-        authBearer ||
-        parsedQuery.data.secret ||
-        null;
-
-      if (!providedSecret || providedSecret !== env.INBOUND_EMAIL_WEBHOOK_SECRET) {
-        throw new HttpError(401, 'Unauthorized inbound webhook request.');
-      }
-
       const messageId = readString(body.messageId);
+      app.log.info(
+        {
+          route: '/api/messages/inbound',
+          authMethod,
+          provider: body.provider?.trim() || 'unknown',
+          messageId
+        },
+        'Inbound email webhook request accepted'
+      );
+
       if (messageId) {
         const duplicate = await prisma.auditLog.findFirst({
           where: {
