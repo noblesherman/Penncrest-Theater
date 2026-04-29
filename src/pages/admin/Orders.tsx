@@ -195,7 +195,11 @@ function formatCentsForInput(cents: number): string {
 }
 
 function parseDollarInputToCents(value: string): number | null {
-  const normalized = value.trim().replace(/^\$/, '').replace(/,/g, '');
+  const compact = value.trim().replace(/^\$/, '').replace(/,/g, '');
+  const firstDecimalIndex = compact.indexOf('.');
+  const normalized = firstDecimalIndex === -1
+    ? compact
+    : compact.slice(0, firstDecimalIndex + 1) + compact.slice(firstDecimalIndex + 1).replace(/\./g, '');
   if (!normalized) return null;
   if (!/^\d+(\.\d{0,2})?$/.test(normalized)) return null;
   const parsed = Number(normalized);
@@ -1549,6 +1553,11 @@ export default function AdminOrdersPage() {
     () => selectedSeatsWithPricing.reduce((sum, item) => sum + item.finalPriceCents, 0),
     [selectedSeatsWithPricing]
   );
+  const parsedCashReceivedCents = useMemo(
+    () => parseDollarInputToCents(cashReceivedInput),
+    [cashReceivedInput]
+  );
+  const cashCollectDisplayCents = parsedCashReceivedCents ?? selectedTierSubtotalCents;
 
   const isComplimentaryDoorCheckout = assignForm.source === 'DOOR' && selectedTierSubtotalCents === 0;
 
@@ -2632,7 +2641,7 @@ export default function AdminOrdersPage() {
                           ? `Complete complimentary sale · $${(selectedTierSubtotalCents / 100).toFixed(2)}`
                           : paymentMethod === 'STRIPE'
                             ? `${stripeChargePath === 'MANUAL' ? 'Start manual checkout' : 'Send to Payment Line'} · $${(selectedTierSubtotalCents / 100).toFixed(2)}`
-                            : `Collect $${(selectedTierSubtotalCents / 100).toFixed(2)}`)}
+                            : `Collect $${(cashCollectDisplayCents / 100).toFixed(2)}`)}
                     </motion.button>
                   ) : (
                     <motion.button

@@ -26,7 +26,6 @@ import {
   Ticket
 } from 'lucide-react';
 import { adminFetch } from '../../lib/adminAuth';
-import { apiUrl } from '../../lib/api';
 
 type MessageAudience = {
   id: string;
@@ -236,8 +235,6 @@ export default function AdminMessagesPage() {
 
   const [expandedSentId, setExpandedSentId] = useState<string | null>(null);
   const [expandedInboxId, setExpandedInboxId] = useState<string | null>(null);
-
-  const inboundWebhookUrl = useMemo(() => apiUrl('/api/messages/inbound'), []);
 
   const loadAudiences = async () => {
     setLoading(true);
@@ -877,20 +874,6 @@ export default function AdminMessagesPage() {
 
       {activeTab === 'inbox' ? (
         <section className="space-y-4">
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
-            <p className="font-semibold">How Receiving Messages Works</p>
-            <p className="mt-2">
-              1. Set `AUDIENCE_MESSAGE_REPLY_TO` to a monitored inbox (for example `messages@penncresttheater.com`).
-            </p>
-            <p className="mt-1">
-              2. Set `INBOUND_EMAIL_WEBHOOK_SECRET` on the backend.
-            </p>
-            <p className="mt-1">
-              3. Configure your mail provider to POST inbound mail to this webhook with header `x-inbound-email-secret`.
-            </p>
-            <p className="mt-2 break-all rounded-lg bg-amber-100/70 px-2.5 py-2 font-mono text-xs">{inboundWebhookUrl}</p>
-          </div>
-
           {inboxLoading ? (
             <div className="rounded-2xl border border-stone-200 bg-white px-4 py-5 text-sm text-stone-500 shadow-sm">Loading inbox…</div>
           ) : inboxMessages.length === 0 ? (
