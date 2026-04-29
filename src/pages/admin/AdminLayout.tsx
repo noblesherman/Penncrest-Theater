@@ -35,7 +35,6 @@ import {
   UserCheck,
   UsersRound,
   ChevronRight,
-  ChevronDown,
   PanelLeftClose,
   PanelLeftOpen
 } from 'lucide-react';
@@ -144,6 +143,47 @@ const routeAccessRules: Array<{ prefix: string; minRole: AdminRole }> = [
 const SIDEBAR_COLLAPSED_KEY = 'admin_sidebar_collapsed';
 const SIDEBAR_EXPANDED_SECTIONS_KEY = 'admin_sidebar_expanded_sections';
 const DEFAULT_EXPANDED_SECTION_IDS = ['front-desk'];
+const sidebarEase = [0.22, 1, 0.36, 1] as const;
+
+const navSectionListVariants = {
+  open: {
+    height: 'auto',
+    opacity: 1,
+    transition: {
+      height: { duration: 0.32, ease: sidebarEase },
+      opacity: { duration: 0.18, ease: sidebarEase },
+      when: 'beforeChildren',
+      staggerChildren: 0.035,
+      delayChildren: 0.025
+    }
+  },
+  collapsed: {
+    height: 0,
+    opacity: 0,
+    transition: {
+      height: { duration: 0.24, ease: sidebarEase },
+      opacity: { duration: 0.14, ease: sidebarEase },
+      when: 'afterChildren',
+      staggerChildren: 0.02,
+      staggerDirection: -1
+    }
+  }
+};
+
+const navSectionItemVariants = {
+  open: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { duration: 0.2, ease: sidebarEase }
+  },
+  collapsed: {
+    opacity: 0,
+    y: -5,
+    scale: 0.98,
+    transition: { duration: 0.12, ease: sidebarEase }
+  }
+};
 
 function isLinkActive(pathname: string, to: string): boolean {
   if (pathname === to) return true;
@@ -359,59 +399,79 @@ export default function AdminLayout() {
 
         {/* Nav */}
         <nav className={`no-scrollbar flex-1 py-4 overflow-y-auto ${sidebarCollapsed ? 'space-y-4 px-2' : 'space-y-2 px-3'}`}>
-          {visibleNavSections.map((section) => (
-            <div key={section.title}>
-              {sidebarCollapsed ? <div className="mx-2 mb-2 h-px bg-white/[0.06]" /> : (
-                section.collapsible ? (
-                  <button
-                    type="button"
-                    onClick={() => toggleNavSection(section.id)}
-                    className="mb-1 flex w-full items-center rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-500 transition hover:bg-white/[0.04] hover:text-zinc-300"
-                    aria-expanded={effectiveExpandedSectionIds.has(section.id)}
-                  >
-                    <span>{section.title}</span>
-                    {effectiveExpandedSectionIds.has(section.id)
-                      ? <ChevronDown className="ml-auto h-3 w-3 text-zinc-600" />
-                      : <ChevronRight className="ml-auto h-3 w-3 text-zinc-600" />}
-                  </button>
-                ) : (
-                  <p className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
-                    {section.title}
-                  </p>
-                )
-              )}
-              <div
-                className={`
-                  space-y-0.5 overflow-hidden transition-all duration-200
-                  ${sidebarCollapsed || effectiveExpandedSectionIds.has(section.id) ? 'max-h-[360px] opacity-100' : 'max-h-0 opacity-0'}
-                `}
-              >
-                {section.items.map((item) => {
-                  const Icon = item.icon;
-                  const active = isLinkActive(pathname, item.to);
-                  return (
-                    <Link
-                      title={sidebarCollapsed ? item.label : undefined}
-                      key={item.to}
-                      to={item.to}
-                      className={`
-                        flex items-center rounded-md text-[13px] font-medium transition-all duration-150
-                        ${sidebarCollapsed ? 'justify-center px-0 py-2.5' : 'gap-2.5 px-2.5 py-2'}
-                        ${active
-                          ? 'bg-white/[0.08] text-white'
-                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]'
-                        }
-                      `}
+          {visibleNavSections.map((section) => {
+            const sectionOpen = sidebarCollapsed || effectiveExpandedSectionIds.has(section.id);
+
+            return (
+              <div key={section.title}>
+                {sidebarCollapsed ? <div className="mx-2 mb-2 h-px bg-white/[0.06]" /> : (
+                  section.collapsible ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleNavSection(section.id)}
+                      className="group mb-1 flex w-full items-center rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-500 transition-colors duration-200 hover:bg-white/[0.04] hover:text-zinc-300"
+                      aria-expanded={sectionOpen}
                     >
-                      <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-rose-400' : 'text-zinc-600'}`} />
-                      {!sidebarCollapsed ? item.label : null}
-                      {active && !sidebarCollapsed ? <ChevronRight className="h-3 w-3 ml-auto text-zinc-600" /> : null}
-                    </Link>
-                  );
-                })}
+                      <span>{section.title}</span>
+                      <ChevronRight
+                        className={`
+                          ml-auto h-3 w-3 text-zinc-600 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]
+                          ${sectionOpen ? 'rotate-90 text-zinc-500' : 'group-hover:text-zinc-500'}
+                        `}
+                      />
+                    </button>
+                  ) : (
+                    <p className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
+                      {section.title}
+                    </p>
+                  )
+                )}
+                <AnimatePresence initial={false}>
+                  {sectionOpen ? (
+                    <motion.div
+                      key={`${section.id}-items`}
+                      variants={navSectionListVariants}
+                      initial={sidebarCollapsed ? false : 'collapsed'}
+                      animate="open"
+                      exit="collapsed"
+                      className="overflow-hidden"
+                    >
+                      <div className="space-y-0.5">
+                        {section.items.map((item) => {
+                          const Icon = item.icon;
+                          const active = isLinkActive(pathname, item.to);
+                          return (
+                            <motion.div
+                              key={item.to}
+                              variants={navSectionItemVariants}
+                              className="origin-top"
+                            >
+                              <Link
+                                title={sidebarCollapsed ? item.label : undefined}
+                                to={item.to}
+                                className={`
+                                  flex items-center rounded-md text-[13px] font-medium transition-all duration-150
+                                  ${sidebarCollapsed ? 'justify-center px-0 py-2.5' : 'gap-2.5 px-2.5 py-2'}
+                                  ${active
+                                    ? 'bg-white/[0.08] text-white'
+                                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]'
+                                  }
+                                `}
+                              >
+                                <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-rose-400' : 'text-zinc-600'}`} />
+                                {!sidebarCollapsed ? item.label : null}
+                                {active && !sidebarCollapsed ? <ChevronRight className="h-3 w-3 ml-auto text-zinc-600" /> : null}
+                              </Link>
+                            </motion.div>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </nav>
 
         {/* User footer */}
