@@ -469,6 +469,7 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
     const isCostumeGallery = section.id === 'costume-crew-gallery';
 
     const performerImages = isPerformerGallery ? section.images.slice(0, 6) : section.images;
+    const centerTwoImageGallery = !isPerformerGallery && performerImages.length === 2;
     const performerLayoutClasses = [
       'lg:col-span-3 lg:row-span-2',
       'lg:col-span-5 lg:row-span-2',
@@ -480,9 +481,11 @@ function renderSplitFeature(section: AboutSplitFeatureSection, previewMode: Abou
 
     const gridClass = isPerformerGallery
       ? 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-12 lg:auto-rows-[136px]'
-      : isCostumeGallery
-        ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:mx-auto lg:max-w-3xl'
-        : 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3';
+      : centerTwoImageGallery
+        ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:mx-auto lg:max-w-5xl'
+        : isCostumeGallery
+          ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:mx-auto lg:max-w-3xl'
+          : 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3';
 
     const performerFrameClasses = [
       '',
