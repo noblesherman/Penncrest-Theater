@@ -306,11 +306,18 @@ function loadBrandLogoBuffer(): Buffer | null {
 
   const routeDir = dirname(fileURLToPath(import.meta.url));
   const projectRoot = resolve(routeDir, '../../../');
-  const candidates = [
-    resolve(projectRoot, 'src/assets/penncrest-logo.jpeg'),
-    resolve(projectRoot, 'src/assets/penncrest-logo.jpg'),
-    resolve(projectRoot, 'src/assets/penncrest-logo.png')
+  const candidateRoots = [
+    projectRoot,
+    resolve(projectRoot, '..'),
+    process.cwd(),
+    resolve(process.cwd(), '..')
   ];
+  const candidateRelativePaths = [
+    'src/assets/penncrest-logo.jpeg',
+    'src/assets/penncrest-logo.jpg',
+    'src/assets/penncrest-logo.png'
+  ];
+  const candidates = [...new Set(candidateRoots.flatMap((root) => candidateRelativePaths.map((path) => resolve(root, path))))];
 
   for (const path of candidates) {
     if (!existsSync(path)) continue;
