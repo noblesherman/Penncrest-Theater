@@ -366,53 +366,52 @@ function buildAboutImageFilenameBase(slug: string, path: string[], uploadIndex: 
   return safePath ? `${slug}-${safePath}-${uploadIndex}` : `${slug}-image-${uploadIndex}`;
 }
 
-async function convertImageDataUrlsToR2(content: AboutPageContent, slug: string): Promise<AboutPageContent> {
+async function convertImageDataUrlsInValueToR2(value: unknown, slug: string): Promise<unknown> {
   const convertedBySource = new Map<string, string>();
   let uploadIndex = 0;
 
-  const visit = async (value: unknown, path: string[]): Promise<unknown> => {
-    if (typeof value === 'string') {
-      if (!isImageDataUrl(value)) {
-        return value;
+  const visit = async (node: unknown, path: string[]): Promise<unknown> => {
+    if (typeof node === 'string') {
+      if (!isImageDataUrl(node)) {
+        return node;
       }
 
-      const cached = convertedBySource.get(value);
+      const cached = convertedBySource.get(node);
       if (cached) {
         return cached;
       }
 
       uploadIndex += 1;
       const uploaded = await uploadImageFromDataUrl({
-        dataUrl: value,
+        dataUrl: node,
         scope: `about/${slug}`,
         filenameBase: buildAboutImageFilenameBase(slug, path, uploadIndex)
       });
 
-      convertedBySource.set(value, uploaded.url);
+      convertedBySource.set(node, uploaded.url);
       return uploaded.url;
     }
 
-    if (Array.isArray(value)) {
+    if (Array.isArray(node)) {
       const nextArray: unknown[] = [];
-      for (let index = 0; index < value.length; index += 1) {
-        nextArray.push(await visit(value[index], [...path, String(index)]));
+      for (let index = 0; index < node.length; index += 1) {
+        nextArray.push(await visit(node[index], [...path, String(index)]));
       }
       return nextArray;
     }
 
-    if (value && typeof value === 'object') {
+    if (node && typeof node === 'object') {
       const nextObject: Record<string, unknown> = {};
-      for (const [key, child] of Object.entries(value)) {
+      for (const [key, child] of Object.entries(node)) {
         nextObject[key] = await visit(child, [...path, key]);
       }
       return nextObject;
     }
 
-    return value;
+    return node;
   };
 
-  const converted = await visit(content, []);
-  return parseAboutPageContent(converted);
+  return visit(value, []);
 }
 
 async function convertCatalogImageDataUrlToR2(catalog: AboutCatalogState, slug: string): Promise<AboutCatalogState> {
@@ -1112,30 +1111,24 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'Invalid page payload' });
     }
 
-    let content: AboutPageContent;
     try {
-      content = parseAboutPageContent(parsedBody.data);
-      content = ensureStarterSubpageGallerySections(content);
-    } catch (err) {
-      return reply.status(400).send({
-        error: err instanceof Error ? err.message : 'Invalid About page content'
-      });
-    }
-
-    if (content.slug !== params.data.slug) {
-      return reply.status(400).send({ error: 'Page slug does not match the requested route' });
-    }
-
-    try {
-      const states = await loadResolvedAboutStates();
-      const current = requireSlugState(states, params.data.slug);
-
-      if (containsImageDataUrl(content)) {
+      let contentInput = parsedBody.data;
+      if (containsImageDataUrl(contentInput)) {
         if (!isR2Configured()) {
           throw new HttpError(503, 'R2/CDN is not configured. Configure R2 before saving image data URLs.');
         }
-        content = await convertImageDataUrlsToR2(content, params.data.slug);
+        contentInput = await convertImageDataUrlsInValueToR2(contentInput, params.data.slug);
       }
+
+      let content = parseAboutPageContent(contentInput);
+      content = ensureStarterSubpageGallerySections(content);
+
+      if (content.slug !== params.data.slug) {
+        return reply.status(400).send({ error: 'Page slug does not match the requested route' });
+      }
+
+      const states = await loadResolvedAboutStates();
+      const current = requireSlugState(states, params.data.slug);
 
       const nextDraftCatalog = {
         ...current.draftCatalog,
@@ -1191,6 +1184,9 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
     } catch (err) {
       if (isMissingContentPageTableError(err)) {
         return reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
+      }
+      if (err instanceof z.ZodError) {
+        return reply.status(400).send({ error: err.issues[0]?.message ?? 'Invalid About page content' });
       }
       handleRouteError(reply, err, 'We hit a small backstage snag while trying to save About draft page');
     }
@@ -1677,26 +1673,20 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'Invalid page payload' });
     }
 
-    let content: AboutPageContent;
     try {
-      content = parseAboutPageContent(parsed.data);
-      content = ensureStarterSubpageGallerySections(content);
-    } catch (err) {
-      return reply.status(400).send({
-        error: err instanceof Error ? err.message : 'Invalid About page content'
-      });
-    }
-
-    if (content.slug !== params.data.slug) {
-      return reply.status(400).send({ error: 'Page slug does not match the requested route' });
-    }
-
-    try {
-      if (containsImageDataUrl(content)) {
+      let contentInput = parsed.data;
+      if (containsImageDataUrl(contentInput)) {
         if (!isR2Configured()) {
           throw new HttpError(503, 'R2/CDN is not configured. Configure R2 before saving image data URLs.');
         }
-        content = await convertImageDataUrlsToR2(content, params.data.slug);
+        contentInput = await convertImageDataUrlsInValueToR2(contentInput, params.data.slug);
+      }
+
+      let content = parseAboutPageContent(contentInput);
+      content = ensureStarterSubpageGallerySections(content);
+
+      if (content.slug !== params.data.slug) {
+        return reply.status(400).send({ error: 'Page slug does not match the requested route' });
       }
 
       const states = await loadResolvedAboutStates();
@@ -1771,6 +1761,9 @@ export const aboutContentRoutes: FastifyPluginAsync = async (app) => {
     } catch (err) {
       if (isMissingContentPageTableError(err)) {
         return reply.status(503).send({ error: 'About content storage is not ready yet. Apply the latest database migration and restart the backend.' });
+      }
+      if (err instanceof z.ZodError) {
+        return reply.status(400).send({ error: err.issues[0]?.message ?? 'Invalid About page content' });
       }
       handleRouteError(reply, err, 'We hit a small backstage snag while trying to save About content');
     }

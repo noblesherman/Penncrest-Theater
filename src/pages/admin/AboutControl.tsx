@@ -25,6 +25,7 @@ import {
 import { AnimatePresence, motion } from 'motion/react';
 import AboutPageRenderer from '../../components/about/AboutPageRenderer';
 import { adminFetch } from '../../lib/adminAuth';
+import { uploadAdminImage } from '../../lib/adminUploads';
 import {
   ABOUT_PAGE_LABELS, ABOUT_PAGE_SLUGS, cloneAboutPage,
   type AboutCatalogState, type AdminAboutEditorPageState,
@@ -222,41 +223,19 @@ function makeBlankSection(type: string): AboutSection {
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
-function fileToDataUrl(file: File, maxWidth: number, maxHeight: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('We hit a small backstage snag while trying to read file.'));
-    reader.onload = () => {
-      if (typeof reader.result !== 'string') {
-        reject(new Error('We hit a small backstage snag while trying to parse image.'));
-        return;
-      }
-      const img = new Image();
-      img.onerror = () => reject(new Error('We hit a small backstage snag while trying to load image.'));
-      img.onload = () => {
-        const ratio = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
-        const w = Math.max(1, Math.round(img.width * ratio));
-        const h = Math.max(1, Math.round(img.height * ratio));
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) { reject(new Error('Canvas error.')); return; }
-        ctx.drawImage(img, 0, 0, w, h);
-        const mime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
-        resolve(canvas.toDataURL(mime, mime === 'image/png' ? undefined : 0.84));
-      };
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
 function formatUpdatedAt(value: string | null): string | null {
   if (!value) return null;
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
   return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function buildUploadFilenameBase(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'about-image';
 }
 
 function reorder<T>(items: T[], index: number, direction: -1 | 1): T[] {
@@ -360,11 +339,11 @@ function ReorderControls({
 // ─── Image field ──────────────────────────────────────────────────────────────
 
 function ImageField({
-  label, value, onChange, optional, disabled, cropAspectRatio = 4 / 3,
+  label, value, onChange, optional, disabled, cropAspectRatio = 4 / 3, uploadScope = 'about',
 }: {
   label: string; value?: AboutImage;
   onChange: (v: AboutImage | undefined) => void;
-  optional?: boolean; disabled?: boolean; cropAspectRatio?: number;
+  optional?: boolean; disabled?: boolean; cropAspectRatio?: number; uploadScope?: string;
 }) {
   const cropStageRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{
@@ -376,6 +355,8 @@ function ImageField({
   } | null>(null);
   const [cropOpen, setCropOpen] = useState(false);
   const [draftCrop, setDraftCrop] = useState<{ x: number; y: number }>({ x: 50, y: 50 });
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const cropX = value?.cropX ?? 50;
   const cropY = value?.cropY ?? 50;
@@ -461,12 +442,26 @@ function ImageField({
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file || !file.type.startsWith('image/')) return;
-    onChange({
-      url: await fileToDataUrl(file, 1600, 1600),
-      alt: value?.alt ?? '',
-      cropX,
-      cropY,
-    });
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const uploaded = await uploadAdminImage(file, {
+        maxWidth: 1600,
+        maxHeight: 1600,
+        scope: uploadScope,
+        filenameBase: buildUploadFilenameBase(label),
+      });
+      onChange({
+        url: uploaded.url,
+        alt: value?.alt ?? '',
+        cropX,
+        cropY,
+      });
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to upload image');
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -500,40 +495,44 @@ function ImageField({
               value={value?.url ?? ''}
               onChange={(e) => onChange({ url: e.target.value, alt: value?.alt ?? '', cropX, cropY })}
               disabled={disabled}
-              placeholder="Image URL or upload →"
+              placeholder="Image URL or upload"
               className={inputClass}
             />
             <div className="flex items-center gap-2">
               <input
                 value={value?.alt ?? ''}
                 onChange={(e) => onChange({ url: value?.url ?? '', alt: e.target.value, cropX, cropY })}
-                disabled={disabled}
+                disabled={disabled || uploading}
                 placeholder="Alt text"
                 className={inputClass}
               />
-              <label className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-xs font-semibold text-zinc-600 hover:bg-zinc-50">
-                <Upload className="h-3.5 w-3.5" /> Upload
+              <label className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-xs font-semibold text-zinc-600 hover:bg-zinc-50 ${disabled || uploading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+                {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                {uploading ? 'Uploading...' : 'Upload'}
                 <input
                   type="file"
                   accept="image/*"
                   className="hidden"
                   onChange={(e) => void onUpload(e)}
-                  disabled={disabled}
+                  disabled={disabled || uploading}
                 />
               </label>
             </div>
+            {uploadError ? (
+              <p className="text-xs font-semibold text-red-600">{uploadError}</p>
+            ) : null}
             <div className="grid gap-2 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={openCropEditor}
-                  disabled={disabled || !value?.url}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Crop className="h-3.5 w-3.5" /> Crop photo
-                </button>
-                <div className="inline-flex items-center justify-center rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2.5 text-xs font-semibold text-zinc-600">
-                  Framing: {Math.round(cropX)}% / {Math.round(cropY)}%
-                </div>
+              <button
+                type="button"
+                onClick={openCropEditor}
+                disabled={disabled || !value?.url}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Crop className="h-3.5 w-3.5" /> Crop photo
+              </button>
+              <div className="inline-flex items-center justify-center rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2.5 text-xs font-semibold text-zinc-600">
+                Framing: {Math.round(cropX)}% / {Math.round(cropY)}%
+              </div>
             </div>
           </div>
         </div>
@@ -1692,7 +1691,7 @@ export default function AdminAboutControlPage() {
                     <Field label="URL"><input value={item.href} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: (s as AboutLinkGridSection).items.map((x, j) => j === ii ? { ...x, href: e.target.value } : x) }))} placeholder="/tech-crew" className={inputClass} /></Field>
                   </Row2>
                   <Field label="Description"><textarea value={item.description} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: (s as AboutLinkGridSection).items.map((x, j) => j === ii ? { ...x, description: e.target.value } : x) }))} className={taClass} /></Field>
-                  <ImageField label="Card image" value={item.image} optional
+                  <ImageField label="Card image" value={item.image} optional uploadScope={`about/${slug}`}
                     onChange={(img) => upSec(si, (s) => ({ ...(s as AboutLinkGridSection), items: (s as AboutLinkGridSection).items.map((x, j) => j === ii ? { ...x, image: img } : x) }))} />
                 </SubItem>
               ))}
@@ -1720,7 +1719,7 @@ export default function AdminAboutControlPage() {
                     <Field label="Role"><input value={person.role} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutPeopleSection), items: (s as AboutPeopleSection).items.map((x, j) => j === ii ? { ...x, role: e.target.value } : x) }))} className={inputClass} /></Field>
                   </Row2>
                   <Field label="Bio"><textarea value={person.bio ?? ''} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutPeopleSection), items: (s as AboutPeopleSection).items.map((x, j) => j === ii ? { ...x, bio: e.target.value } : x) }))} className={taClass} /></Field>
-                  <ImageField label="Portrait" value={person.image}
+                  <ImageField label="Portrait" value={person.image} uploadScope={`about/${slug}`}
                     onChange={(img) => upSec(si, (s) => ({ ...(s as AboutPeopleSection), items: (s as AboutPeopleSection).items.map((x, j) => j === ii ? { ...x, image: img ?? { url: '', alt: '' } } : x) }))} />
                 </SubItem>
               ))}
@@ -1751,7 +1750,7 @@ export default function AdminAboutControlPage() {
                     <Field label="Title"><input value={item.title} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutHistorySection), items: (s as AboutHistorySection).items.map((x, j) => j === ii ? { ...x, title: e.target.value } : x) }))} className={inputClass} /></Field>
                   </Row2>
                   <Field label="Description"><textarea value={item.description} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutHistorySection), items: (s as AboutHistorySection).items.map((x, j) => j === ii ? { ...x, description: e.target.value } : x) }))} className={taClass} /></Field>
-                  <ImageField label="Image" value={item.image}
+                  <ImageField label="Image" value={item.image} uploadScope={`about/${slug}`}
                     onChange={(img) => upSec(si, (s) => ({ ...(s as AboutHistorySection), items: (s as AboutHistorySection).items.map((x, j) => j === ii ? { ...x, image: img ?? { url: '', alt: '' } } : x) }))} />
                 </SubItem>
               ))}
@@ -1863,7 +1862,7 @@ export default function AdminAboutControlPage() {
                   onMove={(d) => upSec(si, (s) => ({ ...(s as AboutSplitFeatureSection), images: reorder((s as AboutSplitFeatureSection).images, ii, d) }))}
                   onRemove={() => upSec(si, (s) => ({ ...(s as AboutSplitFeatureSection), images: (s as AboutSplitFeatureSection).images.filter((_, j) => j !== ii) }))}
                 >
-                  <ImageField label={`Image ${ii + 1}`} value={img} cropAspectRatio={splitFeatureCropAspectRatioForImage(section.id, ii)}
+                  <ImageField label={`Image ${ii + 1}`} value={img} cropAspectRatio={splitFeatureCropAspectRatioForImage(section.id, ii)} uploadScope={`about/${slug}`}
                     onChange={(next) => upSec(si, (s) => ({ ...(s as AboutSplitFeatureSection), images: (s as AboutSplitFeatureSection).images.map((x, j) => j === ii ? (next ?? { url: '', alt: '' }) : x) }))} />
                 </SubItem>
               ))}
@@ -1881,7 +1880,7 @@ export default function AdminAboutControlPage() {
             {headerFields}
             <Field label="Quote"><textarea value={section.quote} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutTestimonialSection), quote: e.target.value }))} className={taClass} /></Field>
             <Field label="Attribution"><input value={section.attribution} onChange={(e) => upSec(si, (s) => ({ ...(s as AboutTestimonialSection), attribution: e.target.value }))} className={inputClass} placeholder="— Name, Role" /></Field>
-            <ImageField label="Feature image" value={section.image} cropAspectRatio={3 / 4}
+            <ImageField label="Feature image" value={section.image} cropAspectRatio={3 / 4} uploadScope={`about/${slug}`}
               onChange={(img) => upSec(si, (s) => ({ ...(s as AboutTestimonialSection), image: img ?? { url: '', alt: '' } }))} />
           </SectionShell>
         );
@@ -2147,7 +2146,7 @@ export default function AdminAboutControlPage() {
                 <Field label="Card description">
                   <textarea value={catalogState.local.cardDescription} onChange={(e) => upCatalog((c) => ({ ...c, cardDescription: e.target.value, deleted: false }))} className={taClass} />
                 </Field>
-                <ImageField label="Card image" value={catalogState.local.cardImage} optional
+                <ImageField label="Card image" value={catalogState.local.cardImage} optional uploadScope={`about/${slug}/card`}
                   onChange={(img) => upCatalog((c) => ({ ...c, cardImage: img, deleted: false }))} />
               </div>
             )}

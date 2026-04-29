@@ -12,12 +12,19 @@ Handoff note for Mr. Smith:
 */
 
 import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
+  ChevronRight,
   Download,
+  ExternalLink,
+  File,
+  FileUp,
   Folder,
   FolderOpen,
   FolderPlus,
+  HardDrive,
   Link2,
+  MoveRight,
   Pencil,
   QrCode,
   RefreshCw,
@@ -71,6 +78,17 @@ type QrTarget = {
 };
 
 const ROOT_FOLDER_KEY = '__root__';
+const driveEase = [0.22, 1, 0.36, 1] as const;
+const panelClass =
+  'rounded-3xl border border-stone-200 bg-white shadow-[0_18px_50px_-42px_rgba(28,25,23,0.55)]';
+const softButtonClass =
+  'inline-flex items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-stone-700 transition hover:-translate-y-0.5 hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950 focus:outline-none focus:ring-2 focus:ring-rose-200 disabled:cursor-not-allowed disabled:opacity-50';
+const primaryButtonClass =
+  'inline-flex items-center justify-center gap-2 rounded-xl border border-stone-950 bg-stone-950 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white transition hover:-translate-y-0.5 hover:border-stone-800 hover:bg-stone-800 focus:outline-none focus:ring-2 focus:ring-rose-200 disabled:cursor-not-allowed disabled:opacity-50';
+const iconButtonClass =
+  'inline-flex h-9 w-9 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-600 transition hover:-translate-y-0.5 hover:border-stone-300 hover:bg-stone-50 hover:text-stone-950 focus:outline-none focus:ring-2 focus:ring-rose-200';
+const dangerButtonClass =
+  'inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-red-700 transition hover:-translate-y-0.5 hover:border-red-300 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-200';
 
 function formatBytes(value: number): string {
   if (value < 1024) return `${value} B`;
@@ -150,6 +168,18 @@ function buildFolderPathMap(tree: DriveFolder[]): Map<string, string> {
   return cache;
 }
 
+function DriveStat({ label, value, icon: Icon }: { label: string; value: string; icon: typeof File }) {
+  return (
+    <div className="rounded-2xl border border-stone-200 bg-stone-50/70 p-3">
+      <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-stone-400">
+        <Icon className="h-3.5 w-3.5" />
+        {label}
+      </div>
+      <div className="mt-2 text-xl font-black tracking-tight text-stone-950">{value}</div>
+    </div>
+  );
+}
+
 export default function AdminDrivePage() {
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [state, setState] = useState<DriveResponse | null>(null);
@@ -211,6 +241,13 @@ export default function AdminDrivePage() {
 
     return folders.sort((a, b) => a.label.localeCompare(b.label));
   }, [folderPathMap, state?.tree]);
+
+  const currentFolderBytes = useMemo(
+    () => (state?.files || []).reduce((total, file) => total + file.sizeBytes, 0),
+    [state?.files]
+  );
+
+  const currentFolderLabel = state?.currentFolder?.name || 'Drive Root';
 
   async function handleCreateFolder(event: FormEvent) {
     event.preventDefault();
@@ -461,14 +498,24 @@ export default function AdminDrivePage() {
               <button
                 type="button"
                 onClick={() => setCurrentFolderId(folder.id)}
-                className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${
-                  active ? 'bg-zinc-900 text-white' : 'text-zinc-700 hover:bg-zinc-100'
+                className={`group flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-sm transition ${
+                  active
+                    ? 'bg-stone-950 text-white shadow-sm'
+                    : 'text-stone-600 hover:bg-stone-100 hover:text-stone-950'
                 }`}
-                style={{ paddingLeft: `${8 + depth * 16}px` }}
+                style={{ paddingLeft: `${10 + depth * 16}px` }}
               >
-                {active ? <FolderOpen className="h-4 w-4" /> : <Folder className="h-4 w-4" />}
+                {active ? (
+                  <FolderOpen className="h-4 w-4 text-amber-300" />
+                ) : (
+                  <Folder className="h-4 w-4 text-stone-400 group-hover:text-amber-600" />
+                )}
                 <span className="truncate">{folder.name}</span>
-                <span className={`ml-auto text-[10px] ${active ? 'text-zinc-200' : 'text-zinc-500'}`}>
+                <span
+                  className={`ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                    active ? 'bg-white/10 text-stone-200' : 'bg-stone-200/70 text-stone-500'
+                  }`}
+                >
                   {folder._count.files}
                 </span>
               </button>
@@ -481,46 +528,95 @@ export default function AdminDrivePage() {
   }
 
   return (
-    <div className="space-y-6">
-      <header className="rounded-2xl border border-black/[0.08] bg-white p-5 shadow-[0_16px_34px_-26px_rgba(0,0,0,0.45)]">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">Admin Drive</p>
-            <h1 className="mt-1 text-2xl font-black tracking-tight text-zinc-900">CDN file hosting + share links</h1>
-            <p className="mt-1 text-sm text-zinc-600">
-              Upload files, organize folders, copy public links, and generate downloadable QR codes.
+    <div className="mx-auto w-full max-w-[1500px] space-y-5 text-stone-900">
+      <motion.header
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.42, ease: driveEase }}
+        className={`${panelClass} relative overflow-hidden p-5 sm:p-6`}
+      >
+        <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#e11d48,#f59e0b,#0f766e)]" />
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <h1 className="text-3xl font-black tracking-tight text-stone-950 sm:text-4xl">Drive</h1>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-stone-500">
+              Keep show files, sponsor assets, QR links, and public downloads tidy for the team.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void loadDrive()}
-            className="inline-flex items-center gap-2 rounded-xl border border-black/[0.08] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-700 hover:border-zinc-300"
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => void loadDrive()} className={softButtonClass}>
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+            <label className={`${primaryButtonClass} cursor-pointer`}>
+              <Upload className="h-3.5 w-3.5" />
+              {uploading ? 'Uploading' : 'Upload'}
+              <input
+                type="file"
+                className="hidden"
+                disabled={uploading || !state?.upload.enabled}
+                onChange={(event) => void handleUploadFile(event)}
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <DriveStat label="Current files" value={String(state?.files.length || 0)} icon={File} />
+          <DriveStat label="Folders here" value={String(state?.folders.length || 0)} icon={FolderOpen} />
+          <DriveStat label="Storage here" value={state ? formatBytes(currentFolderBytes) : '...'} icon={HardDrive} />
+          <DriveStat label="Upload cap" value={state ? formatBytes(state.upload.maxBytes) : '...'} icon={FileUp} />
+        </div>
+      </motion.header>
+
+      <AnimatePresence>
+        {error ? (
+          <motion.div
+            key="drive-error"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2, ease: driveEase }}
+            className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh
-          </button>
-        </div>
-      </header>
+            {error}
+          </motion.div>
+        ) : null}
 
-      {error ? (
-        <div className="rounded-xl border border-red-300/70 bg-red-50 p-3 text-sm font-medium text-red-700">{error}</div>
-      ) : null}
+        {notice ? (
+          <motion.div
+            key="drive-notice"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2, ease: driveEase }}
+            className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700"
+          >
+            {notice}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
-      {notice ? (
-        <div className="rounded-xl border border-emerald-300/70 bg-emerald-50 p-3 text-sm font-medium text-emerald-700">
-          {notice}
-        </div>
-      ) : null}
-
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        <aside className="rounded-2xl border border-black/[0.08] bg-white p-4 shadow-[0_12px_28px_-20px_rgba(0,0,0,0.3)] xl:col-span-4">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-zinc-700">Folders</h2>
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+        <motion.aside
+          initial={{ opacity: 0, x: -12 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.08, duration: 0.36, ease: driveEase }}
+          className={`${panelClass} self-start p-4 xl:sticky xl:top-5 xl:col-span-4`}
+        >
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-black tracking-tight text-stone-950">Folders</h2>
+              <p className="mt-0.5 text-xs text-stone-400">{state?.tree.length || 0} total folders</p>
+            </div>
             <button
               type="button"
               onClick={() => setCurrentFolderId(null)}
-              className={`rounded-lg px-2 py-1 text-[11px] font-semibold uppercase tracking-wide ${
-                currentFolderId === null ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'
+              className={`rounded-xl px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] transition ${
+                currentFolderId === null
+                  ? 'bg-stone-950 text-white'
+                  : 'border border-stone-200 bg-white text-stone-600 hover:bg-stone-50 hover:text-stone-950'
               }`}
             >
               Root
@@ -532,227 +628,306 @@ export default function AdminDrivePage() {
               value={newFolderName}
               onChange={(event) => setNewFolderName(event.target.value)}
               placeholder="New folder"
-              className="h-9 w-full rounded-lg border border-black/[0.1] px-3 text-sm"
+              className="h-10 w-full rounded-xl border border-stone-200 bg-stone-50 px-3 text-sm font-medium text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-rose-300 focus:bg-white focus:ring-2 focus:ring-rose-100"
             />
-            <button
-              type="submit"
-              className="inline-flex h-9 items-center justify-center rounded-lg border border-black/[0.08] px-3 text-sm font-semibold text-zinc-700 hover:border-zinc-300"
-            >
+            <button type="submit" className={iconButtonClass} aria-label="Create folder">
               <FolderPlus className="h-4 w-4" />
             </button>
           </form>
 
-          <div className="max-h-[420px] overflow-y-auto pr-1">
-            {loading && !state ? <p className="text-sm text-zinc-500">Loading folders...</p> : renderFolderTree(null)}
+          <div className="max-h-[520px] overflow-y-auto pr-1">
+            {loading && !state ? (
+              <p className="rounded-2xl border border-dashed border-stone-200 p-4 text-sm text-stone-500">
+                Loading folders...
+              </p>
+            ) : (
+              renderFolderTree(null) || (
+                <p className="rounded-2xl border border-dashed border-stone-200 p-4 text-sm text-stone-500">
+                  No folders yet.
+                </p>
+              )
+            )}
           </div>
-        </aside>
+        </motion.aside>
 
-        <main className="space-y-4 xl:col-span-8">
-          <section className="rounded-2xl border border-black/[0.08] bg-white p-4 shadow-[0_12px_28px_-20px_rgba(0,0,0,0.3)]">
+        <main className="space-y-5 xl:col-span-8">
+          <motion.section
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.12, duration: 0.38, ease: driveEase }}
+            className={`${panelClass} overflow-hidden`}
+          >
+            <div className="border-b border-stone-100 p-4 sm:p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+                      <FolderOpen className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-stone-400">Current folder</p>
+                      <h2 className="mt-0.5 truncate text-2xl font-black tracking-tight text-stone-950">
+                        {currentFolderLabel}
+                      </h2>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-stone-500">
+                    {state?.breadcrumbs.map((crumb, index) => (
+                      <span key={`${crumb.id || 'root'}-${index}`} className="inline-flex items-center gap-1">
+                        {index > 0 ? <ChevronRight className="h-3 w-3 text-stone-300" /> : null}
+                        <button
+                          type="button"
+                          onClick={() => setCurrentFolderId(crumb.id)}
+                          className="rounded-lg px-2 py-1 transition hover:bg-stone-100 hover:text-stone-950"
+                        >
+                          {crumb.name}
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {state?.currentFolder ? (
+                    <>
+                      <button type="button" onClick={() => void handleRenameCurrentFolder()} className={softButtonClass}>
+                        <Pencil className="h-3.5 w-3.5" />
+                        Rename
+                      </button>
+                      <button type="button" onClick={() => void handleDeleteCurrentFolder()} className={dangerButtonClass}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-1.5 text-xs font-semibold text-stone-500">
+                <HardDrive className="h-3.5 w-3.5" />
+                Max upload size: {state ? formatBytes(state.upload.maxBytes) : '...'}
+                {state?.upload.enabled ? null : ' · R2/CDN not configured'}
+              </div>
+            </div>
+
+            <div className="p-4 sm:p-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-sm font-black tracking-tight text-stone-950">Subfolders</h3>
+                <span className="text-xs font-semibold text-stone-400">{state?.folders.length || 0} in view</span>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <AnimatePresence initial={false}>
+                  {state?.folders.length ? (
+                    state.folders.map((folder, index) => (
+                      <motion.button
+                        key={folder.id}
+                        type="button"
+                        onClick={() => setCurrentFolderId(folder.id)}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.98 }}
+                        transition={{ delay: index * 0.025, duration: 0.24, ease: driveEase }}
+                        className="group flex w-full items-center gap-3 rounded-2xl border border-stone-200 bg-stone-50/70 p-3 text-left transition hover:-translate-y-0.5 hover:border-amber-200 hover:bg-amber-50/70"
+                      >
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-amber-600 shadow-sm ring-1 ring-stone-200 transition group-hover:ring-amber-200">
+                          <FolderOpen className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-bold text-stone-950">{folder.name}</div>
+                          <div className="text-xs text-stone-500">
+                            {folder._count.children} folders · {folder._count.files} files
+                          </div>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-stone-300 transition group-hover:translate-x-0.5 group-hover:text-amber-600" />
+                      </motion.button>
+                    ))
+                  ) : (
+                    <motion.div
+                      key="empty-folders"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="rounded-2xl border border-dashed border-stone-200 p-4 text-sm text-stone-500 sm:col-span-2"
+                    >
+                      No subfolders in this location.
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          </motion.section>
+
+          <motion.section
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.18, duration: 0.38, ease: driveEase }}
+            className={`${panelClass} p-4 sm:p-5`}
+          >
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.15em] text-zinc-500">Current Folder</div>
-                <div className="mt-1 text-lg font-bold text-zinc-900">{state?.currentFolder?.name || 'Drive Root'}</div>
-                <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-zinc-500">
-                  {state?.breadcrumbs.map((crumb, index) => (
-                    <button
-                      type="button"
-                      key={`${crumb.id || 'root'}-${index}`}
-                      onClick={() => setCurrentFolderId(crumb.id)}
-                      className="rounded px-1 py-0.5 hover:bg-zinc-100"
-                    >
-                      {index > 0 ? '/ ' : ''}
-                      {crumb.name}
-                    </button>
-                  ))}
-                </div>
+                <h2 className="text-xl font-black tracking-tight text-stone-950">Files</h2>
+                <p className="mt-1 text-sm text-stone-500">
+                  {state?.files.length || 0} files · {state ? formatBytes(currentFolderBytes) : '...'} in this folder
+                </p>
               </div>
-
-              <div className="flex items-center gap-2">
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-black/[0.08] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-700 hover:border-zinc-300">
-                  <Upload className="h-3.5 w-3.5" />
-                  {uploading ? 'Uploading...' : 'Upload File'}
-                  <input
-                    type="file"
-                    className="hidden"
-                    disabled={uploading || !state?.upload.enabled}
-                    onChange={(event) => void handleUploadFile(event)}
-                  />
-                </label>
-
-                {state?.currentFolder ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => void handleRenameCurrentFolder()}
-                      className="inline-flex items-center gap-1 rounded-xl border border-black/[0.08] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-700 hover:border-zinc-300"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      Rename
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleDeleteCurrentFolder()}
-                      className="inline-flex items-center gap-1 rounded-xl border border-red-200 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-red-700 hover:border-red-300"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Delete
-                    </button>
-                  </>
-                ) : null}
-              </div>
+              {uploading ? (
+                <span className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.12em] text-amber-800">
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  Uploading
+                </span>
+              ) : null}
             </div>
 
-            <div className="mb-4 text-xs text-zinc-500">
-              Max upload size: {state ? formatBytes(state.upload.maxBytes) : '...'}
-              {state?.upload.enabled ? null : ' (R2/CDN not configured)'}
-            </div>
-
-            <div className="space-y-2">
-              {state?.folders.length ? (
-                state.folders.map((folder) => (
-                  <button
-                    key={folder.id}
-                    type="button"
-                    onClick={() => setCurrentFolderId(folder.id)}
-                    className="flex w-full items-center gap-3 rounded-xl border border-black/[0.06] bg-zinc-50/70 p-3 text-left hover:bg-zinc-100"
-                  >
-                    <FolderOpen className="h-4 w-4 text-amber-600" />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-semibold text-zinc-900">{folder.name}</div>
-                      <div className="text-xs text-zinc-500">
-                        {folder._count.children} folders • {folder._count.files} files
-                      </div>
-                    </div>
-                  </button>
-                ))
-              ) : (
-                <div className="rounded-xl border border-dashed border-black/[0.12] p-3 text-sm text-zinc-500">
-                  No subfolders in this location.
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-black/[0.08] bg-white p-4 shadow-[0_12px_28px_-20px_rgba(0,0,0,0.3)]">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-zinc-700">Files</h2>
-
-            {loading && !state ? <p className="text-sm text-zinc-500">Loading files...</p> : null}
+            {loading && !state ? <p className="text-sm text-stone-500">Loading files...</p> : null}
 
             {state && state.files.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-black/[0.12] p-4 text-sm text-zinc-500">
+              <div className="rounded-2xl border border-dashed border-stone-200 bg-stone-50/60 p-6 text-sm text-stone-500">
                 No files uploaded in this folder yet.
               </div>
             ) : null}
 
             <div className="space-y-2">
-              {state?.files.map((file) => (
-                <div key={file.id} className="rounded-xl border border-black/[0.06] bg-zinc-50/70 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-zinc-900">{file.displayName}</div>
-                      <div className="text-xs text-zinc-500">
-                        {file.mimeType} • {formatBytes(file.sizeBytes)} • Uploaded {formatDateTime(file.createdAt)}
+              <AnimatePresence initial={false}>
+                {state?.files.map((file, index) => (
+                  <motion.div
+                    key={file.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.98 }}
+                    transition={{ delay: index * 0.025, duration: 0.24, ease: driveEase }}
+                    className="group rounded-2xl border border-stone-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-md"
+                  >
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-teal-50 text-teal-700 ring-1 ring-teal-100">
+                          <File className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-bold text-stone-950">{file.displayName}</div>
+                          <div className="mt-0.5 text-xs text-stone-500">
+                            {file.mimeType} · {formatBytes(file.sizeBytes)} · Uploaded {formatDateTime(file.createdAt)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button type="button" onClick={() => void handleCopyLink(file)} className={softButtonClass}>
+                          <Link2 className="h-3.5 w-3.5" />
+                          Copy
+                        </button>
+                        <a href={file.publicUrl} target="_blank" rel="noreferrer" className={softButtonClass}>
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          Open
+                        </a>
+                        <button type="button" onClick={() => void handleGenerateQr(file)} className={softButtonClass}>
+                          <QrCode className="h-3.5 w-3.5" />
+                          QR
+                        </button>
+                        <button type="button" onClick={() => void handleRenameFile(file)} className={softButtonClass}>
+                          <Pencil className="h-3.5 w-3.5" />
+                          Rename
+                        </button>
+                        <button type="button" onClick={() => void handleDeleteFile(file)} className={dangerButtonClass}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete
+                        </button>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => void handleCopyLink(file)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-black/[0.08] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-700 hover:border-zinc-300"
+                    <div className="mt-3 flex flex-col gap-2 border-t border-stone-100 pt-3 text-xs sm:flex-row sm:items-center">
+                      <span className="inline-flex items-center gap-1.5 font-bold uppercase tracking-[0.12em] text-stone-400">
+                        <MoveRight className="h-3.5 w-3.5" />
+                        Move to
+                      </span>
+                      <select
+                        value={file.folderId || ''}
+                        onChange={(event) => {
+                          const nextFolderId = event.target.value || null;
+                          void handleMoveFile(file, nextFolderId);
+                        }}
+                        className="h-9 min-w-0 rounded-xl border border-stone-200 bg-stone-50 px-3 text-xs font-semibold text-stone-700 outline-none transition focus:border-rose-300 focus:bg-white focus:ring-2 focus:ring-rose-100 sm:min-w-[220px]"
                       >
-                        <Link2 className="h-3.5 w-3.5" />
-                        Copy Link
-                      </button>
+                        <option value="">Drive Root</option>
+                        {folderOptions.map((folder) => (
+                          <option key={folder.id} value={folder.id}>
+                            {folder.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          </motion.section>
+
+          <motion.section
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.24, duration: 0.38, ease: driveEase }}
+            className={`${panelClass} overflow-hidden`}
+          >
+            <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_260px]">
+              <div className="p-4 sm:p-5">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-rose-50 text-rose-700 ring-1 ring-rose-100">
+                    <QrCode className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black tracking-tight text-stone-950">QR Generator</h2>
+                    <p className="mt-1 text-sm text-stone-500">Select a file, generate a code, then download the PNG.</p>
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  {qrLoading ? (
+                    <p className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-1.5 text-sm font-semibold text-stone-500">
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      Generating QR code...
+                    </p>
+                  ) : null}
+                  {!qrLoading && !qrTarget ? (
+                    <p className="rounded-2xl border border-dashed border-stone-200 bg-stone-50/60 p-4 text-sm text-stone-500">
+                      No QR selected yet.
+                    </p>
+                  ) : null}
+                  {qrTarget && qrDataUrl ? (
+                    <div className="space-y-3">
+                      <div className="text-sm font-bold text-stone-950">{qrTarget.displayName}</div>
                       <a
-                        href={file.publicUrl}
+                        href={qrTarget.publicUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1 rounded-lg border border-black/[0.08] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-700 hover:border-zinc-300"
+                        className="block break-all text-xs font-semibold leading-5 text-teal-700 underline decoration-teal-200 underline-offset-4"
                       >
-                        Open
+                        {qrTarget.publicUrl}
                       </a>
-                      <button
-                        type="button"
-                        onClick={() => void handleGenerateQr(file)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-black/[0.08] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-700 hover:border-zinc-300"
-                      >
-                        <QrCode className="h-3.5 w-3.5" />
-                        QR
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleRenameFile(file)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-black/[0.08] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-700 hover:border-zinc-300"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Rename
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteFile(file)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-red-700 hover:border-red-300"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Delete
+                      <button type="button" onClick={handleDownloadQr} className={softButtonClass}>
+                        <Download className="h-3.5 w-3.5" />
+                        Download PNG
                       </button>
                     </div>
-                  </div>
-
-                  <div className="mt-2 flex items-center gap-2 text-xs">
-                    <span className="font-semibold uppercase tracking-wide text-zinc-500">Move To</span>
-                    <select
-                      value={file.folderId || ''}
-                      onChange={(event) => {
-                        const nextFolderId = event.target.value || null;
-                        void handleMoveFile(file, nextFolderId);
-                      }}
-                      className="h-8 rounded-lg border border-black/[0.1] px-2 text-xs"
-                    >
-                      <option value="">Drive Root</option>
-                      {folderOptions.map((folder) => (
-                        <option key={folder.id} value={folder.id}>
-                          {folder.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-black/[0.08] bg-white p-4 shadow-[0_12px_28px_-20px_rgba(0,0,0,0.3)]">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.15em] text-zinc-700">QR Generator</h2>
-            {qrLoading ? <p className="text-sm text-zinc-500">Generating QR code...</p> : null}
-            {!qrLoading && !qrTarget ? (
-              <p className="text-sm text-zinc-500">Select any file and click QR to generate.</p>
-            ) : null}
-            {qrTarget && qrDataUrl ? (
-              <div className="flex flex-wrap items-start gap-4">
-                <img
-                  src={qrDataUrl}
-                  alt={`QR code for ${qrTarget.displayName}`}
-                  className="h-48 w-48 rounded-xl border border-black/[0.1] bg-white p-2"
-                />
-                <div className="space-y-2">
-                  <div className="text-sm font-semibold text-zinc-900">{qrTarget.displayName}</div>
-                  <a href={qrTarget.publicUrl} target="_blank" rel="noreferrer" className="block break-all text-xs text-sky-700 underline">
-                    {qrTarget.publicUrl}
-                  </a>
-                  <button
-                    type="button"
-                    onClick={handleDownloadQr}
-                    className="inline-flex items-center gap-2 rounded-xl border border-black/[0.08] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-700 hover:border-zinc-300"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    Download QR PNG
-                  </button>
+                  ) : null}
                 </div>
               </div>
-            ) : null}
-          </section>
+
+              <div className="flex items-center justify-center border-t border-stone-100 bg-stone-50/70 p-5 lg:border-l lg:border-t-0">
+                {qrTarget && qrDataUrl ? (
+                  <img
+                    src={qrDataUrl}
+                    alt={`QR code for ${qrTarget.displayName}`}
+                    className="h-52 w-52 rounded-3xl border border-stone-200 bg-white p-3 shadow-sm"
+                  />
+                ) : (
+                  <div className="flex h-52 w-52 items-center justify-center rounded-3xl border border-dashed border-stone-200 bg-white text-stone-300">
+                    <QrCode className="h-12 w-12" />
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.section>
         </main>
       </div>
     </div>
