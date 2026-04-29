@@ -11,7 +11,7 @@ Handoff note for Mr. Smith:
 - Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
 */
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   Archive,
@@ -185,60 +185,11 @@ const navSectionItemVariants = {
   }
 };
 
-const sidebarTextRevealVariants = {
-  expanded: {
-    width: 'auto',
-    opacity: 1,
-    x: 0,
-    filter: 'blur(0px)',
-    transition: {
-      width: { duration: 0.26, ease: sidebarEase },
-      opacity: { duration: 0.16, ease: sidebarEase, delay: 0.07 },
-      x: { duration: 0.22, ease: sidebarEase },
-      filter: { duration: 0.16, ease: sidebarEase }
-    }
-  },
-  collapsed: {
-    width: 0,
-    opacity: 0,
-    x: -6,
-    filter: 'blur(1px)',
-    transition: {
-      opacity: { duration: 0.08, ease: sidebarEase },
-      x: { duration: 0.12, ease: sidebarEase },
-      filter: { duration: 0.08, ease: sidebarEase },
-      width: { duration: 0.22, ease: sidebarEase }
-    }
-  }
-};
-
 type CollapsedSidebarTooltip = {
   label: string;
   top: number;
   left: number;
 };
-
-function SidebarReveal({
-  collapsed,
-  children,
-  className = ''
-}: {
-  collapsed: boolean;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <motion.div
-      initial={false}
-      animate={collapsed ? 'collapsed' : 'expanded'}
-      variants={sidebarTextRevealVariants}
-      className={`min-w-0 overflow-hidden whitespace-nowrap ${className}`}
-      aria-hidden={collapsed}
-    >
-      {children}
-    </motion.div>
-  );
-}
 
 function isLinkActive(pathname: string, to: string): boolean {
   if (pathname === to) return true;
@@ -466,14 +417,19 @@ export default function AdminLayout() {
             <div className="h-7 w-7 rounded-md bg-rose-600 flex items-center justify-center shrink-0">
               <Ticket className="h-3.5 w-3.5 text-white" />
             </div>
-            <SidebarReveal collapsed={sidebarCollapsed} className="max-w-[150px]">
+            <div
+              className={`
+                min-w-0 overflow-hidden transition-all duration-250
+                ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'max-w-[140px] opacity-100'}
+              `}
+            >
               <span className="text-white text-sm font-semibold tracking-tight leading-none block" style={{ fontFamily: "var(--font-sans)" }}>
                 Penncrest Theater
               </span>
               <span className="text-zinc-500 text-[10px] tracking-widest uppercase leading-none block mt-0.5">
                 Box Office
               </span>
-            </SidebarReveal>
+            </div>
           </Link>
         </div>
 
@@ -484,47 +440,28 @@ export default function AdminLayout() {
 
             return (
               <div key={section.title}>
-                <AnimatePresence initial={false} mode="wait">
-                  {sidebarCollapsed ? (
-                    <motion.div
-                      key={`${section.id}-divider`}
-                      initial={{ opacity: 0, scaleX: 0.5 }}
-                      animate={{ opacity: 1, scaleX: 1 }}
-                      exit={{ opacity: 0, scaleX: 0.65 }}
-                      transition={{ duration: 0.16, ease: sidebarEase }}
-                      className="mx-2 mb-2 h-px origin-center bg-white/[0.06]"
-                    />
-                  ) : (
-                    <motion.div
-                      key={`${section.id}-heading`}
-                      initial={{ opacity: 0, x: -6 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -4 }}
-                      transition={{ duration: 0.18, ease: sidebarEase }}
+                {sidebarCollapsed ? <div className="mx-2 mb-2 h-px bg-white/[0.06]" /> : (
+                  section.collapsible ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleNavSection(section.id)}
+                      className="group mb-1 flex w-full items-center rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-500 transition-colors duration-200 hover:bg-white/[0.04] hover:text-zinc-300"
+                      aria-expanded={sectionOpen}
                     >
-                      {section.collapsible ? (
-                        <button
-                          type="button"
-                          onClick={() => toggleNavSection(section.id)}
-                          className="group mb-1 flex w-full items-center rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-500 transition-colors duration-200 hover:bg-white/[0.04] hover:text-zinc-300"
-                          aria-expanded={sectionOpen}
-                        >
-                          <span>{section.title}</span>
-                          <ChevronRight
-                            className={`
-                              ml-auto h-3 w-3 text-zinc-600 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]
-                              ${sectionOpen ? 'rotate-90 text-zinc-500' : 'group-hover:text-zinc-500'}
-                            `}
-                          />
-                        </button>
-                      ) : (
-                        <p className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
-                          {section.title}
-                        </p>
-                      )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                      <span>{section.title}</span>
+                      <ChevronRight
+                        className={`
+                          ml-auto h-3 w-3 text-zinc-600 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]
+                          ${sectionOpen ? 'rotate-90 text-zinc-500' : 'group-hover:text-zinc-500'}
+                        `}
+                      />
+                    </button>
+                  ) : (
+                    <p className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
+                      {section.title}
+                    </p>
+                  )
+                )}
                 <AnimatePresence initial={false}>
                   {sectionOpen ? (
                     <motion.div
@@ -553,7 +490,7 @@ export default function AdminLayout() {
                                 onFocus={(event) => showCollapsedTooltip(item.label, event.currentTarget)}
                                 onBlur={hideCollapsedTooltip}
                                 className={`
-                                  flex items-center rounded-md text-[13px] font-medium transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]
+                                  flex items-center rounded-md text-[13px] font-medium transition-all duration-150
                                   ${sidebarCollapsed ? 'justify-center px-0 py-2.5' : 'gap-2.5 px-2.5 py-2'}
                                   ${active
                                     ? 'bg-white/[0.08] text-white'
@@ -562,12 +499,8 @@ export default function AdminLayout() {
                                 `}
                               >
                                 <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-rose-400' : 'text-zinc-600'}`} />
-                                <SidebarReveal collapsed={sidebarCollapsed} className="flex-1">
-                                  {item.label}
-                                </SidebarReveal>
-                                <SidebarReveal collapsed={sidebarCollapsed || !active} className="ml-auto">
-                                  <ChevronRight className="h-3 w-3 text-zinc-600" />
-                                </SidebarReveal>
+                                {!sidebarCollapsed ? item.label : null}
+                                {active && !sidebarCollapsed ? <ChevronRight className="h-3 w-3 ml-auto text-zinc-600" /> : null}
                               </Link>
                             </motion.div>
                           );
@@ -592,23 +525,26 @@ export default function AdminLayout() {
             onBlur={hideCollapsedTooltip}
             className={`
               flex items-center rounded-md text-[13px] font-medium text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]
-              transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] mb-1 ${sidebarCollapsed ? 'justify-center px-0 py-2.5' : 'gap-2 px-2.5 py-2'}
+              transition-all mb-1 ${sidebarCollapsed ? 'justify-center px-0 py-2.5' : 'gap-2 px-2.5 py-2'}
             `}
           >
             <ScanLine className="h-3.5 w-3.5 text-zinc-600" />
-            <SidebarReveal collapsed={sidebarCollapsed}>
-              Full-Screen Scanner
-            </SidebarReveal>
+            {!sidebarCollapsed ? 'Full-Screen Scanner' : null}
           </Link>
 
-          <div className={`mt-3 flex items-center rounded-md border border-white/[0.06] transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${sidebarCollapsed ? 'justify-center px-0 py-2' : 'gap-2.5 px-2.5 py-2'}`}>
+          <div className={`mt-3 flex items-center rounded-md border border-white/[0.06] ${sidebarCollapsed ? 'justify-center px-0 py-2' : 'gap-2.5 px-2.5 py-2'}`}>
             <div className="h-6 w-6 rounded-full bg-rose-900 flex items-center justify-center shrink-0">
               <span className="text-[9px] font-bold text-rose-200">{initials}</span>
             </div>
-            <SidebarReveal collapsed={sidebarCollapsed} className="flex-1">
+            <div
+              className={`
+                min-w-0 flex-1 overflow-hidden transition-all duration-250
+                ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'max-w-[130px] opacity-100'}
+              `}
+            >
               <p className="text-[12px] font-medium text-zinc-300 truncate leading-none">{admin.name}</p>
               <p className="text-[10px] text-zinc-600 mt-0.5 leading-none">{formatAdminRole(admin.role)}</p>
-            </SidebarReveal>
+            </div>
             <button
               onClick={() => {
                 clearAdminToken();
