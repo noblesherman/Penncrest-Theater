@@ -912,21 +912,6 @@ const requiredSubpageSectionIdsBySlug: Record<string, string[]> = {
   'tech-crew': ['equipment']
 };
 
-const techCrewPhotoFallbacks: Array<{ url: string; alt: string }> = [
-  {
-    url: 'https://picsum.photos/seed/techbooth/1000/700',
-    alt: 'Tech booth'
-  },
-  {
-    url: 'https://picsum.photos/seed/techlights/1000/700',
-    alt: 'Lighting rig and cue programming'
-  },
-  {
-    url: 'https://picsum.photos/seed/techsound/1000/700',
-    alt: 'Sound mixing board during rehearsal'
-  }
-];
-
 function insertSectionBeforeCta(page: AboutPageContent, section: AboutPageContent['sections'][number]): AboutPageContent {
   if (page.sections.some((candidate) => candidate.id === section.id)) {
     return page;
@@ -971,37 +956,8 @@ function ensureStarterSubpageGallerySections(page: AboutPageContent): AboutPageC
   return page;
 }
 
-function ensureTechCrewGalleryImages(page: AboutPageContent): AboutPageContent {
-  const sectionIndex = page.sections.findIndex((section) => section.id === 'equipment' && section.type === 'splitFeature');
-  if (sectionIndex < 0) {
-    return page;
-  }
-
-  const next = structuredClone(page);
-  const section = next.sections[sectionIndex];
-  if (!section || section.type !== 'splitFeature') {
-    return page;
-  }
-
-  const nextImages = section.images.slice(0, 4);
-  const seenUrls = new Set(nextImages.map((image) => image.url));
-  for (const fallback of techCrewPhotoFallbacks) {
-    if (nextImages.length >= 4) break;
-    if (seenUrls.has(fallback.url)) continue;
-    nextImages.push(fallback);
-    seenUrls.add(fallback.url);
-  }
-
-  section.images = nextImages;
-  return next;
-}
-
 function applyPublicSubpagePhotoEnhancements(page: AboutPageContent): AboutPageContent {
   let next = ensureStarterSubpageGallerySections(page);
-
-  if (next.slug === 'tech-crew') {
-    next = ensureTechCrewGalleryImages(next);
-  }
 
   if (next !== page) {
     return parseAboutPageContent(next);
