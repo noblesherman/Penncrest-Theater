@@ -66,7 +66,7 @@ Response:
     "storage": {
       "status": "configured",
       "provider": "cloudflare_r2",
-      "maxUploadBytes": 8388608
+      "maxUploadBytes": 209715200
     },
     "oauth": { "google": "configured", "microsoft": "configured" }
   },

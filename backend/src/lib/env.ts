@@ -14,6 +14,7 @@ Handoff note for Mr. Smith:
 import { z } from 'zod';
 
 const isProductionEnv = process.env.NODE_ENV === 'production';
+const maxR2UploadBytes = 200 * 1024 * 1024;
 
 const booleanFromEnv = (defaultValue: boolean) =>
   z.preprocess((raw) => {
@@ -135,7 +136,7 @@ const EnvSchema = z.object({
   R2_SECRET_ACCESS_KEY: z.string().optional(),
   R2_PUBLIC_BASE_URL: z.string().url().optional(),
   R2_UPLOAD_PREFIX: z.string().default('uploads'),
-  R2_MAX_UPLOAD_BYTES: z.coerce.number().int().min(1).max(50 * 1024 * 1024).default(8 * 1024 * 1024)
+  R2_MAX_UPLOAD_BYTES: z.coerce.number().int().min(1).max(maxR2UploadBytes).default(maxR2UploadBytes)
 });
 
 const parsed = EnvSchema.safeParse(process.env);

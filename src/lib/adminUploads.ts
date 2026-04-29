@@ -13,6 +13,8 @@ Handoff note for Mr. Smith:
 
 import { adminFetch } from './adminAuth';
 
+const DEFAULT_ADMIN_UPLOAD_MAX_FILE_BYTES = 200 * 1024 * 1024;
+
 type UploadOptions = {
   maxWidth: number;
   maxHeight: number;
@@ -83,7 +85,7 @@ function fileToRawDataUrl(file: File): Promise<string> {
 }
 
 export async function uploadAdminImage(file: File, options: UploadOptions): Promise<UploadResponse> {
-  const maxFileBytes = options.maxFileBytes ?? 8 * 1024 * 1024;
+  const maxFileBytes = options.maxFileBytes ?? DEFAULT_ADMIN_UPLOAD_MAX_FILE_BYTES;
   if (!file.type.startsWith('image/')) {
     throw new Error('Upload an image file.');
   }
@@ -106,7 +108,7 @@ export async function uploadAdminPdf(
   file: File,
   options: { scope: string; filenameBase?: string; maxFileBytes?: number }
 ): Promise<UploadResponse> {
-  const maxFileBytes = options.maxFileBytes ?? 8 * 1024 * 1024;
+  const maxFileBytes = options.maxFileBytes ?? DEFAULT_ADMIN_UPLOAD_MAX_FILE_BYTES;
   if (file.type !== 'application/pdf') {
     throw new Error('Upload a PDF file.');
   }
