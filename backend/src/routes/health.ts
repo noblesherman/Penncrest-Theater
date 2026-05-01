@@ -11,7 +11,7 @@ Handoff note for Mr. Smith:
 - Practical note: For simple copy/layout edits, this file is usually safe as long as you keep data contracts intact.
 */
 
-import { FastifyPluginAsync } from 'fastify';
+import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import os from 'node:os';
 import { prisma } from '../lib/prisma.js';
 import { env, getR2Config, isSmtpConfigured } from '../lib/env.js';
@@ -390,11 +390,15 @@ async function getHealthDiagnosticsMetrics(now: Date): Promise<{
 }
 
 export const healthRoutes: FastifyPluginAsync = async (app) => {
-  app.get('/health', async () => ({ status: 'ok' }));
-  app.get('/health/live', async () => ({ status: 'ok' }));
-  app.get('/api/health', async () => ({ status: 'ok' }));
+  const basicHealthHandler = async () => ({ status: 'ok' });
+  app.get('/health', basicHealthHandler);
+  app.get('/health/', basicHealthHandler);
+  app.get('/health/live', basicHealthHandler);
+  app.get('/health/live/', basicHealthHandler);
+  app.get('/api/health', basicHealthHandler);
+  app.get('/api/health/', basicHealthHandler);
 
-  app.get('/api/health/ready', async (_request, reply) => {
+  const readinessHandler = async (_request: FastifyRequest, reply: FastifyReply) => {
     const requestStartedAt = process.hrtime.bigint();
     const now = new Date();
     const { r2Config, stripeStatus, stripeMode, emailStatus, googleOauthStatus, microsoftOauthStatus } =
@@ -503,7 +507,10 @@ export const healthRoutes: FastifyPluginAsync = async (app) => {
         }
       });
     }
-  });
+  };
+
+  app.get('/api/health/ready', readinessHandler);
+  app.get('/api/health/ready/', readinessHandler);
 
   app.get(
     '/api/health/diagnostics',
