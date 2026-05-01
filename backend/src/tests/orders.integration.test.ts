@@ -246,4 +246,29 @@ describe.sequential('orders routes integration', () => {
 
     expect(invalidLookupResponse.statusCode).toBe(404);
   });
+
+  it('refuses to issue a second ticket when an issued ticket already exists for the seat', async () => {
+    const seeded = await seedPaidOrderWithTwoTickets({
+      email: `existing_${Date.now()}@example.com`
+    });
+    const { createAssignedOrder } = await import('../services/order-assignment.js');
+
+    await expect(
+      createAssignedOrder({
+        performanceId: seeded.performance.id,
+        seatIds: [seeded.seatA.id],
+        customerName: 'Duplicate Seat Buyer',
+        customerEmail: `duplicate_${Date.now()}@example.com`,
+        source: 'STAFF_COMP',
+        ticketTypeBySeatId: { [seeded.seatA.id]: 'Teacher Comp' },
+        priceBySeatId: { [seeded.seatA.id]: 0 },
+        allowHeldSeats: false,
+        enforceSalesCutoff: false,
+        sendEmail: false
+      })
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      message: expect.stringContaining('already has an issued ticket')
+    });
+  });
 });

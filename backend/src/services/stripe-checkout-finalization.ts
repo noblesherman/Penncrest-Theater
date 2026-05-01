@@ -21,6 +21,7 @@ import { sendTicketsEmail } from '../lib/email.js';
 import { logAudit } from '../lib/audit-log.js';
 import { finalizeStudentCreditForOrderTx } from './student-ticket-credit-service.js';
 import { requestStripeRefundForOrder } from './order-refund-service.js';
+import { assertNoIssuedTicketsForSeats } from './seat-ticket-guard.js';
 
 type FinalizeOutcome = 'paid' | 'already_paid' | 'finalization_failed';
 
@@ -315,6 +316,14 @@ async function finalizePaidOrderTx(
 
   if (conflictingSeat) {
     throw new HttpError(409, 'We could not finalize one or more seats');
+  }
+
+  if (!isGeneralAdmissionNoSeatLinks) {
+    await assertNoIssuedTicketsForSeats(tx, {
+      performanceId,
+      seatIds: effectiveRequestedSeatIds,
+      excludingOrderId: order.id
+    });
   }
 
   const seatsToSell = seats.filter((seat) => seat.status !== 'SOLD').map((seat) => seat.id);

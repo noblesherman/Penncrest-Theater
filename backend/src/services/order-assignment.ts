@@ -19,6 +19,7 @@ import { buildQrPayload } from '../lib/qr.js';
 import { generateOrderAccessToken } from '../lib/order-access.js';
 import type { TicketEmailPayload } from '../lib/email.js';
 import { enqueueTicketEmailOutbox } from './ticket-email-outbox-service.js';
+import { assertNoIssuedTicketsForSeats } from './seat-ticket-guard.js';
 
 type AssignedOrderParams = {
   performanceId: string;
@@ -214,6 +215,11 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
       if (disallowed) {
         throw new HttpError(409, 'One or more selected seats are no longer available');
       }
+
+      await assertNoIssuedTicketsForSeats(tx, {
+        performanceId: params.performanceId,
+        seatIds
+      });
 
       const heldStatuses: Array<'AVAILABLE' | 'HELD'> = allowHeldSeats ? ['AVAILABLE', 'HELD'] : ['AVAILABLE'];
       const updated = await tx.seat.updateMany({
