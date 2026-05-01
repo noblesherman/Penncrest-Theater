@@ -17,6 +17,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
 import { loadStripe, type StripeElementsOptions } from '@stripe/stripe-js';
 import {
+  AlertCircle,
   ArrowLeft,
   ArrowRight,
   ChevronLeft,
@@ -375,6 +376,7 @@ export default function Booking() {
   const [registrationValid, setRegistrationValid] = useState(true);
   const [donationMode, setDonationMode] = useState<CheckoutDonationMode>('none');
   const [customDonationAmount, setCustomDonationAmount] = useState('');
+  const [accessibleSeatNotice, setAccessibleSeatNotice] = useState<{ seatLabel: string; key: number } | null>(null);
 
   const fetchSeats = useCallback(async () => {
     if (!performanceId) return;
@@ -627,6 +629,14 @@ export default function Booking() {
     setRegistrationValid(!registrationForm);
   }, [registrationForm?.versionId, registrationForm]);
 
+  useEffect(() => {
+    if (!accessibleSeatNotice) return;
+    const timer = window.setTimeout(() => {
+      setAccessibleSeatNotice(null);
+    }, 6500);
+    return () => window.clearTimeout(timer);
+  }, [accessibleSeatNotice]);
+
   const handleSeatClick = (seat: Seat) => {
     if (!seatSelectionEnabled) {
       return;
@@ -652,6 +662,11 @@ export default function Booking() {
         alert('This companion seat requires selecting the paired accessible seat first.');
         return;
       }
+    }
+
+    if (!isSelected && seat.isAccessible) {
+      const seatLabel = `${seat.sectionName} ${seat.row}-${seat.number}`;
+      setAccessibleSeatNotice({ seatLabel, key: Date.now() });
     }
 
     setSelectedSeatIds((prev) => {
@@ -1717,6 +1732,36 @@ export default function Booking() {
                               </button>
                             </div>
                           </div>
+
+                          <AnimatePresence>
+                            {accessibleSeatNotice && (
+                              <motion.div
+                                key={accessibleSeatNotice.key}
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 8 }}
+                                className="pointer-events-auto absolute bottom-24 left-4 right-4 z-40 rounded-2xl border border-blue-200 bg-blue-50/95 px-4 py-3 text-sm text-blue-900 shadow-lg backdrop-blur xl:bottom-8 xl:left-8 xl:right-auto xl:max-w-md"
+                              >
+                                <div className="flex items-start gap-3">
+                                  <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-600" />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-semibold">Accessible space selected</p>
+                                    <p className="text-xs text-blue-800">
+                                      {accessibleSeatNotice.seatLabel} is a wheelchair space, not a fixed seat. If you need a standard seat, choose a non-blue option.
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setAccessibleSeatNotice(null)}
+                                    className="text-blue-400 transition hover:text-blue-600"
+                                    aria-label="Dismiss accessible seat notice"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </>
                       ) : (
                         <div className="absolute left-4 right-4 top-4 z-30 rounded-xl border border-stone-200 bg-white/95 p-3 shadow-sm backdrop-blur xl:hidden">
