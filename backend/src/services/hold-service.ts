@@ -147,31 +147,21 @@ async function getOrCreateHoldSession(tx: Prisma.TransactionClient, performanceI
   const now = new Date();
   const expiresAt = new Date(now.getTime() + env.HOLD_TTL_MINUTES * 60_000);
 
-  const existing = await tx.holdSession.findUnique({
+  return tx.holdSession.upsert({
     where: {
       performanceId_clientToken: {
         performanceId,
         clientToken
       }
-    }
-  });
-
-  if (!existing) {
-    return tx.holdSession.create({
-      data: {
-        performanceId,
-        clientToken,
-        holdToken: generateHoldToken(),
-        status: 'ACTIVE',
-        expiresAt
-      }
-    });
-  }
-
-  return tx.holdSession.update({
-    where: { id: existing.id },
-    data: {
-      holdToken: existing.holdToken || generateHoldToken(),
+    },
+    update: {
+      status: 'ACTIVE',
+      expiresAt
+    },
+    create: {
+      performanceId,
+      clientToken,
+      holdToken: generateHoldToken(),
       status: 'ACTIVE',
       expiresAt
     }

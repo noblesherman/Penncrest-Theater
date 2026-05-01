@@ -26,4 +26,4 @@ const candidateEnvPaths = [
 ];
 
 const envPath = candidateEnvPaths.find((candidate) => existsSync(candidate));
-dotenv.config(envPath ? { path: envPath } : undefined);
+dotenv.config(envPath ? { path: envPath, quiet: true } : { quiet: true });
