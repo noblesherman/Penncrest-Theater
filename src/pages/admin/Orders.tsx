@@ -59,11 +59,18 @@ type Performance = {
   id: string;
   title: string;
   startsAt: string;
+  isArchived?: boolean;
   isFundraiser?: boolean;
   pricingTiers: PricingTier[];
   staffCompsEnabled?: boolean;
   studentCompTicketsEnabled?: boolean;
   seatSelectionEnabled?: boolean;
+};
+type PerformanceOption = {
+  id: string;
+  title: string;
+  startsAt: string;
+  isArchived?: boolean;
 };
 type Seat = {
   id: string; sectionName: string; row: string; number: number;
@@ -205,6 +212,17 @@ function parseDollarInputToCents(value: string): number | null {
   const parsed = Number(normalized);
   if (!Number.isFinite(parsed)) return null;
   return Math.round(parsed * 100);
+}
+
+function formatPerformanceFilterLabel(performance: PerformanceOption): string {
+  const dateLabel = new Date(performance.startsAt).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+  return `${performance.title} - ${dateLabel}${performance.isArchived ? ' (Archived)' : ''}`;
 }
 
 function normalizeSeat(raw: any): Seat {
@@ -375,8 +393,10 @@ export default function AdminOrdersPage() {
   const [query,        setQuery]        = useState('');
   const [status,       setStatus]       = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
+  const [performanceFilter, setPerformanceFilter] = useState('');
   const [scope,        setScope]        = useState<'active' | 'archived' | 'all'>('active');
   const [performances, setPerformances] = useState<Performance[]>([]);
+  const [orderPerformanceOptions, setOrderPerformanceOptions] = useState<PerformanceOption[]>([]);
   const [loadingRows,  setLoadingRows]  = useState(false);
   const [submitting,   setSubmitting]   = useState(false);
   const [error,        setError]        = useState<string | null>(null);
@@ -455,6 +475,7 @@ export default function AdminOrdersPage() {
       if (query.trim()) params.set('q', query.trim());
       if (status) params.set('status', status);
       if (sourceFilter) params.set('source', sourceFilter);
+      if (performanceFilter) params.set('performanceId', performanceFilter);
       params.set('scope', scope);
       setRows(await adminFetch<Order[]>(`/api/admin/orders?${params.toString()}`));
     } catch (e) { setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to load orders'); }
@@ -500,7 +521,31 @@ export default function AdminOrdersPage() {
     } catch (e) { setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to load performances'); }
   };
 
-  useEffect(() => { void Promise.all([load(), loadPerformances()]); }, []);
+  const loadOrderPerformanceOptions = async () => {
+    try {
+      const items = await adminFetch<Array<{
+        id: string;
+        title: string;
+        startsAt: string;
+        isArchived?: boolean;
+        isFundraiser?: boolean;
+      }>>('/api/admin/performances?scope=all&kind=standard');
+      setOrderPerformanceOptions(
+        items
+          .filter((item) => !item.isFundraiser)
+          .map((item) => ({
+            id: item.id,
+            title: item.title,
+            startsAt: item.startsAt,
+            isArchived: Boolean(item.isArchived),
+          }))
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to load performance filters');
+    }
+  };
+
+  useEffect(() => { void Promise.all([load(), loadPerformances(), loadOrderPerformanceOptions()]); }, []);
   useEffect(() => { void load(); }, [scope]);
 
   const search = (e: FormEvent) => { e.preventDefault(); void load(); };
@@ -2899,6 +2944,19 @@ export default function AdminOrdersPage() {
           <option value="STAFF_FREE">Staff</option>
           <option value="STAFF_COMP">Staff Comp</option>
           <option value="STUDENT_COMP">Student</option>
+        </select>
+
+        <select
+          value={performanceFilter}
+          onChange={e => setPerformanceFilter(e.target.value)}
+          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100 sm:w-auto"
+        >
+          <option value="">All performances</option>
+          {orderPerformanceOptions.map((performance) => (
+            <option key={performance.id} value={performance.id}>
+              {formatPerformanceFilterLabel(performance)}
+            </option>
+          ))}
         </select>
 
         <div className="flex rounded-xl border border-slate-200 overflow-hidden bg-white">
