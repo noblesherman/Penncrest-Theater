@@ -17,8 +17,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
 import { loadStripe, type StripeElementsOptions } from '@stripe/stripe-js';
-import { adminFetch } from '../../lib/adminAuth';
-import { apiFetch } from '../../lib/api';
+import { adminFetch, getAdminToken } from '../../lib/adminAuth';
+import { ApiError, apiFetch, apiUrl } from '../../lib/api';
 import { usePaymentLineStatusStream } from '../../hooks/usePaymentLineStatusStream';
 import { readCashierDefaultPerformanceId, writeCashierDefaultPerformanceId } from '../../hooks/useCashierDefaultPerformance';
 import type { PaymentLineEntry } from '../../lib/paymentLineTypes';
@@ -160,6 +160,116 @@ type ManualCheckoutSession = {
   expectedAmountCents: number;
   currency: string;
 };
+
+type CashierFinalizePayload = {
+  performanceId: string;
+  seatIds: string[];
+  ticketSelectionBySeatId: Record<string, string>;
+  paymentMethod: 'STRIPE' | 'CASH';
+  cashReceivedCents?: number;
+  receiptEmail?: string;
+  sendReceipt?: boolean;
+  customerName?: string;
+  studentCode?: string;
+};
+
+type CashierFinalizeDiagnostics = {
+  uiMode: string;
+  paymentMethod: 'STRIPE' | 'CASH';
+  stripeChargePath: 'TERMINAL' | 'MANUAL';
+  seatSelectionEnabled: boolean;
+  selectedSeatIds: string[];
+  ticketSelectionBySeatId: Record<string, string>;
+  selectedTicketTypes: Array<{ seatId: string; tierId: string | null; tierName: string | null; priceCents: number | null }>;
+  cashReceivedCents?: number;
+};
+
+function collectErrorMessages(value: unknown): string[] {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? [trimmed] : [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectErrorMessages(item));
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).flatMap((item) => collectErrorMessages(item));
+  }
+
+  return [];
+}
+
+function extractCheckoutErrorMessage(body: unknown, status: number): string {
+  const messages = collectErrorMessages(
+    body && typeof body === 'object' && 'error' in body
+      ? (body as Record<string, unknown>).error
+      : body
+  );
+  return [...new Set(messages)].join(' ') || `Cashier checkout failed (${status})`;
+}
+
+function sanitizeCashierFinalizePayload(payload: CashierFinalizePayload) {
+  return {
+    performanceId: payload.performanceId,
+    selectedSeatIds: payload.seatIds,
+    selectedTicketTierBySeatId: payload.ticketSelectionBySeatId,
+    paymentMethod: payload.paymentMethod,
+    cashReceivedCents: payload.cashReceivedCents ?? null,
+    sendReceipt: Boolean(payload.sendReceipt),
+    receiptEmailProvided: Boolean(payload.receiptEmail),
+    customerNameProvided: Boolean(payload.customerName),
+    studentCodeProvided: Boolean(payload.studentCode)
+  };
+}
+
+async function finalizeCashierCheckoutWithDiagnostics<T>(
+  payload: CashierFinalizePayload,
+  diagnostics: CashierFinalizeDiagnostics
+): Promise<T> {
+  const endpoint = '/api/admin/orders/in-person/finalize';
+  const token = getAdminToken();
+  const payloadSummary = sanitizeCashierFinalizePayload(payload);
+
+  console.info('[cashier-checkout] request', {
+    endpoint,
+    payload: payloadSummary,
+    diagnostics
+  });
+
+  const response = await fetch(apiUrl(endpoint), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const contentType = response.headers.get('content-type') || '';
+  const responseBody = contentType.includes('application/json') ? await response.json() : await response.text();
+
+  if (!response.ok) {
+    console.error('[cashier-checkout] failed response', {
+      endpoint,
+      status: response.status,
+      payload: payloadSummary,
+      responseBody,
+      diagnostics
+    });
+    throw new ApiError(extractCheckoutErrorMessage(responseBody, response.status), response.status);
+  }
+
+  console.info('[cashier-checkout] success response', {
+    endpoint,
+    status: response.status,
+    payload: payloadSummary,
+    diagnostics
+  });
+
+  return responseBody as T;
+}
 
 function mapEntryToTerminalDispatch(entry: PaymentLineEntry): TerminalDispatch {
   return {
@@ -841,22 +951,36 @@ export default function AdminOrdersPage() {
 
     setInPersonSubmitting(true);
     try {
-      const result = await adminFetch<{
+      const finalizePayload: CashierFinalizePayload = {
+        performanceId: assignForm.performanceId,
+        seatIds: selectionIds,
+        ticketSelectionBySeatId,
+        paymentMethod: effectivePaymentMethod,
+        cashReceivedCents: effectivePaymentMethod === 'CASH' ? cashReceivedCents : undefined,
+        receiptEmail: normalizedReceiptEmail || undefined,
+        sendReceipt,
+        customerName: assignForm.customerName.trim() || undefined,
+        studentCode: hasStudentInShowCompSelection ? normalizedStudentCode : undefined
+      };
+      const result = await finalizeCashierCheckoutWithDiagnostics<{
         expectedAmountCents: number;
         cashReceivedCents?: number | null;
         paymentMethod: 'STRIPE' | 'CASH';
         seats: InPersonFinalizeSeatSummary[];
-      }>('/api/admin/orders/in-person/finalize', {
-        method: 'POST',
-        body: JSON.stringify({
-          performanceId: assignForm.performanceId,
-          seatIds: selectionIds,
-          ticketSelectionBySeatId, paymentMethod: effectivePaymentMethod,
-          cashReceivedCents: effectivePaymentMethod === 'CASH' ? cashReceivedCents : undefined,
-          receiptEmail: normalizedReceiptEmail || undefined,
-          sendReceipt, customerName: assignForm.customerName.trim() || undefined,
-          studentCode: hasStudentInShowCompSelection ? normalizedStudentCode : undefined
-        })
+      }>(finalizePayload, {
+        uiMode: showWizard ? 'cashier_checkout_wizard' : 'orders_admin',
+        paymentMethod: effectivePaymentMethod,
+        stripeChargePath,
+        seatSelectionEnabled,
+        selectedSeatIds: selectionIds,
+        ticketSelectionBySeatId,
+        selectedTicketTypes: selectedSeatsWithTier.map((item) => ({
+          seatId: item.line.id,
+          tierId: item.tier?.id || null,
+          tierName: item.tier?.name || null,
+          priceCents: item.tier?.priceCents ?? null
+        })),
+        cashReceivedCents: effectivePaymentMethod === 'CASH' ? cashReceivedCents : undefined
       });
       setSaleRecap({
         expectedAmountCents: result.expectedAmountCents,
@@ -2131,9 +2255,9 @@ export default function AdminOrdersPage() {
                 </div>
 
                 {inPersonFlowError && (
-                  <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                     <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                    {inPersonFlowError}
+                    <span><strong>Cashier checkout failed:</strong> {inPersonFlowError}</span>
                   </div>
                 )}
               </div>
@@ -2489,8 +2613,8 @@ export default function AdminOrdersPage() {
                   </div>
                 )}
                 {inPersonFlowError && (
-                  <div className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-red-700">
-                    {inPersonFlowError}
+                  <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-red-700">
+                    <strong>Cashier checkout failed:</strong> {inPersonFlowError}
                   </div>
                 )}
                 <div className={`rounded-xl border px-3.5 py-3 ${dispatchInlineStatusClasses.container}`}>

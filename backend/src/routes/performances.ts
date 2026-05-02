@@ -74,7 +74,12 @@ function getReadableSeatStatus(seat: {
     status: string;
     expiresAt: Date;
   } | null;
+  tickets?: Array<{ id: string }>;
 }): 'available' | 'held' | 'sold' | 'blocked' {
+  if ((seat.tickets || []).length > 0) {
+    return 'sold';
+  }
+
   if (isSeatEffectivelyAvailable(seat)) {
     return 'available';
   }
@@ -374,6 +379,10 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
                 status: true,
                 expiresAt: true
               }
+            },
+            tickets: {
+              where: { status: 'ISSUED' },
+              select: { id: true }
             }
           },
           orderBy: [{ sectionName: 'asc' }, { row: 'asc' }, { number: 'asc' }]

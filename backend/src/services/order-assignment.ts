@@ -12,6 +12,7 @@ Handoff note for Mr. Smith:
 */
 
 import crypto from 'node:crypto';
+import type { FastifyBaseLogger } from 'fastify';
 import { InPersonPaymentMethod, OrderSource, Prisma, TicketType } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { HttpError } from '../lib/http-error.js';
@@ -20,6 +21,10 @@ import { generateOrderAccessToken } from '../lib/order-access.js';
 import type { TicketEmailPayload } from '../lib/email.js';
 import { enqueueTicketEmailOutbox } from './ticket-email-outbox-service.js';
 import { assertNoIssuedTicketsForSeats } from './seat-ticket-guard.js';
+import {
+  logCashierCheckout,
+  sanitizeCashierCheckoutError
+} from '../lib/cashier-checkout-logger.js';
 
 type AssignedOrderParams = {
   performanceId: string;
@@ -38,7 +43,17 @@ type AssignedOrderParams = {
   sendEmail?: boolean;
   inPersonPaymentMethod?: InPersonPaymentMethod | null;
   cashReceivedCents?: number | null;
+  checkoutLogger?: FastifyBaseLogger;
+  checkoutLogContext?: Record<string, unknown>;
 };
+
+type AssignedOrderResult = Prisma.OrderGetPayload<{
+  include: {
+    performance: { include: { show: true } };
+    orderSeats: { include: { seat: true } };
+    tickets: { include: { seat: true } };
+  };
+}>;
 
 function dedupeSeatIds(seatIds: string[]): string[] {
   return [...new Set(seatIds)];
@@ -104,6 +119,30 @@ function validateCompanionSelection(
   }
 }
 
+function logAssignedOrderCheckout(
+  params: AssignedOrderParams,
+  level: 'info' | 'warn' | 'error',
+  message: string,
+  fields: Record<string, unknown>
+): void {
+  if (params.source !== 'DOOR') {
+    return;
+  }
+
+  logCashierCheckout(params.checkoutLogger, level, message, {
+    ...(params.checkoutLogContext || {}),
+    component: 'createAssignedOrder',
+    performanceId: params.performanceId,
+    selectedSeatIds: dedupeSeatIds(params.seatIds),
+    selectedTicketTypeBySeatId: params.ticketTypeBySeatId || {},
+    selectedPriceBySeatId: params.priceBySeatId || {},
+    paymentMethod: params.inPersonPaymentMethod || null,
+    cashReceivedCents: params.cashReceivedCents ?? null,
+    enforceSalesCutoff: params.enforceSalesCutoff ?? false,
+    ...fields
+  });
+}
+
 async function closeEmptyHolds(tx: Prisma.TransactionClient, holdIds: string[]): Promise<void> {
   if (holdIds.length === 0) return;
 
@@ -146,7 +185,15 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
   const supportsInPersonPaymentMethod = await hasInPersonPaymentMethodColumn();
   const supportsCashReceivedCents = await hasCashReceivedCentsColumn();
 
-  const order = await prisma.$transaction(async (tx) => {
+  logAssignedOrderCheckout(params, 'info', 'order assignment started', {
+    allowHeldSeats,
+    supportsInPersonPaymentMethod,
+    supportsCashReceivedCents
+  });
+
+  let order: AssignedOrderResult | null;
+  try {
+    order = await prisma.$transaction(async (tx) => {
     if (params.source === 'DOOR' && !params.inPersonPaymentMethod) {
       throw new HttpError(400, 'In-person door sales require a payment method');
     }
@@ -163,6 +210,16 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
       where: { id: params.performanceId, isArchived: false },
       include: {
         show: true,
+        pricingTiers: {
+          select: {
+            id: true,
+            name: true,
+            priceCents: true
+          },
+          orderBy: {
+            name: 'asc'
+          }
+        },
         seats: {
           where: { id: { in: seatIds } },
           select: {
@@ -182,15 +239,59 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
     });
 
     if (!performance) {
+      logAssignedOrderCheckout(params, 'warn', 'performance not found', {
+        failureReason: 'performance_not_found'
+      });
       throw new HttpError(404, 'Performance not found');
     }
 
+    logAssignedOrderCheckout(params, 'info', 'performance and inventory loaded', {
+      performance: {
+        id: performance.id,
+        startsAt: performance.startsAt.toISOString(),
+        salesCutoffAt: performance.salesCutoffAt?.toISOString() || null,
+        onlineSalesStartsAt: performance.onlineSalesStartsAt?.toISOString() || null,
+        isPublished: performance.isPublished,
+        isArchived: performance.isArchived,
+        seatSelectionEnabled: performance.seatSelectionEnabled
+      },
+      pricingTiers: performance.pricingTiers.map((tier) => ({
+        id: tier.id,
+        name: tier.name,
+        priceCents: tier.priceCents
+      })),
+      selectedSeatStatuses: performance.seats.map((seat) => ({
+        id: seat.id,
+        status: seat.status,
+        holdSessionId: seat.holdSessionId,
+        label: `${seat.sectionName} ${seat.row}-${seat.number}`
+      }))
+    });
+
     if (enforceSalesCutoff) {
       if (!performance.isPublished || (performance.onlineSalesStartsAt && performance.onlineSalesStartsAt > new Date())) {
+        logAssignedOrderCheckout(params, 'warn', 'sales cutoff validation failed', {
+          failureReason: 'online_sales_not_live',
+          performance: {
+            startsAt: performance.startsAt.toISOString(),
+            salesCutoffAt: performance.salesCutoffAt?.toISOString() || null,
+            onlineSalesStartsAt: performance.onlineSalesStartsAt?.toISOString() || null,
+            isPublished: performance.isPublished
+          }
+        });
         throw new HttpError(400, 'Online sales are not live for this performance yet');
       }
       const salesCutoffAt = performance.salesCutoffAt || performance.startsAt;
       if (salesCutoffAt <= new Date()) {
+        logAssignedOrderCheckout(params, 'warn', 'sales cutoff validation failed', {
+          failureReason: 'online_sales_closed',
+          performance: {
+            startsAt: performance.startsAt.toISOString(),
+            salesCutoffAt: performance.salesCutoffAt?.toISOString() || null,
+            onlineSalesStartsAt: performance.onlineSalesStartsAt?.toISOString() || null,
+            effectiveSalesCutoffAt: salesCutoffAt.toISOString()
+          }
+        });
         throw new HttpError(400, 'Online sales are closed for this performance');
       }
     }
@@ -201,6 +302,10 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
 
     if (!isGeneralAdmissionNoSeatLinks) {
       if (performance.seats.length !== seatIds.length) {
+        logAssignedOrderCheckout(params, 'warn', 'selected seats invalid for performance', {
+          failureReason: 'selected_seat_missing',
+          foundSeatIds: performance.seats.map((seat) => seat.id)
+        });
         throw new HttpError(400, 'One or more selected seats are invalid for this performance');
       }
 
@@ -213,8 +318,49 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
       });
 
       if (disallowed) {
+        logAssignedOrderCheckout(params, 'warn', 'seat status blocks sale', {
+          failureReason: 'seat_status_unavailable',
+          blockedSeat: {
+            id: disallowed.id,
+            status: disallowed.status,
+            holdSessionId: disallowed.holdSessionId,
+            label: `${disallowed.sectionName} ${disallowed.row}-${disallowed.number}`
+          }
+        });
         throw new HttpError(409, 'One or more selected seats are no longer available');
       }
+
+      const existingIssuedTickets = await tx.ticket.findMany({
+        where: {
+          performanceId: params.performanceId,
+          seatId: { in: seatIds },
+          status: 'ISSUED'
+        },
+        select: {
+          id: true,
+          orderId: true,
+          seatId: true,
+          status: true,
+          createdAt: true
+        },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
+      });
+
+      logAssignedOrderCheckout(
+        params,
+        existingIssuedTickets.length > 0 ? 'warn' : 'info',
+        'issued ticket conflict check completed',
+        {
+          existingIssuedTickets: existingIssuedTickets.map((ticket) => ({
+            id: ticket.id,
+            orderId: ticket.orderId,
+            seatId: ticket.seatId,
+            status: ticket.status,
+            createdAt: ticket.createdAt.toISOString()
+          })),
+          failureReason: existingIssuedTickets.length > 0 ? 'issued_ticket_already_exists' : null
+        }
+      );
 
       await assertNoIssuedTicketsForSeats(tx, {
         performanceId: params.performanceId,
@@ -235,6 +381,11 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
       });
 
       if (updated.count !== seatIds.length) {
+        logAssignedOrderCheckout(params, 'warn', 'seat update failed optimistic availability check', {
+          failureReason: 'seat_update_count_mismatch',
+          updatedSeatCount: updated.count,
+          expectedSeatCount: seatIds.length
+        });
         throw new HttpError(409, 'One or more selected seats are no longer available');
       }
 
@@ -284,6 +435,17 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
       params.source === 'DOOR' && params.inPersonPaymentMethod === 'CASH'
         ? Math.max(0, Math.round(params.cashReceivedCents ?? amountTotal))
         : null;
+
+    logAssignedOrderCheckout(params, 'info', 'order totals calculated', {
+      calculatedTotalCents: amountTotal,
+      normalizedCashReceivedCents: cashReceivedCents,
+      seatAssignments: seatAssignments.map((assignment) => ({
+        seatId: assignment.seat.id,
+        priceCents: assignment.price,
+        ticketType: assignment.ticketType,
+        isComplimentary: assignment.isComplimentary
+      }))
+    });
 
     const createdOrder = await tx.order.create({
       data: {
@@ -374,6 +536,13 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
 
     createdTicketIds.push(...ticketRows.map((row) => row.id));
 
+    logAssignedOrderCheckout(params, 'info', 'order and tickets created', {
+      orderId: createdOrder.id,
+      ticketIds: createdTicketIds,
+      calculatedTotalCents: amountTotal,
+      cashReceivedCents
+    });
+
     if (params.sendEmail) {
       const emailPayload: TicketEmailPayload = {
         orderId: createdOrder.id,
@@ -424,11 +593,28 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
         tickets: { include: { seat: true }, orderBy: { createdAt: 'asc' } }
       }
     });
-  });
+    });
+  } catch (err) {
+    logAssignedOrderCheckout(params, 'error', 'order assignment failed', {
+      error: sanitizeCashierCheckoutError(err)
+    });
+    throw err;
+  }
 
   if (!order) {
-    throw new HttpError(500, 'We hit a small backstage snag while trying to create assigned order');
+    const err = new HttpError(500, 'We hit a small backstage snag while trying to create assigned order');
+    logAssignedOrderCheckout(params, 'error', 'order assignment returned no order', {
+      error: sanitizeCashierCheckoutError(err)
+    });
+    throw err;
   }
+
+  logAssignedOrderCheckout(params, 'info', 'order assignment succeeded', {
+    orderId: order.id,
+    ticketIds: order.tickets.map((ticket) => ticket.id),
+    calculatedTotalCents: order.amountTotal,
+    cashReceivedCents: order.cashReceivedCents ?? null
+  });
 
   return order;
 }

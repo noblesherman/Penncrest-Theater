@@ -23,6 +23,10 @@ import { handleRouteError } from '../lib/route-error.js';
 import { HttpError } from '../lib/http-error.js';
 import { sendTicketsEmail } from '../lib/email.js';
 import { logAudit } from '../lib/audit-log.js';
+import {
+  logCashierCheckout,
+  sanitizeCashierCheckoutError
+} from '../lib/cashier-checkout-logger.js';
 import { createAssignedOrder } from '../services/order-assignment.js';
 import { requestStripeRefundForOrder } from '../services/order-refund-service.js';
 import { releaseHoldByToken } from '../services/hold-service.js';
@@ -131,6 +135,18 @@ type InPersonSaleSeat = {
   companionForSeatId: string | null;
 };
 
+type CashierCheckoutRouteContext = {
+  requestId: string;
+  adminId: string | null;
+  adminUsername: string | null;
+  performanceId: string;
+  selectedSeatIds: string[];
+  selectedTicketTierBySeatId: Record<string, string>;
+  paymentMethod: 'STRIPE' | 'CASH';
+  cashReceivedCents: number | null;
+  enforceSalesCutoff: false;
+};
+
 const TEACHER_TICKET_OPTION_ID = 'teacher-comp';
 const STUDENT_SHOW_TICKET_OPTION_ID = 'student-show-comp';
 const MAX_TEACHER_COMP_TICKETS = 2;
@@ -200,6 +216,138 @@ function parseAuditMetadata(value: unknown): Record<string, unknown> | null {
     return null;
   }
   return value as Record<string, unknown>;
+}
+
+function isoOrNull(value: Date | null | undefined): string | null {
+  return value ? value.toISOString() : null;
+}
+
+function buildCashierCheckoutRouteContext(
+  request: { id: string; adminUser?: { id: string; username: string } },
+  payload: z.infer<typeof inPersonFinalizeSchema>
+): CashierCheckoutRouteContext {
+  return {
+    requestId: request.id,
+    adminId: request.adminUser?.id || null,
+    adminUsername: request.adminUser?.username || null,
+    performanceId: payload.performanceId,
+    selectedSeatIds: dedupeSeatIds(payload.seatIds),
+    selectedTicketTierBySeatId: payload.ticketSelectionBySeatId,
+    paymentMethod: payload.paymentMethod,
+    cashReceivedCents: payload.cashReceivedCents ?? null,
+    enforceSalesCutoff: false
+  };
+}
+
+function summarizeInvalidFinalizePayload(body: unknown): Record<string, unknown> {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return {};
+  }
+
+  const record = body as Record<string, unknown>;
+  return {
+    performanceId: typeof record.performanceId === 'string' ? record.performanceId : null,
+    selectedSeatIds: Array.isArray(record.seatIds) ? record.seatIds.filter((id) => typeof id === 'string') : [],
+    selectedTicketTierBySeatId:
+      record.ticketSelectionBySeatId && typeof record.ticketSelectionBySeatId === 'object' && !Array.isArray(record.ticketSelectionBySeatId)
+        ? record.ticketSelectionBySeatId
+        : {},
+    paymentMethod: typeof record.paymentMethod === 'string' ? record.paymentMethod : null,
+    cashReceivedCents: typeof record.cashReceivedCents === 'number' ? record.cashReceivedCents : null
+  };
+}
+
+async function loadCashierCheckoutPreflightSnapshot(params: {
+  performanceId: string;
+  seatIds: string[];
+}): Promise<Record<string, unknown>> {
+  const normalizedSeatIds = dedupeSeatIds(params.seatIds);
+  const performance = await prisma.performance.findFirst({
+    where: {
+      id: params.performanceId,
+      isArchived: false
+    },
+    select: {
+      id: true,
+      startsAt: true,
+      salesCutoffAt: true,
+      onlineSalesStartsAt: true,
+      isPublished: true,
+      isArchived: true,
+      seatSelectionEnabled: true,
+      pricingTiers: {
+        select: {
+          id: true,
+          name: true,
+          priceCents: true
+        },
+        orderBy: {
+          name: 'asc'
+        }
+      },
+      seats: {
+        where: {
+          id: { in: normalizedSeatIds }
+        },
+        select: {
+          id: true,
+          sectionName: true,
+          row: true,
+          number: true,
+          status: true,
+          holdSessionId: true
+        }
+      }
+    }
+  });
+
+  const existingIssuedTickets = await prisma.ticket.findMany({
+    where: {
+      performanceId: params.performanceId,
+      seatId: { in: normalizedSeatIds },
+      status: 'ISSUED'
+    },
+    select: {
+      id: true,
+      orderId: true,
+      seatId: true,
+      status: true,
+      createdAt: true
+    },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
+  });
+
+  return {
+    performance: performance
+      ? {
+          id: performance.id,
+          startsAt: performance.startsAt.toISOString(),
+          salesCutoffAt: isoOrNull(performance.salesCutoffAt),
+          onlineSalesStartsAt: isoOrNull(performance.onlineSalesStartsAt),
+          isPublished: performance.isPublished,
+          isArchived: performance.isArchived,
+          seatSelectionEnabled: performance.seatSelectionEnabled
+        }
+      : null,
+    pricingTiers: performance?.pricingTiers.map((tier) => ({
+      id: tier.id,
+      name: tier.name,
+      priceCents: tier.priceCents
+    })) || [],
+    selectedSeatStatuses: performance?.seats.map((seat) => ({
+      id: seat.id,
+      status: seat.status,
+      holdSessionId: seat.holdSessionId,
+      label: `${seat.sectionName} ${seat.row}-${seat.number}`
+    })) || [],
+    existingIssuedTickets: existingIssuedTickets.map((ticket) => ({
+      id: ticket.id,
+      orderId: ticket.orderId,
+      seatId: ticket.seatId,
+      status: ticket.status,
+      createdAt: ticket.createdAt.toISOString()
+    }))
+  };
 }
 
 async function summarizeCashFromAuditLogFallback(params: {
@@ -2073,13 +2221,41 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
   app.post('/api/admin/orders/in-person/finalize', { preHandler: app.authenticateAdmin }, async (request, reply) => {
     const parsed = inPersonFinalizeSchema.safeParse(request.body || {});
     if (!parsed.success) {
+      logCashierCheckout(request.log, 'warn', 'request validation failed', {
+        requestId: request.id,
+        adminId: request.adminUser?.id || null,
+        adminUsername: request.adminUser?.username || null,
+        ...summarizeInvalidFinalizePayload(request.body),
+        responseStatus: 400,
+        error: parsed.error.flatten()
+      });
       return reply.status(400).send({ error: parsed.error.flatten() });
     }
 
+    const checkoutLogContext = buildCashierCheckoutRouteContext(request, parsed.data);
+    logCashierCheckout(request.log, 'info', 'request received', {
+      ...checkoutLogContext
+    });
+
     try {
       if (parsed.data.paymentMethod !== 'CASH') {
-        throw new HttpError(400, 'Stripe in-person checkout now uses terminal dispatch. Use /api/admin/orders/in-person/terminal/send.');
+        const err = new HttpError(400, 'Stripe in-person checkout now uses terminal dispatch. Use /api/admin/orders/in-person/terminal/send.');
+        logCashierCheckout(request.log, 'warn', 'payment method rejected', {
+          ...checkoutLogContext,
+          responseStatus: err.statusCode,
+          error: sanitizeCashierCheckoutError(err)
+        });
+        throw err;
       }
+
+      const preflightSnapshot = await loadCashierCheckoutPreflightSnapshot({
+        performanceId: parsed.data.performanceId,
+        seatIds: parsed.data.seatIds
+      });
+      logCashierCheckout(request.log, 'info', 'preflight snapshot loaded', {
+        ...checkoutLogContext,
+        ...preflightSnapshot
+      });
 
       const quote = await buildInPersonSaleQuote({
         performanceId: parsed.data.performanceId,
@@ -2103,6 +2279,19 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
       const customerEmail = normalizedReceiptEmail || `walkin+${attemptId}@boxoffice.local`;
       const sendEmail = Boolean(parsed.data.sendReceipt && normalizedReceiptEmail);
 
+      logCashierCheckout(request.log, 'info', 'quote built', {
+        ...checkoutLogContext,
+        attemptId,
+        selectedSeatIds: normalizedSeatIds,
+        selectedTicketTierBySeatId: parsed.data.ticketSelectionBySeatId,
+        selectedTicketTypeBySeatId: ticketTypeBySeatId,
+        selectedPriceBySeatId: priceBySeatId,
+        calculatedTotalCents: expectedAmountCents,
+        cashReceivedCents,
+        sendReceipt: sendEmail,
+        receiptEmailProvided: Boolean(normalizedReceiptEmail)
+      });
+
       const created = await createAssignedOrder({
         performanceId: parsed.data.performanceId,
         seatIds: normalizedSeatIds,
@@ -2116,46 +2305,71 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
         enforceSalesCutoff: false,
         sendEmail,
         inPersonPaymentMethod: parsed.data.paymentMethod,
-        cashReceivedCents
+        cashReceivedCents,
+        checkoutLogger: request.log,
+        checkoutLogContext: {
+          ...checkoutLogContext,
+          attemptId
+        }
       });
 
-      await logAudit({
-        actor: adminActor(request),
-        action: 'IN_PERSON_SALE_FINALIZED',
-        entityType: 'InPersonSale',
-        entityId: attemptId,
-        metadata: {
+      logCashierCheckout(request.log, 'info', 'route finalized sale', {
+        ...checkoutLogContext,
+        attemptId,
+        orderId: created.id,
+        ticketIds: created.tickets.map((ticket) => ticket.id),
+        calculatedTotalCents: created.amountTotal,
+        cashReceivedCents: created.cashReceivedCents ?? cashReceivedCents,
+        responseStatus: 201
+      });
+
+      try {
+        await logAudit({
+          actor: adminActor(request),
+          action: 'IN_PERSON_SALE_FINALIZED',
+          entityType: 'InPersonSale',
+          entityId: attemptId,
+          metadata: {
+            orderId: created.id,
+            performanceId: quote.performanceId,
+            performanceTitle: quote.performanceTitle,
+            seatIds: normalizedSeatIds,
+            seatCount: quote.seatCount,
+            expectedAmountCents,
+            cashReceivedCents,
+            paymentMethod: parsed.data.paymentMethod,
+            source: 'DOOR',
+            sendReceipt: sendEmail,
+            receiptEmailProvided: Boolean(normalizedReceiptEmail),
+            customerNameProvided: Boolean(normalizedCustomerName)
+          }
+        });
+
+        await logAudit({
+          actor: adminActor(request),
+          action: 'ORDER_ASSIGNED',
+          entityType: 'Order',
+          entityId: created.id,
+          metadata: {
+            source: 'DOOR',
+            performanceId: quote.performanceId,
+            seatIds: normalizedSeatIds,
+            inPersonAttemptId: attemptId,
+            expectedAmountCents,
+            cashReceivedCents,
+            paymentMethod: parsed.data.paymentMethod,
+            ticketSelectionBySeatId: parsed.data.ticketSelectionBySeatId
+          }
+        });
+      } catch (auditErr) {
+        logCashierCheckout(request.log, 'error', 'post-finalize audit logging failed', {
+          ...checkoutLogContext,
+          attemptId,
           orderId: created.id,
-          performanceId: quote.performanceId,
-          performanceTitle: quote.performanceTitle,
-          seatIds: normalizedSeatIds,
-          seatCount: quote.seatCount,
-          expectedAmountCents,
-          cashReceivedCents,
-          paymentMethod: parsed.data.paymentMethod,
-          source: 'DOOR',
-          sendReceipt: sendEmail,
-          receiptEmail: normalizedReceiptEmail,
-          customerName: normalizedCustomerName
-        }
-      });
-
-      await logAudit({
-        actor: adminActor(request),
-        action: 'ORDER_ASSIGNED',
-        entityType: 'Order',
-        entityId: created.id,
-        metadata: {
-          source: 'DOOR',
-          performanceId: quote.performanceId,
-          seatIds: normalizedSeatIds,
-          inPersonAttemptId: attemptId,
-          expectedAmountCents,
-          cashReceivedCents,
-          paymentMethod: parsed.data.paymentMethod,
-          ticketSelectionBySeatId: parsed.data.ticketSelectionBySeatId
-        }
-      });
+          ticketIds: created.tickets.map((ticket) => ticket.id),
+          error: sanitizeCashierCheckoutError(auditErr)
+        });
+      }
 
       reply.status(201).send({
         id: created.id,
@@ -2167,6 +2381,12 @@ export const adminOrderRoutes: FastifyPluginAsync = async (app) => {
         seats: quote.seats
       });
     } catch (err) {
+      const statusCode = err instanceof HttpError ? err.statusCode : 500;
+      logCashierCheckout(request.log, statusCode >= 500 ? 'error' : 'warn', 'returning checkout failure', {
+        ...checkoutLogContext,
+        responseStatus: statusCode,
+        error: sanitizeCashierCheckoutError(err)
+      });
       handleRouteError(reply, err, 'We hit a small backstage snag while trying to finalize in-person sale');
     }
   });

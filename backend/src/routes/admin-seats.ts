@@ -67,6 +67,17 @@ function toSeatStatus(status: string): 'available' | 'held' | 'sold' | 'blocked'
   return status.toLowerCase() as 'available' | 'held' | 'sold' | 'blocked';
 }
 
+function toDisplayedSeatStatus(seat: {
+  status: string;
+  tickets?: Array<{ id: string }>;
+}): 'available' | 'held' | 'sold' | 'blocked' {
+  if ((seat.tickets || []).length > 0) {
+    return 'sold';
+  }
+
+  return toSeatStatus(seat.status);
+}
+
 async function assertPerformanceEditable(performanceId: string): Promise<void> {
   const performance = await prisma.performance.findUnique({
     where: { id: performanceId },
@@ -102,6 +113,12 @@ export const adminSeatRoutes: FastifyPluginAsync = async (app) => {
 
       const seats = await prisma.seat.findMany({
         where: { performanceId: params.performanceId },
+        include: {
+          tickets: {
+            where: { status: 'ISSUED' },
+            select: { id: true }
+          }
+        },
         orderBy: [{ sectionName: 'asc' }, { row: 'asc' }, { number: 'asc' }]
       });
 
@@ -112,7 +129,7 @@ export const adminSeatRoutes: FastifyPluginAsync = async (app) => {
           number: seat.number,
           x: seat.x,
           y: seat.y,
-          status: toSeatStatus(seat.status),
+          status: toDisplayedSeatStatus(seat),
           isAccessible: seat.isAccessible,
           isCompanion: seat.isCompanion,
           companionForSeatId: seat.companionForSeatId,

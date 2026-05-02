@@ -211,6 +211,53 @@ function markPaymentIntentSucceeded(paymentIntentId: string): void {
   stripeState.paymentIntents.set(paymentIntentId, paymentIntent);
 }
 
+function uniqueId(prefix: string): string {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function collectConsoleSpyOutput(...spies: Array<{ mock: { calls: unknown[][] } }>): string {
+  return spies
+    .flatMap((spy) => spy.mock.calls.map((call) => call.map((part) => String(part)).join(' ')))
+    .join('\n');
+}
+
+async function seedIssuedTicketForSeat(params: {
+  performanceId: string;
+  seatId: string;
+  amountTotal?: number;
+}): Promise<{ orderId: string; ticketId: string }> {
+  const order = await prisma.order.create({
+    data: {
+      performanceId: params.performanceId,
+      email: `${uniqueId('issued')}@example.com`,
+      customerName: 'Already Sold Buyer',
+      amountTotal: params.amountTotal ?? 2500,
+      currency: 'usd',
+      status: 'PAID',
+      source: 'ONLINE',
+      accessToken: uniqueId('access')
+    }
+  });
+
+  const ticketId = uniqueId('ticket');
+  await prisma.ticket.create({
+    data: {
+      id: ticketId,
+      orderId: order.id,
+      performanceId: params.performanceId,
+      seatId: params.seatId,
+      type: 'PAID',
+      priceCents: params.amountTotal ?? 2500,
+      status: 'ISSUED',
+      publicId: uniqueId('public'),
+      qrSecret: uniqueId('secret'),
+      qrPayload: `pt://ticket/${ticketId}`
+    }
+  });
+
+  return { orderId: order.id, ticketId };
+}
+
 describe.sequential('terminal dispatch integration', () => {
   beforeAll(async () => {
     execFileSync('npx', ['prisma', 'db', 'push', '--skip-generate', '--schema', 'prisma/schema.prisma'], {
@@ -934,7 +981,7 @@ describe.sequential('terminal dispatch integration', () => {
     expect(seat.holdSessionId).toBeNull();
   });
 
-  it('cash in-person finalize path is unchanged', async () => {
+  it('cash checkout succeeds for a valid performance, available seat, pricing, and cash payment', async () => {
     const fixture = await createPerformanceFixture({ seatCount: 1, tierPriceCents: 1800 });
     const seatId = fixture.seats[0]!.id;
 
@@ -964,5 +1011,184 @@ describe.sequential('terminal dispatch integration', () => {
 
     expect(paidOrder.status).toBe('PAID');
     expect(paidOrder.amountTotal).toBe(1800);
+  });
+
+  it('cash checkout succeeds when salesCutoffAt is in the past because door checkout does not enforce online cutoff', async () => {
+    const fixture = await createPerformanceFixture({ seatCount: 1, tierPriceCents: 2100 });
+    const seatId = fixture.seats[0]!.id;
+    await prisma.performance.update({
+      where: { id: fixture.performance.id },
+      data: {
+        onlineSalesStartsAt: new Date(Date.now() + 60 * 60 * 1000),
+        salesCutoffAt: new Date(Date.now() - 60 * 1000)
+      }
+    });
+
+    const finalizeResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/orders/in-person/finalize',
+      headers: authHeaders(),
+      payload: {
+        performanceId: fixture.performance.id,
+        seatIds: [seatId],
+        ticketSelectionBySeatId: buildTicketSelection([seatId], fixture.tier.id),
+        paymentMethod: 'CASH',
+        customerName: 'Late Cash Guest'
+      }
+    });
+
+    expect(finalizeResponse.statusCode).toBe(201);
+    expect(finalizeResponse.json().paymentMethod).toBe('CASH');
+
+    const paidOrder = await prisma.order.findFirstOrThrow({
+      where: {
+        performanceId: fixture.performance.id,
+        source: 'DOOR',
+        inPersonPaymentMethod: 'CASH'
+      }
+    });
+    expect(paidOrder.amountTotal).toBe(2100);
+  });
+
+  it('cash checkout logs a clear reason when a selected seat already has an ISSUED ticket', async () => {
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const fixture = await createPerformanceFixture({ seatCount: 1, tierPriceCents: 2500 });
+      const seatId = fixture.seats[0]!.id;
+      const existing = await seedIssuedTicketForSeat({
+        performanceId: fixture.performance.id,
+        seatId,
+        amountTotal: 2500
+      });
+      await prisma.seat.update({ where: { id: seatId }, data: { status: 'SOLD' } });
+
+      const finalizeResponse = await app.inject({
+        method: 'POST',
+        url: '/api/admin/orders/in-person/finalize',
+        headers: authHeaders(),
+        payload: {
+          performanceId: fixture.performance.id,
+          seatIds: [seatId],
+          ticketSelectionBySeatId: buildTicketSelection([seatId], fixture.tier.id),
+          paymentMethod: 'CASH'
+        }
+      });
+
+      expect(finalizeResponse.statusCode).toBe(409);
+      const output = collectConsoleSpyOutput(infoSpy, warnSpy, errorSpy);
+      expect(output).toContain(existing.ticketId);
+      expect(output).toContain('existingIssuedTickets');
+      expect(output).toContain('One or more selected seats are no longer available');
+    } finally {
+      infoSpy.mockRestore();
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('cash checkout logs a clear reason when Seat.status is AVAILABLE but an ISSUED ticket already exists', async () => {
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const fixture = await createPerformanceFixture({ seatCount: 1, tierPriceCents: 2500 });
+      const seatId = fixture.seats[0]!.id;
+      await seedIssuedTicketForSeat({
+        performanceId: fixture.performance.id,
+        seatId,
+        amountTotal: 2500
+      });
+
+      const finalizeResponse = await app.inject({
+        method: 'POST',
+        url: '/api/admin/orders/in-person/finalize',
+        headers: authHeaders(),
+        payload: {
+          performanceId: fixture.performance.id,
+          seatIds: [seatId],
+          ticketSelectionBySeatId: buildTicketSelection([seatId], fixture.tier.id),
+          paymentMethod: 'CASH'
+        }
+      });
+
+      expect(finalizeResponse.statusCode).toBe(409);
+      expect(finalizeResponse.json().error).toContain('already has an issued ticket');
+      const output = collectConsoleSpyOutput(infoSpy, warnSpy, errorSpy);
+      expect(output).toContain('issued_ticket_already_exists');
+      expect(output).toContain('already has an issued ticket');
+      expect(output).toContain('"status":"AVAILABLE"');
+    } finally {
+      infoSpy.mockRestore();
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('cash checkout logs a clear reason if no pricing tiers exist', async () => {
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const fixture = await createPerformanceFixture({ seatCount: 1 });
+      const seatId = fixture.seats[0]!.id;
+      await prisma.pricingTier.deleteMany({ where: { performanceId: fixture.performance.id } });
+
+      const finalizeResponse = await app.inject({
+        method: 'POST',
+        url: '/api/admin/orders/in-person/finalize',
+        headers: authHeaders(),
+        payload: {
+          performanceId: fixture.performance.id,
+          seatIds: [seatId],
+          ticketSelectionBySeatId: { [seatId]: fixture.tier.id },
+          paymentMethod: 'CASH'
+        }
+      });
+
+      expect(finalizeResponse.statusCode).toBe(400);
+      expect(finalizeResponse.json().error).toContain('No pricing tiers are configured');
+      const output = collectConsoleSpyOutput(infoSpy, warnSpy, errorSpy);
+      expect(output).toContain('No pricing tiers are configured for this performance');
+      expect(output).toContain('"pricingTiers":[]');
+    } finally {
+      infoSpy.mockRestore();
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('cash checkout logs a clear reason if ticket selections do not match selected seats', async () => {
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const fixture = await createPerformanceFixture({ seatCount: 2 });
+      const firstSeatId = fixture.seats[0]!.id;
+      const secondSeatId = fixture.seats[1]!.id;
+
+      const finalizeResponse = await app.inject({
+        method: 'POST',
+        url: '/api/admin/orders/in-person/finalize',
+        headers: authHeaders(),
+        payload: {
+          performanceId: fixture.performance.id,
+          seatIds: [firstSeatId, secondSeatId],
+          ticketSelectionBySeatId: { [firstSeatId]: fixture.tier.id },
+          paymentMethod: 'CASH'
+        }
+      });
+
+      expect(finalizeResponse.statusCode).toBe(400);
+      expect(finalizeResponse.json().error).toContain('Ticket selections must include every selected seat');
+      const output = collectConsoleSpyOutput(infoSpy, warnSpy, errorSpy);
+      expect(output).toContain('Ticket selections must include every selected seat');
+      expect(output).toContain(secondSeatId);
+    } finally {
+      infoSpy.mockRestore();
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
   });
 });
