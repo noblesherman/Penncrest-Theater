@@ -77,6 +77,12 @@ type Seat = {
   x: number; y: number; price: number;
   status: 'available' | 'held' | 'sold' | 'blocked';
   isAccessible?: boolean; isCompanion?: boolean; companionForSeatId?: string | null;
+  occupiedBy?: {
+    orderId: string;
+    customerName: string;
+    displayName: string;
+    seatIds: string[];
+  } | null;
 };
 type AssignForm = {
   performanceId: string; source: 'DOOR' | 'COMP';
@@ -299,6 +305,7 @@ function mapEntryToTerminalDispatch(entry: PaymentLineEntry): TerminalDispatch {
 
 const TERMINAL_DISPATCH_POLL_INTERVAL_MS = 750;
 const TERMINAL_DISPATCH_REFRESH_MIN_INTERVAL_MS = 300;
+const SEAT_OWNER_HOVER_DELAY_MS = 3000;
 const FALLBACK_STRIPE_PUBLISHABLE_KEY = (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '').trim();
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -341,6 +348,18 @@ function normalizeSeat(raw: any): Seat {
     ? (rawStatus as Seat['status']) : 'available';
   const sectionOffset = raw?.sectionName === 'LEFT' ? 0 : raw?.sectionName === 'CENTER' ? 700 : 1400;
   const rowCode = String(raw?.row || 'A').charCodeAt(0) || 65;
+  const rawOccupiedBy = raw?.occupiedBy && typeof raw.occupiedBy === 'object' ? raw.occupiedBy : null;
+  const occupiedBy = rawOccupiedBy
+    ? {
+        orderId: String(rawOccupiedBy.orderId || ''),
+        customerName: String(rawOccupiedBy.customerName || 'Guest'),
+        displayName: String(rawOccupiedBy.displayName || rawOccupiedBy.customerName || 'Guest'),
+        seatIds: Array.isArray(rawOccupiedBy.seatIds)
+          ? rawOccupiedBy.seatIds.map((seatId: unknown) => String(seatId)).filter(Boolean)
+          : []
+      }
+    : null;
+
   return {
     id: String(raw?.id || ''),
     sectionName: String(raw?.sectionName || 'Unknown'),
@@ -353,6 +372,7 @@ function normalizeSeat(raw: any): Seat {
     isAccessible: Boolean(raw?.isAccessible),
     isCompanion: Boolean(raw?.isCompanion),
     companionForSeatId: raw?.companionForSeatId ?? null,
+    occupiedBy: occupiedBy && occupiedBy.orderId ? occupiedBy : null,
   };
 }
 
@@ -518,11 +538,13 @@ export default function AdminOrdersPage() {
   const [dir,          setDir]          = useState<1 | -1>(1);
   const didAutoOpenSeatPickerRef = useRef(false);
   const selectedSeatIdsRef = useRef<string[]>([]);
+  const seatOwnerHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [seatPickerOpen,  setSeatPickerOpen]  = useState(false);
   const [seats,           setSeats]           = useState<Seat[]>([]);
   const [loadingSeats,    setLoadingSeats]    = useState(false);
   const [seatPickerError, setSeatPickerError] = useState<string | null>(null);
   const [activeSection,   setActiveSection]   = useState<string>('All');
+  const [revealedSeatOwner, setRevealedSeatOwner] = useState<{ seatId: string; orderId: string } | null>(null);
   const [ticketSelectionBySeatId, setTicketSelectionBySeatId] = useState<Record<string, string>>({});
   const [inPersonFlowError, setInPersonFlowError] = useState<string | null>(null);
   const [inPersonSubmitting, setInPersonSubmitting] = useState(false);
@@ -1323,6 +1345,41 @@ export default function AdminOrdersPage() {
 
   // ── derived state ──────────────────────────────────────────────────────────
 
+  const clearSeatOwnerHover = useCallback(() => {
+    if (seatOwnerHoverTimerRef.current) {
+      clearTimeout(seatOwnerHoverTimerRef.current);
+      seatOwnerHoverTimerRef.current = null;
+    }
+    setRevealedSeatOwner(null);
+  }, []);
+
+  const scheduleSeatOwnerHover = useCallback((seat: Seat) => {
+    if (seatOwnerHoverTimerRef.current) {
+      clearTimeout(seatOwnerHoverTimerRef.current);
+      seatOwnerHoverTimerRef.current = null;
+    }
+
+    const owner = seat.occupiedBy;
+    if (!owner?.orderId) {
+      setRevealedSeatOwner(null);
+      return;
+    }
+
+    seatOwnerHoverTimerRef.current = setTimeout(() => {
+      setRevealedSeatOwner({ seatId: seat.id, orderId: owner.orderId });
+      seatOwnerHoverTimerRef.current = null;
+    }, SEAT_OWNER_HOVER_DELAY_MS);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (seatOwnerHoverTimerRef.current) {
+        clearTimeout(seatOwnerHoverTimerRef.current);
+        seatOwnerHoverTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const seatIds = useMemo(() => parseSeatIds(assignForm.seatIdsInput), [assignForm.seatIdsInput]);
   const gaTicketQuantity = useMemo(() => {
     const parsed = Number.parseInt(assignForm.gaQuantityInput, 10);
@@ -1351,7 +1408,17 @@ export default function AdminOrdersPage() {
     setSeatPickerOpen(true);
   }, [seatIds.length, seatPickerOpen, seatSelectionEnabled, showWizard, step]);
 
-  useEffect(() => { setActiveSection('All'); setSeatPickerError(null); setSeats([]); }, [assignForm.performanceId]);
+  useEffect(() => {
+    setActiveSection('All');
+    setSeatPickerError(null);
+    setSeats([]);
+    clearSeatOwnerHover();
+  }, [assignForm.performanceId, clearSeatOwnerHover]);
+  useEffect(() => {
+    if (!seatPickerOpen) {
+      clearSeatOwnerHover();
+    }
+  }, [clearSeatOwnerHover, seatPickerOpen]);
   useEffect(() => {
     if (!seatSelectionEnabled || !seatPickerOpen || !assignForm.performanceId) return;
     void loadSeatsForPerformance(assignForm.performanceId);
@@ -1464,6 +1531,17 @@ export default function AdminOrdersPage() {
 
   const seatById = useMemo(() => new Map(seats.map(s => [s.id, s])), [seats]);
   const hasAccessibleSelection = useMemo(() => seatIds.some(id => Boolean(seatById.get(id)?.isAccessible)), [seatById, seatIds]);
+  const revealedSeatOwnerInfo = useMemo(() => {
+    if (!revealedSeatOwner) return null;
+    const seat = seatById.get(revealedSeatOwner.seatId);
+    const owner = seat?.occupiedBy;
+    if (!owner || owner.orderId !== revealedSeatOwner.orderId) return null;
+    return { seatId: seat.id, ...owner };
+  }, [revealedSeatOwner, seatById]);
+  const highlightedOrderSeatIds = useMemo(
+    () => new Set(revealedSeatOwnerInfo?.seatIds || []),
+    [revealedSeatOwnerInfo]
+  );
 
   const selectedMappedSeats = useMemo(
     () => seatIds.map(id => seatById.get(id)).filter((s): s is Seat => Boolean(s))
@@ -2947,22 +3025,40 @@ export default function AdminOrdersPage() {
                     renderSeat={({ seat, x, y }) => {
                       const isSelected = selectedSeatIdSet.has(seat.id);
                       const isUnavailable = seat.status === 'held' || seat.status === 'sold' || seat.status === 'blocked';
+                      const occupiedBy = seat.occupiedBy;
+                      const isOrderHighlighted = Boolean(
+                        occupiedBy &&
+                        revealedSeatOwnerInfo?.orderId === occupiedBy.orderId &&
+                        highlightedOrderSeatIds.has(seat.id)
+                      );
+                      const showOwnerTooltip = Boolean(occupiedBy && revealedSeatOwnerInfo?.seatId === seat.id);
                       const companionOk =
                         !seat.isCompanion || isSelected ||
                         (seat.companionForSeatId ? selectedSeatIdSet.has(seat.companionForSeatId) : hasAccessibleSelection);
                       const selectable = !isUnavailable && companionOk;
+                      const seatLabel = `${seat.id} · ${seat.sectionName} ${seat.row}-${seat.number} · ${seat.status}`;
                       return (
                         <button
                           key={seat.id}
                           type="button"
-                          onClick={() => toggleSeat(seat.id)}
-                          disabled={!isSelected && !selectable}
+                          onClick={() => {
+                            if (!isSelected && !selectable) return;
+                            toggleSeat(seat.id);
+                          }}
+                          onMouseEnter={() => scheduleSeatOwnerHover(seat)}
+                          onMouseLeave={clearSeatOwnerHover}
+                          onFocus={() => scheduleSeatOwnerHover(seat)}
+                          onBlur={clearSeatOwnerHover}
+                          disabled={!isSelected && !selectable && !occupiedBy}
+                          aria-disabled={!isSelected && !selectable}
+                          aria-label={occupiedBy ? `${seatLabel}. Occupied by ${occupiedBy.displayName}.` : seatLabel}
                           style={{ left: `${x}px`, top: `${y}px` }}
-                          title={`${seat.id} · ${seat.sectionName} ${seat.row}-${seat.number} · ${seat.status}`}
                           className={[
                             'seat-button absolute flex h-8 w-8 items-center justify-center rounded-t-lg rounded-b-md text-[10px] font-bold transition-all duration-150 md:h-10 md:w-10',
                             isSelected
                               ? 'z-10 scale-110 bg-emerald-500 text-white shadow-lg ring-2 ring-emerald-300'
+                              : isOrderHighlighted
+                                ? 'z-20 scale-105 border-2 border-rose-500 bg-rose-50 text-rose-900 shadow-lg ring-2 ring-rose-200'
                               : isUnavailable
                                 ? 'cursor-not-allowed bg-slate-200 text-slate-400'
                                 : seat.status === 'held'
@@ -2976,6 +3072,19 @@ export default function AdminOrdersPage() {
                         >
                           <div className={`absolute -left-1 bottom-1 h-4 w-1 rounded-full opacity-40 ${isSelected ? 'bg-emerald-600' : seat.isCompanion ? 'bg-cyan-500' : seat.isAccessible ? 'bg-blue-500' : 'bg-slate-300'}`} />
                           <div className={`absolute -right-1 bottom-1 h-4 w-1 rounded-full opacity-40 ${isSelected ? 'bg-emerald-600' : seat.isCompanion ? 'bg-cyan-500' : seat.isAccessible ? 'bg-blue-500' : 'bg-slate-300'}`} />
+                          {showOwnerTooltip && occupiedBy && (
+                            <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 max-w-[180px] -translate-x-1/2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-left shadow-xl">
+                              <span className="block truncate text-[11px] font-bold leading-tight text-slate-900">
+                                {occupiedBy.displayName}
+                              </span>
+                              {occupiedBy.seatIds.length > 1 && (
+                                <span className="mt-0.5 block whitespace-nowrap text-[10px] font-semibold leading-tight text-slate-500">
+                                  {occupiedBy.seatIds.length} seats in order
+                                </span>
+                              )}
+                              <span className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-r border-slate-200 bg-white" />
+                            </span>
+                          )}
                           {seat.number}
                         </button>
                       );

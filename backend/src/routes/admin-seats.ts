@@ -121,6 +121,63 @@ export const adminSeatRoutes: FastifyPluginAsync = async (app) => {
         },
         orderBy: [{ sectionName: 'asc' }, { row: 'asc' }, { number: 'asc' }]
       });
+      const issuedTickets = await prisma.ticket.findMany({
+        where: {
+          performanceId: params.performanceId,
+          status: 'ISSUED',
+          seatId: { not: null }
+        },
+        select: {
+          seatId: true,
+          orderId: true,
+          order: {
+            select: {
+              id: true,
+              customerName: true,
+              orderSeats: {
+                where: { seatId: { not: null } },
+                select: { seatId: true, attendeeName: true }
+              },
+              tickets: {
+                where: {
+                  performanceId: params.performanceId,
+                  status: 'ISSUED',
+                  seatId: { not: null }
+                },
+                select: { seatId: true }
+              }
+            }
+          }
+        }
+      });
+      const occupiedBySeatId = new Map<
+        string,
+        { orderId: string; customerName: string; displayName: string; seatIds: string[] }
+      >();
+
+      issuedTickets.forEach((ticket) => {
+        if (!ticket.seatId) {
+          return;
+        }
+
+        const relatedSeatIds = [
+          ...new Set(
+            [
+              ...ticket.order.orderSeats.map((orderSeat) => orderSeat.seatId),
+              ...ticket.order.tickets.map((orderTicket) => orderTicket.seatId)
+            ].filter((seatId): seatId is string => Boolean(seatId))
+          )
+        ];
+        const currentOrderSeat = ticket.order.orderSeats.find((orderSeat) => orderSeat.seatId === ticket.seatId);
+        const displayName = currentOrderSeat?.attendeeName?.trim() || ticket.order.customerName;
+
+        occupiedBySeatId.set(ticket.seatId, {
+          orderId: ticket.orderId,
+          customerName: ticket.order.customerName,
+          displayName,
+          seatIds: relatedSeatIds
+        });
+      });
 
       reply.send(
         seats.map((seat) => ({
@@ -134,7 +191,8 @@ export const adminSeatRoutes: FastifyPluginAsync = async (app) => {
           isCompanion: seat.isCompanion,
           companionForSeatId: seat.companionForSeatId,
           sectionName: seat.sectionName,
-          price: seat.price
+          price: seat.price,
+          occupiedBy: occupiedBySeatId.get(seat.id) || null
         }))
       );
     } catch (err) {
