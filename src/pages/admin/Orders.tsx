@@ -305,7 +305,7 @@ function mapEntryToTerminalDispatch(entry: PaymentLineEntry): TerminalDispatch {
 
 const TERMINAL_DISPATCH_POLL_INTERVAL_MS = 750;
 const TERMINAL_DISPATCH_REFRESH_MIN_INTERVAL_MS = 300;
-const SEAT_OWNER_HOVER_DELAY_MS = 3000;
+const SEAT_OWNER_HOVER_DELAY_MS = 1000;
 const FALLBACK_STRIPE_PUBLISHABLE_KEY = (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '').trim();
 
 // ── helpers ──────────────────────────────────────────────────────────────────
