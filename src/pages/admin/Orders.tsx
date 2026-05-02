@@ -817,7 +817,7 @@ export default function AdminOrdersPage() {
 
       setInPersonSubmitting(true);
       try {
-        const dispatch = await adminFetch<TerminalDispatch>('/api/admin/payment-line/enqueue', {
+        const entry = await adminFetch<PaymentLineEntry>('/api/admin/payment-line/enqueue', {
           method: 'POST',
           body: JSON.stringify({
             performanceId: assignForm.performanceId,
@@ -830,7 +830,7 @@ export default function AdminOrdersPage() {
             deviceId: selectedTerminalDeviceId
           })
         });
-        setTerminalDispatch(dispatch);
+        setTerminalDispatch(mapEntryToTerminalDispatch(entry));
       } catch (e) {
         setInPersonFlowError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to send sale to payment line');
       } finally {
@@ -928,8 +928,8 @@ export default function AdminOrdersPage() {
     terminalDispatchRefreshLastAtRef.current = now;
     terminalDispatchRefreshLastIdRef.current = dispatchId;
     try {
-      const dispatch = await adminFetch<TerminalDispatch>(`/api/admin/payment-line/entry/${encodeURIComponent(dispatchId)}`);
-      applyTerminalDispatchStatus(dispatch);
+      const entry = await adminFetch<PaymentLineEntry>(`/api/admin/payment-line/entry/${encodeURIComponent(dispatchId)}`);
+      applyTerminalDispatchStatus(mapEntryToTerminalDispatch(entry));
     } finally {
       terminalDispatchRefreshInFlightRef.current = false;
     }
