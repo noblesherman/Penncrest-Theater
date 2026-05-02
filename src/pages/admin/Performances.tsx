@@ -126,6 +126,45 @@ function normalizeImageSource(value: string): string {
   return isHttpUrl(trimmed) || isImageDataUrl(trimmed) ? trimmed : '';
 }
 
+
+function toDateTimeLocalInput(isoValue: string | null | undefined): string {
+  if (!isoValue) return '';
+  const date = new Date(isoValue);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function fromDateTimeLocalInput(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!match) {
+    throw new Error(`Invalid date/time value: ${value}`);
+  }
+
+  const [, yearText, monthText, dayText, hourText, minuteText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const parsed = new Date(year, month - 1, day, hour, minute, 0, 0);
+
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day ||
+    parsed.getHours() !== hour ||
+    parsed.getMinutes() !== minute
+  ) {
+    throw new Error(`Invalid date/time value: ${value}`);
+  }
+
+  return parsed.toISOString();
+}
+
 function parseCsvLine(line: string): string[] {
   const cells: string[] = [];
   let current = '';
@@ -348,9 +387,9 @@ export default function AdminPerformancesPage() {
           method: 'PATCH',
           body: JSON.stringify({
             ...payload,
-            startsAt: new Date(f.startsAt).toISOString(),
-            onlineSalesStartsAt: f.onlineSalesStartsAt ? new Date(f.onlineSalesStartsAt).toISOString() : null,
-            salesCutoffAt: f.salesCutoffAt ? new Date(f.salesCutoffAt).toISOString() : null
+            startsAt: (() => { const startsAt = fromDateTimeLocalInput(f.startsAt); if (!startsAt) throw new Error('Show date/time is required.'); return startsAt; })(),
+            onlineSalesStartsAt: fromDateTimeLocalInput(f.onlineSalesStartsAt),
+            salesCutoffAt: fromDateTimeLocalInput(f.salesCutoffAt)
           })
         });
       } else {
@@ -359,9 +398,9 @@ export default function AdminPerformancesPage() {
           body: JSON.stringify({
             ...payload,
             performances: perfs.map(s => ({
-              startsAt: new Date(s.startsAt).toISOString(),
-              onlineSalesStartsAt: s.onlineSalesStartsAt ? new Date(s.onlineSalesStartsAt).toISOString() : null,
-              salesCutoffAt: s.salesCutoffAt ? new Date(s.salesCutoffAt).toISOString() : null
+              startsAt: (() => { const startsAt = fromDateTimeLocalInput(s.startsAt); if (!startsAt) throw new Error('Show date/time is required.'); return startsAt; })(),
+              onlineSalesStartsAt: fromDateTimeLocalInput(s.onlineSalesStartsAt),
+              salesCutoffAt: fromDateTimeLocalInput(s.salesCutoffAt)
             }))
           })
         });
@@ -388,9 +427,9 @@ export default function AdminPerformancesPage() {
       description: item.showDescription || '',
       posterUrl: item.showPosterUrl || '',
       schedules: [{
-        startsAt: item.startsAt.slice(0, 16),
-        onlineSalesStartsAt: item.onlineSalesStartsAt ? item.onlineSalesStartsAt.slice(0, 16) : '',
-        salesCutoffAt: item.salesCutoffAt ? item.salesCutoffAt.slice(0, 16) : ''
+        startsAt: toDateTimeLocalInput(item.startsAt),
+        onlineSalesStartsAt: toDateTimeLocalInput(item.onlineSalesStartsAt),
+        salesCutoffAt: toDateTimeLocalInput(item.salesCutoffAt)
       }],
       isDraft: !item.isPublished,
       venue: item.venue, notes: item.notes || '',
