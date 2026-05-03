@@ -22,6 +22,7 @@ import { ApiError, apiFetch, apiUrl } from '../../lib/api';
 import { usePaymentLineStatusStream } from '../../hooks/usePaymentLineStatusStream';
 import { readCashierDefaultPerformanceId, writeCashierDefaultPerformanceId } from '../../hooks/useCashierDefaultPerformance';
 import type { PaymentLineEntry } from '../../lib/paymentLineTypes';
+import { getPaymentLineUiError } from '../../lib/paymentLineErrors';
 import {
   buildGeneralAdmissionLineIds,
   isStudentInShowTicketName,
@@ -964,7 +965,14 @@ export default function AdminOrdersPage() {
         });
         setTerminalDispatch(mapEntryToTerminalDispatch(entry));
       } catch (e) {
-        setInPersonFlowError(e instanceof Error ? e.message : 'We hit a small backstage snag while trying to send sale to payment line');
+        const { message, refreshTerminalDevices } = getPaymentLineUiError(
+          e,
+          'We hit a small backstage snag while trying to send sale to payment line.'
+        );
+        setInPersonFlowError(message);
+        if (refreshTerminalDevices) {
+          void loadTerminalDevices();
+        }
       } finally {
         setInPersonSubmitting(false);
       }

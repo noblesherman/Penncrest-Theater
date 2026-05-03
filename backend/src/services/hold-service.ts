@@ -172,8 +172,10 @@ export async function syncSeatHold(params: {
   performanceId: string;
   seatIds: string[];
   clientToken: string;
+  enforceSalesCutoff?: boolean;
 }): Promise<{ holdToken: string; expiresAt: Date; heldSeatIds: string[] }> {
   const seatIds = dedupeSeatIds(params.seatIds);
+  const enforceSalesCutoff = params.enforceSalesCutoff ?? true;
 
   return prisma.$transaction(async (tx) => {
     const performance = await tx.performance.findFirst({
@@ -184,13 +186,15 @@ export async function syncSeatHold(params: {
       throw new HttpError(404, 'Performance not found');
     }
 
-    if (!performance.isPublished || (performance.onlineSalesStartsAt && performance.onlineSalesStartsAt > new Date())) {
-      throw new HttpError(400, 'Online sales are not live for this performance yet');
-    }
+    if (enforceSalesCutoff) {
+      if (!performance.isPublished || (performance.onlineSalesStartsAt && performance.onlineSalesStartsAt > new Date())) {
+        throw new HttpError(400, 'Online sales are not live for this performance yet');
+      }
 
-    const salesCutoffAt = performance.salesCutoffAt || performance.startsAt;
-    if (salesCutoffAt <= new Date()) {
-      throw new HttpError(400, 'Online sales are closed for this performance');
+      const salesCutoffAt = performance.salesCutoffAt || performance.startsAt;
+      if (salesCutoffAt <= new Date()) {
+        throw new HttpError(400, 'Online sales are closed for this performance');
+      }
     }
 
     const holdSession = await getOrCreateHoldSession(tx, params.performanceId, params.clientToken);

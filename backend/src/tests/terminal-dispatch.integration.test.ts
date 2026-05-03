@@ -762,6 +762,37 @@ describe.sequential('terminal dispatch integration', () => {
     expect(afterRetry.stripePaymentIntentId).not.toBe(beforeRetry.stripePaymentIntentId);
   });
 
+  it('terminal dispatch enqueue succeeds after online cutoff because admin terminal sales bypass public cutoff', async () => {
+    const fixture = await createPerformanceFixture({ seatCount: 1, tierPriceCents: 2300 });
+    const deviceId = `device_after_cutoff_${Date.now()}`;
+    await registerDevice(deviceId, 'After Cutoff iPhone');
+
+    await prisma.performance.update({
+      where: { id: fixture.performance.id },
+      data: {
+        onlineSalesStartsAt: new Date(Date.now() + 60 * 60 * 1000),
+        salesCutoffAt: new Date(Date.now() - 60 * 1000)
+      }
+    });
+
+    const seatId = fixture.seats[0]!.id;
+    const sendResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/payment-line/enqueue',
+      headers: authHeaders(),
+      payload: {
+        performanceId: fixture.performance.id,
+        seatIds: [seatId],
+        ticketSelectionBySeatId: buildTicketSelection([seatId], fixture.tier.id),
+        customerName: 'After Cutoff Guest',
+        deviceId
+      }
+    });
+
+    expect(sendResponse.statusCode).toBe(201);
+    expect(sendResponse.json().status).toBe('PENDING');
+  });
+
   it('payment-line endpoints expose failed -> retry -> canceled transitions', async () => {
     const fixture = await createPerformanceFixture({ seatCount: 1, tierPriceCents: 2400 });
     const deviceId = `device_payment_line_${Date.now()}`;

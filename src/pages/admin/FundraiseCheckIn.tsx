@@ -25,6 +25,7 @@ import {
 } from '../../lib/scannerRecovery';
 import { buildGeneralAdmissionLineIds } from '../../lib/cashierRules';
 import type { PaymentLineEntry } from '../../lib/paymentLineTypes';
+import { getPaymentLineUiError } from '../../lib/paymentLineErrors';
 
 type PricingTier = {
   id: string;
@@ -962,7 +963,14 @@ export default function AdminFundraiseCheckInPage() {
         });
       }
     } catch (err) {
-      setSaleError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to start fundraiser payment flow');
+      const { message, refreshTerminalDevices } = getPaymentLineUiError(
+        err,
+        'We hit a small backstage snag while trying to start fundraiser payment flow.'
+      );
+      setSaleError(message);
+      if (refreshTerminalDevices) {
+        void loadSaleTerminalDevices();
+      }
     } finally {
       setSaleSubmitting(false);
     }

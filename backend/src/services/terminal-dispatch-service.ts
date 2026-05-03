@@ -183,7 +183,8 @@ export async function createTerminalDispatchHold(params: {
   const hold = await syncSeatHold({
     performanceId: params.performanceId,
     seatIds: normalizedSeatIds,
-    clientToken
+    clientToken,
+    enforceSalesCutoff: false
   });
 
   await prisma.holdSession.update({
