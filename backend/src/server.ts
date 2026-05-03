@@ -101,6 +101,17 @@ export async function createServer() {
   await app.register(deviceAuthPlugin);
 
   const allowedOrigins = getAllowedOrigins();
+  app.addHook('onRequest', async (request, reply) => {
+    if (!request.url.startsWith('/api/')) {
+      return;
+    }
+
+    reply.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    reply.header('Pragma', 'no-cache');
+    reply.header('Expires', '0');
+    reply.header('Surrogate-Control', 'no-store');
+  });
+
   app.options('/api/*', async (request, reply) => {
     const origin = request.headers.origin;
     if (origin && isAllowedOrigin(origin, allowedOrigins)) {
