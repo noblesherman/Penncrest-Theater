@@ -722,6 +722,13 @@ export default function Booking() {
       }
     };
   }, [pendingStripePayment]);
+  const activeCheckoutQueueId = checkoutQueue?.queueId ?? null;
+  const activeCheckoutQueueHoldToken = checkoutQueue?.holdToken ?? null;
+  const activeCheckoutQueueRefreshAfterMsRef = useRef(2500);
+
+  useEffect(() => {
+    activeCheckoutQueueRefreshAfterMsRef.current = checkoutQueue?.refreshAfterMs ?? 2500;
+  }, [checkoutQueue?.refreshAfterMs]);
 
   const finalizeEmbeddedPayment = useCallback(() => {
     if (!pendingStripePayment?.orderId) {
@@ -735,7 +742,7 @@ export default function Booking() {
   }, [navigate, pendingStripePayment]);
 
   useEffect(() => {
-    if (!checkoutQueue) return;
+    if (!activeCheckoutQueueId || !activeCheckoutQueueHoldToken) return;
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -750,7 +757,7 @@ export default function Booking() {
     const pollQueueStatus = async () => {
       try {
         const status = await apiFetch<QueueStatusResponse>(
-          `/api/checkout/queue/${encodeURIComponent(checkoutQueue.queueId)}?holdToken=${encodeURIComponent(checkoutQueue.holdToken)}&clientToken=${encodeURIComponent(clientTokenRef.current)}`
+          `/api/checkout/queue/${encodeURIComponent(activeCheckoutQueueId)}?holdToken=${encodeURIComponent(activeCheckoutQueueHoldToken)}&clientToken=${encodeURIComponent(clientTokenRef.current)}`
         );
 
         if (cancelled) return;
@@ -812,7 +819,7 @@ export default function Booking() {
       } catch (err) {
         if (cancelled) return;
         setStepError(err instanceof Error ? err.message : 'We hit a small backstage snag while trying to refresh checkout queue status');
-        scheduleNext(Math.max(2500, checkoutQueue.refreshAfterMs));
+        scheduleNext(Math.max(2500, activeCheckoutQueueRefreshAfterMsRef.current));
       }
     };
 
@@ -822,7 +829,7 @@ export default function Booking() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [checkoutQueue, fetchSeats, navigate]);
+  }, [activeCheckoutQueueHoldToken, activeCheckoutQueueId, fetchSeats, navigate]);
 
   const handleCheckout = async () => {
     if (!performanceId) return;

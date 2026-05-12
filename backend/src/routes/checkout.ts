@@ -16,6 +16,7 @@ import Stripe from 'stripe';
 import { z } from 'zod';
 import { checkoutRequestSchema } from '../schemas/checkout.js';
 import { handleRouteError } from '../lib/route-error.js';
+import { prisma } from '../lib/prisma.js';
 import { executeCheckoutRequest } from '../services/checkout-execution-service.js';
 import { enqueuePaidCheckout, getCheckoutQueueStatus } from '../services/checkout-queue-service.js';
 import { env } from '../lib/env.js';
@@ -29,6 +30,22 @@ const queueStatusQuerySchema = z.object({
   holdToken: z.string().min(8),
   clientToken: z.string().min(8)
 });
+
+async function shouldUseCheckoutQueue(performanceId: string): Promise<boolean> {
+  const performance = await prisma.performance.findFirst({
+    where: { id: performanceId, isArchived: false },
+    select: {
+      isFundraiser: true,
+      seatSelectionEnabled: true
+    }
+  });
+
+  if (!performance) {
+    return true;
+  }
+
+  return !(performance.isFundraiser && performance.seatSelectionEnabled === false);
+}
 
 export const checkoutRoutes: FastifyPluginAsync = async (app) => {
   app.post(
@@ -53,7 +70,7 @@ export const checkoutRoutes: FastifyPluginAsync = async (app) => {
           clientIpAddress: parsed.data.clientIpAddress || getClientIp(request)
         };
 
-        if (payload.checkoutMode === 'PAID') {
+        if (payload.checkoutMode === 'PAID' && await shouldUseCheckoutQueue(payload.performanceId)) {
           const queued = await enqueuePaidCheckout(payload);
           return reply.send(queued);
         }

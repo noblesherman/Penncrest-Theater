@@ -581,6 +581,92 @@ describe.sequential('critical lifecycle smoke', () => {
     expect(refundedSeat.status).toBe('AVAILABLE');
   });
 
+  it('starts fundraiser general-admission paid checkout without waiting on the queue', async () => {
+    const buyerEmail = `fundraiser_buyer_${Date.now()}@example.com`;
+    const clientToken = `client_${Date.now()}_fundraiser_ga`;
+    const show = await prisma.show.create({
+      data: {
+        title: 'Fundraiser Smoke Show',
+        description: 'Smoke test fundraiser'
+      }
+    });
+    const performance = await prisma.performance.create({
+      data: {
+        showId: show.id,
+        title: 'Fundraiser Smoke Event',
+        startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        salesCutoffAt: new Date(Date.now() + 23 * 60 * 60 * 1000),
+        venue: 'Smoke Test Theater',
+        isFundraiser: true,
+        seatSelectionEnabled: false
+      }
+    });
+    const ticketTier = await prisma.pricingTier.create({
+      data: {
+        performanceId: performance.id,
+        name: '1st Camper',
+        priceCents: 5000
+      }
+    });
+    const seat = await prisma.seat.create({
+      data: {
+        performanceId: performance.id,
+        row: 'GA',
+        number: 1,
+        sectionName: 'General Admission',
+        x: 10,
+        y: 10,
+        price: 5000
+      }
+    });
+
+    const holdResponse = await app.inject({
+      method: 'POST',
+      url: '/api/hold',
+      payload: {
+        performanceId: performance.id,
+        seatIds: [seat.id],
+        clientToken
+      }
+    });
+
+    expect(holdResponse.statusCode).toBe(200);
+    const holdBody = holdResponse.json();
+
+    const checkoutResponse = await app.inject({
+      method: 'POST',
+      url: '/api/checkout',
+      payload: {
+        performanceId: performance.id,
+        checkoutMode: 'PAID',
+        seatIds: [seat.id],
+        ticketSelectionBySeatId: {
+          [seat.id]: ticketTier.id
+        },
+        holdToken: holdBody.holdToken,
+        clientToken,
+        customerEmail: buyerEmail,
+        customerName: 'Fundraiser Buyer',
+        customerPhone: '610-555-0101'
+      }
+    });
+
+    expect(checkoutResponse.statusCode).toBe(200);
+    const checkoutBody = checkoutResponse.json();
+    expect(checkoutBody.status).not.toBe('QUEUED');
+    expect(checkoutBody.orderId).toBeTruthy();
+    expect(checkoutBody.clientSecret).toContain('_secret_smoke');
+    expect(stripeState.latestCheckoutAmount).toBe(5000);
+
+    const queuedItemCount = await prisma.checkoutQueueItem.count({
+      where: {
+        holdToken: holdBody.holdToken,
+        clientToken
+      }
+    });
+    expect(queuedItemCount).toBe(0);
+  });
+
   it('adds an optional checkout donation to Stripe amount and preserves it through finalization', async () => {
     const buyerEmail = `donor_${Date.now()}@example.com`;
     const clientToken = `client_${Date.now()}_donation`;
