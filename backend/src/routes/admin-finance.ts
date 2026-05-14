@@ -24,6 +24,7 @@ import { stripe } from '../lib/stripe.js';
 import { handleRouteError } from '../lib/route-error.js';
 import { HttpError } from '../lib/http-error.js';
 import { logAudit } from '../lib/audit-log.js';
+import { buildSavingsEstimate } from '../lib/admin-savings.js';
 
 const financeQuerySchema = z.object({
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -89,8 +90,22 @@ const BRAND_NAME = 'Penncrest High School Theater';
 const BRAND_ADDRESS_LINE = '134 Barren Rd, Media, PA 19063';
 const BRAND_EMAIL = 'jsmith3@rtmsd.org';
 const BRAND_WEB = 'www.penncresttheater.com';
+const SAVINGS_SUMMARY_CACHE_TTL_MS = 60_000;
 
 let cachedLogoBuffer: Buffer | null | undefined;
+let cachedSavingsSummary:
+  | {
+      value: {
+        allTimeRevenueCents: number;
+        paidTransactionCount: number;
+        estimatedSavedCents: number;
+        lowEstimateCents: number;
+        highEstimateCents: number;
+        updatedAt: string;
+      };
+      expiresAtMs: number;
+    }
+  | null = null;
 
 type FinanceOrderRow = {
   id: string;
@@ -1111,6 +1126,61 @@ export const adminFinanceRoutes: FastifyPluginAsync = async (app) => {
       process: buildInvoiceProcess(invoice)
     };
   };
+
+  app.get('/api/admin/financial/savings-summary', { preHandler: app.authenticateAdmin }, async (_request, reply) => {
+    try {
+      const nowMs = Date.now();
+      if (cachedSavingsSummary && cachedSavingsSummary.expiresAtMs > nowMs) {
+        return reply.send(cachedSavingsSummary.value);
+      }
+
+      const paidOrderWhere: Prisma.OrderWhereInput = {
+        status: 'PAID',
+        amountTotal: {
+          gt: 0
+        },
+        source: {
+          notIn: ['COMP', 'STAFF_FREE', 'STAFF_COMP', 'FAMILY_FREE', 'STUDENT_COMP']
+        }
+      };
+
+      const [paidRevenueAggregate, paidTransactionCount] = await Promise.all([
+        prisma.order.aggregate({
+          where: paidOrderWhere,
+          _sum: {
+            amountTotal: true,
+            refundAmountCents: true
+          }
+        }),
+        prisma.order.count({
+          where: paidOrderWhere
+        })
+      ]);
+
+      const grossRevenueCents = paidRevenueAggregate._sum.amountTotal || 0;
+      const refundCents = Math.max(0, paidRevenueAggregate._sum.refundAmountCents || 0);
+      // Mirror existing finance net logic by subtracting recorded refunds from paid order totals.
+      const allTimeRevenueCents = Math.max(0, grossRevenueCents - refundCents);
+
+      const estimate = buildSavingsEstimate({
+        allTimeRevenueCents,
+        paidTransactionCount
+      });
+      const payload = {
+        ...estimate,
+        updatedAt: new Date().toISOString()
+      };
+
+      cachedSavingsSummary = {
+        value: payload,
+        expiresAtMs: nowMs + SAVINGS_SUMMARY_CACHE_TTL_MS
+      };
+
+      reply.send(payload);
+    } catch (err) {
+      handleRouteError(reply, err, 'We hit a small backstage snag while trying to load the savings summary');
+    }
+  });
 
   app.get('/api/admin/finance/summary', { preHandler: app.authenticateAdmin }, async (request, reply) => {
     const parsed = financeQuerySchema.safeParse(request.query || {});

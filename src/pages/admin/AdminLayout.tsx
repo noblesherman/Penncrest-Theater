@@ -44,6 +44,7 @@ import { clearAdminToken, formatAdminRole, hasAdminRole } from '../../lib/adminA
 import { ADMIN_GREETING_DURATION_MS, consumeAdminPostLoginGreeting } from '../../lib/adminPostLoginGreeting';
 import { useAdminGuard } from './useAdminGuard';
 import type { AdminLayoutContext } from './useAdminSession';
+import AdminSavingsCounter from './AdminSavingsCounter';
 
 type NavItem = {
   to: string;
@@ -516,6 +517,8 @@ export default function AdminLayout() {
 
         {/* User footer */}
         <div className={`py-4 border-t border-white/[0.06] ${sidebarCollapsed ? 'px-2' : 'px-3'}`}>
+          {!sidebarCollapsed ? <AdminSavingsCounter /> : null}
+
           <Link
             to="/admin/scanner/live"
             aria-label={sidebarCollapsed ? 'Full-Screen Scanner' : undefined}
