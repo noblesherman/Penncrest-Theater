@@ -48,6 +48,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     if (path === '/') return location.pathname === '/';
     return location.pathname === path || location.pathname.startsWith(`${path}/`);
   };
+  const isHomepage = location.pathname === '/';
 
   return (
     <div className="min-h-screen bg-white text-stone-900 flex flex-col" style={{ fontFamily: 'system-ui, sans-serif' }}>
@@ -254,7 +255,21 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
           {/* Bottom rule */}
           <div className="border-t border-stone-800 pt-6 text-center text-xs text-stone-400">
-            &copy; {new Date().getFullYear()} Penncrest High School Theater. All rights reserved.
+            <p>&copy; {new Date().getFullYear()} Penncrest High School Theater. All rights reserved.</p>
+            <p className="mt-2 text-stone-500">
+              {isHomepage ? (
+                <a
+                  href="https://www.nobleswebdesign.com/"
+                  target="_blank"
+                  rel="noopener"
+                  className="transition-colors hover:text-amber-300"
+                >
+                  Website by Noble’s Web Design
+                </a>
+              ) : (
+                'Website by Noble’s Web Design'
+              )}
+            </p>
           </div>
         </div>
       </footer>
