@@ -36,6 +36,8 @@
     "dotenv": "^17.2.3",
     "expo": "^55.0.8",
     "express": "^4.21.2",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "node-ical": "^0.25.4",

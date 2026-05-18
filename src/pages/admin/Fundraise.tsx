@@ -15,6 +15,8 @@ import { ChangeEvent, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import type { ReactNode } from 'react';
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
 import { loadStripe, type StripeElementsOptions } from '@stripe/stripe-js';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { AnimatePresence, motion } from 'motion/react';
 import { createPortal } from 'react-dom';
 import {
@@ -366,6 +368,115 @@ function createDonationOptionDraft(): FundraisingDonationOption {
   };
 }
 
+type QuestionnaireRow = {
+  section: string;
+  field: string;
+  value: string;
+};
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function humanizeQuestionField(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatQuestionValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '-';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) {
+    const normalized = value.map((item) => formatQuestionValue(item)).filter((item) => item !== '-');
+    return normalized.length > 0 ? normalized.join(', ') : '-';
+  }
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return '[Object]';
+    }
+  }
+  return String(value);
+}
+
+function buildQuestionnaireRows(responseJson: unknown): QuestionnaireRow[] {
+  const rows: QuestionnaireRow[] = [];
+  const response = asRecord(responseJson);
+  if (!response) return rows;
+
+  const sections = asRecord(response.sections);
+  if (sections) {
+    Object.entries(sections).forEach(([sectionId, sectionData]) => {
+      const sectionLabel = humanizeQuestionField(sectionId);
+      if (Array.isArray(sectionData)) {
+        sectionData.forEach((entry, index) => {
+          const entryRecord = asRecord(entry);
+          if (!entryRecord) return;
+          Object.entries(entryRecord).forEach(([fieldId, value]) => {
+            rows.push({
+              section: `${sectionLabel} (Entry ${index + 1})`,
+              field: humanizeQuestionField(fieldId),
+              value: formatQuestionValue(value)
+            });
+          });
+        });
+        return;
+      }
+
+      const sectionRecord = asRecord(sectionData);
+      if (!sectionRecord) return;
+      Object.entries(sectionRecord).forEach(([fieldId, value]) => {
+        rows.push({
+          section: sectionLabel,
+          field: humanizeQuestionField(fieldId),
+          value: formatQuestionValue(value)
+        });
+      });
+    });
+  }
+
+  const policies = asRecord(response.policies);
+  if (policies) {
+    Object.entries(policies).forEach(([fieldId, value]) => {
+      rows.push({
+        section: 'Policies',
+        field: humanizeQuestionField(fieldId),
+        value: formatQuestionValue(value)
+      });
+    });
+  }
+
+  const signature = asRecord(response.signature);
+  if (signature) {
+    Object.entries(signature).forEach(([fieldId, value]) => {
+      rows.push({
+        section: 'Verification',
+        field: humanizeQuestionField(fieldId),
+        value: formatQuestionValue(value)
+      });
+    });
+  }
+
+  const acknowledgments = asRecord(response.acknowledgments);
+  if (acknowledgments) {
+    Object.entries(acknowledgments).forEach(([fieldId, value]) => {
+      rows.push({
+        section: 'Acknowledgments',
+        field: humanizeQuestionField(fieldId),
+        value: formatQuestionValue(value)
+      });
+    });
+  }
+
+  return rows;
+}
+
 function AdminDonationPaymentForm({
   amountCents,
   donorName,
@@ -482,6 +593,7 @@ export default function AdminFundraisePage() {
   const [attendeesError, setAttendeesError] = useState<string | null>(null);
   const [purgingOrders, setPurgingOrders] = useState(false);
   const [expandedAttendeeOrderId, setExpandedAttendeeOrderId] = useState<string | null>(null);
+  const [attendeeExportMenuOpen, setAttendeeExportMenuOpen] = useState(false);
   const [selectedDonationOptionId, setSelectedDonationOptionId] = useState<string>(fundraisingDonationOptions[0]?.id || '');
   const [selectedDonationLevelId, setSelectedDonationLevelId] = useState<string | null>(null);
   const [selectedDonationAmountCents, setSelectedDonationAmountCents] = useState<number | null>(null);
@@ -498,6 +610,7 @@ export default function AdminFundraisePage() {
   const [donationEditorOpen, setDonationEditorOpen] = useState(false);
   const [donationProcessOpen, setDonationProcessOpen] = useState(false);
   const customAmountInputRef = useRef<HTMLInputElement | null>(null);
+  const attendeeExportMenuRef = useRef<HTMLDivElement | null>(null);
 
   const tiers = useMemo(() => parseTiers(form.tiersText), [form.tiersText]);
   const selectedEvent = useMemo(() => events.find((event) => event.id === selectedEventId) ?? null, [events, selectedEventId]);
@@ -813,6 +926,139 @@ export default function AdminFundraisePage() {
     setNotice('Attendee CSV export downloaded.');
   }
 
+  function exportAttendeesPdf() {
+    if (attendeeRows.length === 0) {
+      setNotice('No attendee rows available to export yet.');
+      return;
+    }
+
+    const rowsWithResponses = attendeeRows.filter((row) => Boolean(row.registrationSubmission));
+    if (rowsWithResponses.length === 0) {
+      setNotice('No questionnaire responses available to export yet.');
+      return;
+    }
+
+    const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+    const eventName = selectedEvent?.title || 'Fundraising Event';
+    const stamp = new Date().toISOString().slice(0, 10);
+    const nowLabel = new Date().toLocaleString();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const marginX = 44;
+    const maxY = pageHeight - 52;
+
+    let cursorY = 44;
+
+    const drawHeader = () => {
+      doc.setFillColor(127, 29, 29);
+      doc.roundedRect(marginX, cursorY, pageWidth - marginX * 2, 74, 12, 12, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(17);
+      doc.text('Questionnaire Responses', marginX + 16, cursorY + 30);
+      doc.setFontSize(12);
+      doc.text(eventName, marginX + 16, cursorY + 50);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.text(`Generated ${nowLabel}`, marginX + 16, cursorY + 66);
+      doc.setTextColor(28, 25, 23);
+      cursorY += 92;
+    };
+
+    const ensureSpace = (neededHeight: number) => {
+      if (cursorY + neededHeight <= maxY) return;
+      doc.addPage();
+      cursorY = 44;
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(28, 25, 23);
+    };
+
+    drawHeader();
+
+    autoTable(doc, {
+      startY: cursorY,
+      head: [['Metric', 'Value']],
+      body: [
+        ['Event', eventName],
+        ['Orders with responses', String(rowsWithResponses.length)],
+        ['Total orders', String(attendeeRows.length)],
+        ['Generated', nowLabel]
+      ],
+      theme: 'grid',
+      margin: { left: marginX, right: marginX },
+      headStyles: { fillColor: [127, 29, 29], textColor: [255, 255, 255], fontSize: 10 },
+      styles: { fontSize: 9, cellPadding: 6, textColor: [41, 37, 36] }
+    });
+    const firstTableY = (doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY;
+    cursorY = (firstTableY || cursorY) + 20;
+
+    rowsWithResponses.forEach((row, index) => {
+      const submission = row.registrationSubmission;
+      if (!submission) return;
+      const responseRows = buildQuestionnaireRows(submission.responseJson);
+
+      ensureSpace(130);
+      doc.setFillColor(250, 245, 245);
+      doc.setDrawColor(229, 231, 235);
+      doc.roundedRect(marginX, cursorY, pageWidth - marginX * 2, 76, 10, 10, 'FD');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text(`Response ${index + 1}`, marginX + 14, cursorY + 21);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.5);
+      doc.text(`Order: ${row.id}`, marginX + 14, cursorY + 39);
+      doc.text(`Name: ${row.customerName || 'Unknown'}   Email: ${row.email || 'Unknown'}`, marginX + 14, cursorY + 54);
+      doc.text(`Submitted: ${new Date(submission.submittedAt).toLocaleString()}`, marginX + 14, cursorY + 68);
+
+      cursorY += 86;
+
+      const tableBody =
+        responseRows.length > 0
+          ? responseRows.map((entry) => [entry.section, entry.field, entry.value])
+          : [['No structured sections found', 'Raw response', formatQuestionValue(submission.responseJson)]];
+
+      autoTable(doc, {
+        startY: cursorY,
+        head: [['Section', 'Question', 'Response']],
+        body: tableBody,
+        theme: 'grid',
+        margin: { left: marginX, right: marginX },
+        styles: {
+          fontSize: 9,
+          cellPadding: 5,
+          textColor: [41, 37, 36],
+          overflow: 'linebreak',
+          valign: 'top'
+        },
+        headStyles: {
+          fillColor: [127, 29, 29],
+          textColor: [255, 255, 255],
+          fontSize: 9.5
+        },
+        columnStyles: {
+          0: { cellWidth: 150, fontStyle: 'bold' },
+          1: { cellWidth: 150 },
+          2: { cellWidth: 'auto' }
+        }
+      });
+
+      const afterTableY = (doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY;
+      cursorY = (afterTableY || cursorY) + 18;
+    });
+
+    const totalPages = doc.getNumberOfPages();
+    for (let page = 1; page <= totalPages; page += 1) {
+      doc.setPage(page);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(120, 113, 108);
+      doc.text(`Page ${page} of ${totalPages}`, pageWidth - marginX, pageHeight - 24, { align: 'right' });
+    }
+
+    doc.save(`${slugifyForFilename(eventName)}-questionnaire-responses-${stamp}.pdf`);
+    setNotice(`Questionnaire PDF export downloaded (${rowsWithResponses.length} response${rowsWithResponses.length === 1 ? '' : 's'}).`);
+  }
+
   function exportDonationsCsv() {
     if (filteredDonations.length === 0) {
       setNotice('No donations available to export for the current filters.');
@@ -937,6 +1183,24 @@ export default function AdminFundraisePage() {
     }
     void loadAttendees(selectedEventId);
   }, [selectedEventId, tab]);
+
+  useEffect(() => {
+    if (!attendeeExportMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (attendeeExportMenuRef.current?.contains(target)) return;
+      setAttendeeExportMenuOpen(false);
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [attendeeExportMenuOpen]);
+
+  useEffect(() => {
+    setAttendeeExportMenuOpen(false);
+  }, [tab, selectedEventId]);
 
   useEffect(() => {
     if (donationOptions.length === 0) return;
@@ -2258,14 +2522,42 @@ export default function AdminFundraisePage() {
                 <RefreshCcw className={`h-4 w-4 ${attendeesLoading ? 'animate-spin' : ''}`} />
                 Refresh
               </button>
-              <button
-                type="button"
-                onClick={exportAttendeesCsv}
-                disabled={attendeesLoading || attendeeRows.length === 0}
-                className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Download CSV
-              </button>
+              <div className="relative" ref={attendeeExportMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setAttendeeExportMenuOpen((current) => !current)}
+                  disabled={attendeesLoading || attendeeRows.length === 0}
+                  className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Download
+                  <ChevronRight className={`h-4 w-4 transition-transform ${attendeeExportMenuOpen ? 'rotate-90' : ''}`} />
+                </button>
+
+                {attendeeExportMenuOpen ? (
+                  <div className="absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-lg">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        exportAttendeesCsv();
+                        setAttendeeExportMenuOpen(false);
+                      }}
+                      className="block w-full border-b border-stone-100 px-3 py-2.5 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50"
+                    >
+                      Original CSV
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        exportAttendeesPdf();
+                        setAttendeeExportMenuOpen(false);
+                      }}
+                      className="block w-full px-3 py-2.5 text-left text-sm font-medium text-stone-700 transition hover:bg-stone-50"
+                    >
+                      Readable PDF
+                    </button>
+                  </div>
+                ) : null}
+              </div>
               <button
                 type="button"
                 onClick={() => void purgeFundraisingEventOrders()}
