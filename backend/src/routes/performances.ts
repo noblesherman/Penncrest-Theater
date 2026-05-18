@@ -365,13 +365,13 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
             isPublished: true,
             OR: [{ onlineSalesStartsAt: null }, { onlineSalesStartsAt: { lte: new Date() } }]
           },
-          select: { id: true }
+          select: { id: true, isFundraiser: true, seatSelectionEnabled: true }
         });
         if (!performance) {
           throw new HttpError(404, 'Performance not found');
         }
 
-        const seats = await prisma.seat.findMany({
+        let seats = await prisma.seat.findMany({
           where: { performanceId: params.performanceId },
           include: {
             holdSession: {
@@ -387,6 +387,73 @@ export const performanceRoutes: FastifyPluginAsync = async (app) => {
           },
           orderBy: [{ sectionName: 'asc' }, { row: 'asc' }, { number: 'asc' }]
         });
+
+        // For GA fundraisers, stale SOLD rows can remain after refunds/deletes.
+        // Reopen any SOLD rows that are no longer backed by active mapped order seats.
+        if (performance.isFundraiser && performance.seatSelectionEnabled === false) {
+          const soldSeatCount = seats.filter((seat) => seat.status === 'SOLD').length;
+          if (soldSeatCount > 0) {
+            const orders = await prisma.order.findMany({
+              where: {
+                performanceId: params.performanceId,
+                status: { notIn: ['CANCELED', 'REFUNDED'] }
+              },
+              select: {
+                _count: {
+                  select: {
+                    orderSeats: true
+                  }
+                }
+              }
+            });
+
+            const activeMappedSeatCount = orders.reduce((sum, order) => sum + order._count.orderSeats, 0);
+            const staleSoldCount = Math.max(0, soldSeatCount - activeMappedSeatCount);
+
+            if (staleSoldCount > 0) {
+              const staleSoldSeatIds = seats
+                .filter((seat) => seat.status === 'SOLD' && seat.tickets.length === 0)
+                .sort((a, b) => {
+                  if (a.sectionName !== b.sectionName) return b.sectionName.localeCompare(a.sectionName);
+                  if (a.row !== b.row) return b.row.localeCompare(a.row, undefined, { numeric: true, sensitivity: 'base' });
+                  return b.number - a.number;
+                })
+                .slice(0, staleSoldCount)
+                .map((seat) => seat.id);
+
+              if (staleSoldSeatIds.length > 0) {
+                await prisma.seat.updateMany({
+                  where: {
+                    id: { in: staleSoldSeatIds },
+                    performanceId: params.performanceId,
+                    status: 'SOLD'
+                  },
+                  data: {
+                    status: 'AVAILABLE',
+                    holdSessionId: null
+                  }
+                });
+
+                seats = await prisma.seat.findMany({
+                  where: { performanceId: params.performanceId },
+                  include: {
+                    holdSession: {
+                      select: {
+                        status: true,
+                        expiresAt: true
+                      }
+                    },
+                    tickets: {
+                      where: { status: 'ISSUED' },
+                      select: { id: true }
+                    }
+                  },
+                  orderBy: [{ sectionName: 'asc' }, { row: 'asc' }, { number: 'asc' }]
+                });
+              }
+            }
+          }
+        }
 
         reply.send(
           seats.map((seat) => ({

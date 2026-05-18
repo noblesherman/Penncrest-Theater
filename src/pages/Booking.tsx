@@ -366,7 +366,7 @@ export default function Booking() {
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [studentCode, setStudentCode] = useState('');
-  const [autoSeatCount, setAutoSeatCount] = useState(2);
+  const [autoSeatCount, setAutoSeatCount] = useState(0);
   const [currentStep, setCurrentStep] = useState<CheckoutStep>(1);
   const [teacherPromoCode, setTeacherPromoCode] = useState('');
   const [pendingStripePayment, setPendingStripePayment] = useState<PendingStripePayment | null>(null);
