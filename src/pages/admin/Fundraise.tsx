@@ -263,6 +263,14 @@ function formatMoney(cents: number, currency: string): string {
   }).format(cents / 100);
 }
 
+function toLocalDateTimeInputValue(isoValue: string | null | undefined): string {
+  if (!isoValue) return '';
+  const date = new Date(isoValue);
+  if (!Number.isFinite(date.getTime())) return '';
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 function parseDonationInputToCents(value: string): number | null {
   const normalized = value.replace(/[^\d.]/g, '').trim();
   if (!normalized) return null;
@@ -982,9 +990,9 @@ export default function AdminFundraisePage() {
       title: event.title,
       description: event.showDescription || '',
       posterUrl: event.showPosterUrl || '',
-      startsAt: event.startsAt.slice(0, 16),
-      endsAt: event.endsAt ? event.endsAt.slice(0, 16) : '',
-      salesCutoffAt: event.salesCutoffAt ? event.salesCutoffAt.slice(0, 16) : '',
+      startsAt: toLocalDateTimeInputValue(event.startsAt),
+      endsAt: toLocalDateTimeInputValue(event.endsAt),
+      salesCutoffAt: toLocalDateTimeInputValue(event.salesCutoffAt),
       venue: event.venue,
       notes: event.notes || '',
       tiersText: event.pricingTiers.map((tier) => `${tier.name}:${tier.priceCents}`).join('\n'),
