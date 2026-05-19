@@ -194,6 +194,18 @@ function formatMoney(cents: number, currency: string): string {
   }).format(cents / 100);
 }
 
+function normalizeSearchValue(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenizeSearchQuery(value: string): string[] {
+  return normalizeSearchValue(value).split(' ').filter(Boolean);
+}
+
 function isFirstCamperTier(tier: PricingTier): boolean {
   const normalized = tier.name.trim().toLowerCase();
   return normalized.includes('1st camper') || normalized.includes('first camper');
@@ -441,24 +453,82 @@ export default function AdminFundraiseCheckInPage() {
   }, [performanceId]);
 
   const filteredRows = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    if (!needle) return rows;
+    const terms = tokenizeSearchQuery(search);
+    if (terms.length === 0) return rows;
 
-    return rows.filter((row) => {
-      if (
-        row.customerName.toLowerCase().includes(needle) ||
-        row.email.toLowerCase().includes(needle) ||
-        row.id.toLowerCase().includes(needle)
-      ) {
-        return true;
-      }
+    const ranked = rows
+      .map((row) => {
+        const orderIdRaw = row.id.toLowerCase();
+        const orderIdShortRaw = row.id.slice(0, 10).toLowerCase();
+        const fields = [
+          normalizeSearchValue(row.customerName),
+          normalizeSearchValue(row.email),
+          normalizeSearchValue(row.source),
+          normalizeSearchValue(row.status),
+          normalizeSearchValue(row.id),
+          normalizeSearchValue(orderIdShortRaw),
+          ...row.orderSeats.flatMap((seat) => [
+            normalizeSearchValue(seat.attendeeName || ''),
+            normalizeSearchValue(seat.seatLabel || ''),
+            normalizeSearchValue(seat.ticketType || ''),
+            normalizeSearchValue(seat.ticketPublicId || ''),
+            normalizeSearchValue(seat.ticketId || '')
+          ])
+        ].filter(Boolean);
 
-      return row.orderSeats.some((seat) =>
-        [seat.attendeeName || '', seat.seatLabel, seat.ticketPublicId || ''].some((value) =>
-          value.toLowerCase().includes(needle)
-        )
-      );
+        const searchableBlob = fields.join(' ');
+        const rawBlob = [
+          row.customerName,
+          row.email,
+          row.id,
+          row.source,
+          row.status,
+          ...row.orderSeats.flatMap((seat) => [seat.attendeeName || '', seat.seatLabel || '', seat.ticketType || '', seat.ticketPublicId || '', seat.ticketId || ''])
+        ]
+          .join(' ')
+          .toLowerCase();
+
+        const matchesAllTerms = terms.every((term) => fields.some((field) => field.includes(term)));
+        if (!matchesAllTerms) return null;
+
+        let score = 0;
+        terms.forEach((term) => {
+          if (rawBlob.includes(term)) score += 8;
+          if (searchableBlob.includes(term)) score += 4;
+          if (normalizeSearchValue(row.customerName).startsWith(term)) score += 24;
+          if (normalizeSearchValue(row.email).startsWith(term)) score += 16;
+          if (orderIdRaw.startsWith(term) || orderIdShortRaw.startsWith(term)) score += 20;
+
+          const attendeeStarts = row.orderSeats.some((seat) => normalizeSearchValue(seat.attendeeName || '').startsWith(term));
+          if (attendeeStarts) score += 18;
+
+          const ticketIdStarts = row.orderSeats.some(
+            (seat) =>
+              (seat.ticketPublicId || '').toLowerCase().startsWith(term) ||
+              (seat.ticketId || '').toLowerCase().startsWith(term)
+          );
+          if (ticketIdStarts) score += 22;
+        });
+
+        const fullNormalizedSearch = normalizeSearchValue(search);
+        if (fullNormalizedSearch && searchableBlob.includes(fullNormalizedSearch)) {
+          score += 30;
+        }
+
+        return { row, score };
+      })
+      .filter((entry): entry is { row: AttendeeOrderRow; score: number } => Boolean(entry));
+
+    ranked.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      const aTime = Date.parse(a.row.createdAt);
+      const bTime = Date.parse(b.row.createdAt);
+      const safeATime = Number.isFinite(aTime) ? aTime : 0;
+      const safeBTime = Number.isFinite(bTime) ? bTime : 0;
+      return safeBTime - safeATime;
     });
+
+    return ranked.map((entry) => entry.row);
   }, [rows, search]);
 
   const flattenSeatCount = useMemo(
@@ -1127,10 +1197,13 @@ export default function AdminFundraiseCheckInPage() {
                   <input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Buyer, attendee, ticket ID"
+                    placeholder="Buyer, attendee, email, order/ticket ID"
                     className={`${inputClass} pl-9`}
                   />
                 </div>
+                <span className="mt-1 block text-xs text-stone-400">
+                  Use partial names, emails, or IDs. Multiple words narrow results.
+                </span>
               </label>
             </div>
 

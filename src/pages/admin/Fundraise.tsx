@@ -194,6 +194,28 @@ type AdminFundraisingAttendeeFeed = {
   rows: AdminFundraisingAttendeeOrder[];
 };
 
+type QuickFactsParameter = {
+  id: string;
+  label: string;
+  source: string;
+};
+
+type QuickFactsSourceOption = {
+  value: string;
+  label: string;
+};
+
+type AttendeeQuickFactsRow = {
+  orderId: string;
+  orderCreatedAt: string;
+  attendeeName: string;
+  parentName: string;
+  parentEmail: string;
+  seatLabel: string;
+  ticketType: string;
+  questionnaireRows: QuestionnaireRow[];
+};
+
 const inputClass =
   'w-full rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 placeholder:text-stone-300 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100 transition';
 const labelClass = 'block text-xs font-bold uppercase tracking-widest text-stone-400 mb-2';
@@ -477,6 +499,31 @@ function buildQuestionnaireRows(responseJson: unknown): QuestionnaireRow[] {
   return rows;
 }
 
+function createQuickFactsParameter(label: string, source: string): QuickFactsParameter {
+  return {
+    id: `quick-facts-${Math.random().toString(36).slice(2, 10)}`,
+    label,
+    source
+  };
+}
+
+function createInitialQuickFactsParameters(): QuickFactsParameter[] {
+  return [
+    createQuickFactsParameter('Student Name', 'core:attendeeName'),
+    createQuickFactsParameter('Parent Name', 'core:parentName'),
+    createQuickFactsParameter('Parent Email', 'core:parentEmail'),
+    createQuickFactsParameter('Ticket Type', 'core:ticketType')
+  ];
+}
+
+function buildQuestionnaireSourceKey(row: QuestionnaireRow): string {
+  return `question:${row.section}::${row.field}`;
+}
+
+function buildQuestionnaireSourceLabel(row: QuestionnaireRow): string {
+  return `Questionnaire: ${row.section} -> ${row.field}`;
+}
+
 function AdminDonationPaymentForm({
   amountCents,
   donorName,
@@ -594,6 +641,9 @@ export default function AdminFundraisePage() {
   const [purgingOrders, setPurgingOrders] = useState(false);
   const [expandedAttendeeOrderId, setExpandedAttendeeOrderId] = useState<string | null>(null);
   const [attendeeExportMenuOpen, setAttendeeExportMenuOpen] = useState(false);
+  const [quickFactsOpen, setQuickFactsOpen] = useState(false);
+  const [quickFactsParameters, setQuickFactsParameters] = useState<QuickFactsParameter[]>(createInitialQuickFactsParameters);
+  const [quickFactsError, setQuickFactsError] = useState<string | null>(null);
   const [selectedDonationOptionId, setSelectedDonationOptionId] = useState<string>(fundraisingDonationOptions[0]?.id || '');
   const [selectedDonationLevelId, setSelectedDonationLevelId] = useState<string | null>(null);
   const [selectedDonationAmountCents, setSelectedDonationAmountCents] = useState<number | null>(null);
@@ -719,6 +769,67 @@ export default function AdminFundraisePage() {
       }),
     [filteredDonations]
   );
+  const attendeeQuickFactsRows = useMemo<AttendeeQuickFactsRow[]>(() => {
+    const rows: AttendeeQuickFactsRow[] = [];
+
+    attendeeRows.forEach((order) => {
+      const questionnaireRows = order.registrationSubmission ? buildQuestionnaireRows(order.registrationSubmission.responseJson) : [];
+      const seats =
+        order.orderSeats.length > 0
+          ? order.orderSeats
+          : [
+              {
+                seatId: null,
+                attendeeName: null,
+                ticketType: null,
+                isComplimentary: false,
+                price: 0,
+                seatLabel: 'General Admission'
+              }
+            ];
+
+      seats.forEach((seat) => {
+        rows.push({
+          orderId: order.id,
+          orderCreatedAt: order.createdAt,
+          attendeeName: seat.attendeeName?.trim() || order.customerName || 'Unknown Student',
+          parentName: order.customerName || '',
+          parentEmail: order.email || '',
+          seatLabel: seat.seatLabel || '',
+          ticketType: seat.ticketType || '',
+          questionnaireRows
+        });
+      });
+    });
+
+    return rows;
+  }, [attendeeRows]);
+  const quickFactsSourceOptions = useMemo<QuickFactsSourceOption[]>(() => {
+    const baseOptions: QuickFactsSourceOption[] = [
+      { value: 'core:attendeeName', label: 'Student Name' },
+      { value: 'core:parentName', label: 'Parent Name' },
+      { value: 'core:parentEmail', label: 'Parent Email' },
+      { value: 'core:ticketType', label: 'Ticket Type' },
+      { value: 'core:seatLabel', label: 'Seat Label' },
+      { value: 'core:orderCreatedAt', label: 'Order Date' }
+    ];
+
+    const questionnaireOptions = new Map<string, QuickFactsSourceOption>();
+    attendeeQuickFactsRows.forEach((row) => {
+      row.questionnaireRows.forEach((questionnaireRow) => {
+        const key = buildQuestionnaireSourceKey(questionnaireRow);
+        if (!questionnaireOptions.has(key)) {
+          questionnaireOptions.set(key, {
+            value: key,
+            label: buildQuestionnaireSourceLabel(questionnaireRow)
+          });
+        }
+      });
+    });
+
+    const sortedQuestionnaireOptions = Array.from(questionnaireOptions.values()).sort((a, b) => a.label.localeCompare(b.label));
+    return [...baseOptions, ...sortedQuestionnaireOptions];
+  }, [attendeeQuickFactsRows]);
   const donationStripePromise = useMemo(() => {
     if (!activeDonationIntent?.publishableKey) return null;
     return loadStripe(activeDonationIntent.publishableKey);
@@ -1059,6 +1170,157 @@ export default function AdminFundraisePage() {
     setNotice(`Questionnaire PDF export downloaded (${rowsWithResponses.length} response${rowsWithResponses.length === 1 ? '' : 's'}).`);
   }
 
+  function addQuickFactsParameter() {
+    const fallbackSource = quickFactsSourceOptions[0]?.value || 'core:attendeeName';
+    setQuickFactsParameters((prev) => [...prev, createQuickFactsParameter('New Fact', fallbackSource)]);
+    setQuickFactsError(null);
+  }
+
+  function updateQuickFactsParameter(parameterId: string, next: Partial<Pick<QuickFactsParameter, 'label' | 'source'>>) {
+    setQuickFactsParameters((prev) =>
+      prev.map((parameter) => (parameter.id === parameterId ? { ...parameter, ...next } : parameter))
+    );
+    setQuickFactsError(null);
+  }
+
+  function removeQuickFactsParameter(parameterId: string) {
+    setQuickFactsParameters((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((parameter) => parameter.id !== parameterId);
+    });
+    setQuickFactsError(null);
+  }
+
+  function resolveQuickFactsValue(source: string, row: AttendeeQuickFactsRow): string {
+    if (source.startsWith('question:')) {
+      const values = row.questionnaireRows
+        .filter((entry) => buildQuestionnaireSourceKey(entry) === source)
+        .map((entry) => entry.value)
+        .filter((value) => value && value !== '-');
+      if (values.length === 0) return '-';
+      return Array.from(new Set(values)).join(' | ');
+    }
+
+    switch (source) {
+      case 'core:attendeeName':
+        return row.attendeeName || '-';
+      case 'core:parentName':
+        return row.parentName || '-';
+      case 'core:parentEmail':
+        return row.parentEmail || '-';
+      case 'core:ticketType':
+        return row.ticketType || '-';
+      case 'core:seatLabel':
+        return row.seatLabel || '-';
+      case 'core:orderCreatedAt':
+        return row.orderCreatedAt ? new Date(row.orderCreatedAt).toLocaleString() : '-';
+      default:
+        return '-';
+    }
+  }
+
+  function exportQuickFactsPdf() {
+    if (attendeeQuickFactsRows.length === 0) {
+      setQuickFactsError('No attendee data is available for this event yet.');
+      return;
+    }
+
+    const activeParameters = quickFactsParameters
+      .map((parameter) => ({
+        ...parameter,
+        label: parameter.label.trim(),
+        source: parameter.source.trim()
+      }))
+      .filter((parameter) => parameter.label && parameter.source);
+
+    if (activeParameters.length === 0) {
+      setQuickFactsError('Add at least one parameter with a label and source before exporting.');
+      return;
+    }
+
+    setQuickFactsError(null);
+
+    const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+    const eventName = selectedEvent?.title || 'Fundraising Event';
+    const stamp = new Date().toISOString().slice(0, 10);
+    const nowLabel = new Date().toLocaleString();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const marginX = 44;
+    const marginBottom = 40;
+
+    let cursorY = 44;
+
+    doc.setFillColor(120, 53, 15);
+    doc.roundedRect(marginX, cursorY, pageWidth - marginX * 2, 70, 12, 12, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.text('Student Quick Facts Sheets', marginX + 16, cursorY + 28);
+    doc.setFontSize(11);
+    doc.text(eventName, marginX + 16, cursorY + 47);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    doc.text(`Generated ${nowLabel}`, marginX + 16, cursorY + 62);
+    doc.setTextColor(28, 25, 23);
+    cursorY += 86;
+
+    attendeeQuickFactsRows.forEach((attendee, index) => {
+      const estimatedBlockHeight = 120 + activeParameters.length * 24;
+      if (cursorY + estimatedBlockHeight > pageHeight - marginBottom) {
+        doc.addPage();
+        cursorY = 44;
+      }
+
+      doc.setDrawColor(229, 231, 235);
+      doc.setFillColor(250, 250, 249);
+      doc.roundedRect(marginX, cursorY, pageWidth - marginX * 2, 56, 10, 10, 'FD');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text(attendee.attendeeName || `Student ${index + 1}`, marginX + 14, cursorY + 22);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.5);
+      doc.text(`Order ${attendee.orderId} · ${new Date(attendee.orderCreatedAt).toLocaleString()}`, marginX + 14, cursorY + 40);
+
+      cursorY += 66;
+
+      autoTable(doc, {
+        startY: cursorY,
+        head: [['Parameter', 'Value']],
+        body: activeParameters.map((parameter) => [parameter.label, resolveQuickFactsValue(parameter.source, attendee)]),
+        theme: 'grid',
+        margin: { left: marginX, right: marginX },
+        headStyles: { fillColor: [120, 53, 15], textColor: [255, 255, 255], fontSize: 9.5 },
+        styles: {
+          fontSize: 9,
+          cellPadding: 5,
+          textColor: [41, 37, 36],
+          overflow: 'linebreak',
+          valign: 'top'
+        },
+        columnStyles: {
+          0: { cellWidth: 170, fontStyle: 'bold' },
+          1: { cellWidth: 'auto' }
+        }
+      });
+
+      const nextY = (doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY;
+      cursorY = (nextY || cursorY) + 18;
+    });
+
+    const totalPages = doc.getNumberOfPages();
+    for (let page = 1; page <= totalPages; page += 1) {
+      doc.setPage(page);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(120, 113, 108);
+      doc.text(`Page ${page} of ${totalPages}`, pageWidth - marginX, pageHeight - 20, { align: 'right' });
+    }
+
+    doc.save(`${slugifyForFilename(eventName)}-student-quick-facts-${stamp}.pdf`);
+    setNotice(`Quick facts PDF downloaded (${attendeeQuickFactsRows.length} student sheet${attendeeQuickFactsRows.length === 1 ? '' : 's'}).`);
+  }
+
   function exportDonationsCsv() {
     if (filteredDonations.length === 0) {
       setNotice('No donations available to export for the current filters.');
@@ -1200,7 +1462,21 @@ export default function AdminFundraisePage() {
 
   useEffect(() => {
     setAttendeeExportMenuOpen(false);
+    setQuickFactsError(null);
   }, [tab, selectedEventId]);
+
+  useEffect(() => {
+    const fallbackSource = quickFactsSourceOptions[0]?.value;
+    if (!fallbackSource) return;
+
+    setQuickFactsParameters((prev) =>
+      prev.map((parameter) =>
+        quickFactsSourceOptions.some((option) => option.value === parameter.source)
+          ? parameter
+          : { ...parameter, source: fallbackSource }
+      )
+    );
+  }, [quickFactsSourceOptions]);
 
   useEffect(() => {
     if (donationOptions.length === 0) return;
@@ -2560,6 +2836,18 @@ export default function AdminFundraisePage() {
               </div>
               <button
                 type="button"
+                onClick={() => setQuickFactsOpen((current) => !current)}
+                disabled={!selectedEventId || attendeesLoading}
+                className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  quickFactsOpen
+                    ? 'border-amber-300 bg-amber-50 text-amber-800'
+                    : 'border-stone-300 bg-white text-stone-700 hover:bg-stone-50'
+                }`}
+              >
+                Quick Facts Sheets
+              </button>
+              <button
+                type="button"
                 onClick={() => void purgeFundraisingEventOrders()}
                 disabled={!selectedEventId || attendeeRows.length === 0 || attendeesLoading || purgingOrders}
                 className="inline-flex items-center gap-2 rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
@@ -2569,6 +2857,87 @@ export default function AdminFundraisePage() {
               </button>
             </div>
           </section>
+
+          {quickFactsOpen ? (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50/40 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-bold text-stone-900">Quick Facts Sheet Builder</h3>
+                  <p className="mt-1 text-sm text-stone-600">
+                    Pick editable parameters, then generate clean one-page-style fact sheets for every student in this event.
+                  </p>
+                </div>
+                <div className="text-xs text-stone-600">
+                  {attendeeQuickFactsRows.length} student row{attendeeQuickFactsRows.length === 1 ? '' : 's'} found
+                </div>
+              </div>
+
+              {quickFactsError ? (
+                <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{quickFactsError}</div>
+              ) : null}
+
+              <div className="mt-4 space-y-3">
+                {quickFactsParameters.map((parameter, index) => (
+                  <div key={parameter.id} className="grid grid-cols-1 gap-2 rounded-xl border border-amber-200 bg-white p-3 md:grid-cols-[minmax(180px,1fr)_minmax(240px,1.3fr)_auto] md:items-center">
+                    <label className="space-y-1">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Label</span>
+                      <input
+                        type="text"
+                        value={parameter.label}
+                        onChange={(event) => updateQuickFactsParameter(parameter.id, { label: event.target.value })}
+                        className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-amber-500"
+                        placeholder={`Parameter ${index + 1}`}
+                      />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">Source</span>
+                      <select
+                        value={parameter.source}
+                        onChange={(event) => updateQuickFactsParameter(parameter.id, { source: event.target.value })}
+                        className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none transition focus:border-amber-500"
+                      >
+                        {quickFactsSourceOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="pt-0 md:pt-5">
+                      <button
+                        type="button"
+                        onClick={() => removeQuickFactsParameter(parameter.id)}
+                        disabled={quickFactsParameters.length <= 1}
+                        className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={addQuickFactsParameter}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Parameter
+                </button>
+                <button
+                  type="button"
+                  onClick={exportQuickFactsPdf}
+                  disabled={attendeeQuickFactsRows.length === 0}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-amber-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Download Quick Facts PDF
+                </button>
+              </div>
+            </section>
+          ) : null}
 
           <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="rounded-xl border border-stone-200 bg-white px-4 py-3">
