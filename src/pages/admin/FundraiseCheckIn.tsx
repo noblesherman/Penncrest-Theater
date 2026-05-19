@@ -531,9 +531,18 @@ export default function AdminFundraiseCheckInPage() {
     return ranked.map((entry) => entry.row);
   }, [rows, search]);
 
-  const flattenSeatCount = useMemo(
-    () => filteredRows.reduce((sum, row) => sum + row.orderSeats.length, 0),
-    [filteredRows]
+  const totalTicketCount = useMemo(
+    () => rows.reduce((sum, row) => sum + row.orderSeats.length, 0),
+    [rows]
+  );
+
+  const checkedInTicketCount = useMemo(
+    () =>
+      rows.reduce(
+        (sum, row) => sum + row.orderSeats.reduce((seatSum, seat) => seatSum + (seat.checkedInAt ? 1 : 0), 0),
+        0
+      ),
+    [rows]
   );
 
   useEffect(() => {
@@ -1207,18 +1216,22 @@ export default function AdminFundraiseCheckInPage() {
               </label>
             </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
                 <p className="text-xs font-bold uppercase tracking-wide text-stone-500">Orders</p>
                 <p className="mt-1 text-2xl font-black text-stone-900">{summary?.orderCount ?? rows.length}</p>
               </div>
               <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
                 <p className="text-xs font-bold uppercase tracking-wide text-stone-500">Tickets</p>
-                <p className="mt-1 text-2xl font-black text-stone-900">{summary?.ticketCount ?? flattenSeatCount}</p>
+                <p className="mt-1 text-2xl font-black text-stone-900">{summary?.ticketCount ?? totalTicketCount}</p>
               </div>
               <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
                 <p className="text-xs font-bold uppercase tracking-wide text-stone-500">Questionnaires</p>
                 <p className="mt-1 text-2xl font-black text-stone-900">{summary?.responseCount ?? 0}</p>
+              </div>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Checked In</p>
+                <p className="mt-1 text-2xl font-black text-emerald-800">{checkedInTicketCount}</p>
               </div>
             </div>
           </div>

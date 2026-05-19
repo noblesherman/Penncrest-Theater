@@ -601,6 +601,8 @@ async function buildInPersonSaleQuote(params: {
   }
 
   const isGeneralAdmission = performance.seatSelectionEnabled === false;
+  const onlineSalesCutoffAt = performance.salesCutoffAt || performance.startsAt;
+  const allowBlockedForFundraiserDoor = performance.isFundraiser && onlineSalesCutoffAt <= new Date();
 
   if (!isGeneralAdmission && performance.seats.length !== normalizedSeatIds.length) {
     throw new HttpError(400, 'One or more selected seats are invalid for this performance');
@@ -656,7 +658,10 @@ async function buildInPersonSaleQuote(params: {
     validateCompanionSelection(performance.seats as InPersonSaleSeat[]);
 
     const unavailableSeat = performance.seats.find(
-      (seat) => seat.status === 'HELD' || seat.status === 'SOLD' || seat.status === 'BLOCKED'
+      (seat) =>
+        seat.status === 'HELD' ||
+        seat.status === 'SOLD' ||
+        (seat.status === 'BLOCKED' && !allowBlockedForFundraiserDoor)
     );
     if (unavailableSeat) {
       throw new HttpError(409, 'One or more selected seats are no longer available');
@@ -668,7 +673,7 @@ async function buildInPersonSaleQuote(params: {
         await prisma.seat.findMany({
           where: {
             performanceId: params.performanceId,
-            status: 'AVAILABLE'
+            status: allowBlockedForFundraiserDoor ? { in: ['AVAILABLE', 'BLOCKED'] } : 'AVAILABLE'
           },
           orderBy: [
             { sectionName: 'asc' },
@@ -676,7 +681,6 @@ async function buildInPersonSaleQuote(params: {
             { number: 'asc' },
             { id: 'asc' }
           ],
-          take: normalizedSeatIds.length,
           select: {
             id: true,
             sectionName: true,
@@ -686,10 +690,17 @@ async function buildInPersonSaleQuote(params: {
             status: true,
             isAccessible: true,
             isCompanion: true,
-            companionForSeatId: true
+            companionForSeatId: true,
+            tickets: {
+              where: { status: 'ISSUED' },
+              select: { id: true }
+            }
           }
         })
-      ).map((seat, index) => ({
+      )
+        .filter((seat) => seat.tickets.length === 0)
+        .slice(0, normalizedSeatIds.length)
+        .map((seat, index) => ({
         ...seat,
         selectionKey: normalizedSeatIds[index] || `ga-${index + 1}`
       }))

@@ -300,106 +300,121 @@ export async function createAssignedOrder(params: AssignedOrderParams) {
     const isSourceComplimentary = complimentarySources.has(params.source);
     const isGeneralAdmissionNoSeatLinks = performance.seatSelectionEnabled === false;
 
-    if (!isGeneralAdmissionNoSeatLinks) {
-      if (performance.seats.length !== seatIds.length) {
-        logAssignedOrderCheckout(params, 'warn', 'selected seats invalid for performance', {
-          failureReason: 'selected_seat_missing',
-          foundSeatIds: performance.seats.map((seat) => seat.id)
-        });
-        throw new HttpError(400, 'One or more selected seats are invalid for this performance');
-      }
-
-      validateCompanionSelection(performance.seats);
-
-      const disallowed = performance.seats.find((seat) => {
-        if (seat.status === 'SOLD' || seat.status === 'BLOCKED') return true;
-        if (!allowHeldSeats && seat.status === 'HELD') return true;
-        return false;
+    if (performance.seats.length !== seatIds.length) {
+      logAssignedOrderCheckout(params, 'warn', 'selected seats invalid for performance', {
+        failureReason: 'selected_seat_missing',
+        foundSeatIds: performance.seats.map((seat) => seat.id)
       });
-
-      if (disallowed) {
-        logAssignedOrderCheckout(params, 'warn', 'seat status blocks sale', {
-          failureReason: 'seat_status_unavailable',
-          blockedSeat: {
-            id: disallowed.id,
-            status: disallowed.status,
-            holdSessionId: disallowed.holdSessionId,
-            label: `${disallowed.sectionName} ${disallowed.row}-${disallowed.number}`
-          }
-        });
-        throw new HttpError(409, 'One or more selected seats are no longer available');
-      }
-
-      const existingIssuedTickets = await tx.ticket.findMany({
-        where: {
-          performanceId: params.performanceId,
-          seatId: { in: seatIds },
-          status: 'ISSUED'
-        },
-        select: {
-          id: true,
-          orderId: true,
-          seatId: true,
-          status: true,
-          createdAt: true
-        },
-        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
-      });
-
-      logAssignedOrderCheckout(
-        params,
-        existingIssuedTickets.length > 0 ? 'warn' : 'info',
-        'issued ticket conflict check completed',
-        {
-          existingIssuedTickets: existingIssuedTickets.map((ticket) => ({
-            id: ticket.id,
-            orderId: ticket.orderId,
-            seatId: ticket.seatId,
-            status: ticket.status,
-            createdAt: ticket.createdAt.toISOString()
-          })),
-          failureReason: existingIssuedTickets.length > 0 ? 'issued_ticket_already_exists' : null
-        }
-      );
-
-      await assertNoIssuedTicketsForSeats(tx, {
-        performanceId: params.performanceId,
-        seatIds
-      });
-
-      const heldStatuses: Array<'AVAILABLE' | 'HELD'> = allowHeldSeats ? ['AVAILABLE', 'HELD'] : ['AVAILABLE'];
-      const updated = await tx.seat.updateMany({
-        where: {
-          id: { in: seatIds },
-          performanceId: params.performanceId,
-          status: { in: heldStatuses }
-        },
-        data: {
-          status: 'SOLD',
-          holdSessionId: null
-        }
-      });
-
-      if (updated.count !== seatIds.length) {
-        logAssignedOrderCheckout(params, 'warn', 'seat update failed optimistic availability check', {
-          failureReason: 'seat_update_count_mismatch',
-          updatedSeatCount: updated.count,
-          expectedSeatCount: seatIds.length
-        });
-        throw new HttpError(409, 'One or more selected seats are no longer available');
-      }
-
-      await tx.seatHold.deleteMany({
-        where: {
-          seatId: { in: seatIds }
-        }
-      });
-
-      const holdIds = performance.seats
-        .map((seat) => seat.holdSessionId)
-        .filter((value): value is string => Boolean(value));
-      await closeEmptyHolds(tx, holdIds);
+      throw new HttpError(400, 'One or more selected seats are invalid for this performance');
     }
+
+    const onlineSalesCutoffAt = performance.salesCutoffAt || performance.startsAt;
+    const allowBlockedForFundraiserDoor =
+      params.source === 'DOOR' &&
+      performance.isFundraiser &&
+      !enforceSalesCutoff &&
+      onlineSalesCutoffAt <= new Date();
+
+    if (!isGeneralAdmissionNoSeatLinks) {
+      validateCompanionSelection(performance.seats);
+    }
+
+    const disallowed = performance.seats.find((seat) => {
+      if (seat.status === 'SOLD') return true;
+      if (seat.status === 'BLOCKED' && !allowBlockedForFundraiserDoor) return true;
+      if (!allowHeldSeats && seat.status === 'HELD') return true;
+      return false;
+    });
+
+    if (disallowed) {
+      logAssignedOrderCheckout(params, 'warn', 'seat status blocks sale', {
+        failureReason: 'seat_status_unavailable',
+        blockedSeat: {
+          id: disallowed.id,
+          status: disallowed.status,
+          holdSessionId: disallowed.holdSessionId,
+          label: `${disallowed.sectionName} ${disallowed.row}-${disallowed.number}`
+        }
+      });
+      throw new HttpError(409, 'One or more selected seats are no longer available');
+    }
+
+    const existingIssuedTickets = await tx.ticket.findMany({
+      where: {
+        performanceId: params.performanceId,
+        seatId: { in: seatIds },
+        status: 'ISSUED'
+      },
+      select: {
+        id: true,
+        orderId: true,
+        seatId: true,
+        status: true,
+        createdAt: true
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
+    });
+
+    logAssignedOrderCheckout(
+      params,
+      existingIssuedTickets.length > 0 ? 'warn' : 'info',
+      'issued ticket conflict check completed',
+      {
+        existingIssuedTickets: existingIssuedTickets.map((ticket) => ({
+          id: ticket.id,
+          orderId: ticket.orderId,
+          seatId: ticket.seatId,
+          status: ticket.status,
+          createdAt: ticket.createdAt.toISOString()
+        })),
+        failureReason: existingIssuedTickets.length > 0 ? 'issued_ticket_already_exists' : null
+      }
+    );
+
+    await assertNoIssuedTicketsForSeats(tx, {
+      performanceId: params.performanceId,
+      seatIds
+    });
+
+    const updatableStatuses: Array<'AVAILABLE' | 'HELD' | 'BLOCKED'> = ['AVAILABLE'];
+    if (allowHeldSeats) {
+      updatableStatuses.push('HELD');
+    }
+    if (allowBlockedForFundraiserDoor) {
+      updatableStatuses.push('BLOCKED');
+    }
+
+    const updated = await tx.seat.updateMany({
+      where: {
+        id: { in: seatIds },
+        performanceId: params.performanceId,
+        status: { in: updatableStatuses }
+      },
+      data: {
+        status: 'SOLD',
+        holdSessionId: null
+      }
+    });
+
+    if (updated.count !== seatIds.length) {
+      logAssignedOrderCheckout(params, 'warn', 'seat update failed optimistic availability check', {
+        failureReason: 'seat_update_count_mismatch',
+        updatedSeatCount: updated.count,
+        expectedSeatCount: seatIds.length
+      });
+      throw new HttpError(409, 'One or more selected seats are no longer available');
+    }
+
+    await tx.seatHold.deleteMany({
+      where: {
+        seatId: { in: seatIds }
+      }
+    });
+
+    const holdIds = performance.seats
+      .map((seat) => seat.holdSessionId)
+      .filter((value): value is string => Boolean(value));
+    await closeEmptyHolds(tx, holdIds);
 
     const sortedSeats = isGeneralAdmissionNoSeatLinks
       ? [...seatIds]

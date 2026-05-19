@@ -128,7 +128,12 @@ function authHeaders(): Record<string, string> {
   };
 }
 
-async function createPerformanceFixture(params?: { seatCount?: number; tierPriceCents?: number }) {
+async function createPerformanceFixture(params?: {
+  seatCount?: number;
+  tierPriceCents?: number;
+  isFundraiser?: boolean;
+  seatSelectionEnabled?: boolean;
+}) {
   const seatCount = params?.seatCount ?? 2;
   const tierPriceCents = params?.tierPriceCents ?? 2500;
 
@@ -145,7 +150,9 @@ async function createPerformanceFixture(params?: { seatCount?: number; tierPrice
       title: `Performance ${Date.now()}`,
       startsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       salesCutoffAt: new Date(Date.now() + 23 * 60 * 60 * 1000),
-      venue: 'Integration Theater'
+      venue: 'Integration Theater',
+      isFundraiser: params?.isFundraiser ?? false,
+      seatSelectionEnabled: params?.seatSelectionEnabled ?? true
     }
   });
 
@@ -1079,6 +1086,140 @@ describe.sequential('terminal dispatch integration', () => {
       }
     });
     expect(paidOrder.amountTotal).toBe(2100);
+  });
+
+  it('fundraiser GA cash checkout succeeds after online cutoff passes', async () => {
+    const fixture = await createPerformanceFixture({
+      seatCount: 3,
+      tierPriceCents: 1900,
+      isFundraiser: true,
+      seatSelectionEnabled: false
+    });
+
+    await prisma.performance.update({
+      where: { id: fixture.performance.id },
+      data: {
+        onlineSalesStartsAt: new Date(Date.now() + 60 * 60 * 1000),
+        salesCutoffAt: new Date(Date.now() - 60 * 1000)
+      }
+    });
+
+    const seatIds = ['ga-1', 'ga-2'];
+    const finalizeResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/orders/in-person/finalize',
+      headers: authHeaders(),
+      payload: {
+        performanceId: fixture.performance.id,
+        seatIds,
+        ticketSelectionBySeatId: buildTicketSelection(seatIds, fixture.tier.id),
+        paymentMethod: 'CASH',
+        customerName: 'Fundraiser Walk-up Guest'
+      }
+    });
+
+    expect(finalizeResponse.statusCode).toBe(201);
+    expect(finalizeResponse.json().paymentMethod).toBe('CASH');
+    expect(finalizeResponse.json().seats).toHaveLength(2);
+  });
+
+  it('fundraiser GA manual-complete succeeds after online cutoff passes', async () => {
+    const fixture = await createPerformanceFixture({
+      seatCount: 3,
+      tierPriceCents: 1900,
+      isFundraiser: true,
+      seatSelectionEnabled: false
+    });
+
+    await prisma.performance.update({
+      where: { id: fixture.performance.id },
+      data: {
+        onlineSalesStartsAt: new Date(Date.now() + 60 * 60 * 1000),
+        salesCutoffAt: new Date(Date.now() - 60 * 1000)
+      }
+    });
+
+    const seatIds = ['ga-1', 'ga-2'];
+    const ticketSelectionBySeatId = buildTicketSelection(seatIds, fixture.tier.id);
+
+    const intentResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/orders/in-person/manual-intent',
+      headers: authHeaders(),
+      payload: {
+        performanceId: fixture.performance.id,
+        seatIds,
+        ticketSelectionBySeatId,
+        customerName: 'Fundraiser Manual Guest'
+      }
+    });
+
+    expect(intentResponse.statusCode).toBe(200);
+    const paymentIntentId = intentResponse.json().paymentIntentId as string;
+    markPaymentIntentSucceeded(paymentIntentId);
+
+    const completeResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/orders/in-person/manual-complete',
+      headers: authHeaders(),
+      payload: {
+        performanceId: fixture.performance.id,
+        seatIds,
+        ticketSelectionBySeatId,
+        customerName: 'Fundraiser Manual Guest',
+        paymentIntentId
+      }
+    });
+
+    expect(completeResponse.statusCode).toBe(201);
+    expect(completeResponse.json().paymentMethod).toBe('STRIPE');
+    expect(completeResponse.json().seats).toHaveLength(2);
+  });
+
+  it('fundraiser GA cash checkout can sell blocked seats after online cutoff passes', async () => {
+    const fixture = await createPerformanceFixture({
+      seatCount: 3,
+      tierPriceCents: 2000,
+      isFundraiser: true,
+      seatSelectionEnabled: false
+    });
+
+    await prisma.performance.update({
+      where: { id: fixture.performance.id },
+      data: {
+        onlineSalesStartsAt: new Date(Date.now() + 60 * 60 * 1000),
+        salesCutoffAt: new Date(Date.now() - 60 * 1000)
+      }
+    });
+
+    await prisma.seat.updateMany({
+      where: { performanceId: fixture.performance.id, status: 'AVAILABLE' },
+      data: { status: 'BLOCKED' }
+    });
+
+    const seatIds = ['ga-1', 'ga-2'];
+    const finalizeResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/orders/in-person/finalize',
+      headers: authHeaders(),
+      payload: {
+        performanceId: fixture.performance.id,
+        seatIds,
+        ticketSelectionBySeatId: buildTicketSelection(seatIds, fixture.tier.id),
+        paymentMethod: 'CASH',
+        customerName: 'Blocked Seat Fundraiser Guest'
+      }
+    });
+
+    expect(finalizeResponse.statusCode).toBe(201);
+
+    const soldCount = await prisma.seat.count({
+      where: {
+        performanceId: fixture.performance.id,
+        status: 'SOLD'
+      }
+    });
+    expect(soldCount).toBe(2);
   });
 
   it('cash checkout logs a clear reason when a selected seat already has an ISSUED ticket', async () => {
