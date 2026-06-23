@@ -145,6 +145,8 @@ const SIDEBAR_COLLAPSED_KEY = 'admin_sidebar_collapsed';
 const SIDEBAR_EXPANDED_SECTIONS_KEY = 'admin_sidebar_expanded_sections';
 const DEFAULT_EXPANDED_SECTION_IDS = ['front-desk'];
 const sidebarEase = [0.22, 1, 0.36, 1] as const;
+const navSectionHeadingTextClass = 'text-[10px] font-semibold uppercase tracking-widest leading-none';
+const navSectionHeadingStyle = { fontSize: '10px', lineHeight: '10px' };
 
 const navSectionListVariants = {
   open: {
@@ -443,13 +445,14 @@ export default function AdminLayout() {
               <div key={section.title}>
                 {sidebarCollapsed ? <div className="mx-2 mb-2 h-px bg-white/[0.06]" /> : (
                   section.collapsible ? (
-                    <button
-                      type="button"
-                      onClick={() => toggleNavSection(section.id)}
-                      className="group mb-1 flex w-full items-center rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-500 transition-colors duration-200 hover:bg-white/[0.04] hover:text-zinc-300"
-                      aria-expanded={sectionOpen}
-                    >
-                      <span>{section.title}</span>
+	                    <button
+	                      type="button"
+	                      onClick={() => toggleNavSection(section.id)}
+	                      className={`group mb-1 flex w-full items-center rounded-md px-2 py-1.5 ${navSectionHeadingTextClass} text-zinc-500 transition-colors duration-200 hover:bg-white/[0.04] hover:text-zinc-300`}
+	                      style={navSectionHeadingStyle}
+	                      aria-expanded={sectionOpen}
+	                    >
+	                      <span style={navSectionHeadingStyle}>{section.title}</span>
                       <ChevronRight
                         className={`
                           ml-auto h-3 w-3 text-zinc-600 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]
@@ -458,7 +461,7 @@ export default function AdminLayout() {
                       />
                     </button>
                   ) : (
-                    <p className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
+	                    <p className={`px-2 mb-1.5 ${navSectionHeadingTextClass} text-zinc-600`} style={navSectionHeadingStyle}>
                       {section.title}
                     </p>
                   )

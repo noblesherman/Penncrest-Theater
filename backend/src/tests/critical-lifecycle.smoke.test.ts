@@ -667,6 +667,56 @@ describe.sequential('critical lifecycle smoke', () => {
     expect(queuedItemCount).toBe(0);
   });
 
+  it('hides past fundraising events from the public event feed', async () => {
+    const show = await prisma.show.create({
+      data: {
+        title: 'Public Fundraiser Feed Show',
+        description: 'Smoke test fundraiser visibility'
+      }
+    });
+    const now = Date.now();
+    const pastEvent = await prisma.performance.create({
+      data: {
+        showId: show.id,
+        title: 'Past Public Fundraiser',
+        startsAt: new Date(now - 72 * 60 * 60 * 1000),
+        endsAt: new Date(now - 70 * 60 * 60 * 1000),
+        venue: 'Smoke Test Theater',
+        isFundraiser: true
+      }
+    });
+    const currentEvent = await prisma.performance.create({
+      data: {
+        showId: show.id,
+        title: 'Current Public Fundraiser',
+        startsAt: new Date(now - 60 * 60 * 1000),
+        endsAt: new Date(now + 60 * 60 * 1000),
+        venue: 'Smoke Test Theater',
+        isFundraiser: true
+      }
+    });
+    const upcomingEvent = await prisma.performance.create({
+      data: {
+        showId: show.id,
+        title: 'Upcoming Public Fundraiser',
+        startsAt: new Date(now + 24 * 60 * 60 * 1000),
+        venue: 'Smoke Test Theater',
+        isFundraiser: true
+      }
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/fundraising/events'
+    });
+
+    expect(response.statusCode).toBe(200);
+    const eventIds = response.json().map((event: { id: string }) => event.id);
+    expect(eventIds).not.toContain(pastEvent.id);
+    expect(eventIds).toContain(currentEvent.id);
+    expect(eventIds).toContain(upcomingEvent.id);
+  });
+
   it('adds an optional checkout donation to Stripe amount and preserves it through finalization', async () => {
     const buyerEmail = `donor_${Date.now()}@example.com`;
     const clientToken = `client_${Date.now()}_donation`;

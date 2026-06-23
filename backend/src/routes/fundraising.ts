@@ -1203,7 +1203,18 @@ export const fundraisingRoutes: FastifyPluginAsync = async (app) => {
           isArchived: false,
           isFundraiser: true,
           isPublished: true,
-          OR: [{ onlineSalesStartsAt: null }, { onlineSalesStartsAt: { lte: now } }]
+          AND: [
+            { OR: [{ onlineSalesStartsAt: null }, { onlineSalesStartsAt: { lte: now } }] },
+            {
+              OR: [
+                { endsAt: { gte: now } },
+                {
+                  endsAt: null,
+                  startsAt: { gte: now }
+                }
+              ]
+            }
+          ]
         },
         orderBy: [{ startsAt: 'asc' }, { createdAt: 'desc' }],
         include: {
