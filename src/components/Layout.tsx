@@ -14,6 +14,7 @@ Handoff note for Mr. Smith:
 import { Link, useLocation } from 'react-router-dom';
 import React, { useEffect, useState } from 'react';
 import { ChevronDown, Ticket, Menu, X } from 'lucide-react';
+import BoxFiveNotice from './BoxFiveNotice';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -320,6 +321,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       )}
+
+      <BoxFiveNotice />
 
     </div>
   );
